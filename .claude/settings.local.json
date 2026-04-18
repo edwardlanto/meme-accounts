@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(npx sv *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/login)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/signup)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/dashboard)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/dashboard/discover)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/dashboard/carousels)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
+    ]
+  }
+}
