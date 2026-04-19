@@ -31,7 +31,8 @@
       "Bash(npx svelte-check *)",
       "Bash(npx vite *)",
       "Bash(curl -s -X POST http://localhost:3000/api/generate-slides -H 'Content-Type: application/json' -d '{\"topic\":\"Why most people never build wealth\",\"style\":\"dark\",\"slideCount\":4,\"imageCount\":2,\"audience\":\"entrepreneurs\"}')",
-      "Bash(python3 -c \"import json,sys; models=[m['id'] for m in json.load\\(sys.stdin\\)['data'] if 'claude' in m['id'].lower\\(\\)]; print\\('\\\\n'.join\\(models\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; models=[m['id'] for m in json.load\\(sys.stdin\\)['data'] if 'claude' in m['id'].lower\\(\\)]; print\\('\\\\n'.join\\(models\\)\\)\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/news/variants -H 'Content-Type: application/json' -d '{ *)"
     ]
   }
 }

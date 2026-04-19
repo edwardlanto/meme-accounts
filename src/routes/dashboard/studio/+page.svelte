@@ -50,21 +50,40 @@
 	// News controls
 	let search = $state('');
 	let category = $state('business');
+	let slideCount = $state(3); // 1–10
 	let fetchingNews = $state(false);
+	let generatingVariants = $state(false);
 	let newsError = $state('');
 
+	// Multi-slide state
+	let slides = $state<string[]>(['YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY']);
+	let activeSlide = $state(0);
+	let articleSnippet = $state(''); // full article text for variants call
+
+	// Convenience derived for current active slide text
+	const overlayText = $derived(slides[activeSlide] ?? '');
+	function setActiveSlideText(val: string) {
+		slides = slides.map((s, i) => i === activeSlide ? val : s);
+	}
+
 	// Post data
-	let overlayText = $state('YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY');
 	let source = $state('Markets');
 	let articleUrl = $state('');
 	let articleTitle = $state('');
 
-	// Images
-	let backgroundImage = $state('');
+	// Images — one background per slide
+	let backgroundImages = $state<(string)[]>([]);
+	let generatingImages = $state<boolean[]>([]); // per-slide loading state
 	let circleImage = $state('');
-	let generatingBg = $state(false);
 	let generatingCircle = $state(false);
 	let bgError = $state('');
+
+	// Convenience: active slide's background
+	const backgroundImage = $derived(backgroundImages[activeSlide] ?? '');
+	function setSlideImage(i: number, url: string) {
+		backgroundImages = backgroundImages.map((img, idx) => idx === i ? url : img);
+		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
+	}
 
 	// Style
 	let highlightColor = $state('#F5A623');
@@ -110,11 +129,16 @@
 	async function fetchNews() {
 		fetchingNews = true;
 		newsError = '';
+		activeSlide = 0;
 
 		try {
+			let hookText = '';
+			let rawText  = '';
+			let articleImageUrl = ''; // article's own image (used as seed for slide 0)
+
 			if (useTestData) {
-				// ── Mock mode: pick a random article from test data ──────────
-				await new Promise(r => setTimeout(r, 400)); // fake loading feel
+				// ── Mock mode ────────────────────────────────────────────────
+				await new Promise(r => setTimeout(r, 400));
 				const pool = search
 					? MOCK_NEWS.filter(a =>
 						a.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -123,16 +147,15 @@
 					: MOCK_NEWS;
 				const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
 
-				overlayText   = article.title;
-				source        = sourceLabels[category] ?? article.source ?? 'News';
-				articleUrl    = article.url;
-				articleTitle  = article.title;
-
-				// Use the article's real image as background
-				if (article.image_url) backgroundImage = article.image_url;
+				hookText        = article.title;
+				rawText         = `${article.title}. ${article.description}. ${article.snippet}`;
+				source          = sourceLabels[category] ?? article.source ?? 'News';
+				articleUrl      = article.url;
+				articleTitle    = article.title;
+				articleImageUrl = article.image_url;
 
 			} else {
-				// ── Live mode: call the real News API ────────────────────────
+				// ── Live mode ────────────────────────────────────────────────
 				const res = await fetch('/api/news', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -143,51 +166,130 @@
 						pick: 'first',
 					}),
 				});
-
 				const data = await res.json();
 				if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
 
-				overlayText  = data.text ?? overlayText;
-				source       = sourceLabels[category] ?? data.source ?? 'News';
-				articleUrl   = data.url ?? '';
-				articleTitle = data.title ?? '';
-
-				if (data.imageUrl) backgroundImage = data.imageUrl;
-				if (data.title && !data.imageUrl) generateBackground(data.title);
+				hookText        = data.text ?? '';
+				rawText         = data.description ?? data.title ?? '';
+				source          = sourceLabels[category] ?? data.source ?? 'News';
+				articleUrl      = data.url ?? '';
+				articleTitle    = data.title ?? '';
+				articleImageUrl = data.imageUrl ?? '';
 			}
+
+			articleSnippet = rawText;
+
+			// Show slide 1 immediately
+			slides = [hookText];
+			backgroundImages = [articleImageUrl]; // slide 0 gets article image right away
+			generatingImages = [false];
+
+			// Generate supporting slide variants first (so we know all slide texts before imaging)
+			if (slideCount > 1) {
+				fetchingNews = false;
+				generatingVariants = true;
+				await generateVariants(hookText, rawText);
+				generatingVariants = false;
+			}
+
+			// Now generate a unique Vertex image for every slide in parallel
+			// Slide 0: if we have an article image, keep it; otherwise generate from title
+			// Slides 1+: always generate from their own text copy
+			await generateAllSlideImages(articleImageUrl);
+
 		} catch (e: any) {
 			newsError = e.message;
 		}
 
 		fetchingNews = false;
+		generatingVariants = false;
 	}
 
-	// ── Generate background image ─────────────────────────────────────────
-	async function generateBackground(context?: string) {
-		generatingBg = true;
+	// ── Generate supporting slide variants ────────────────────────────────
+	async function generateVariants(hookText: string, rawText: string) {
+		try {
+			const res = await fetch('/api/news/variants', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					count: slideCount,
+					title: articleTitle,
+					text: rawText || articleTitle,
+					sourceUrl: articleUrl,
+					autoHighlight: true,
+				}),
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error ?? 'Variant generation failed');
+
+			// Use hook as slide 1 if API returned generic; otherwise use all returned variants
+			const variants: string[] = data.variants ?? [];
+			if (variants.length > 0) {
+				// Replace slide 1 only if API returned something different AND hook already has content
+				slides = variants.length >= slideCount
+					? variants.slice(0, slideCount)
+					: [...variants, ...Array(slideCount - variants.length).fill(variants[variants.length - 1])];
+			}
+		} catch (e: any) {
+			// Don't overwrite the hook slide on variant error
+			console.error('[variants]', e.message);
+			newsError = `Slide variants: ${e.message}`;
+		}
+	}
+
+	// ── Generate background image for a single slide ─────────────────────
+	async function generateBackground(slideIdx: number, promptOverride?: string) {
+		// Mark this slide as generating
+		generatingImages = generatingImages.map((v, i) => i === slideIdx ? true : v);
 		bgError = '';
 
 		try {
-			const prompt = context ?? articleTitle ?? overlayText.replace(/\[\[|\]\]/g, '');
+			const slideText = (slides[slideIdx] ?? '').replace(/\[\[|\]\]/g, '').trim();
+			const prompt = promptOverride ?? slideText ?? articleTitle ?? 'editorial news photo';
 			const res = await fetch('/api/vertex', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ prompt, aspect: '3:4', context }),
+				body: JSON.stringify({ prompt, aspect: '3:4', context: articleTitle }),
 			});
 
 			const data = await res.json();
 			if (data.dataUrl) {
-				backgroundImage = data.dataUrl;
+				setSlideImage(slideIdx, data.dataUrl);
 			} else if (data.demo) {
-				bgError = data.message ?? 'Image generation not configured. Add Google credentials to enable it.';
+				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
+				generatingImages = generatingImages.map((v, i) => i === slideIdx ? false : v);
 			} else {
 				bgError = data.error ?? 'Image generation failed';
+				generatingImages = generatingImages.map((v, i) => i === slideIdx ? false : v);
 			}
 		} catch (e: any) {
 			bgError = e.message;
+			generatingImages = generatingImages.map((v, i) => i === slideIdx ? false : v);
+		}
+	}
+
+	// ── Generate unique images for all slides in parallel ─────────────────
+	async function generateAllSlideImages(articleImageUrl?: string) {
+		// Reset image arrays to match current slide count
+		backgroundImages = new Array(slides.length).fill('');
+		generatingImages = new Array(slides.length).fill(true);
+
+		// Slide 0: use article image directly if available, otherwise Vertex
+		if (articleImageUrl) {
+			setSlideImage(0, articleImageUrl);
 		}
 
-		generatingBg = false;
+		// Fire all Vertex requests in parallel (skip slide 0 if we have article image)
+		const promises = slides.map((slideText, i) => {
+			if (i === 0 && articleImageUrl) return Promise.resolve(); // already set
+			const cleanText = slideText.replace(/\[\[|\]\]/g, '').trim();
+			const prompt = i === 0
+				? (articleTitle || cleanText)
+				: cleanText; // supporting slides use their own copy as the image prompt
+			return generateBackground(i, prompt);
+		});
+
+		await Promise.all(promises);
 	}
 
 	// ── Generate circle image ─────────────────────────────────────────────
@@ -214,7 +316,8 @@
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		const reader = new FileReader();
-		reader.onload = () => { backgroundImage = reader.result as string; };
+		const idx = activeSlide;
+		reader.onload = () => { setSlideImage(idx, reader.result as string); };
 		reader.readAsDataURL(file);
 	}
 
@@ -292,6 +395,30 @@
 				</div>
 			</div>
 
+			<!-- Slide count -->
+			<div class="mb-1">
+				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Number of slides</label>
+				<div class="flex items-center gap-2">
+					<button
+						onclick={() => slideCount = Math.max(1, slideCount - 1)}
+						class="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:text-white hover:bg-white/[0.08] transition-all flex items-center justify-center text-base font-bold">−</button>
+					<span class="flex-1 text-center text-sm font-mono text-white">{slideCount} slide{slideCount !== 1 ? 's' : ''}</span>
+					<button
+						onclick={() => slideCount = Math.min(10, slideCount + 1)}
+						class="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:text-white hover:bg-white/[0.08] transition-all flex items-center justify-center text-base font-bold">+</button>
+				</div>
+				<div class="flex gap-1 mt-2">
+					{#each [1,2,3,4,5,6,8,10] as n}
+						<button
+							onclick={() => slideCount = n}
+							class="flex-1 py-1 rounded-lg text-[10px] font-mono transition-all
+								{slideCount === n ? 'bg-amber-500/20 text-amber-300 border border-amber-500/25' : 'bg-white/[0.03] text-white/25 border border-white/[0.05] hover:text-white/50'}">
+							{n}
+						</button>
+					{/each}
+				</div>
+			</div>
+
 			<!-- Data source toggle -->
 			<div class="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] mb-1">
 				<div class="flex items-center gap-2">
@@ -340,15 +467,49 @@
 			<!-- Divider -->
 			<div class="border-t border-white/[0.05] my-3"></div>
 
-			<!-- Overlay text -->
+			<!-- Slide tabs + overlay text -->
 			<div>
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">
-					<Type size={9} class="inline mr-1" />Overlay Text
-				</label>
+				<div class="flex items-center justify-between mb-2">
+					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider">
+						<Type size={9} class="inline mr-1" />Slide Text
+					</label>
+					{#if generatingVariants}
+						<span class="flex items-center gap-1 text-[10px] font-mono text-amber-400">
+							<Loader size={9} class="animate-spin" /> Writing slides…
+						</span>
+					{/if}
+				</div>
+
+				<!-- Slide tabs -->
+				{#if slides.length > 1}
+					<div class="flex gap-1 mb-2 flex-wrap">
+						{#each slides as _, i}
+							<button
+								onclick={() => activeSlide = i}
+								class="px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all
+									{activeSlide === i
+										? 'bg-violet-500/20 text-violet-300 border border-violet-500/25'
+										: 'bg-white/[0.03] text-white/30 border border-white/[0.05] hover:text-white/50'}">
+								{i === 0 ? '① Hook' : `${['②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'][i-1] ?? i+1} Slide ${i+1}`}
+							</button>
+						{/each}
+					</div>
+				{/if}
+
 				<p class="text-[10px] font-body text-white/20 mb-1.5">Use <code class="text-violet-400 bg-violet-500/10 px-1 rounded">[[WORD]]</code> to highlight phrases</p>
-				<textarea bind:value={overlayText} rows={5}
-					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors resize-none leading-relaxed">
-				</textarea>
+				<textarea
+					value={overlayText}
+					oninput={(e) => setActiveSlideText(e.currentTarget.value)}
+					rows={4}
+					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors resize-none leading-relaxed"
+				></textarea>
+
+				<!-- Word count warning -->
+				{#if overlayText.split(/\s+/).filter(Boolean).length > 28}
+					<p class="text-[10px] font-mono text-amber-400 mt-1">
+						⚠ {overlayText.split(/\s+/).filter(Boolean).length} words — keep under 28 for best results
+					</p>
+				{/if}
 			</div>
 
 			<!-- Source label -->
@@ -398,20 +559,29 @@
 			<!-- Background image -->
 			<div>
 				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">
-					<Image size={9} class="inline mr-1" />Background Image
+					<Image size={9} class="inline mr-1" />Background — Slide {activeSlide + 1}
 				</label>
 				<div class="flex flex-col gap-2">
-					<button onclick={() => generateBackground()}
-						disabled={generatingBg}
+					<button onclick={() => generateBackground(activeSlide)}
+						disabled={generatingImages[activeSlide]}
 						class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/15 transition-all disabled:opacity-50">
-						{#if generatingBg}
+						{#if generatingImages[activeSlide]}
 							<Loader size={11} class="animate-spin" /> Generating...
 						{:else}
-							<Sparkles size={11} /> Generate with AI
+							<Sparkles size={11} /> Regenerate with AI
+						{/if}
+					</button>
+					<button onclick={() => generateAllSlideImages()}
+						disabled={generatingImages.some(Boolean)}
+						class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
+						{#if generatingImages.some(Boolean)}
+							<Loader size={11} class="animate-spin" /> Generating all…
+						{:else}
+							<Sparkles size={11} /> Regenerate all slides
 						{/if}
 					</button>
 					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
-						<Image size={11} /> Upload image
+						<Image size={11} /> Upload for this slide
 						<input type="file" accept="image/*" class="hidden" onchange={handleBgUpload} />
 					</label>
 					{#if bgError}
@@ -468,10 +638,41 @@
 	</div>
 
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
-	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-8">
-		<p class="font-mono text-[10px] text-white/20 mb-5 uppercase tracking-widest">Preview — 1080 × 1350</p>
+	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4">
 
-		<div style="width: {PREVIEW_WIDTH}px; height: {1350 * previewScale}px;">
+		<!-- Slide indicator + nav arrows -->
+		<div class="flex items-center gap-3">
+			<button
+				onclick={() => activeSlide = Math.max(0, activeSlide - 1)}
+				disabled={activeSlide === 0}
+				class="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/30 hover:text-white hover:border-white/30 disabled:opacity-20 disabled:cursor-not-allowed transition-all">
+				‹
+			</button>
+			<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">
+				{slides.length > 1 ? `Slide ${activeSlide + 1} / ${slides.length} — ` : ''}1080 × 1350
+			</p>
+			<button
+				onclick={() => activeSlide = Math.min(slides.length - 1, activeSlide + 1)}
+				disabled={activeSlide === slides.length - 1}
+				class="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/30 hover:text-white hover:border-white/30 disabled:opacity-20 disabled:cursor-not-allowed transition-all">
+				›
+			</button>
+		</div>
+
+		<!-- Main preview -->
+		<div style="width: {PREVIEW_WIDTH}px; height: {1350 * previewScale}px;" class="relative">
+			{#if generatingImages[activeSlide]}
+				<!-- Image loading overlay -->
+				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
+					<Loader size={20} class="animate-spin text-violet-400" />
+					<p class="text-xs font-mono text-white/30">Generating image…</p>
+				</div>
+			{:else if generatingVariants && activeSlide > 0 && !slides[activeSlide]}
+				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
+					<Loader size={20} class="animate-spin text-amber-400" />
+					<p class="text-xs font-mono text-white/30">Writing slide {activeSlide + 1}…</p>
+				</div>
+			{/if}
 			<NewsTemplate
 				bind:exportRef
 				backgroundImage={backgroundImage}
@@ -485,9 +686,47 @@
 		</div>
 
 		{#if !backgroundImage}
-			<p class="font-body text-xs text-white/20 mt-5 text-center max-w-xs">
+			<p class="font-body text-xs text-white/20 text-center max-w-xs">
 				Fetch a news article or upload a background image to see your post
 			</p>
+		{/if}
+
+		<!-- Slide filmstrip (shown when >1 slide) -->
+		{#if slides.length > 1}
+			<div class="flex gap-2 overflow-x-auto max-w-full pb-1 px-1">
+				{#each slides as slideText, i}
+					<button
+						onclick={() => activeSlide = i}
+						class="flex-shrink-0 flex flex-col items-center gap-1 group"
+					>
+						<!-- Mini preview card -->
+						<div class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all
+							{activeSlide === i ? 'border-violet-500' : 'border-white/[0.06] group-hover:border-white/20'}
+							bg-[#111] relative">
+
+							{#if generatingImages[i]}
+								<!-- Per-slide image spinner -->
+								<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
+									<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
+								</div>
+							{:else if backgroundImages[i]}
+								<img src={backgroundImages[i]} alt="" class="w-full h-full object-cover opacity-70" />
+							{/if}
+
+							<!-- Text overlay on thumb -->
+							<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
+								<p class="text-white leading-tight line-clamp-3"
+									style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
+									{slideText.replace(/\[\[|\]\]/g, '')}
+								</p>
+							</div>
+						</div>
+						<span class="text-[9px] font-mono {activeSlide === i ? 'text-violet-400' : 'text-white/20'}">
+							{i === 0 ? 'Hook' : `Slide ${i + 1}`}
+						</span>
+					</button>
+				{/each}
+			</div>
 		{/if}
 	</div>
 
