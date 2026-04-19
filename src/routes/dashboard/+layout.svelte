@@ -2,12 +2,13 @@
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
-	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, ChevronRight, Zap } from 'lucide-svelte';
+	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, ChevronRight, Zap, Newspaper } from 'lucide-svelte';
 
 	let { children } = $props();
 
 	const nav = [
 		{ href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+		{ href: '/dashboard/studio', label: 'News Studio', icon: Newspaper },
 		{ href: '/dashboard/discover', label: 'Discover', icon: Search },
 		{ href: '/dashboard/carousels', label: 'Carousels', icon: ImagePlus },
 	];

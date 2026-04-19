@@ -1,215 +1,198 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Zap, TrendingUp, Layers, ArrowRight, Play, Star, ChevronRight, Sparkles, Target, RefreshCw } from 'lucide-svelte';
-	import ThreeHero from '$lib/ThreeHero.svelte';
+	import { ArrowRight, ChevronRight } from 'lucide-svelte';
 
-	let heroVisible = $state(false);
-	let statsVisible = $state(false);
+	let mounted = $state(false);
+	let scrollY = $state(0);
+
+	const words = ['Schedule.', 'Analyze.', 'Discover.', 'Grow.', 'Repeat.'];
+	let wordIdx = $state(0);
+	let wordVisible = $state(true);
 
 	onMount(() => {
-		setTimeout(() => heroVisible = true, 100);
-		const observer = new IntersectionObserver((entries) => {
-			entries.forEach(e => { if (e.isIntersecting) statsVisible = true; });
-		}, { threshold: 0.3 });
-		const statsEl = document.getElementById('stats');
-		if (statsEl) observer.observe(statsEl);
+		mounted = true;
+		window.addEventListener('scroll', () => scrollY = window.scrollY, { passive: true });
+
+		// Cycle words
+		const cycle = setInterval(() => {
+			wordVisible = false;
+			setTimeout(() => { wordIdx = (wordIdx + 1) % words.length; wordVisible = true; }, 350);
+		}, 2200);
+
+		return () => { clearInterval(cycle); };
 	});
 
-	const stats = [
-		{ value: '2.3M+', label: 'Posts Analyzed' },
-		{ value: '94%', label: 'Avg Engagement Lift' },
-		{ value: '12x', label: 'Faster Than Manual' },
-		{ value: '8,400+', label: 'Creators Trust Us' },
-	];
-
 	const features = [
-		{
-			icon: Target,
-			color: 'violet',
-			title: 'Viral Discovery Engine',
-			desc: 'Our Apify pipeline scrapes top creators in your niche. AI reverse-engineers exactly what made each post explode—hook structure, pacing, visual rhythm.',
-			badge: 'Powered by Apify'
-		},
-		{
-			icon: Sparkles,
-			color: 'cyan',
-			title: 'AI Hook Generator',
-			desc: 'Claude 3.5 Sonnet analyzes your scraped posts and generates 10 remixed hooks per viral template. Copy the formula, not the content.',
-			badge: 'Claude 3.5 Sonnet'
-		},
-		{
-			icon: Layers,
-			color: 'violet',
-			title: 'Live Canvas Editor',
-			desc: 'Drag-and-drop Svelte canvas editor with real-time preview. Apply scraped color palettes, fonts, and layouts to your carousels in seconds.',
-			badge: 'Real-time'
-		},
-		{
-			icon: RefreshCw,
-			color: 'cyan',
-			title: 'Style Extraction',
-			desc: 'Drop any Instagram post URL. Our vision model pulls the exact color palette, typography, and layout grid — ready to apply to your next carousel.',
-			badge: 'Vision AI'
-		},
-	];
-
-	const steps = [
-		{ n: '01', title: 'Track Competitors', desc: 'Add any Instagram handle. We scrape their top-performing posts automatically every 24 hours.' },
-		{ n: '02', title: 'AI Deconstruction', desc: 'Claude analyzes each viral post: the hook type, emotional trigger, content structure, and visual style.' },
-		{ n: '03', title: 'Remix & Publish', desc: 'Open the canvas editor, apply the winning formula to your brand, and schedule directly from the app.' },
+		{ n: '01', title: 'Viral Discovery', desc: 'Track any creator. Our pipeline scrapes their top posts and AI reverse-engineers exactly what made each one explode.', tag: 'Apify + Claude' },
+		{ n: '02', title: 'News to Post', desc: 'Pull breaking news, auto-rewrite into punchy captions, generate editorial images with Vertex AI — in one click.', tag: 'TheNewsAPI + Imagen' },
+		{ n: '03', title: 'AI Hook Generator', desc: 'Claude analyzes viral hooks from your niche and generates 10 remixed versions tailored to your brand voice.', tag: 'Claude 3.5 Sonnet' },
+		{ n: '04', title: 'Carousel Editor', desc: 'Build multi-slide carousels with a live canvas editor. Export each slide as a 1080×1350 PNG, ready to post.', tag: 'Export-ready' },
 	];
 
 	const testimonials = [
-		{ name: 'Mia Chen', handle: '@mia.creates', avatar: 'MC', text: 'I went from 200 to 12k followers in 6 weeks using Carousel Studio. The hook generator alone is worth 10x the price.', stars: 5, niche: 'Finance Creator' },
-		{ name: 'Jordan Rivers', handle: '@jordanrivers', avatar: 'JR', text: 'The style extraction feature is insane. I analyzed 3 top creators and built a whole new brand identity in an afternoon.', stars: 5, niche: 'Fitness Coach' },
-		{ name: 'Priya Sood', handle: '@priyasood.co', avatar: 'PS', text: 'My agency manages 40 accounts. Carousel Studio cut our carousel production time from 3 hours to 20 minutes per client.', stars: 5, niche: 'Social Media Agency' },
+		{ name: 'Mia Chen', handle: '@mia.creates', avatar: 'MC', text: 'I went from 200 to 12k followers in 6 weeks. The hook generator alone is worth 10x the price.', niche: 'Finance Creator' },
+		{ name: 'Jordan Rivers', handle: '@jordanrivers', avatar: 'JR', text: 'The news-to-post feature is insane. Fresh content every morning in under 2 minutes.', niche: 'Fitness Coach' },
+		{ name: 'Priya Sood', handle: '@priyasood.co', avatar: 'PS', text: 'My agency manages 40 accounts. Carousel Studio cut our production time from 3 hours to 20 minutes.', niche: 'Social Media Agency' },
 	];
+
+	const marqueeItems = ['Schedule', 'Discover', 'Analyze', 'Create', 'Export', 'Grow', 'Repeat', 'Schedule', 'Discover', 'Analyze', 'Create', 'Export', 'Grow', 'Repeat'];
 </script>
 
-<div class="min-h-screen bg-[#0a0a0a] overflow-hidden">
+<svelte:head>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,700;0,9..144,900;1,9..144,300;1,9..144,700;1,9..144,900&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+</svelte:head>
+
+<div class="root" class:mounted>
+
+	<!-- NOISE OVERLAY -->
+	<div class="noise"></div>
 
 	<!-- NAV -->
-	<nav class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 glass border-b border-white/[0.04]">
-		<div class="flex items-center gap-2.5">
-			<div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center glow-violet">
-				<Layers size={14} color="white" />
-			</div>
-			<span class="font-display font-bold text-base tracking-tight text-white">Carousel<span class="gradient-text">Studio</span></span>
+	<nav class="nav">
+		<a href="/" class="logo">
+			<span class="logo-mark">CS</span>
+			<span class="logo-text">Carousel<em>Studio</em></span>
+		</a>
+		<div class="nav-links">
+			<a href="#features">Features</a>
+			<a href="#pricing">Pricing</a>
+			<a href="#how">How it works</a>
 		</div>
-
-		<div class="hidden md:flex items-center gap-8 text-sm text-white/50 font-body">
-			<a href="#features" class="hover:text-white transition-colors">Features</a>
-			<a href="#how-it-works" class="hover:text-white transition-colors">How it works</a>
-			<a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
-			<a href="#testimonials" class="hover:text-white transition-colors">Reviews</a>
-		</div>
-
-		<div class="flex items-center gap-3">
-			<a href="/login" class="text-sm text-white/50 hover:text-white transition-colors hidden md:block font-body">Sign in</a>
-			<a href="/signup" class="px-4 py-2 rounded-lg text-sm font-medium font-body text-white bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-cyan-500 transition-all duration-300 glow-violet">
-				Start free
-			</a>
+		<div class="nav-actions">
+			<a href="/login" class="nav-signin">Sign in</a>
+			<a href="/signup" class="btn-primary btn-sm">Start free →</a>
 		</div>
 	</nav>
 
 	<!-- HERO -->
-	<section class="relative min-h-screen flex flex-col items-center justify-center pt-20 overflow-hidden">
-
-		<!-- Three.js canvas -->
-		<div class="absolute inset-0 z-0">
-			<ThreeHero />
-		</div>
-
-		<!-- Grid overlay -->
-		<div class="absolute inset-0 z-[1]"
-			style="background-image: linear-gradient(rgba(139,92,246,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.03) 1px, transparent 1px); background-size: 60px 60px;">
-		</div>
-
-		<!-- Radial glow -->
-		<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] rounded-full z-[1] animate-pulse-glow"
-			style="background: radial-gradient(ellipse at center, rgba(139,92,246,0.12) 0%, rgba(6,182,212,0.06) 50%, transparent 70%);">
-		</div>
-
-		<!-- Content -->
-		<div class="relative z-10 flex flex-col items-center text-center px-6 max-w-5xl mx-auto"
-			style="opacity: {heroVisible ? 1 : 0}; transition: opacity 0.8s ease, transform 0.8s ease; transform: {heroVisible ? 'translateY(0)' : 'translateY(24px)'}">
-
-			<!-- Badge -->
-			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass border border-violet-500/20 mb-8">
-				<div class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></div>
-				<span class="text-xs font-mono text-cyan-400 tracking-widest uppercase">AI-Powered Instagram Growth</span>
-			</div>
-
-			<!-- Headline -->
-			<h1 class="font-display font-extrabold text-5xl md:text-7xl lg:text-8xl leading-[0.95] tracking-tight mb-6">
-				<span class="text-white">Steal the</span><br/>
-				<span class="gradient-text">viral formula.</span><br/>
-				<span class="text-white/70" style="font-size: 0.85em">Make it yours.</span>
-			</h1>
-
-			<!-- Subhead -->
-			<p class="font-body text-lg md:text-xl text-white/50 max-w-2xl mb-10 leading-relaxed">
-				Carousel Studio reverse-engineers top Instagram carousels using AI — extracting hooks, color palettes, and content structures — so you can remix them into your own viral posts in minutes.
-			</p>
-
-			<!-- CTAs -->
-			<div class="flex flex-col sm:flex-row items-center gap-4 mb-16">
-				<a href="/signup" class="group flex items-center gap-2 px-7 py-3.5 rounded-xl text-base font-semibold font-body text-white bg-gradient-to-r from-violet-600 via-violet-500 to-cyan-500 hover:shadow-[0_0_40px_rgba(139,92,246,0.4)] transition-all duration-300">
-					Start for free
-					<ArrowRight size={16} class="group-hover:translate-x-1 transition-transform" />
-				</a>
-				<button class="group flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-base font-body text-white/70 hover:text-white glass glass-hover transition-all duration-300">
-					<div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-violet-500/30 transition-colors">
-						<Play size={10} fill="currentColor" />
-					</div>
-					Watch demo
-				</button>
-			</div>
-
-			<!-- Social proof strip -->
-			<div class="flex items-center gap-4 text-sm text-white/30 font-body">
-				<div class="flex -space-x-2">
-					{#each ['MK','SL','JD','AR','TR'] as init}
-						<div class="w-7 h-7 rounded-full glass border border-white/10 flex items-center justify-center text-[9px] font-bold text-violet-400">
-							{init}
-						</div>
-					{/each}
+	<section class="hero">
+		<div class="hero-inner">
+			<div class="hero-left">
+				<div class="hero-badge">
+					<span class="badge-dot"></span>
+					AI-powered · Instagram growth
 				</div>
-				<span>Joined by <strong class="text-white/60">8,400+</strong> creators this month</span>
-			</div>
-		</div>
 
-		<!-- Scroll cue -->
-		<div class="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 opacity-40">
-			<div class="w-[1px] h-10 bg-gradient-to-b from-transparent to-violet-500 animate-pulse"></div>
+				<h1 class="hero-headline">
+					Your content.<br/>
+					<span class="word-cycle" class:visible={wordVisible}>
+						{words[wordIdx]}
+					</span>
+					<br/>
+					<span class="hero-sub-word">Automated.</span>
+				</h1>
+
+				<p class="hero-desc">
+					Carousel Studio is the AI toolkit for serious Instagram creators —
+					viral post discovery, one-click news posts, and a full carousel editor.
+					All in one place.
+				</p>
+
+				<div class="hero-ctas">
+					<a href="/signup" class="btn-primary">
+						Start for free
+						<ArrowRight size={16} />
+					</a>
+					<a href="/login" class="btn-ghost">Already have an account →</a>
+				</div>
+
+				<div class="hero-proof">
+					<div class="proof-avatars">
+						{#each ['MK','SL','JD','AR','TR'] as init}
+							<div class="proof-avatar">{init}</div>
+						{/each}
+					</div>
+					<span class="proof-text">Joined by <strong>8,400+</strong> creators</span>
+				</div>
+			</div>
+
+			<div class="hero-right">
+				<!-- Stylised product preview -->
+				<div class="product-preview">
+					<!-- Card 1: back -->
+					<div class="preview-card preview-card--back">
+						<div class="pc-header">
+							<div class="pc-dot r"></div><div class="pc-dot y"></div><div class="pc-dot g"></div>
+							<span class="pc-title">discover.svelte</span>
+						</div>
+						<div class="pc-body">
+							<div class="pc-bar" style="width:70%"></div>
+							<div class="pc-bar" style="width:45%"></div>
+							<div class="pc-bar" style="width:85%"></div>
+							<div class="pc-stat">
+								<span class="pc-num">92.1K</span>
+								<span class="pc-label">likes</span>
+							</div>
+						</div>
+					</div>
+
+					<!-- Card 2: middle -->
+					<div class="preview-card preview-card--mid">
+						<div class="pc-hook-label">Hook detected</div>
+						<p class="pc-hook-text">"7 habits that changed my life forever. Save this."</p>
+						<div class="pc-tags">
+							<span class="pc-tag">Listicle</span>
+							<span class="pc-tag accent">FOMO</span>
+							<span class="pc-tag">Save-bait</span>
+						</div>
+						<div class="pc-remix-btn">✦ Remix with AI</div>
+					</div>
+
+					<!-- Card 3: front (news template preview) -->
+					<div class="preview-card preview-card--front">
+						<div class="news-card-img"></div>
+						<div class="news-card-text">
+							<div class="news-source">── Markets ──</div>
+							<p class="news-headline">FED CUTS RATES BY <em>50BPS</em> — MARKETS REACT</p>
+						</div>
+					</div>
+
+					<!-- Floating stat pills -->
+					<div class="float-pill float-pill--1">
+						<span class="pill-num">+340%</span>
+						<span class="pill-label">reach lift</span>
+					</div>
+					<div class="float-pill float-pill--2">
+						<span class="pill-icon">⚡</span>
+						<span class="pill-label">Generated in 8s</span>
+					</div>
+				</div>
+			</div>
 		</div>
 	</section>
 
-	<!-- STATS BAR -->
-	<section id="stats" class="relative z-10 border-y border-white/[0.05] glass">
-		<div class="max-w-5xl mx-auto px-6 py-10 grid grid-cols-2 md:grid-cols-4 gap-8">
-			{#each stats as stat, i}
-				<div class="flex flex-col items-center text-center"
-					style="opacity: {statsVisible ? 1 : 0}; transform: {statsVisible ? 'translateY(0)' : 'translateY(16px)'}; transition: opacity 0.5s ease {i * 0.1}s, transform 0.5s ease {i * 0.1}s">
-					<span class="font-display font-extrabold text-3xl md:text-4xl gradient-text mb-1">{stat.value}</span>
-					<span class="font-body text-xs text-white/40 uppercase tracking-wider">{stat.label}</span>
-				</div>
+	<!-- MARQUEE -->
+	<div class="marquee-wrap">
+		<div class="marquee-track">
+			{#each [...marqueeItems, ...marqueeItems] as item, i}
+				<span class="marquee-item">
+					{item}
+					{#if i % 2 === 0}<span class="marquee-dot">✦</span>{/if}
+				</span>
 			{/each}
 		</div>
-	</section>
+	</div>
 
 	<!-- FEATURES -->
-	<section id="features" class="relative z-10 py-28 px-6">
-		<div class="max-w-6xl mx-auto">
-			<div class="text-center mb-16">
-				<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass border border-white/[0.06] mb-5">
-					<Zap size={11} class="text-violet-400" />
-					<span class="text-xs font-mono text-white/40 uppercase tracking-widest">The Stack</span>
-				</div>
-				<h2 class="font-display font-bold text-4xl md:text-5xl text-white mb-4">Everything you need to<br/><span class="gradient-text">dominate your niche</span></h2>
-				<p class="font-body text-white/40 max-w-xl mx-auto">A complete pipeline from competitor research to polished, published carousel — powered by real scraping and real AI.</p>
+	<section id="features" class="section">
+		<div class="section-inner">
+			<div class="section-header">
+				<p class="section-eyebrow">The toolkit</p>
+				<h2 class="section-title">Everything you need<br/><em>to dominate your niche.</em></h2>
 			</div>
 
-			<div class="grid md:grid-cols-2 gap-4">
+			<div class="features-grid">
 				{#each features as f}
-					<div class="group relative p-7 rounded-2xl glass glass-hover transition-all duration-300 cursor-default overflow-hidden">
-						<div class="absolute -top-10 -right-10 w-32 h-32 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-							style="background: radial-gradient(ellipse, rgba({f.color === 'violet' ? '139,92,246' : '6,182,212'},0.15) 0%, transparent 70%)">
-						</div>
-
-						<div class="flex items-start gap-4">
-							<div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 {f.color === 'violet' ? 'bg-violet-500/15 text-violet-400' : 'bg-cyan-500/15 text-cyan-400'}">
-								{#if f.icon === Target}<Target size={18} />{:else if f.icon === Sparkles}<Sparkles size={18} />{:else if f.icon === Layers}<Layers size={18} />{:else}<RefreshCw size={18} />{/if}
+					<div class="feature-card">
+						<div class="feature-num">{f.n}</div>
+						<div class="feature-body">
+							<div class="feature-top">
+								<h3 class="feature-title">{f.title}</h3>
+								<span class="feature-tag">{f.tag}</span>
 							</div>
-							<div class="flex-1">
-								<div class="flex items-center gap-2 mb-2">
-									<h3 class="font-display font-semibold text-base text-white">{f.title}</h3>
-									<span class="text-[10px] font-mono px-2 py-0.5 rounded-full {f.color === 'violet' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'}">
-										{f.badge}
-									</span>
-								</div>
-								<p class="font-body text-sm text-white/45 leading-relaxed">{f.desc}</p>
-							</div>
+							<p class="feature-desc">{f.desc}</p>
 						</div>
 					</div>
 				{/each}
@@ -217,29 +200,53 @@
 		</div>
 	</section>
 
-	<!-- HOW IT WORKS -->
-	<section id="how-it-works" class="relative z-10 py-28 px-6 border-t border-white/[0.04]">
-		<div class="max-w-5xl mx-auto">
-			<div class="text-center mb-16">
-				<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass border border-white/[0.06] mb-5">
-					<TrendingUp size={11} class="text-cyan-400" />
-					<span class="text-xs font-mono text-white/40 uppercase tracking-widest">The Process</span>
+	<!-- STATS BENTO -->
+	<section class="stats-section">
+		<div class="section-inner">
+			<div class="bento">
+				<div class="bento-cell bento-big">
+					<p class="bento-label">Posts analyzed by our AI</p>
+					<span class="bento-num">2.3M+</span>
+					<p class="bento-sub">and counting, every week</p>
 				</div>
-				<h2 class="font-display font-bold text-4xl md:text-5xl text-white mb-4">From <span class="gradient-text">zero to viral</span><br/>in three steps</h2>
+				<div class="bento-cell">
+					<span class="bento-num bento-num--md">94%</span>
+					<p class="bento-label">avg engagement lift</p>
+				</div>
+				<div class="bento-cell">
+					<span class="bento-num bento-num--md">12×</span>
+					<p class="bento-label">faster than manual creation</p>
+				</div>
+				<div class="bento-cell bento-wide">
+					<p class="bento-quote">"The best investment I made for my content business this year."</p>
+					<div class="bento-author">
+						<span class="bento-avatar">JR</span>
+						<span>Jordan Rivers · @jordanrivers</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- HOW IT WORKS -->
+	<section id="how" class="section section--alt">
+		<div class="section-inner">
+			<div class="section-header">
+				<p class="section-eyebrow">The process</p>
+				<h2 class="section-title">From zero to viral<br/><em>in three steps.</em></h2>
 			</div>
 
-			<div class="grid md:grid-cols-3 gap-6 relative">
-				<div class="absolute top-10 left-[20%] right-[20%] h-[1px] hidden md:block"
-					style="background: linear-gradient(90deg, transparent, rgba(139,92,246,0.4) 30%, rgba(6,182,212,0.4) 70%, transparent)">
-				</div>
-
-				{#each steps as step}
-					<div class="relative p-8 rounded-2xl glass glass-hover transition-all duration-300 text-center group">
-						<div class="w-14 h-14 rounded-2xl mx-auto mb-6 flex items-center justify-center border border-white/[0.06] glass group-hover:border-violet-500/30 transition-colors">
-							<span class="font-mono text-2xl font-bold gradient-text">{step.n}</span>
-						</div>
-						<h3 class="font-display font-semibold text-lg text-white mb-3">{step.title}</h3>
-						<p class="font-body text-sm text-white/40 leading-relaxed">{step.desc}</p>
+			<div class="steps">
+				<div class="steps-line"></div>
+				{#each [
+					{ n: '01', title: 'Track Competitors', desc: 'Add any Instagram handle. We scrape their top-performing posts automatically and rank them by engagement.' },
+					{ n: '02', title: 'AI Deconstruction', desc: 'Claude analyzes each viral post — the hook type, emotional trigger, content structure, and what made it spread.' },
+					{ n: '03', title: 'Create & Schedule', desc: 'Open the editor, remix the winning formula for your brand, and export or schedule directly from the app.' },
+				] as step}
+					<div class="step">
+						<div class="step-num">{step.n}</div>
+						<h3 class="step-title">{step.title}</h3>
+						<p class="step-desc">{step.desc}</p>
 					</div>
 				{/each}
 			</div>
@@ -247,28 +254,21 @@
 	</section>
 
 	<!-- TESTIMONIALS -->
-	<section id="testimonials" class="relative z-10 py-28 px-6 border-t border-white/[0.04]">
-		<div class="max-w-6xl mx-auto">
-			<div class="text-center mb-16">
-				<h2 class="font-display font-bold text-4xl md:text-5xl text-white mb-4">Creators are <span class="gradient-text">already winning</span></h2>
+	<section class="section">
+		<div class="section-inner">
+			<div class="section-header">
+				<p class="section-eyebrow">Social proof</p>
+				<h2 class="section-title">Creators are<br/><em>already winning.</em></h2>
 			</div>
-
-			<div class="grid md:grid-cols-3 gap-5">
-				{#each testimonials as t}
-					<div class="p-7 rounded-2xl glass glass-hover transition-all duration-300 flex flex-col gap-5">
-						<div class="flex gap-0.5">
-							{#each Array(t.stars) as _}
-								<Star size={12} fill="#8B5CF6" stroke="none" />
-							{/each}
-						</div>
-						<p class="font-body text-sm text-white/60 leading-relaxed flex-1">"{t.text}"</p>
-						<div class="flex items-center gap-3">
-							<div class="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/30 to-cyan-500/30 border border-white/10 flex items-center justify-center text-xs font-bold font-mono text-white/70">
-								{t.avatar}
-							</div>
+			<div class="testimonials">
+				{#each testimonials as t, i}
+					<div class="testimonial" style="--delay: {i * 0.1}s">
+						<p class="testimonial-text">"{t.text}"</p>
+						<div class="testimonial-author">
+							<div class="t-avatar">{t.avatar}</div>
 							<div>
-								<p class="font-display font-semibold text-sm text-white">{t.name}</p>
-								<p class="font-mono text-xs text-white/30">{t.niche} · {t.handle}</p>
+								<p class="t-name">{t.name}</p>
+								<p class="t-meta">{t.niche} · {t.handle}</p>
 							</div>
 						</div>
 					</div>
@@ -278,124 +278,832 @@
 	</section>
 
 	<!-- PRICING -->
-	<section id="pricing" class="relative z-10 py-28 px-6 border-t border-white/[0.04]">
-		<div class="max-w-4xl mx-auto">
-			<div class="text-center mb-16">
-				<h2 class="font-display font-bold text-4xl md:text-5xl text-white mb-4">Simple, <span class="gradient-text">creator-first</span> pricing</h2>
-				<p class="font-body text-white/40">Start free. Scale when you grow.</p>
+	<section id="pricing" class="section section--alt">
+		<div class="section-inner">
+			<div class="section-header">
+				<p class="section-eyebrow">Pricing</p>
+				<h2 class="section-title">Simple,<br/><em>creator-first pricing.</em></h2>
+				<p class="section-sub">Start free. Scale when you grow.</p>
 			</div>
 
-			<div class="grid md:grid-cols-3 gap-5">
-				<div class="p-7 rounded-2xl glass border border-white/[0.06] flex flex-col gap-5">
-					<div>
-						<p class="font-mono text-xs text-white/30 uppercase tracking-wider mb-3">Free</p>
-						<div class="flex items-end gap-1 mb-1">
-							<span class="font-display font-extrabold text-4xl text-white">$0</span>
-							<span class="font-body text-white/30 mb-1.5">/mo</span>
-						</div>
-						<p class="font-body text-xs text-white/30">Forever free, no card needed</p>
-					</div>
-					<ul class="flex flex-col gap-2.5 flex-1">
+			<div class="pricing-grid">
+				<div class="price-card">
+					<p class="price-tier">Free</p>
+					<div class="price-amount"><span class="price-num">$0</span><span class="price-period">/mo</span></div>
+					<p class="price-note">No card needed. Forever free.</p>
+					<ul class="price-features">
 						{#each ['5 carousels/month', '3 competitor tracks', 'AI hook suggestions', 'Basic canvas editor'] as item}
-							<li class="flex items-center gap-2 text-sm font-body text-white/50">
-								<ChevronRight size={12} class="text-violet-400 shrink-0" />
-								{item}
-							</li>
+							<li><ChevronRight size={12} />{item}</li>
 						{/each}
 					</ul>
-					<a href="/signup" class="w-full text-center py-2.5 rounded-lg text-sm font-semibold font-body text-white/60 glass glass-hover border border-white/[0.06] transition-all">
-						Get started
-					</a>
+					<a href="/signup" class="btn-outline">Get started</a>
 				</div>
 
-				<div class="relative p-7 rounded-2xl border border-violet-500/30 flex flex-col gap-5 glow-violet"
-					style="background: linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(6,182,212,0.04) 100%)">
-					<div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-mono font-bold text-white bg-gradient-to-r from-violet-600 to-cyan-500 uppercase tracking-widest">
-						Most Popular
-					</div>
-					<div>
-						<p class="font-mono text-xs text-violet-400 uppercase tracking-wider mb-3">Pro</p>
-						<div class="flex items-end gap-1 mb-1">
-							<span class="font-display font-extrabold text-4xl text-white">$29</span>
-							<span class="font-body text-white/30 mb-1.5">/mo</span>
-						</div>
-						<p class="font-body text-xs text-white/30">Billed monthly, cancel anytime</p>
-					</div>
-					<ul class="flex flex-col gap-2.5 flex-1">
-						{#each ['Unlimited carousels', '25 competitor tracks', 'Claude 3.5 Sonnet AI', 'Full canvas editor', 'Style extraction (vision AI)', 'Direct scheduling'] as item}
-							<li class="flex items-center gap-2 text-sm font-body text-white/70">
-								<ChevronRight size={12} class="text-cyan-400 shrink-0" />
-								{item}
-							</li>
+				<div class="price-card price-card--featured">
+					<div class="price-badge">Most popular</div>
+					<p class="price-tier">Pro</p>
+					<div class="price-amount"><span class="price-num">$29</span><span class="price-period">/mo</span></div>
+					<p class="price-note">Cancel anytime.</p>
+					<ul class="price-features">
+						{#each ['Unlimited carousels', '25 competitor tracks', 'Claude 3.5 Sonnet AI', 'News-to-Post (Vertex AI)', 'Full canvas + export', 'Style extraction'] as item}
+							<li><ChevronRight size={12} />{item}</li>
 						{/each}
 					</ul>
-					<a href="/signup" class="w-full text-center py-2.5 rounded-lg text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_30px_rgba(139,92,246,0.4)] transition-all">
-						Start Pro free
-					</a>
+					<a href="/signup" class="btn-primary">Start Pro free</a>
 				</div>
 
-				<div class="p-7 rounded-2xl glass border border-white/[0.06] flex flex-col gap-5">
-					<div>
-						<p class="font-mono text-xs text-white/30 uppercase tracking-wider mb-3">Agency</p>
-						<div class="flex items-end gap-1 mb-1">
-							<span class="font-display font-extrabold text-4xl text-white">$99</span>
-							<span class="font-body text-white/30 mb-1.5">/mo</span>
-						</div>
-						<p class="font-body text-xs text-white/30">For teams managing multiple brands</p>
-					</div>
-					<ul class="flex flex-col gap-2.5 flex-1">
-						{#each ['Everything in Pro', 'Unlimited accounts', 'Team workspace', 'White-label export', 'Priority Apify scraping', 'API access'] as item}
-							<li class="flex items-center gap-2 text-sm font-body text-white/50">
-								<ChevronRight size={12} class="text-violet-400 shrink-0" />
-								{item}
-							</li>
+				<div class="price-card">
+					<p class="price-tier">Agency</p>
+					<div class="price-amount"><span class="price-num">$99</span><span class="price-period">/mo</span></div>
+					<p class="price-note">For teams managing multiple brands.</p>
+					<ul class="price-features">
+						{#each ['Everything in Pro', 'Unlimited accounts', 'Team workspace', 'White-label export', 'API access'] as item}
+							<li><ChevronRight size={12} />{item}</li>
 						{/each}
 					</ul>
-					<a href="/signup" class="w-full text-center py-2.5 rounded-lg text-sm font-semibold font-body text-white/60 glass glass-hover border border-white/[0.06] transition-all">
-						Contact us
-					</a>
+					<a href="/signup" class="btn-outline">Contact us</a>
 				</div>
 			</div>
 		</div>
 	</section>
 
-	<!-- CTA BANNER -->
-	<section class="relative z-10 py-24 px-6 border-t border-white/[0.04]">
-		<div class="max-w-3xl mx-auto text-center">
-			<div class="relative p-12 rounded-3xl overflow-hidden glass border border-violet-500/15">
-				<div class="absolute inset-0 opacity-20"
-					style="background: radial-gradient(ellipse at 30% 50%, rgba(139,92,246,0.4) 0%, transparent 60%), radial-gradient(ellipse at 70% 50%, rgba(6,182,212,0.3) 0%, transparent 60%)">
-				</div>
-				<div class="relative z-10">
-					<h2 class="font-display font-extrabold text-4xl md:text-5xl text-white mb-4">
-						Ready to go <span class="gradient-text">viral?</span>
-					</h2>
-					<p class="font-body text-white/40 mb-8 max-w-md mx-auto">Join 8,400+ creators already using the AI-powered edge to grow faster than their competitors.</p>
-					<a href="/signup" class="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-semibold font-body text-white bg-gradient-to-r from-violet-600 via-violet-500 to-cyan-500 hover:shadow-[0_0_50px_rgba(139,92,246,0.4)] transition-all duration-300">
-						Get started free — no card needed
-						<ArrowRight size={16} />
-					</a>
-				</div>
-			</div>
+	<!-- CTA -->
+	<section class="cta-section">
+		<div class="cta-inner">
+			<p class="cta-eyebrow">✦ Ready?</p>
+			<h2 class="cta-headline">Stop watching others go viral.<br/><em>Start your free account today.</em></h2>
+			<a href="/signup" class="btn-primary btn-lg">
+				Get started free — no card needed
+				<ArrowRight size={18} />
+			</a>
 		</div>
 	</section>
 
 	<!-- FOOTER -->
-	<footer class="relative z-10 border-t border-white/[0.04] px-6 py-10">
-		<div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-			<div class="flex items-center gap-2">
-				<div class="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center">
-					<Layers size={11} color="white" />
-				</div>
-				<span class="font-display font-bold text-sm text-white/60">Carousel<span class="gradient-text">Studio</span></span>
-			</div>
-			<p class="font-mono text-xs text-white/20">© 2026 Carousel Studio. Built with SvelteKit + Claude AI.</p>
-			<div class="flex gap-6 text-xs font-body text-white/30">
-				<a href="/privacy" class="hover:text-white/60 transition-colors">Privacy</a>
-				<a href="/terms" class="hover:text-white/60 transition-colors">Terms</a>
-				<a href="/docs" class="hover:text-white/60 transition-colors">Docs</a>
+	<footer class="footer">
+		<div class="footer-inner">
+			<a href="/" class="logo">
+				<span class="logo-mark">CS</span>
+				<span class="logo-text">Carousel<em>Studio</em></span>
+			</a>
+			<p class="footer-copy">© 2026 Carousel Studio. Built with SvelteKit + Claude AI.</p>
+			<div class="footer-links">
+				<a href="/privacy">Privacy</a>
+				<a href="/terms">Terms</a>
+				<a href="/docs">Docs</a>
 			</div>
 		</div>
 	</footer>
 
 </div>
+
+<style>
+	/* ── Tokens ─────────────────────────────────────────────────────────── */
+	:root {
+		--bg: #0A0A0A;
+		--surface: #111111;
+		--surface-2: #181818;
+		--border: rgba(255,255,255,0.07);
+		--text: #F0EDE8;
+		--text-muted: rgba(240,237,232,0.45);
+		--text-dim: rgba(240,237,232,0.22);
+		--accent: #E8FF48;
+		--accent-dim: rgba(232,255,72,0.12);
+		--accent-border: rgba(232,255,72,0.25);
+		--font-display: 'Fraunces', Georgia, serif;
+		--font-body: 'DM Sans', sans-serif;
+		--font-mono: 'Space Mono', monospace;
+	}
+
+	/* ── Reset / base ───────────────────────────────────────────────────── */
+	.root {
+		background: var(--bg);
+		color: var(--text);
+		font-family: var(--font-body);
+		min-height: 100vh;
+		position: relative;
+		overflow-x: hidden;
+	}
+
+	/* Noise texture overlay */
+	.noise {
+		position: fixed;
+		inset: 0;
+		pointer-events: none;
+		z-index: 999;
+		opacity: 0.025;
+		background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+		background-size: 256px 256px;
+	}
+
+	/* Page reveal */
+	.root { opacity: 0; transition: opacity 0.6s ease; }
+	.root.mounted { opacity: 1; }
+
+	/* ── Nav ────────────────────────────────────────────────────────────── */
+	.nav {
+		position: fixed;
+		top: 0; left: 0; right: 0;
+		z-index: 100;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 20px 48px;
+		border-bottom: 1px solid var(--border);
+		background: rgba(10,10,10,0.85);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+	}
+
+	.logo {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		text-decoration: none;
+	}
+	.logo-mark {
+		width: 32px; height: 32px;
+		background: var(--accent);
+		color: #000;
+		border-radius: 8px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		flex-shrink: 0;
+	}
+	.logo-text {
+		font-family: var(--font-display);
+		font-size: 17px;
+		font-weight: 700;
+		color: var(--text);
+		letter-spacing: -0.02em;
+	}
+	.logo-text em { font-style: italic; color: var(--accent); }
+
+	.nav-links {
+		display: flex;
+		gap: 36px;
+	}
+	.nav-links a {
+		font-size: 14px;
+		color: var(--text-muted);
+		text-decoration: none;
+		transition: color 0.2s;
+		font-weight: 400;
+	}
+	.nav-links a:hover { color: var(--text); }
+
+	.nav-actions { display: flex; align-items: center; gap: 16px; }
+	.nav-signin {
+		font-size: 14px;
+		color: var(--text-muted);
+		text-decoration: none;
+		transition: color 0.2s;
+	}
+	.nav-signin:hover { color: var(--text); }
+
+	/* ── Buttons ────────────────────────────────────────────────────────── */
+	.btn-primary {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 14px 28px;
+		background: var(--accent);
+		color: #000;
+		border-radius: 12px;
+		font-weight: 600;
+		font-size: 15px;
+		font-family: var(--font-body);
+		text-decoration: none;
+		transition: all 0.2s;
+		border: none;
+		cursor: pointer;
+	}
+	.btn-primary:hover {
+		background: #f0ff70;
+		transform: translateY(-1px);
+		box-shadow: 0 8px 32px rgba(232,255,72,0.3);
+	}
+	.btn-sm { padding: 10px 20px; font-size: 13px; border-radius: 10px; }
+	.btn-lg { padding: 18px 36px; font-size: 17px; border-radius: 14px; }
+
+	.btn-ghost {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 14px;
+		color: var(--text-muted);
+		text-decoration: none;
+		transition: color 0.2s;
+		font-family: var(--font-body);
+	}
+	.btn-ghost:hover { color: var(--text); }
+
+	.btn-outline {
+		display: block;
+		text-align: center;
+		padding: 12px 24px;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		color: var(--text-muted);
+		text-decoration: none;
+		font-size: 14px;
+		font-weight: 500;
+		font-family: var(--font-body);
+		transition: all 0.2s;
+	}
+	.btn-outline:hover {
+		border-color: rgba(255,255,255,0.2);
+		color: var(--text);
+	}
+
+	/* ── Hero ────────────────────────────────────────────────────────────── */
+	.hero {
+		min-height: 100vh;
+		display: flex;
+		align-items: center;
+		padding: 120px 48px 80px;
+		position: relative;
+	}
+
+	/* Gradient orb bg */
+	.hero::before {
+		content: '';
+		position: absolute;
+		top: 20%; left: 50%;
+		width: 600px; height: 600px;
+		transform: translateX(-50%);
+		background: radial-gradient(ellipse, rgba(232,255,72,0.06) 0%, transparent 70%);
+		pointer-events: none;
+	}
+
+	.hero-inner {
+		max-width: 1200px;
+		margin: 0 auto;
+		width: 100%;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 80px;
+		align-items: center;
+	}
+
+	.hero-left { display: flex; flex-direction: column; gap: 28px; }
+
+	.hero-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 16px;
+		border: 1px solid var(--accent-border);
+		border-radius: 100px;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--accent);
+		letter-spacing: 0.08em;
+		width: fit-content;
+		background: var(--accent-dim);
+	}
+	.badge-dot {
+		width: 6px; height: 6px;
+		border-radius: 50%;
+		background: var(--accent);
+		animation: pulse 2s ease-in-out infinite;
+	}
+	@keyframes pulse {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.5; transform: scale(0.8); }
+	}
+
+	.hero-headline {
+		font-family: var(--font-display);
+		font-size: clamp(52px, 5.5vw, 80px);
+		font-weight: 900;
+		line-height: 1.0;
+		letter-spacing: -0.03em;
+		color: var(--text);
+		margin: 0;
+	}
+
+	.word-cycle {
+		display: inline-block;
+		font-style: italic;
+		color: var(--accent);
+		transition: opacity 0.3s ease, transform 0.3s ease;
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	.word-cycle.visible {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.hero-sub-word {
+		color: rgba(240,237,232,0.35);
+	}
+
+	.hero-desc {
+		font-size: 18px;
+		line-height: 1.65;
+		color: var(--text-muted);
+		max-width: 480px;
+		margin: 0;
+		font-weight: 300;
+	}
+
+	.hero-ctas { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+
+	.hero-proof {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.proof-avatars { display: flex; }
+	.proof-avatar {
+		width: 30px; height: 30px;
+		border-radius: 50%;
+		background: var(--surface-2);
+		border: 2px solid var(--bg);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 9px;
+		font-weight: 700;
+		font-family: var(--font-mono);
+		color: var(--text-dim);
+		margin-right: -8px;
+	}
+	.proof-text {
+		font-size: 13px;
+		color: var(--text-dim);
+		margin-left: 16px;
+	}
+	.proof-text strong { color: var(--text-muted); }
+
+	/* ── Product preview ─────────────────────────────────────────────────── */
+	.hero-right { display: flex; justify-content: center; align-items: center; }
+
+	.product-preview {
+		position: relative;
+		width: 360px;
+		height: 480px;
+	}
+
+	.preview-card {
+		position: absolute;
+		border-radius: 16px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		overflow: hidden;
+	}
+
+	.preview-card--back {
+		width: 260px; height: 160px;
+		top: 0; right: 0;
+		transform: rotate(4deg);
+		background: var(--surface-2);
+	}
+	.preview-card--mid {
+		width: 280px; height: 160px;
+		top: 80px; left: 0;
+		transform: rotate(-2deg);
+		padding: 20px;
+		z-index: 2;
+	}
+	.preview-card--front {
+		width: 200px; height: 280px;
+		bottom: 0; right: 20px;
+		z-index: 3;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	/* Back card */
+	.pc-header {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 10px 14px;
+		border-bottom: 1px solid var(--border);
+	}
+	.pc-dot { width: 8px; height: 8px; border-radius: 50%; }
+	.pc-dot.r { background: #ff5f57; }
+	.pc-dot.y { background: #ffbd2e; }
+	.pc-dot.g { background: #28c840; }
+	.pc-title { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-left: 8px; }
+	.pc-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+	.pc-bar { height: 6px; border-radius: 3px; background: var(--border); }
+	.pc-stat { display: flex; align-items: baseline; gap: 4px; margin-top: 4px; }
+	.pc-num { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--accent); }
+	.pc-label { font-size: 11px; color: var(--text-dim); }
+
+	/* Mid card */
+	.pc-hook-label { font-family: var(--font-mono); font-size: 9px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 8px; }
+	.pc-hook-text { font-family: var(--font-display); font-size: 14px; font-weight: 700; font-style: italic; color: var(--text); line-height: 1.3; margin-bottom: 12px; }
+	.pc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+	.pc-tag { font-size: 10px; font-family: var(--font-mono); padding: 3px 8px; border-radius: 100px; border: 1px solid var(--border); color: var(--text-dim); }
+	.pc-tag.accent { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+	.pc-remix-btn { font-size: 11px; font-family: var(--font-mono); color: var(--accent); }
+
+	/* Front card (news template) */
+	.news-card-img {
+		flex: 1;
+		background: linear-gradient(135deg, #1a1a2e 0%, #0c2340 100%);
+		position: relative;
+	}
+	.news-card-img::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.85) 100%);
+	}
+	.news-card-text {
+		padding: 12px;
+		background: #000;
+	}
+	.news-source {
+		font-family: Georgia, serif;
+		font-size: 9px;
+		font-style: italic;
+		color: var(--accent);
+		letter-spacing: 2px;
+		margin-bottom: 6px;
+		text-align: center;
+	}
+	.news-headline {
+		font-family: 'Bebas Neue', Impact, sans-serif;
+		font-size: 15px;
+		color: #fff;
+		line-height: 1.1;
+		letter-spacing: 1px;
+		margin: 0;
+		text-transform: uppercase;
+	}
+	.news-headline em { color: var(--accent); font-style: normal; }
+
+	/* Floating pills */
+	.float-pill {
+		position: absolute;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 14px;
+		border-radius: 100px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		z-index: 10;
+	}
+	.float-pill--1 { top: 20px; left: 10px; }
+	.float-pill--2 { bottom: 50px; left: -10px; }
+	.pill-num { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--accent); }
+	.pill-label { font-size: 11px; color: var(--text-dim); }
+	.pill-icon { font-size: 13px; }
+
+	/* ── Marquee ─────────────────────────────────────────────────────────── */
+	.marquee-wrap {
+		overflow: hidden;
+		border-top: 1px solid var(--border);
+		border-bottom: 1px solid var(--border);
+		padding: 18px 0;
+		background: var(--surface);
+	}
+	.marquee-track {
+		display: flex;
+		gap: 0;
+		width: max-content;
+		animation: marquee 25s linear infinite;
+	}
+	@keyframes marquee {
+		0% { transform: translateX(0); }
+		100% { transform: translateX(-50%); }
+	}
+	.marquee-item {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		padding: 0 32px;
+		font-family: var(--font-display);
+		font-size: 18px;
+		font-weight: 700;
+		font-style: italic;
+		color: var(--text-dim);
+		white-space: nowrap;
+	}
+	.marquee-dot { color: var(--accent); font-style: normal; font-size: 14px; }
+
+	/* ── Sections ─────────────────────────────────────────────────────────── */
+	.section { padding: 120px 48px; }
+	.section--alt { background: var(--surface); }
+
+	.section-inner { max-width: 1100px; margin: 0 auto; }
+
+	.section-header { margin-bottom: 64px; }
+	.section-eyebrow {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		letter-spacing: 0.15em;
+		text-transform: uppercase;
+		color: var(--accent);
+		margin-bottom: 16px;
+	}
+	.section-title {
+		font-family: var(--font-display);
+		font-size: clamp(36px, 4vw, 56px);
+		font-weight: 900;
+		line-height: 1.05;
+		letter-spacing: -0.03em;
+		color: var(--text);
+		margin: 0 0 16px;
+	}
+	.section-title em { font-style: italic; color: rgba(240,237,232,0.45); }
+	.section-sub { font-size: 16px; color: var(--text-muted); }
+
+	/* ── Features grid ───────────────────────────────────────────────────── */
+	.features-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 2px;
+		border: 2px solid var(--border);
+		border-radius: 20px;
+		overflow: hidden;
+	}
+
+	.feature-card {
+		padding: 40px;
+		background: var(--bg);
+		display: flex;
+		gap: 28px;
+		align-items: flex-start;
+		border: 1px solid var(--border);
+		transition: background 0.2s;
+	}
+	.feature-card:hover { background: var(--surface); }
+
+	.feature-num {
+		font-family: var(--font-display);
+		font-size: 48px;
+		font-weight: 900;
+		font-style: italic;
+		color: var(--accent-dim);
+		line-height: 1;
+		min-width: 60px;
+		transition: color 0.2s;
+	}
+	.feature-card:hover .feature-num { color: var(--accent); }
+
+	.feature-body { flex: 1; }
+	.feature-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+	.feature-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--text); }
+	.feature-tag {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		padding: 3px 10px;
+		border-radius: 100px;
+		border: 1px solid var(--border);
+		color: var(--text-dim);
+		letter-spacing: 0.05em;
+	}
+	.feature-desc { font-size: 14px; line-height: 1.65; color: var(--text-muted); margin: 0; }
+
+	/* ── Bento ───────────────────────────────────────────────────────────── */
+	.stats-section { padding: 80px 48px; }
+
+	.bento {
+		display: grid;
+		grid-template-columns: 2fr 1fr 1fr;
+		grid-template-rows: auto auto;
+		gap: 16px;
+	}
+
+	.bento-cell {
+		padding: 40px;
+		border-radius: 20px;
+		border: 1px solid var(--border);
+		background: var(--bg);
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+
+	.bento-big { grid-row: span 1; background: var(--surface-2); }
+	.bento-wide { grid-column: span 2; }
+
+	.bento-num {
+		font-family: var(--font-display);
+		font-size: 72px;
+		font-weight: 900;
+		color: var(--accent);
+		line-height: 1;
+		display: block;
+	}
+	.bento-num--md { font-size: 56px; }
+	.bento-label { font-size: 14px; color: var(--text-muted); margin: 0; }
+	.bento-sub { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); }
+
+	.bento-quote {
+		font-family: var(--font-display);
+		font-size: 22px;
+		font-style: italic;
+		font-weight: 700;
+		color: var(--text);
+		line-height: 1.4;
+		margin: 0 0 20px;
+	}
+	.bento-author { display: flex; align-items: center; gap: 12px; }
+	.bento-avatar {
+		width: 36px; height: 36px;
+		border-radius: 50%;
+		background: var(--surface-2);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-dim);
+		flex-shrink: 0;
+	}
+	.bento-author span:last-child { font-size: 13px; color: var(--text-dim); }
+
+	/* ── Steps ───────────────────────────────────────────────────────────── */
+	.steps {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 40px;
+		position: relative;
+	}
+	.steps-line {
+		position: absolute;
+		top: 28px;
+		left: 15%;
+		right: 15%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, var(--border) 20%, var(--accent-border) 50%, var(--border) 80%, transparent);
+	}
+
+	.step { display: flex; flex-direction: column; gap: 16px; }
+	.step-num {
+		font-family: var(--font-display);
+		font-size: 48px;
+		font-weight: 900;
+		font-style: italic;
+		color: var(--accent);
+		line-height: 1;
+	}
+	.step-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text); }
+	.step-desc { font-size: 14px; line-height: 1.65; color: var(--text-muted); margin: 0; }
+
+	/* ── Testimonials ────────────────────────────────────────────────────── */
+	.testimonials {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 20px;
+	}
+
+	.testimonial {
+		padding: 36px;
+		border-radius: 20px;
+		border: 1px solid var(--border);
+		background: var(--bg);
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+		transition: border-color 0.2s, transform 0.2s;
+	}
+	.testimonial:hover { border-color: var(--accent-border); transform: translateY(-4px); }
+
+	.testimonial-text { font-size: 15px; line-height: 1.65; color: var(--text-muted); flex: 1; margin: 0; font-style: italic; }
+
+	.testimonial-author { display: flex; align-items: center; gap: 12px; }
+	.t-avatar {
+		width: 38px; height: 38px;
+		border-radius: 50%;
+		background: var(--surface-2);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--accent);
+		flex-shrink: 0;
+		border: 1px solid var(--accent-border);
+	}
+	.t-name { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--text); }
+	.t-meta { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); }
+
+	/* ── Pricing ─────────────────────────────────────────────────────────── */
+	.pricing-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 20px;
+		align-items: start;
+	}
+
+	.price-card {
+		padding: 36px;
+		border-radius: 20px;
+		border: 1px solid var(--border);
+		background: var(--bg);
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+		position: relative;
+	}
+
+	.price-card--featured {
+		border-color: var(--accent-border);
+		background: linear-gradient(135deg, rgba(232,255,72,0.04) 0%, var(--bg) 100%);
+		box-shadow: 0 0 60px rgba(232,255,72,0.08);
+	}
+
+	.price-badge {
+		position: absolute;
+		top: -12px;
+		left: 50%;
+		transform: translateX(-50%);
+		background: var(--accent);
+		color: #000;
+		font-size: 10px;
+		font-family: var(--font-mono);
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		padding: 4px 14px;
+		border-radius: 100px;
+		white-space: nowrap;
+	}
+
+	.price-tier { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
+	.price-card--featured .price-tier { color: var(--accent); }
+
+	.price-amount { display: flex; align-items: baseline; gap: 4px; }
+	.price-num { font-family: var(--font-display); font-size: 52px; font-weight: 900; color: var(--text); }
+	.price-period { font-size: 16px; color: var(--text-dim); }
+
+	.price-note { font-size: 12px; color: var(--text-dim); margin: 0; }
+
+	.price-features { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+	.price-features li { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-muted); }
+	.price-card--featured .price-features li { color: rgba(240,237,232,0.7); }
+
+	/* ── CTA ─────────────────────────────────────────────────────────────── */
+	.cta-section {
+		padding: 120px 48px;
+		border-top: 1px solid var(--border);
+		position: relative;
+		overflow: hidden;
+	}
+	.cta-section::before {
+		content: '';
+		position: absolute;
+		bottom: -100px; left: 50%;
+		transform: translateX(-50%);
+		width: 800px; height: 400px;
+		background: radial-gradient(ellipse, rgba(232,255,72,0.08) 0%, transparent 70%);
+		pointer-events: none;
+	}
+
+	.cta-inner {
+		max-width: 700px;
+		margin: 0 auto;
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 32px;
+		position: relative;
+	}
+
+	.cta-eyebrow { font-family: var(--font-mono); font-size: 13px; color: var(--accent); letter-spacing: 0.1em; }
+
+	.cta-headline {
+		font-family: var(--font-display);
+		font-size: clamp(36px, 4.5vw, 60px);
+		font-weight: 900;
+		letter-spacing: -0.03em;
+		line-height: 1.05;
+		color: var(--text);
+		margin: 0;
+	}
+	.cta-headline em { font-style: italic; color: var(--accent); }
+
+	/* ── Footer ──────────────────────────────────────────────────────────── */
+	.footer { border-top: 1px solid var(--border); padding: 32px 48px; }
+	.footer-inner {
+		max-width: 1100px;
+		margin: 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 24px;
+	}
+	.footer-copy { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); }
+	.footer-links { display: flex; gap: 24px; }
+	.footer-links a { font-size: 13px; color: var(--text-dim); text-decoration: none; transition: color 0.2s; }
+	.footer-links a:hover { color: var(--text-muted); }
+</style>
