@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { toPng } from 'html-to-image';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Palette, Type, ChevronDown, Search, FlaskConical, Wifi
@@ -90,6 +91,11 @@
 	let highlightColor = $state('#F5A623');
 	let textColor = $state('#FFFFFF');
 
+	// Canvas editing — circle position + size (template coordinates)
+	let circleX    = $state(772);
+	let circleY    = $state(52);
+	let circleSize = $state(256); // diameter in template px (128–512)
+
 	// Export
 	let exporting = $state(false);
 	let exportRef: HTMLElement | null = $state(null);
@@ -131,6 +137,10 @@
 		fetchingNews = true;
 		newsError = '';
 		activeSlide = 0;
+		// Reset circle position + size to defaults
+		circleX    = 772;
+		circleY    = 52;
+		circleSize = 256;
 
 		try {
 			let hookText = '';
@@ -241,6 +251,73 @@
 			console.error('[variants]', e.message);
 			newsError = `Slide variants: ${e.message}`;
 		}
+	}
+
+	// ── Highlight mode — solid color OR image pattern, never both ────────
+	// 'solid'   → [[WORD]] / [[#hex: WORD]] highlights
+	// 'pattern' → [[pattern(name): WORD]] image-fill highlights
+	let highlightMode = $state<'solid' | 'pattern'>('solid');
+	let noSelectionHint = $state(false);
+
+	/** Strip all pattern markup from text, leaving bare words */
+	function stripPatterns(text: string): string {
+		return text.replace(/\[\[pattern\([\w-]+\):\s*/gi, '[[');
+	}
+
+	/** Strip all solid [[...]] highlights (but keep [[pattern(...)]] intact) */
+	function stripSolidHighlights(text: string): string {
+		// Remove [[#hex: word]] → word
+		text = text.replace(/\[\[#[0-9a-fA-F]{3,8}:\s*([^\]]+)\]\]/g, '$1');
+		// Remove plain [[word]] that are NOT pattern/grad
+		text = text.replace(/\[\[(?!pattern\(|grad\()([^\]]+)\]\]/g, '$1');
+		return text;
+	}
+
+	function switchToSolid() {
+		highlightMode = 'solid';
+		setActiveSlideText(stripPatterns(overlayText));
+	}
+
+	function switchToPattern() {
+		highlightMode = 'pattern';
+		setActiveSlideText(stripSolidHighlights(overlayText));
+	}
+
+	/** Wrap selected text in the textarea with [[pattern(name): sel]] */
+	function insertPattern(patternName: string) {
+		const textarea = document.querySelector<HTMLTextAreaElement>('textarea[data-slide-text]');
+		if (!textarea) return;
+		const start = textarea.selectionStart;
+		const end   = textarea.selectionEnd;
+		const rawSel = textarea.value.slice(start, end);
+		// Strip any existing markup from the selection
+		const sel = rawSel.replace(/\[\[(?:pattern\([\w-]+\)|grad\([^)]+\)|#[0-9a-fA-F]{3,8}):\s*/gi, '').replace(/\]\]/g, '').trim();
+
+		if (!sel) {
+			noSelectionHint = true;
+			setTimeout(() => noSelectionHint = false, 2000);
+			return;
+		}
+
+		// Switch mode and strip conflicting highlights from the full text first
+		highlightMode = 'pattern';
+		const cleaned = stripSolidHighlights(textarea.value);
+		const markup  = `[[pattern(${patternName}): ${sel}]]`;
+		const newVal  = cleaned.slice(0, start) + markup + cleaned.slice(end);
+		setActiveSlideText(newVal);
+	}
+
+	/** Wrap selected text in a gradient highlight */
+	function insertGradient(from: string, to: string) {
+		const textarea = document.querySelector<HTMLTextAreaElement>('textarea[data-slide-text]');
+		if (!textarea) return;
+		const start = textarea.selectionStart;
+		const end   = textarea.selectionEnd;
+		const sel   = textarea.value.slice(start, end).replace(/\[\[.*?:\s*/g, '').replace(/\]\]/g, '').trim();
+		if (!sel) return;
+		const markup = `[[grad(${from},${to}): ${sel}]]`;
+		const newVal = textarea.value.slice(0, start) + markup + textarea.value.slice(end);
+		setActiveSlideText(newVal);
 	}
 
 	// ── Generate background image for a single slide ─────────────────────
@@ -505,6 +582,7 @@
 					value={overlayText}
 					oninput={(e) => setActiveSlideText(e.currentTarget.value)}
 					rows={4}
+					data-slide-text
 					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors resize-none leading-relaxed"
 				></textarea>
 
@@ -526,22 +604,102 @@
 			<!-- Divider -->
 			<div class="border-t border-white/[0.05] my-3"></div>
 
-			<!-- Highlight color -->
+			<!-- ── Text Highlights (solid OR pattern — exclusive) ── -->
 			<div>
 				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">
-					<Palette size={9} class="inline mr-1" />Highlight Color
+					<Palette size={9} class="inline mr-1" />Text Highlights
 				</label>
-				<div class="flex items-center gap-2">
-					<!-- Presets -->
-					{#each ['#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFFFFF'] as color}
-						<button onclick={() => highlightColor = color}
-							class="w-7 h-7 rounded-lg border-2 transition-all flex-shrink-0 {highlightColor === color ? 'border-white scale-110' : 'border-transparent hover:scale-105'}"
-							style="background: {color};">
-						</button>
-					{/each}
-					<input type="color" bind:value={highlightColor}
-						class="w-8 h-7 rounded-lg cursor-pointer bg-transparent border border-white/[0.08] flex-shrink-0" />
+
+				<!-- Mode toggle -->
+				<div class="flex rounded-xl overflow-hidden border border-white/[0.07] mb-3">
+					<button
+						onclick={switchToSolid}
+						class="flex-1 py-1.5 text-[11px] font-mono transition-all
+							{highlightMode === 'solid'
+								? 'bg-violet-500/20 text-violet-300'
+								: 'text-white/30 hover:text-white/50'}">
+						Solid Color
+					</button>
+					<div class="w-px bg-white/[0.07]"></div>
+					<button
+						onclick={switchToPattern}
+						class="flex-1 py-1.5 text-[11px] font-mono transition-all
+							{highlightMode === 'pattern'
+								? 'bg-amber-500/20 text-amber-300'
+								: 'text-white/30 hover:text-white/50'}">
+						Pattern
+					</button>
 				</div>
+
+				{#if highlightMode === 'solid'}
+					<!-- Solid color swatches -->
+					<div class="flex items-center gap-2">
+						{#each ['#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFFFFF'] as color}
+							<button onclick={() => { highlightColor = color; switchToSolid(); }}
+								class="w-7 h-7 rounded-lg border-2 transition-all flex-shrink-0
+									{highlightColor === color ? 'border-white scale-110' : 'border-transparent hover:scale-105'}"
+								style="background: {color};">
+							</button>
+						{/each}
+						<input type="color" bind:value={highlightColor}
+							class="w-8 h-7 rounded-lg cursor-pointer bg-transparent border border-white/[0.08] flex-shrink-0" />
+					</div>
+					<!-- Gradient presets -->
+					<div class="flex items-center gap-1.5 mt-2">
+						<span class="text-[10px] font-mono text-white/25 flex-shrink-0">Gradient</span>
+						{#each [['#F5A623','#FF3B5C'],['#08EBFF','#A855F7'],['#10B981','#08EBFF'],['#FFFFFF','#F5A623']] as [from, to]}
+							<button onclick={() => insertGradient(from, to)}
+								class="h-5 w-9 rounded border border-white/10 hover:scale-105 transition-all flex-shrink-0"
+								style="background: linear-gradient(90deg, {from}, {to});"
+								title="Select text then click">
+							</button>
+						{/each}
+					</div>
+					<p class="text-[10px] font-body text-white/15 mt-1.5">
+						Use <code class="text-violet-400/50">[[WORD]]</code> in the text field above
+					</p>
+
+				{:else}
+					<!-- Pattern image fills -->
+					<!-- "Select text first" hint -->
+					{#if noSelectionHint}
+						<div class="flex items-center gap-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-2">
+							<span class="text-[11px] font-mono text-amber-400">← Select text in the field first</span>
+						</div>
+					{/if}
+
+					<div class="grid grid-cols-2 gap-2">
+						{#each AVAILABLE_PATTERNS as pat}
+							<button onclick={() => insertPattern(pat.name)}
+								class="flex flex-col items-center gap-1.5 p-2 rounded-xl border transition-all overflow-hidden group
+									bg-white/[0.02] border-white/[0.07] hover:border-white/25 hover:bg-white/[0.05]">
+								<!-- Pattern image preview with text clipped to it -->
+								<div class="w-full h-10 rounded-lg overflow-hidden relative">
+									<img src={pat.url} alt={pat.label} class="absolute inset-0 w-full h-full object-cover" />
+									<div class="absolute inset-0 flex items-center justify-center">
+										<span style="
+											background-image: url('{pat.url}');
+											background-size: cover;
+											background-position: center;
+											-webkit-background-clip: text;
+											-webkit-text-fill-color: transparent;
+											background-clip: text;
+											font-family: 'Bebas Neue', Impact, sans-serif;
+											font-size: 22px;
+											letter-spacing: 2px;
+											filter: contrast(1.4) brightness(1.2);
+										">WORD</span>
+									</div>
+								</div>
+								<span class="text-[10px] font-mono text-white/40 group-hover:text-white/70 transition-colors">{pat.label}</span>
+							</button>
+						{/each}
+					</div>
+
+					<p class="text-[10px] font-body text-white/15 mt-2 leading-relaxed">
+						Select text above → click pattern to apply
+					</p>
+				{/if}
 			</div>
 
 			<!-- Text color -->
@@ -633,6 +791,18 @@
 							</div>
 						{/if}
 
+						<!-- Size slider -->
+						<div class="flex items-center gap-2.5 px-1">
+							<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7">Size</span>
+							<input
+								type="range"
+								min="128" max="512" step="8"
+								bind:value={circleSize}
+								class="flex-1 h-1 rounded-full accent-cyan-400 cursor-pointer"
+							/>
+							<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7 text-right">{circleSize}</span>
+						</div>
+
 						<!-- Action buttons -->
 						<button onclick={generateCircleImage} disabled={generatingCircle}
 							class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
@@ -710,6 +880,9 @@
 			{/if}
 			<NewsTemplate
 				bind:exportRef
+				bind:circleX
+				bind:circleY
+				bind:circleSize
 				backgroundImage={backgroundImage}
 				circleImage={showCircle ? circleImage : ''}
 				text={overlayText}
@@ -717,6 +890,9 @@
 				highlightColor={highlightColor}
 				textColor={textColor}
 				scale={previewScale}
+				interactive={true}
+				onTextChange={(t) => setActiveSlideText(t)}
+				onCircleMove={(x, y) => { circleX = x; circleY = y; }}
 			/>
 		</div>
 

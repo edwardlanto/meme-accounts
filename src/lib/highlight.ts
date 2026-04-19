@@ -1,12 +1,29 @@
 /** Parses [[...]] highlight markup from AI-generated text */
 
+/** Maps pattern names → static image paths */
+const PATTERN_IMAGES: Record<string, string> = {
+	'light-blue':  '/text-patterns/light-blue.jpeg',
+	'light-green': '/text-patterns/light-green.png',
+};
+
+export function getPatternImage(name: string): string | undefined {
+	return PATTERN_IMAGES[name.toLowerCase().replace(/\s+/g, '-')];
+}
+
+export const AVAILABLE_PATTERNS = Object.entries(PATTERN_IMAGES).map(([name, url]) => ({
+	name,
+	label: name.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
+	url,
+}));
+
 export interface HighlightRange {
 	start: number;
 	end: number;
 	color: string;
 	gradientFrom?: string;
 	gradientTo?: string;
-	pattern?: 'waves' | 'noise';
+	pattern?: string;
+	patternImage?: string;
 }
 
 export interface ParsedText {
@@ -20,7 +37,8 @@ export interface TextSegment {
 	color?: string;
 	gradientFrom?: string;
 	gradientTo?: string;
-	pattern?: 'waves' | 'noise';
+	pattern?: string;
+	patternImage?: string;
 }
 
 /**
@@ -48,15 +66,16 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		let color = defaultColor;
 		let gradientFrom: string | undefined;
 		let gradientTo: string | undefined;
-		let pattern: 'waves' | 'noise' | undefined;
+		let pattern: string | undefined;
+		let patternImage: string | undefined;
 
-		// pattern(waves|noise, #hex): phrase
-		const patternRe = /^pattern\(\s*(waves|noise)\s*,\s*(#[0-9a-fA-F]{6})\s*\)\s*:\s*(.+)$/i;
+		// pattern(name): phrase  — any name, optional ,#hex suffix ignored (image-based)
+		const patternRe = /^pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/i;
 		const pm = inner.match(patternRe);
 		if (pm) {
-			pattern = pm[1] as 'waves' | 'noise';
-			color = pm[2];
-			phrase = pm[3].trim();
+			pattern = pm[1].toLowerCase();
+			phrase = pm[2].trim();
+			patternImage = getPatternImage(pattern);
 		}
 
 		// grad(#from, #to): phrase
@@ -79,7 +98,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 
 		const start = plain.length;
 		plain += phrase;
-		ranges.push({ start, end: plain.length, color, gradientFrom, gradientTo, pattern });
+		ranges.push({ start, end: plain.length, color, gradientFrom, gradientTo, pattern, patternImage });
 		i = close + 2;
 	}
 
@@ -104,6 +123,7 @@ export function segmentText(parsed: ParsedText): TextSegment[] {
 			gradientFrom: range.gradientFrom,
 			gradientTo: range.gradientTo,
 			pattern: range.pattern,
+			patternImage: range.patternImage,
 		});
 		cursor = range.end;
 	}
