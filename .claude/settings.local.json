@@ -12,7 +12,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/dashboard)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/dashboard/discover)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/dashboard/carousels)",
-      "mcp__Claude_in_Chrome__tabs_context_mcp"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(bun add *)"
     ]
   }
 }

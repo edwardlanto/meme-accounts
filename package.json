@@ -26,6 +26,7 @@
 	"dependencies": {
 		"@supabase/supabase-js": "^2.103.3",
 		"@types/three": "^0.184.0",
+		"html-to-image": "^1.11.13",
 		"three": "^0.184.0"
 	}
 }

@@ -186,7 +186,7 @@
 					</p>
 					<div class="absolute top-1 left-1 text-[8px] font-mono text-white/30">{i + 1}</div>
 					{#if slides.length > 1}
-						<button onclick|stopPropagation={() => deleteSlide(i)}
+						<button onclick={(e) => { e.stopPropagation(); deleteSlide(i); }}
 							class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 w-4 h-4 rounded bg-red-500/80 flex items-center justify-center transition-opacity">
 							<X size={8} color="white" />
 						</button>

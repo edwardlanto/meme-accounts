@@ -7,6 +7,7 @@
 	let carousels: any[] = $state([]);
 	let loading = $state(true);
 	let creating = $state(false);
+	let createError = $state('');
 	let userId = $state('');
 
 	onMount(async () => {
@@ -21,6 +22,7 @@
 
 	async function createNew() {
 		creating = true;
+		createError = '';
 		const { data, error } = await supabase.from('carousels').insert({
 			user_id: userId,
 			title: 'Untitled carousel',
@@ -33,7 +35,8 @@
 			]),
 		}).select().single();
 		creating = false;
-		if (!error && data) goto(`/dashboard/editor/${data.id}`);
+		if (error) { createError = error.message; return; }
+		if (data) goto(`/dashboard/editor/${data.id}`);
 	}
 
 	async function deleteCarousel(id: string) {
@@ -62,6 +65,15 @@
 			New carousel
 		</button>
 	</div>
+
+	{#if createError}
+		<div class="mb-6 flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs font-body text-red-400">
+			<span>⚠ {createError}</span>
+			{#if createError.includes('schema cache') || createError.includes('users')}
+				<span class="text-red-300/60">— Run <code class="font-mono bg-red-500/10 px-1 rounded">supabase-migration-001.sql</code> in your Supabase SQL editor.</span>
+			{/if}
+		</div>
+	{/if}
 
 	{#if loading}
 		<div class="grid grid-cols-3 gap-4">
