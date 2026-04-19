@@ -47,7 +47,7 @@ Return a JSON array of strings only, no markdown, no commentary. Example format:
 			'X-Title': 'Carousel Studio',
 		},
 		body: JSON.stringify({
-			model: 'anthropic/claude-3.5-sonnet',
+			model: 'anthropic/claude-sonnet-4.5',
 			messages: [{ role: 'user', content: prompt }],
 			temperature: 0.85,
 			max_tokens: 600,

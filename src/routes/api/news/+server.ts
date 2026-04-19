@@ -78,7 +78,7 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 					'X-Title': 'Carousel Studio',
 				},
 				body: JSON.stringify({
-					model: 'anthropic/claude-3.5-sonnet',
+					model: 'anthropic/claude-sonnet-4.5',
 					messages: [{ role: 'user', content: rewritePrompt }],
 					temperature: 0.8,
 					max_tokens: 120,
@@ -118,7 +118,7 @@ Return ONLY the modified text with [[ ]] markup. No explanation.`;
 						'X-Title': 'Carousel Studio',
 					},
 					body: JSON.stringify({
-						model: 'anthropic/claude-3.5-sonnet',
+						model: 'anthropic/claude-sonnet-4.5',
 						messages: [{ role: 'user', content: highlightPrompt }],
 						temperature: 0.3,
 						max_tokens: 120,

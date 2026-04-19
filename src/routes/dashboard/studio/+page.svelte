@@ -6,11 +6,46 @@
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
-		Image, Palette, Type, ChevronDown, Search
+		Image, Palette, Type, ChevronDown, Search, FlaskConical, Wifi
 	} from 'lucide-svelte';
+
+	// ── Mock data ─────────────────────────────────────────────────────────
+	const MOCK_NEWS = [
+		{
+			uuid: "8d906cbc-8d65-43d0-93ff-f67842145d66",
+			title: "The top 5 startup buyers in Silicon Valley",
+			description: "Silicon Valley giants made up 33% of total startup acquisition deals since 2000, an analysis found",
+			snippet: "Silicon Valley is known for nurturing some of the world's most successful tech startups and companies, making it not so surprising that it's also home to so...",
+			url: "https://qz.com/google-apple-meta-startup-acquisitions-silicon-valley-1851681629",
+			image_url: "https://i.kinja-img.com/image/upload/c_fill,h_675,pg_1,q_80,w_1200/0c461b0f4587d274f2cc0a13ac4c1e1a.jpg",
+			source: "qz.com",
+			categories: ["general", "business", "tech"],
+		},
+		{
+			uuid: "2a304e6c-774a-4820-8128-0e19d6121934",
+			title: "Mental-Health Startup Cerebral Investigated by FTC",
+			description: "Regulators focus on whether online provider engaged in deceptive or unfair marketing practices",
+			snippet: "Mental health startup Cerebral was subpoenaed last month by federal prosecutors as part of an investigation into possible violations of the Controlled Substance...",
+			url: "https://www.wsj.com/articles/ftc-launches-probe-of-cerebrals-business-practices-11655241983",
+			image_url: "https://images.wsj.net/im-563603/social",
+			source: "online.wsj.com",
+			categories: ["business"],
+		},
+		{
+			uuid: "b619002a-76ab-4223-8703-648ee7a17175",
+			title: "Top Startup Crowdfunding Campaigns To Invest In",
+			description: "If you're looking for startups to invest in, here's Benzinga's list of the top startup investments for August 2022.",
+			snippet: "If you're looking for startups to invest in, here's Benzinga's list of the top startup investments for August 2022. Gryphon is recognized as one of th...",
+			url: "https://www.benzinga.com/markets/22/08/28639261/top-startup-crowdfunding-campaigns-to-invest-in",
+			image_url: "https://cdn.benzinga.com/files/images/story/2022/08/25/shutterstock_1532955209.jpg?width=1200&height=800&fit=crop",
+			source: "benzinga.com",
+			categories: ["business"],
+		},
+	] as const;
 
 	// ── State ──────────────────────────────────────────────────────────────
 	let userId = $state('');
+	let useTestData = $state(true); // default to mock data
 
 	// News controls
 	let search = $state('');
@@ -77,28 +112,48 @@
 		newsError = '';
 
 		try {
-			const res = await fetch('/api/news', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					search: search || undefined,
-					categories: category,
-					autoHighlight: true,
-					pick: 'first',
-				}),
-			});
+			if (useTestData) {
+				// ── Mock mode: pick a random article from test data ──────────
+				await new Promise(r => setTimeout(r, 400)); // fake loading feel
+				const pool = search
+					? MOCK_NEWS.filter(a =>
+						a.title.toLowerCase().includes(search.toLowerCase()) ||
+						a.description.toLowerCase().includes(search.toLowerCase())
+					  )
+					: MOCK_NEWS;
+				const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
 
-			const data = await res.json();
-			if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
+				overlayText   = article.title;
+				source        = sourceLabels[category] ?? article.source ?? 'News';
+				articleUrl    = article.url;
+				articleTitle  = article.title;
 
-			overlayText = data.text ?? overlayText;
-			source = sourceLabels[category] ?? data.source ?? 'News';
-			articleUrl = data.url ?? '';
-			articleTitle = data.title ?? '';
+				// Use the article's real image as background
+				if (article.image_url) backgroundImage = article.image_url;
 
-			// Auto-generate background image from article context
-			if (data.title) {
-				generateBackground(data.title);
+			} else {
+				// ── Live mode: call the real News API ────────────────────────
+				const res = await fetch('/api/news', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						search: search || undefined,
+						categories: category,
+						autoHighlight: true,
+						pick: 'first',
+					}),
+				});
+
+				const data = await res.json();
+				if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
+
+				overlayText  = data.text ?? overlayText;
+				source       = sourceLabels[category] ?? data.source ?? 'News';
+				articleUrl   = data.url ?? '';
+				articleTitle = data.title ?? '';
+
+				if (data.imageUrl) backgroundImage = data.imageUrl;
+				if (data.title && !data.imageUrl) generateBackground(data.title);
 			}
 		} catch (e: any) {
 			newsError = e.message;
@@ -237,13 +292,41 @@
 				</div>
 			</div>
 
+			<!-- Data source toggle -->
+			<div class="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] mb-1">
+				<div class="flex items-center gap-2">
+					{#if useTestData}
+						<FlaskConical size={12} class="text-amber-400" />
+						<span class="text-xs font-mono text-amber-400">Test data</span>
+					{:else}
+						<Wifi size={12} class="text-emerald-400" />
+						<span class="text-xs font-mono text-emerald-400">Live API</span>
+					{/if}
+				</div>
+				<!-- Toggle switch -->
+				<button
+					onclick={() => useTestData = !useTestData}
+					class="relative w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0
+						{useTestData ? 'bg-amber-500/30' : 'bg-emerald-500/40'}"
+					title="{useTestData ? 'Switch to Live API' : 'Switch to Test Data'}"
+				>
+					<span class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow transition-transform duration-200
+						{useTestData ? 'translate-x-0 bg-amber-400' : 'translate-x-5 bg-emerald-400'}">
+					</span>
+				</button>
+			</div>
+
 			<!-- Fetch button -->
 			<button onclick={fetchNews} disabled={fetchingNews}
 				class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all disabled:opacity-50">
 				{#if fetchingNews}
-					<Loader size={13} class="animate-spin" /> Fetching + Rewriting...
+					<Loader size={13} class="animate-spin" /> {useTestData ? 'Loading mock...' : 'Fetching + Rewriting...'}
 				{:else}
-					<Newspaper size={13} /> Fetch News
+					{#if useTestData}
+						<FlaskConical size={13} /> Load Test Article
+					{:else}
+						<Newspaper size={13} /> Fetch Live News
+					{/if}
 				{/if}
 			</button>
 

@@ -2,87 +2,57 @@
 	import { supabase } from '$lib/supabase';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { ChevronLeft, Loader, Sparkles, FileText, Zap, Heart, BookOpen, ArrowRight } from 'lucide-svelte';
+	import { wizardStore } from '$lib/stores/wizard';
+	import SlideCard from '$lib/components/SlideCard.svelte';
+	import {
+		ChevronLeft, ChevronRight, Upload, Sparkles, X, Loader,
+		Image, Palette, FileText, Zap, Check, Download, Video,
+		RefreshCw, AlertCircle
+	} from 'lucide-svelte';
+	import { toPng } from 'html-to-image';
 
+	// ── Auth ─────────────────────────────────────────────────────────────────
 	let userId = $state('');
-	let title = $state('');
-	let selectedTemplate = $state('blank');
-	let creating = $state(false);
-	let error = $state('');
 
-	const templates = [
-		{
-			id: 'blank',
-			label: 'Blank',
-			description: 'Start from scratch with 4 empty slides',
-			icon: FileText,
-			color: 'white/20',
-			slides: [
-				{ id: '1', text: 'Your hook here', type: 'hook', bg: '#0f172a', textColor: '#ffffff', align: 'center', bold: true, fontSize: 32 },
-				{ id: '2', text: 'Key insight or point', type: 'body', bg: '#111111', textColor: '#f8f8f8', align: 'center', bold: false, fontSize: 28 },
-				{ id: '3', text: 'Another key point', type: 'body', bg: '#111111', textColor: '#f8f8f8', align: 'center', bold: false, fontSize: 28 },
-				{ id: '4', text: 'Follow for more!', type: 'cta', bg: '#0a0a0a', textColor: '#8B5CF6', align: 'center', bold: true, fontSize: 30 },
-			],
-		},
-		{
-			id: 'viral-tips',
-			label: '5 Tips',
-			description: 'Hook + 5 actionable tips + CTA',
-			icon: Zap,
-			color: 'cyan',
-			slides: [
-				{ id: '1', text: '5 habits that will change your life', type: 'hook', bg: '#0c4a6e', textColor: '#ffffff', align: 'center', bold: true, fontSize: 32 },
-				{ id: '2', text: '1. Wake up at 5am', type: 'body', bg: '#0f172a', textColor: '#f8f8f8', align: 'left', bold: false, fontSize: 28, subtext: 'Start your day before the noise begins.' },
-				{ id: '3', text: '2. Move your body daily', type: 'body', bg: '#0f172a', textColor: '#f8f8f8', align: 'left', bold: false, fontSize: 28, subtext: 'Even 10 minutes makes a difference.' },
-				{ id: '4', text: '3. Read for 30 minutes', type: 'body', bg: '#0f172a', textColor: '#f8f8f8', align: 'left', bold: false, fontSize: 28, subtext: 'Knowledge compounds over time.' },
-				{ id: '5', text: '4. Limit your screen time', type: 'body', bg: '#0f172a', textColor: '#f8f8f8', align: 'left', bold: false, fontSize: 28, subtext: 'Protect your attention at all costs.' },
-				{ id: '6', text: '5. Reflect every night', type: 'body', bg: '#0f172a', textColor: '#f8f8f8', align: 'left', bold: false, fontSize: 28, subtext: 'Journal 3 wins from the day.' },
-				{ id: '7', text: 'Which habit will you start today?', type: 'cta', bg: '#0c4a6e', textColor: '#06B6D4', align: 'center', bold: true, fontSize: 26 },
-			],
-		},
-		{
-			id: 'storytelling',
-			label: 'Story Arc',
-			description: 'Problem → journey → transformation',
-			icon: BookOpen,
-			color: 'violet',
-			slides: [
-				{ id: '1', text: 'I was broke, burned out, and ready to quit.', type: 'hook', bg: '#1a0a2e', textColor: '#ffffff', align: 'center', bold: true, fontSize: 28 },
-				{ id: '2', text: 'The problem', type: 'body', bg: '#0f0f0f', textColor: '#f8f8f8', align: 'center', bold: true, fontSize: 32, subtext: 'I worked 70-hour weeks and had nothing to show for it.' },
-				{ id: '3', text: 'The turning point', type: 'body', bg: '#0f0f0f', textColor: '#a78bfa', align: 'center', bold: true, fontSize: 32, subtext: 'One conversation changed everything.' },
-				{ id: '4', text: 'What I learned', type: 'body', bg: '#0f0f0f', textColor: '#f8f8f8', align: 'center', bold: true, fontSize: 32, subtext: 'Effort without strategy is just exhaustion.' },
-				{ id: '5', text: 'The result', type: 'body', bg: '#1a0a2e', textColor: '#8B5CF6', align: 'center', bold: true, fontSize: 30, subtext: 'Now I work 4 hours a day and earn 3x more.' },
-				{ id: '6', text: 'Save this if it resonates.', type: 'cta', bg: '#0a0a0a', textColor: '#a78bfa', align: 'center', bold: true, fontSize: 28 },
-			],
-		},
-		{
-			id: 'hot-take',
-			label: 'Hot Take',
-			description: 'Bold opinion + arguments + open question',
-			icon: Heart,
-			color: 'red',
-			slides: [
-				{ id: '1', text: 'Hustle culture is destroying your potential.', type: 'hook', bg: '#1a0a0a', textColor: '#f43f5e', align: 'center', bold: true, fontSize: 28 },
-				{ id: '2', text: 'Here\'s why I said that:', type: 'body', bg: '#0f0f0f', textColor: '#f8f8f8', align: 'center', bold: false, fontSize: 30 },
-				{ id: '3', text: 'Burnout kills creativity', type: 'body', bg: '#0f0f0f', textColor: '#f8f8f8', align: 'left', bold: false, fontSize: 28, subtext: 'You can\'t create your best work when you\'re running on empty.' },
-				{ id: '4', text: 'Rest is not laziness', type: 'body', bg: '#0f0f0f', textColor: '#f8f8f8', align: 'left', bold: false, fontSize: 28, subtext: 'The best ideas come when you stop forcing them.' },
-				{ id: '5', text: 'Agree or disagree?', type: 'cta', bg: '#1a0a0a', textColor: '#f43f5e', align: 'center', bold: true, fontSize: 32, subtext: 'Drop your take in the comments.' },
-			],
-		},
-	];
+	// ── Wizard step (1–4) ─────────────────────────────────────────────────
+	let step = $state(1);
 
-	const colorMap: Record<string, string> = {
-		'white/20': 'border-white/20 bg-white/[0.04]',
-		cyan: 'border-cyan-500/30 bg-cyan-500/[0.06]',
-		violet: 'border-violet-500/30 bg-violet-500/[0.06]',
-		red: 'border-red-500/30 bg-red-500/[0.06]',
-	};
-	const iconColorMap: Record<string, string> = {
-		'white/20': 'text-white/40',
-		cyan: 'text-cyan-400',
-		violet: 'text-violet-400',
-		red: 'text-red-400',
-	};
+	// ── Step 1: Topic ─────────────────────────────────────────────────────
+	let topic = $state('');
+	let audience = $state('');
+
+	// ── Step 2: Images ────────────────────────────────────────────────────
+	let images = $state<string[]>([]);    // base64 data URLs
+	let imageNames = $state<string[]>([]);
+	let dragging = $state(false);
+	let uploadEl: HTMLInputElement;
+
+	// ── Step 3: Style ─────────────────────────────────────────────────────
+	let style = $state<'dark' | 'bold' | 'editorial' | 'minimal'>('dark');
+	let slideCount = $state(8);
+	let brandColor = $state('#E8FF48');
+	let brandName = $state('Your Brand');
+
+	const styles = [
+		{ id: 'dark',     label: 'Dark Editorial', desc: 'Dramatic. Minimal. Every word counts.' },
+		{ id: 'bold',     label: 'Bold & Punchy',  desc: 'High energy. Short hits. Emoji-forward.' },
+		{ id: 'editorial',label: 'Magazine',       desc: 'Elegant rhythm. Reads like great writing.' },
+		{ id: 'minimal',  label: 'Clean Pro',      desc: 'Structured. Business-ready. Clear.' },
+	] as const;
+
+	const slideCounts = [5, 8, 10, 12];
+
+	// ── Step 4: Generate ──────────────────────────────────────────────────
+	let generating = $state(false);
+	let slides = $state<any[]>([]);
+	let genError = $state('');
+	let saving = $state(false);
+	let savedId = $state('');
+	let activePreview = $state(0);
+
+	// Export refs for each slide
+	let exportRefs = $state<(HTMLElement | null)[]>([]);
+	let exporting = $state(false);
 
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
@@ -90,95 +60,1084 @@
 		userId = user.id;
 	});
 
-	async function create() {
-		if (!title.trim()) { error = 'Please give your carousel a title.'; return; }
-		creating = true;
-		error = '';
-		const template = templates.find(t => t.id === selectedTemplate)!;
-		const { data, error: err } = await supabase.from('carousels').insert({
-			user_id: userId,
-			title: title.trim(),
-			status: 'draft',
-			slides: JSON.stringify(template.slides),
-		}).select().single();
-		if (err) { error = err.message; creating = false; return; }
-		goto(`/dashboard/editor/${data.id}`);
+	// ── Image helpers ─────────────────────────────────────────────────────
+	async function resizeImage(file: File, maxPx = 1080): Promise<string> {
+		return new Promise((resolve) => {
+			const img = new window.Image();
+			const url = URL.createObjectURL(file);
+			img.onload = () => {
+				const ratio = Math.min(maxPx / img.width, maxPx / img.height, 1);
+				const canvas = document.createElement('canvas');
+				canvas.width  = Math.round(img.width  * ratio);
+				canvas.height = Math.round(img.height * ratio);
+				canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+				URL.revokeObjectURL(url);
+				resolve(canvas.toDataURL('image/jpeg', 0.88));
+			};
+			img.src = url;
+		});
+	}
+
+	async function addFiles(files: FileList | File[]) {
+		for (const file of Array.from(files)) {
+			if (!file.type.startsWith('image/')) continue;
+			if (images.length >= 10) break;
+			const dataUrl = await resizeImage(file);
+			images = [...images, dataUrl];
+			imageNames = [...imageNames, file.name];
+		}
+	}
+
+	function removeImage(i: number) {
+		images = images.filter((_, idx) => idx !== i);
+		imageNames = imageNames.filter((_, idx) => idx !== i);
+	}
+
+	function onDrop(e: DragEvent) {
+		e.preventDefault();
+		dragging = false;
+		if (e.dataTransfer?.files) addFiles(e.dataTransfer.files);
+	}
+
+	// ── Generate slides ───────────────────────────────────────────────────
+	async function generate() {
+		if (!topic.trim()) return;
+		generating = true;
+		genError = '';
+		slides = [];
+		step = 4;
+
+		try {
+			const res = await fetch('/api/generate-slides', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					topic: topic.trim(),
+					style,
+					slideCount,
+					imageCount: images.length,
+					audience: audience.trim(),
+				}),
+			});
+			const data = await res.json();
+			if (data.error) throw new Error(data.error);
+			slides = data.slides ?? [];
+			exportRefs = new Array(slides.length).fill(null);
+
+			// Save to wizard store
+			wizardStore.set({ carouselId: null, images, slides, topic, style, brandColor, brandName });
+
+			// Auto-save to Supabase
+			await saveCarousel();
+		} catch (err: any) {
+			genError = err.message;
+		} finally {
+			generating = false;
+		}
+	}
+
+	async function saveCarousel() {
+		if (savedId) return savedId;
+		saving = true;
+		const { data, error } = await (supabase as any)
+			.from('carousels')
+			.insert({
+				user_id: userId,
+				title: topic.trim().slice(0, 80),
+				status: 'draft',
+				slides: JSON.stringify(slides),
+				style_config: JSON.stringify({ brandColor, brandName, style, images }),
+			})
+			.select()
+			.single();
+		saving = false;
+		if (error) { genError = error.message; return null; }
+		savedId = data.id;
+		wizardStore.update(s => ({ ...s, carouselId: data.id }));
+		return data.id;
+	}
+
+	async function exportAll() {
+		exporting = true;
+		try {
+			const { default: JSZip } = await import('jszip');
+			const zip = new JSZip();
+			for (let i = 0; i < exportRefs.length; i++) {
+				const el = exportRefs[i];
+				if (!el) continue;
+				const png = await toPng(el, { width: 1080, height: 1350, pixelRatio: 1 });
+				const base64 = png.split(',')[1];
+				zip.file(`slide-${String(i + 1).padStart(2, '0')}.png`, base64, { base64: true });
+			}
+			const blob = await zip.generateAsync({ type: 'blob' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url; a.download = 'carousel-slides.zip'; a.click();
+			URL.revokeObjectURL(url);
+		} catch (err: any) {
+			// jszip not available — export individually
+			for (let i = 0; i < exportRefs.length; i++) {
+				const el = exportRefs[i];
+				if (!el) continue;
+				const png = await toPng(el, { width: 1080, height: 1350, pixelRatio: 1 });
+				const a = document.createElement('a');
+				a.href = png; a.download = `slide-${i + 1}.png`; a.click();
+				await new Promise(r => setTimeout(r, 300));
+			}
+		} finally {
+			exporting = false;
+		}
+	}
+
+	function goToVideo() {
+		if (savedId) goto(`/dashboard/editor/${savedId}/video`);
+	}
+
+	// ── Navigation ────────────────────────────────────────────────────────
+	function canNext() {
+		if (step === 1) return topic.trim().length >= 3;
+		if (step === 2) return true; // images optional
+		if (step === 3) return true;
+		return false;
 	}
 </script>
 
-<div class="p-8 max-w-2xl">
-	<!-- Header -->
-	<div class="flex items-center gap-3 mb-8">
-		<a href="/dashboard/carousels" class="flex items-center gap-1 text-sm font-body text-white/40 hover:text-white transition-colors">
+<div class="wizard-root">
+
+	<!-- ── Top bar ──────────────────────────────────────────────────────── -->
+	<div class="wizard-topbar">
+		<a href="/dashboard/carousels" class="back-btn">
 			<ChevronLeft size={15} /> Back
 		</a>
-		<span class="text-white/20">/</span>
-		<span class="text-sm font-body text-white/60">New carousel</span>
-	</div>
-
-	<h1 class="font-display font-bold text-2xl text-white mb-1">Create a carousel</h1>
-	<p class="font-body text-sm text-white/40 mb-8">Pick a template to get started, then customise it in the editor.</p>
-
-	<!-- Title input -->
-	<div class="mb-8">
-		<label class="text-xs font-mono text-white/40 uppercase tracking-wider block mb-2">Carousel title</label>
-		<input
-			type="text"
-			bind:value={title}
-			placeholder="e.g. 5 habits that changed my life"
-			class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-3 px-4 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors"
-		/>
-	</div>
-
-	<!-- Template picker -->
-	<div class="mb-8">
-		<label class="text-xs font-mono text-white/40 uppercase tracking-wider block mb-3">Choose a template</label>
-		<div class="grid grid-cols-2 gap-3">
-			{#each templates as t}
-				{@const isSelected = selectedTemplate === t.id}
-				<button
-					onclick={() => selectedTemplate = t.id}
-					class="relative p-4 rounded-2xl border text-left transition-all {isSelected
-						? 'border-violet-500/60 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.15)]'
-						: `${colorMap[t.color]} hover:border-white/20`}">
-					<div class="flex items-center gap-2 mb-2">
-						<svelte:component this={t.icon} size={15} class={isSelected ? 'text-violet-400' : iconColorMap[t.color]} />
-						<span class="font-display font-semibold text-sm {isSelected ? 'text-white' : 'text-white/70'}">{t.label}</span>
-						{#if isSelected}
-							<span class="ml-auto w-2 h-2 rounded-full bg-violet-400"></span>
-						{/if}
-					</div>
-					<p class="font-body text-xs {isSelected ? 'text-white/50' : 'text-white/30'} leading-relaxed">{t.description}</p>
-					<div class="mt-3 flex items-center gap-1">
-						{#each { length: templates.find(x => x.id === t.id)!.slides.length } as _, i}
-							<div class="flex-1 h-1 rounded-full {isSelected ? 'bg-violet-500/40' : 'bg-white/[0.08]'}"></div>
-						{/each}
-					</div>
-					<p class="text-[10px] font-mono {isSelected ? 'text-violet-400/70' : 'text-white/20'} mt-1">
-						{templates.find(x => x.id === t.id)!.slides.length} slides
-					</p>
-				</button>
+		<div class="steps-track">
+			{#each [1,2,3,4] as s}
+				<div class="step-pip {step >= s ? 'active' : ''} {step > s ? 'done' : ''}">
+					{#if step > s}
+						<Check size={11} />
+					{:else}
+						{s}
+					{/if}
+				</div>
+				{#if s < 4}
+					<div class="step-line {step > s ? 'active' : ''}"></div>
+				{/if}
 			{/each}
 		</div>
+		<div class="step-label">
+			{['Topic', 'Photos', 'Style', 'Generate'][step - 1]}
+		</div>
 	</div>
 
-	<!-- Error -->
-	{#if error}
-		<div class="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs font-body text-red-400">
-			{error}
+	<!-- ── Step content ─────────────────────────────────────────────────── -->
+	<div class="wizard-body">
+
+		<!-- STEP 1: TOPIC -->
+		{#if step === 1}
+			<div class="step-content">
+				<p class="step-eyebrow">01 / TOPIC</p>
+				<h1 class="step-headline">What's your carousel about?</h1>
+				<p class="step-sub">Give AI enough to work with — the more specific, the better the output.</p>
+
+				<div class="field-group">
+					<label class="field-label">Topic or hook <span class="required">*</span></label>
+					<textarea
+						bind:value={topic}
+						placeholder="e.g. 'Why most people never build wealth — and the 3 habits that actually change that'"
+						class="big-textarea"
+						rows="3"
+					></textarea>
+					<p class="field-hint">Be specific. A niche topic always outperforms a generic one.</p>
+				</div>
+
+				<div class="field-group">
+					<label class="field-label">Target audience <span class="optional">(optional)</span></label>
+					<input
+						bind:value={audience}
+						type="text"
+						placeholder="e.g. 'Entrepreneurs aged 25–40 who want to escape the 9–5'"
+						class="text-input"
+					/>
+				</div>
+			</div>
+		{/if}
+
+		<!-- STEP 2: PHOTOS -->
+		{#if step === 2}
+			<div class="step-content">
+				<p class="step-eyebrow">02 / PHOTOS</p>
+				<h1 class="step-headline">Add your photos.</h1>
+				<p class="step-sub">AI will weave them into the slides — cover shots, lifestyle images, product photos. Up to 10.</p>
+
+				<!-- Drop zone -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="drop-zone {dragging ? 'dragging' : ''}"
+					role="button"
+					tabindex="0"
+					onclick={() => uploadEl.click()}
+					ondragover={(e) => { e.preventDefault(); dragging = true; }}
+					ondragleave={() => dragging = false}
+					ondrop={onDrop}
+				>
+					<input
+						bind:this={uploadEl}
+						type="file" multiple accept="image/*"
+						class="hidden-input"
+						onchange={(e) => { if (e.currentTarget.files) addFiles(e.currentTarget.files); }}
+					/>
+					<div class="drop-icon">
+						<Upload size={28} />
+					</div>
+					<p class="drop-text">Drop photos here or <span class="drop-link">browse</span></p>
+					<p class="drop-sub">JPEG, PNG, WEBP — resized automatically to 1080px</p>
+				</div>
+
+				<!-- Thumbnails -->
+				{#if images.length > 0}
+					<div class="thumb-grid">
+						{#each images as img, i}
+							<div class="thumb-item">
+								<img src={img} alt={imageNames[i]} class="thumb-img" />
+								<button class="thumb-remove" onclick={() => removeImage(i)}>
+									<X size={12} />
+								</button>
+								<span class="thumb-idx">{i}</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				{#if images.length === 0}
+					<p class="skip-hint">No photos? That's fine — AI will generate a text-only carousel.</p>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- STEP 3: STYLE -->
+		{#if step === 3}
+			<div class="step-content">
+				<p class="step-eyebrow">03 / STYLE</p>
+				<h1 class="step-headline">Choose your look.</h1>
+				<p class="step-sub">AI adapts its writing and layout choices to match your aesthetic.</p>
+
+				<!-- Style grid -->
+				<div class="style-grid">
+					{#each styles as s}
+						<button
+							class="style-card {style === s.id ? 'selected' : ''}"
+							onclick={() => style = s.id as any}
+						>
+							<div class="style-dot {style === s.id ? 'lit' : ''}"></div>
+							<p class="style-name">{s.label}</p>
+							<p class="style-desc">{s.desc}</p>
+						</button>
+					{/each}
+				</div>
+
+				<!-- Slide count -->
+				<div class="field-group" style="margin-top: 36px;">
+					<label class="field-label">Number of slides</label>
+					<div class="count-pills">
+						{#each slideCounts as c}
+							<button
+								class="count-pill {slideCount === c ? 'active' : ''}"
+								onclick={() => slideCount = c}
+							>{c}</button>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Brand settings -->
+				<div class="brand-row">
+					<div class="field-group" style="flex:1;">
+						<label class="field-label">Brand name</label>
+						<input bind:value={brandName} type="text" placeholder="Your Brand" class="text-input" />
+					</div>
+					<div class="field-group">
+						<label class="field-label">Accent color</label>
+						<div class="color-row">
+							<input bind:value={brandColor} type="color" class="color-swatch" />
+							<span class="color-hex">{brandColor}</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- STEP 4: GENERATE -->
+		{#if step === 4}
+			<div class="gen-view">
+				{#if generating}
+					<div class="gen-loading">
+						<div class="gen-spinner">
+							<Sparkles size={32} />
+						</div>
+						<h2 class="gen-title">Generating your carousel…</h2>
+						<p class="gen-sub">Claude is crafting {slideCount} slides for "{topic}"</p>
+						<div class="gen-dots">
+							<span></span><span></span><span></span>
+						</div>
+					</div>
+				{:else if genError}
+					<div class="gen-error">
+						<AlertCircle size={28} />
+						<h3>Generation failed</h3>
+						<p>{genError}</p>
+						<button class="btn-primary" onclick={() => { step = 3; genError = ''; }}>
+							<ChevronLeft size={14} /> Back to settings
+						</button>
+					</div>
+				{:else if slides.length > 0}
+					<!-- Preview area -->
+					<div class="preview-header">
+						<div class="preview-meta">
+							<h2 class="preview-title">Your carousel is ready</h2>
+							<p class="preview-count">{slides.length} slides · {images.length} photo{images.length !== 1 ? 's' : ''} · {style}</p>
+						</div>
+						<div class="preview-actions">
+							<button class="btn-secondary" onclick={() => generate()} title="Regenerate">
+								<RefreshCw size={14} /> Regenerate
+							</button>
+							<button class="btn-secondary" onclick={exportAll} disabled={exporting}>
+								{#if exporting}<Loader size={14} class="spin" />{:else}<Download size={14} />{/if}
+								Export PNGs
+							</button>
+							<button class="btn-video" onclick={goToVideo} disabled={!savedId}>
+								<Video size={14} /> Make Video
+							</button>
+						</div>
+					</div>
+
+					<!-- Slide filmstrip -->
+					<div class="filmstrip">
+						{#each slides as slide, i}
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								class="film-item {activePreview === i ? 'active' : ''}"
+								onclick={() => activePreview = i}
+								role="button"
+								tabindex="0"
+							>
+								<SlideCard
+									{slide}
+									{images}
+									{brandColor}
+									{brandName}
+									total={slides.length}
+									scale={0.14}
+									bind:exportRef={exportRefs[i]}
+								/>
+								<span class="film-num">{i + 1}</span>
+							</div>
+						{/each}
+					</div>
+
+					<!-- Main preview -->
+					<div class="main-preview">
+						{#if slides[activePreview]}
+							<SlideCard
+								slide={slides[activePreview]}
+								{images}
+								{brandColor}
+								{brandName}
+								total={slides.length}
+								scale={0.44}
+							/>
+						{/if}
+						<div class="preview-nav">
+							<button
+								class="nav-arrow"
+								disabled={activePreview === 0}
+								onclick={() => activePreview--}
+							><ChevronLeft size={18} /></button>
+							<span class="nav-count">{activePreview + 1} / {slides.length}</span>
+							<button
+								class="nav-arrow"
+								disabled={activePreview === slides.length - 1}
+								onclick={() => activePreview++}
+							><ChevronRight size={18} /></button>
+						</div>
+					</div>
+
+					{#if saving}
+						<p class="saving-note"><Loader size={12} class="spin" /> Saving to your account…</p>
+					{:else if savedId}
+						<p class="saving-note saved"><Check size={12} /> Saved · <a href="/dashboard/editor/{savedId}" class="edit-link">Open in editor</a></p>
+					{/if}
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<!-- ── Bottom navigation ─────────────────────────────────────────────── -->
+	{#if step < 4}
+		<div class="wizard-footer">
+			<button
+				class="btn-ghost"
+				onclick={() => step--}
+				disabled={step === 1}
+			>
+				<ChevronLeft size={15} /> Back
+			</button>
+			{#if step < 3}
+				<button
+					class="btn-primary"
+					onclick={() => step++}
+					disabled={!canNext()}
+				>
+					Continue <ChevronRight size={15} />
+				</button>
+			{:else}
+				<button
+					class="btn-primary btn-generate"
+					onclick={generate}
+					disabled={generating}
+				>
+					<Sparkles size={15} /> Generate {slideCount} slides <ChevronRight size={15} />
+				</button>
+			{/if}
 		</div>
 	{/if}
-
-	<!-- Create button -->
-	<button
-		onclick={create}
-		disabled={creating}
-		class="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold font-body text-sm text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_30px_rgba(139,92,246,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-		{#if creating}
-			<Loader size={14} class="animate-spin" /> Creating...
-		{:else}
-			<Sparkles size={14} /> Create carousel
-			<ArrowRight size={14} />
-		{/if}
-	</button>
 </div>
+
+<style>
+	.wizard-root {
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		background: #080808;
+		overflow: hidden;
+	}
+
+	/* ── Top bar ─────────────────────────────────────────────────────────── */
+	.wizard-topbar {
+		display: flex;
+		align-items: center;
+		gap: 24px;
+		padding: 20px 32px;
+		border-bottom: 1px solid rgba(255,255,255,0.05);
+		flex-shrink: 0;
+	}
+
+	.back-btn {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 13px;
+		color: rgba(255,255,255,0.3);
+		text-decoration: none;
+		font-family: 'DM Sans', sans-serif;
+		transition: color 0.15s;
+	}
+	.back-btn:hover { color: rgba(255,255,255,0.7); }
+
+	.steps-track {
+		display: flex;
+		align-items: center;
+		gap: 0;
+	}
+
+	.step-pip {
+		width: 28px; height: 28px;
+		border-radius: 50%;
+		border: 1.5px solid rgba(255,255,255,0.12);
+		display: flex; align-items: center; justify-content: center;
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		color: rgba(255,255,255,0.25);
+		transition: all 0.2s;
+		flex-shrink: 0;
+	}
+	.step-pip.active {
+		border-color: #E8FF48;
+		color: #E8FF48;
+		background: rgba(232,255,72,0.08);
+	}
+	.step-pip.done {
+		border-color: #E8FF48;
+		background: #E8FF48;
+		color: #0a0a0a;
+	}
+	.step-line {
+		width: 32px; height: 1.5px;
+		background: rgba(255,255,255,0.08);
+		transition: background 0.2s;
+	}
+	.step-line.active { background: rgba(232,255,72,0.4); }
+
+	.step-label {
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		color: rgba(255,255,255,0.25);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		margin-left: auto;
+	}
+
+	/* ── Body ────────────────────────────────────────────────────────────── */
+	.wizard-body {
+		flex: 1;
+		overflow-y: auto;
+		display: flex;
+		align-items: flex-start;
+		justify-content: center;
+		padding: 48px 32px 120px;
+	}
+
+	.step-content {
+		width: 100%;
+		max-width: 640px;
+	}
+
+	.step-eyebrow {
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		color: #E8FF48;
+		margin: 0 0 16px;
+		text-transform: uppercase;
+	}
+
+	.step-headline {
+		font-family: 'Fraunces', serif;
+		font-size: 48px;
+		font-weight: 900;
+		color: #fff;
+		margin: 0 0 12px;
+		line-height: 1.08;
+		letter-spacing: -0.02em;
+	}
+
+	.step-sub {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 16px;
+		color: rgba(255,255,255,0.4);
+		margin: 0 0 40px;
+		line-height: 1.6;
+	}
+
+	/* ── Fields ─────────────────────────────────────────────────────────── */
+	.field-group { margin-bottom: 28px; }
+
+	.field-label {
+		display: block;
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: rgba(255,255,255,0.3);
+		margin-bottom: 10px;
+	}
+	.required { color: #E8FF48; }
+	.optional { color: rgba(255,255,255,0.2); font-size: 10px; }
+
+	.big-textarea, .text-input {
+		width: 100%;
+		background: rgba(255,255,255,0.04);
+		border: 1.5px solid rgba(255,255,255,0.08);
+		border-radius: 12px;
+		padding: 14px 16px;
+		font-family: 'DM Sans', sans-serif;
+		font-size: 15px;
+		color: #fff;
+		outline: none;
+		resize: none;
+		transition: border-color 0.15s;
+		box-sizing: border-box;
+	}
+	.big-textarea:focus, .text-input:focus {
+		border-color: rgba(232,255,72,0.35);
+	}
+	::placeholder { color: rgba(255,255,255,0.18); }
+
+	.field-hint {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 12px;
+		color: rgba(255,255,255,0.2);
+		margin: 8px 0 0;
+	}
+
+	/* ── Drop zone ───────────────────────────────────────────────────────── */
+	.drop-zone {
+		border: 1.5px dashed rgba(255,255,255,0.1);
+		border-radius: 16px;
+		padding: 48px 32px;
+		text-align: center;
+		cursor: pointer;
+		transition: all 0.2s;
+		margin-bottom: 24px;
+	}
+	.drop-zone:hover, .drop-zone.dragging {
+		border-color: rgba(232,255,72,0.4);
+		background: rgba(232,255,72,0.03);
+	}
+
+	.hidden-input { display: none; }
+
+	.drop-icon {
+		width: 52px; height: 52px;
+		border-radius: 12px;
+		background: rgba(255,255,255,0.05);
+		display: flex; align-items: center; justify-content: center;
+		margin: 0 auto 16px;
+		color: rgba(255,255,255,0.3);
+	}
+
+	.drop-text {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 15px;
+		color: rgba(255,255,255,0.5);
+		margin: 0 0 6px;
+	}
+	.drop-link { color: #E8FF48; text-decoration: underline; }
+
+	.drop-sub {
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		color: rgba(255,255,255,0.2);
+		margin: 0;
+	}
+
+	/* ── Thumbnails ──────────────────────────────────────────────────────── */
+	.thumb-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.thumb-item {
+		position: relative;
+		width: 88px; height: 88px;
+		border-radius: 10px;
+		overflow: hidden;
+		border: 1.5px solid rgba(255,255,255,0.08);
+	}
+
+	.thumb-img {
+		width: 100%; height: 100%;
+		object-fit: cover;
+	}
+
+	.thumb-remove {
+		position: absolute; top: 4px; right: 4px;
+		width: 20px; height: 20px;
+		border-radius: 50%;
+		background: rgba(0,0,0,0.8);
+		border: none; cursor: pointer;
+		display: flex; align-items: center; justify-content: center;
+		color: rgba(255,255,255,0.8);
+	}
+
+	.thumb-idx {
+		position: absolute; bottom: 4px; left: 6px;
+		font-family: 'Space Mono', monospace;
+		font-size: 10px;
+		color: rgba(255,255,255,0.5);
+		background: rgba(0,0,0,0.6);
+		padding: 1px 5px;
+		border-radius: 4px;
+	}
+
+	.skip-hint {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 13px;
+		color: rgba(255,255,255,0.25);
+		text-align: center;
+		margin-top: 16px;
+	}
+
+	/* ── Style cards ─────────────────────────────────────────────────────── */
+	.style-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
+
+	.style-card {
+		background: rgba(255,255,255,0.03);
+		border: 1.5px solid rgba(255,255,255,0.07);
+		border-radius: 14px;
+		padding: 20px;
+		text-align: left;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.style-card:hover {
+		border-color: rgba(255,255,255,0.15);
+	}
+	.style-card.selected {
+		border-color: rgba(232,255,72,0.4);
+		background: rgba(232,255,72,0.04);
+	}
+
+	.style-dot {
+		width: 10px; height: 10px;
+		border-radius: 50%;
+		border: 1.5px solid rgba(255,255,255,0.2);
+		margin-bottom: 14px;
+		transition: all 0.15s;
+	}
+	.style-dot.lit {
+		border-color: #E8FF48;
+		background: #E8FF48;
+		box-shadow: 0 0 8px rgba(232,255,72,0.5);
+	}
+
+	.style-name {
+		font-family: 'Fraunces', serif;
+		font-size: 17px;
+		font-weight: 700;
+		color: #fff;
+		margin: 0 0 6px;
+	}
+
+	.style-desc {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 13px;
+		color: rgba(255,255,255,0.35);
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	/* ── Count pills ─────────────────────────────────────────────────────── */
+	.count-pills {
+		display: flex;
+		gap: 8px;
+	}
+
+	.count-pill {
+		padding: 8px 20px;
+		border-radius: 100px;
+		border: 1.5px solid rgba(255,255,255,0.08);
+		background: transparent;
+		font-family: 'Space Mono', monospace;
+		font-size: 13px;
+		color: rgba(255,255,255,0.4);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.count-pill:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.7); }
+	.count-pill.active {
+		border-color: #E8FF48;
+		color: #E8FF48;
+		background: rgba(232,255,72,0.08);
+	}
+
+	/* ── Brand row ───────────────────────────────────────────────────────── */
+	.brand-row {
+		display: flex;
+		gap: 16px;
+		align-items: flex-end;
+	}
+
+	.color-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.color-swatch {
+		width: 44px; height: 44px;
+		border-radius: 10px;
+		border: 1.5px solid rgba(255,255,255,0.1);
+		cursor: pointer;
+		padding: 2px;
+		background: transparent;
+	}
+
+	.color-hex {
+		font-family: 'Space Mono', monospace;
+		font-size: 13px;
+		color: rgba(255,255,255,0.4);
+	}
+
+	/* ── Generate view ───────────────────────────────────────────────────── */
+	.gen-view {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 24px;
+	}
+
+	.gen-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 16px;
+		padding: 80px 32px;
+		text-align: center;
+	}
+
+	.gen-spinner {
+		width: 72px; height: 72px;
+		border-radius: 20px;
+		background: rgba(232,255,72,0.08);
+		border: 1.5px solid rgba(232,255,72,0.2);
+		display: flex; align-items: center; justify-content: center;
+		color: #E8FF48;
+		animation: pulse 1.8s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.6; transform: scale(0.96); }
+	}
+
+	.gen-title {
+		font-family: 'Fraunces', serif;
+		font-size: 32px;
+		font-weight: 900;
+		color: #fff;
+		margin: 0;
+	}
+
+	.gen-sub {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 15px;
+		color: rgba(255,255,255,0.35);
+		margin: 0;
+	}
+
+	.gen-dots {
+		display: flex;
+		gap: 6px;
+	}
+	.gen-dots span {
+		width: 6px; height: 6px;
+		border-radius: 50%;
+		background: #E8FF48;
+		animation: dot 1.4s ease-in-out infinite;
+	}
+	.gen-dots span:nth-child(2) { animation-delay: 0.2s; }
+	.gen-dots span:nth-child(3) { animation-delay: 0.4s; }
+	@keyframes dot {
+		0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+		40% { opacity: 1; transform: scale(1); }
+	}
+
+	.gen-error {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		padding: 60px 32px;
+		color: #f87171;
+		text-align: center;
+	}
+	.gen-error h3 {
+		font-family: 'Fraunces', serif;
+		font-size: 22px;
+		font-weight: 700;
+		color: #fff;
+		margin: 0;
+	}
+	.gen-error p {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 14px;
+		color: rgba(255,255,255,0.4);
+		margin: 0;
+	}
+
+	/* ── Preview area ────────────────────────────────────────────────────── */
+	.preview-header {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 8px;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.preview-meta { }
+	.preview-title {
+		font-family: 'Fraunces', serif;
+		font-size: 22px;
+		font-weight: 700;
+		color: #fff;
+		margin: 0 0 4px;
+	}
+	.preview-count {
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		color: rgba(255,255,255,0.25);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		margin: 0;
+	}
+
+	.preview-actions {
+		display: flex;
+		gap: 8px;
+	}
+
+	.btn-secondary, .btn-video {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 16px;
+		border-radius: 10px;
+		font-family: 'DM Sans', sans-serif;
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s;
+		border: none;
+	}
+
+	.btn-secondary {
+		background: rgba(255,255,255,0.06);
+		color: rgba(255,255,255,0.6);
+		border: 1px solid rgba(255,255,255,0.08);
+	}
+	.btn-secondary:hover { background: rgba(255,255,255,0.1); color: #fff; }
+	.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+	.btn-video {
+		background: rgba(232,255,72,0.1);
+		color: #E8FF48;
+		border: 1px solid rgba(232,255,72,0.25);
+	}
+	.btn-video:hover { background: rgba(232,255,72,0.18); }
+	.btn-video:disabled { opacity: 0.4; cursor: not-allowed; }
+
+	/* ── Filmstrip ───────────────────────────────────────────────────────── */
+	.filmstrip {
+		width: 100%;
+		display: flex;
+		gap: 10px;
+		overflow-x: auto;
+		padding: 8px 4px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(255,255,255,0.1) transparent;
+	}
+
+	.film-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		cursor: pointer;
+		flex-shrink: 0;
+		opacity: 0.5;
+		transition: opacity 0.15s;
+		border-radius: 6px;
+		border: 2px solid transparent;
+	}
+	.film-item:hover { opacity: 0.75; }
+	.film-item.active {
+		opacity: 1;
+		border-color: #E8FF48;
+	}
+
+	.film-num {
+		font-family: 'Space Mono', monospace;
+		font-size: 10px;
+		color: rgba(255,255,255,0.3);
+	}
+
+	/* ── Main preview ────────────────────────────────────────────────────── */
+	.main-preview {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 16px;
+	}
+
+	.preview-nav {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+
+	.nav-arrow {
+		width: 36px; height: 36px;
+		border-radius: 50%;
+		border: 1.5px solid rgba(255,255,255,0.1);
+		background: transparent;
+		color: rgba(255,255,255,0.4);
+		cursor: pointer;
+		display: flex; align-items: center; justify-content: center;
+		transition: all 0.15s;
+	}
+	.nav-arrow:hover:not(:disabled) {
+		border-color: rgba(255,255,255,0.3);
+		color: #fff;
+	}
+	.nav-arrow:disabled { opacity: 0.25; cursor: not-allowed; }
+
+	.nav-count {
+		font-family: 'Space Mono', monospace;
+		font-size: 12px;
+		color: rgba(255,255,255,0.3);
+	}
+
+	.saving-note {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		color: rgba(255,255,255,0.3);
+	}
+	.saving-note.saved { color: rgba(232,255,72,0.6); }
+	.edit-link { color: #E8FF48; text-decoration: underline; }
+
+	/* ── Footer nav ──────────────────────────────────────────────────────── */
+	.wizard-footer {
+		position: fixed;
+		bottom: 0;
+		left: 224px; /* sidebar width */
+		right: 0;
+		padding: 20px 32px;
+		background: rgba(8,8,8,0.95);
+		backdrop-filter: blur(12px);
+		border-top: 1px solid rgba(255,255,255,0.05);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.btn-ghost, .btn-primary {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 10px 20px;
+		border-radius: 10px;
+		font-family: 'DM Sans', sans-serif;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s;
+		border: none;
+	}
+
+	.btn-ghost {
+		background: transparent;
+		color: rgba(255,255,255,0.35);
+		border: 1.5px solid rgba(255,255,255,0.08);
+	}
+	.btn-ghost:hover:not(:disabled) { color: rgba(255,255,255,0.7); }
+	.btn-ghost:disabled { opacity: 0.2; cursor: not-allowed; }
+
+	.btn-primary {
+		background: #E8FF48;
+		color: #0a0a0a;
+		font-weight: 600;
+	}
+	.btn-primary:hover:not(:disabled) {
+		background: #f0ff6e;
+		transform: translateY(-1px);
+	}
+	.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+	.btn-generate { font-size: 14px; }
+
+	:global(.spin) {
+		animation: spin 1s linear infinite;
+	}
+	@keyframes spin { to { transform: rotate(360deg); } }
+</style>

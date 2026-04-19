@@ -9,7 +9,7 @@
 		ChevronLeft, ChevronRight, Plus, Trash2, Save, Download,
 		Type, Palette, AlignLeft, AlignCenter, AlignRight, Bold,
 		Sparkles, Loader, Check, ImagePlus, X, Newspaper, Pencil,
-		Search, Image, RefreshCw, AlertCircle, ChevronDown
+		Search, Image, RefreshCw, AlertCircle, ChevronDown, Video
 	} from 'lucide-svelte';
 
 	const carouselId = $derived($page.params.id);
@@ -229,6 +229,12 @@
 					Export PNG
 				</button>
 			{/if}
+			<!-- Video burner link -->
+			<a href="/dashboard/editor/{carouselId}/video"
+				class="flex items-center gap-1.5 text-xs font-semibold font-body px-3 py-1.5 rounded-lg
+					bg-[#E8FF48]/10 text-[#E8FF48] border border-[#E8FF48]/20 hover:bg-[#E8FF48]/18 transition-all">
+				<Video size={10} /> Make Video
+			</a>
 		</div>
 	</div>
 
