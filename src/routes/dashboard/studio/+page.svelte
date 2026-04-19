@@ -5,9 +5,10 @@
 	import { toPng } from 'html-to-image';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
+	import type { Overlay } from '$lib/types';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
-		Image, Palette, Type, ChevronDown, Search, FlaskConical, Wifi
+		Image, Palette, Type, ChevronDown, Search, FlaskConical, Wifi, Layers
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -73,18 +74,36 @@
 	let articleTitle = $state('');
 
 	// Images — one background per slide
-	let backgroundImages = $state<(string)[]>([]);
+	let backgroundImages = $state<string[]>([]);
+	let backgroundVideos = $state<string[]>([]); // blob URLs — one per slide
 	let generatingImages = $state<boolean[]>([]); // per-slide loading state
 	let showCircle = $state(true);       // toggle — default ON
 	let circleImage = $state('');
 	let generatingCircle = $state(false);
 	let bgError = $state('');
 
-	// Convenience: active slide's background
+	// Convenience: active slide's image / video
 	const backgroundImage = $derived(backgroundImages[activeSlide] ?? '');
+	const backgroundVideo = $derived(backgroundVideos[activeSlide] ?? '');
+
 	function setSlideImage(i: number, url: string) {
 		backgroundImages = backgroundImages.map((img, idx) => idx === i ? url : img);
+		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? '' : v); // clear video
 		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
+	}
+
+	function setSlideVideo(i: number, url: string) {
+		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? url : v);
+		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img); // clear image
+		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
+	}
+
+	function clearSlideBackground(i: number) {
+		// Revoke old blob URL to free memory
+		const old = backgroundVideos[i];
+		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
+		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? '' : v);
+		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img);
 	}
 
 	// Style
@@ -95,6 +114,18 @@
 	let circleX    = $state(772);
 	let circleY    = $state(52);
 	let circleSize = $state(256); // diameter in template px (128–512)
+
+	// Background pan (0–100 %)
+	let bgOffsetX = $state(50); // horizontal: 0=left, 100=right
+	let bgOffsetY = $state(0);  // vertical:   0=top,  100=bottom
+
+	// Image overlays — per slide
+	let slideOverlays = $state<Overlay[][]>([]);
+	const activeOverlays = $derived(slideOverlays[activeSlide] ?? []);
+
+	function setSlideOverlays(i: number, next: Overlay[]) {
+		slideOverlays = slideOverlays.map((o, idx) => idx === i ? next : o);
+	}
 
 	// Export
 	let exporting = $state(false);
@@ -137,10 +168,12 @@
 		fetchingNews = true;
 		newsError = '';
 		activeSlide = 0;
-		// Reset circle position + size to defaults
+		// Reset circle + background to defaults
 		circleX    = 772;
 		circleY    = 52;
 		circleSize = 256;
+		bgOffsetX  = 50;
+		bgOffsetY  = 0;
 
 		try {
 			let hookText = '';
@@ -193,7 +226,9 @@
 			// Show slide 1 immediately
 			slides = [hookText];
 			backgroundImages = [articleImageUrl]; // slide 0 gets article image right away
+			backgroundVideos = ['']; // reset video
 			generatingImages = [false];
+			slideOverlays    = [[]];
 
 			// Generate supporting slide variants first (so we know all slide texts before imaging)
 			if (slideCount > 1) {
@@ -355,7 +390,9 @@
 	async function generateAllSlideImages(articleImageUrl?: string) {
 		// Reset image arrays to match current slide count
 		backgroundImages = new Array(slides.length).fill('');
+		backgroundVideos = new Array(slides.length).fill('');
 		generatingImages = new Array(slides.length).fill(true);
+		slideOverlays    = new Array(slides.length).fill(null).map(() => []);
 
 		// Slide 0: use article image directly if available, otherwise Vertex
 		if (articleImageUrl) {
@@ -402,11 +439,53 @@
 		reader.readAsDataURL(file);
 	}
 
+	function handleVideoUpload(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		// Revoke existing blob if any
+		const old = backgroundVideos[activeSlide];
+		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
+		const url = URL.createObjectURL(file);
+		setSlideVideo(activeSlide, url);
+	}
+
 	function handleCircleUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		const reader = new FileReader();
 		reader.onload = () => { circleImage = reader.result as string; };
+		reader.readAsDataURL(file);
+	}
+
+	function handleOverlayUpload(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		// Reset input so same file can be re-uploaded
+		(e.target as HTMLInputElement).value = '';
+		const reader = new FileReader();
+		reader.onload = () => {
+			const src = reader.result as string;
+			// Measure natural dimensions to lock aspect ratio
+			const img = new window.Image();
+			img.onload = () => {
+				const aspect = img.naturalWidth / img.naturalHeight;
+				const w = Math.min(300, img.naturalWidth);
+				const h = w / aspect;
+				const idx = activeSlide;
+				const newOverlay: Overlay = {
+					id: crypto.randomUUID(),
+					src,
+					// Centre on canvas
+					x: Math.round((1080 - w) / 2),
+					y: Math.round((1350 - h) / 2),
+					w: Math.round(w),
+					h: Math.round(h),
+				};
+				const current = slideOverlays[idx] ?? [];
+				setSlideOverlays(idx, [...current, newOverlay]);
+			};
+			img.src = src;
+		};
 		reader.readAsDataURL(file);
 	}
 
@@ -742,12 +821,58 @@
 							<Sparkles size={11} /> Regenerate all slides
 						{/if}
 					</button>
-					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
-						<Image size={11} /> Upload for this slide
-						<input type="file" accept="image/*" class="hidden" onchange={handleBgUpload} />
-					</label>
+					<!-- Upload row: image + video side by side -->
+					<div class="grid grid-cols-2 gap-2">
+						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
+							<Image size={11} /> Photo
+							<input type="file" accept="image/*" class="hidden" onchange={handleBgUpload} />
+						</label>
+						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
+							<span class="text-base leading-none" style="font-size:11px;">▶</span> Video
+							<input type="file" accept="video/mp4,video/webm,video/quicktime" class="hidden" onchange={handleVideoUpload} />
+						</label>
+					</div>
+
+					<!-- Active video indicator -->
+					{#if backgroundVideo}
+						<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+							<span class="text-cyan-400 text-[11px]">▶</span>
+							<span class="text-[11px] font-mono text-cyan-300 flex-1 truncate">Video background active</span>
+							<button onclick={() => clearSlideBackground(activeSlide)} class="text-white/20 hover:text-red-400 transition-colors text-xs">✕</button>
+						</div>
+					{/if}
+
 					{#if bgError}
 						<p class="text-[10px] font-body text-amber-400/70 leading-relaxed">{bgError}</p>
+					{/if}
+
+					<!-- Position sliders (shown when a background is loaded) -->
+					{#if backgroundImage}
+						<div class="flex flex-col gap-1.5 pt-1">
+							<p class="text-[10px] font-mono text-white/25 uppercase tracking-wider mb-0.5">
+								Position <span class="normal-case text-white/15 font-body">(or drag in preview)</span>
+							</p>
+							<!-- Horizontal -->
+							<div class="flex items-center gap-2.5">
+								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">←</span>
+								<input
+									type="range" min="0" max="100" step="1"
+									bind:value={bgOffsetX}
+									class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+								/>
+								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">→</span>
+							</div>
+							<!-- Vertical -->
+							<div class="flex items-center gap-2.5">
+								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">↑</span>
+								<input
+									type="range" min="0" max="100" step="1"
+									bind:value={bgOffsetY}
+									class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+								/>
+								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">↓</span>
+							</div>
+						</div>
 					{/if}
 				</div>
 			</div>
@@ -823,6 +948,55 @@
 			<!-- Divider -->
 			<div class="border-t border-white/[0.05] my-3"></div>
 
+			<!-- ── Image Overlays ─────────────────────────────────────────── -->
+			<div>
+				<div class="flex items-center justify-between mb-2">
+					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider flex items-center gap-1.5">
+						<Layers size={9} />Image Overlays
+					</label>
+					{#if activeOverlays.length > 0}
+						<span class="text-[10px] font-mono text-white/20">{activeOverlays.length} layer{activeOverlays.length !== 1 ? 's' : ''}</span>
+					{/if}
+				</div>
+
+				<!-- Upload button -->
+				<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/50 glass glass-hover border border-white/[0.08] hover:border-white/20 transition-all cursor-pointer w-full mb-2">
+					<Image size={11} /> Add Image (PNG / JPG / GIF)
+					<input type="file" accept="image/*" class="hidden" onchange={handleOverlayUpload} />
+				</label>
+
+				<!-- Active overlays list -->
+				{#if activeOverlays.length > 0}
+					<div class="flex flex-col gap-1.5">
+						{#each activeOverlays as ov, i (ov.id)}
+							<div class="flex items-center gap-2 p-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+								<!-- Thumbnail -->
+								<img src={ov.src} alt="overlay {i+1}" class="w-8 h-8 rounded object-contain bg-white/[0.05] flex-shrink-0" />
+								<div class="flex-1 min-w-0">
+									<p class="text-[11px] font-mono text-white/50 truncate">Layer {i + 1}</p>
+									<p class="text-[10px] font-body text-white/25">{Math.round(ov.w)} × {Math.round(ov.h)}px</p>
+								</div>
+								<button
+									onclick={() => setSlideOverlays(activeSlide, activeOverlays.filter(o => o.id !== ov.id))}
+									class="text-white/20 hover:text-red-400 transition-colors flex-shrink-0 p-1"
+									title="Remove overlay"
+								>✕</button>
+							</div>
+						{/each}
+					</div>
+					<p class="text-[10px] font-body text-white/15 mt-1.5 leading-relaxed">
+						Drag to move · corner ⤡ to resize
+					</p>
+				{:else}
+					<p class="text-[10px] font-body text-white/20 leading-relaxed">
+						Upload a PNG logo, sticker, or watermark — drag it anywhere on the canvas.
+					</p>
+				{/if}
+			</div>
+
+			<!-- Divider -->
+			<div class="border-t border-white/[0.05] my-3"></div>
+
 			<!-- Export -->
 			<button onclick={exportPng} disabled={exporting}
 				class="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all disabled:opacity-50">
@@ -883,7 +1057,10 @@
 				bind:circleX
 				bind:circleY
 				bind:circleSize
+				bind:bgOffsetX
+				bind:bgOffsetY
 				backgroundImage={backgroundImage}
+				backgroundVideo={backgroundVideo}
 				circleImage={showCircle ? circleImage : ''}
 				text={overlayText}
 				source={source}
@@ -891,8 +1068,10 @@
 				textColor={textColor}
 				scale={previewScale}
 				interactive={true}
+				overlays={activeOverlays}
 				onTextChange={(t) => setActiveSlideText(t)}
 				onCircleMove={(x, y) => { circleX = x; circleY = y; }}
+				onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
 			/>
 		</div>
 
@@ -919,6 +1098,11 @@
 								<!-- Per-slide image spinner -->
 								<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
 									<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
+								</div>
+							{:else if backgroundVideos[i]}
+								<!-- Video thumbnail — just show a dark bg with play icon -->
+								<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
+									<span class="text-cyan-400 opacity-80" style="font-size:14px;">▶</span>
 								</div>
 							{:else if backgroundImages[i]}
 								<img src={backgroundImages[i]} alt="" class="w-full h-full object-cover opacity-70" />
