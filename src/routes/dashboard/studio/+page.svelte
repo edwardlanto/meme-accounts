@@ -74,6 +74,7 @@
 	// Images — one background per slide
 	let backgroundImages = $state<(string)[]>([]);
 	let generatingImages = $state<boolean[]>([]); // per-slide loading state
+	let showCircle = $state(true);       // toggle — default ON
 	let circleImage = $state('');
 	let generatingCircle = $state(false);
 	let bgError = $state('');
@@ -192,10 +193,15 @@
 				generatingVariants = false;
 			}
 
-			// Now generate a unique Vertex image for every slide in parallel
-			// Slide 0: if we have an article image, keep it; otherwise generate from title
-			// Slides 1+: always generate from their own text copy
-			await generateAllSlideImages(articleImageUrl);
+			// Generate unique Vertex image per slide in parallel
+			// Slide 0: keep article image if available; otherwise generate from title
+			// Slides 1+: generate from their own text copy
+			const imagePromise = generateAllSlideImages(articleImageUrl);
+
+			// Auto-generate circle badge if toggle is on
+			if (showCircle) generateCircleImage();
+
+			await imagePromise;
 
 		} catch (e: any) {
 			newsError = e.message;
@@ -292,22 +298,20 @@
 		await Promise.all(promises);
 	}
 
-	// ── Generate circle image ─────────────────────────────────────────────
+	// ── Generate circle image via Vertex ─────────────────────────────────
 	async function generateCircleImage() {
 		generatingCircle = true;
-
 		try {
-			const prompt = `A single striking visual that represents: ${articleTitle || overlayText.replace(/\[\[|\]\]/g, '')}. Square composition, centered subject, bold colors.`;
+			const context = articleTitle || overlayText.replace(/\[\[|\]\]/g, '');
+			const prompt = `Bold editorial close-up photo representing: "${context}". Square crop, single strong subject, dramatic lighting, no text.`;
 			const res = await fetch('/api/vertex', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ prompt, aspect: '1:1' }),
 			});
-
 			const data = await res.json();
 			if (data.dataUrl) circleImage = data.dataUrl;
 		} catch { /* ignore */ }
-
 		generatingCircle = false;
 	}
 
@@ -590,29 +594,60 @@
 				</div>
 			</div>
 
-			<!-- Circle image -->
+			<!-- Circle badge -->
 			<div>
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Circle Badge (optional)</label>
-				<div class="flex flex-col gap-2">
-					<button onclick={generateCircleImage} disabled={generatingCircle}
-						class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
-						{#if generatingCircle}
-							<Loader size={11} class="animate-spin" /> Generating...
-						{:else}
-							<Sparkles size={11} /> Generate with AI
-						{/if}
+				<!-- Header row with toggle -->
+				<div class="flex items-center justify-between mb-2">
+					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Circle Badge</label>
+					<button
+						onclick={() => { showCircle = !showCircle; if (!showCircle) circleImage = ''; }}
+						class="relative w-9 h-[18px] rounded-full transition-colors duration-200 flex-shrink-0
+							{showCircle ? 'bg-cyan-500/40' : 'bg-white/[0.08]'}"
+					>
+						<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full shadow transition-transform duration-200
+							{showCircle ? 'translate-x-[18px] bg-cyan-400' : 'translate-x-0 bg-white/30'}">
+						</span>
 					</button>
-					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
-						<Image size={11} /> Upload circle image
-						<input type="file" accept="image/*" class="hidden" onchange={handleCircleUpload} />
-					</label>
-					{#if circleImage}
-						<button onclick={() => circleImage = ''}
-							class="text-[10px] font-mono text-red-400/60 hover:text-red-400 transition-colors text-left">
-							✕ Remove circle
-						</button>
-					{/if}
 				</div>
+
+				{#if showCircle}
+					<div class="flex flex-col gap-2">
+						<!-- Preview + spinner -->
+						{#if generatingCircle}
+							<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+								<div class="w-8 h-8 rounded-full bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+									<Loader size={12} class="animate-spin text-cyan-400" />
+								</div>
+								<span class="text-[11px] font-mono text-white/30">Generating…</span>
+							</div>
+						{:else if circleImage}
+							<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+								<img src={circleImage} alt="circle badge" class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-white/10" />
+								<span class="text-[11px] font-mono text-white/30 flex-1">Auto-generated</span>
+								<button onclick={generateCircleImage} title="Regenerate" class="text-white/20 hover:text-cyan-400 transition-colors">
+									<RefreshCw size={11} />
+								</button>
+								<button onclick={() => circleImage = ''} title="Remove" class="text-white/20 hover:text-red-400 transition-colors">
+									✕
+								</button>
+							</div>
+						{/if}
+
+						<!-- Action buttons -->
+						<button onclick={generateCircleImage} disabled={generatingCircle}
+							class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
+							{#if generatingCircle}
+								<Loader size={11} class="animate-spin" /> Generating…
+							{:else}
+								<Sparkles size={11} /> {circleImage ? 'Regenerate' : 'Generate'} with AI
+							{/if}
+						</button>
+						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
+							<Image size={11} /> Upload custom image
+							<input type="file" accept="image/*" class="hidden" onchange={handleCircleUpload} />
+						</label>
+					</div>
+				{/if}
 			</div>
 
 			<!-- Divider -->
@@ -676,7 +711,7 @@
 			<NewsTemplate
 				bind:exportRef
 				backgroundImage={backgroundImage}
-				circleImage={circleImage}
+				circleImage={showCircle ? circleImage : ''}
 				text={overlayText}
 				source={source}
 				highlightColor={highlightColor}
