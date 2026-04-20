@@ -118,7 +118,7 @@
 		exportingAll = false;
 	}
 
-	const PREVIEW_W  = 360;
+	const PREVIEW_W  = 520;
 	const previewScale = $derived(PREVIEW_W / 1080);
 	const THUMB_W    = 88;
 	const thumbScale = THUMB_W / 1080;

@@ -990,6 +990,23 @@ ${inlineEditScript}
 					</div>
 				{/each}
 			</div>
+
+			<!-- Slide placeholders for selected count -->
+			<div class="mt-6 w-full max-w-xl">
+				<div class="flex items-center justify-center gap-2 overflow-x-auto pb-1 px-1">
+					{#each Array.from({ length: slideCount }, (_, i) => i) as i (i)}
+						<div
+							class="flex-shrink-0 rounded-xl bg-white/[0.02] border border-white/[0.06] border-dashed"
+							style="width: 64px; height: 80px;"
+							aria-label={`Placeholder slide ${i + 1}`}
+						>
+							<div class="w-full h-full flex items-center justify-center">
+								<span class="text-[10px] font-mono text-white/15">{i + 1}</span>
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
 		</div>
 	{/if}
 

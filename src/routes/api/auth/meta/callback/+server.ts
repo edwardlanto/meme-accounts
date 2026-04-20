@@ -92,6 +92,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 			accessToken
 		);
 
+		const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+
 		const connections: Array<{
 			provider_account_id: string;
 			provider_account_label: string;
@@ -103,6 +105,23 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		for (const p of pages.data ?? []) {
 			// page token is needed for some fields; use it if provided
 			const pageToken = p.access_token ?? accessToken;
+
+			// Save Facebook Page connection (used for scheduling/publishing to Pages)
+			await supabase.from('social_connections').upsert(
+				{
+					user_id: userId,
+					provider: 'meta',
+					provider_account_id: `fbpage:${p.id}`,
+					provider_account_label: `Facebook Page — ${p.name}`,
+					access_token: pageToken,
+					refresh_token: null,
+					expires_at: expiresAt,
+					scopes: (env.META_SCOPES ?? '').split(',').filter(Boolean),
+					meta: { kind: 'facebook_page', page_id: p.id, page_name: p.name },
+				},
+				{ onConflict: 'user_id,provider,provider_account_id' }
+			);
+
 			const page = await graphGet<any>(`${p.id}?fields=instagram_business_account`, pageToken);
 			const igId = page?.instagram_business_account?.id as string | undefined;
 			if (igId) {
@@ -115,8 +134,6 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 				});
 			}
 		}
-
-		const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
 
 		// If no IG business account was found, still store the Meta token to allow later selection
 		if (connections.length === 0) {

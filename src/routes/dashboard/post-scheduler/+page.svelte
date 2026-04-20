@@ -170,6 +170,82 @@
 		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
 
+	async function connectFacebookPages() {
+		// Uses the same Meta OAuth; callback now saves Facebook Page connections too.
+		try {
+			const res = await fetch('/api/integrations/meta/status');
+			const st = (await res.json()) as { ok: boolean; missing: string[] };
+			if (!st.ok) {
+				alert(`Facebook connect needs credentials: ${st.missing.join(', ')}.\n\nGo to Settings → Integrations to add them.`);
+				goto('/dashboard/settings?integrations=1#instagram');
+				return;
+			}
+		} catch {
+			alert('Could not verify Meta credentials. Open Settings → Integrations.');
+			goto('/dashboard/settings?integrations=1#instagram');
+			return;
+		}
+
+		if (!userId) {
+			alert('Please sign in before connecting Facebook.');
+			goto('/login');
+			return;
+		}
+
+		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+
+	async function connectLinkedIn(mode: 'member' | 'org' | 'both') {
+		try {
+			const res = await fetch('/api/integrations/linkedin/status');
+			const st = (await res.json()) as { ok: boolean; missing: string[] };
+			if (!st.ok) {
+				alert(`LinkedIn connect needs credentials: ${st.missing.join(', ')}.\n\nGo to Settings → Integrations to add them.`);
+				goto('/dashboard/settings?integrations=1#linkedin');
+				return;
+			}
+		} catch {
+			alert('Could not verify LinkedIn credentials. Open Settings → Integrations.');
+			goto('/dashboard/settings?integrations=1#linkedin');
+			return;
+		}
+
+		if (!userId) {
+			alert('Please sign in before connecting LinkedIn.');
+			goto('/login');
+			return;
+		}
+
+		window.location.href =
+			`/api/auth/linkedin/start?userId=${encodeURIComponent(userId)}` +
+			`&mode=${encodeURIComponent(mode)}` +
+			`&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+
+	async function connectGmb() {
+		try {
+			const res = await fetch('/api/integrations/gmb/status');
+			const st = (await res.json()) as { ok: boolean; missing: string[] };
+			if (!st.ok) {
+				alert(`Google My Business connect needs credentials: ${st.missing.join(', ')}.\n\nGo to Settings → Integrations to add them.`);
+				goto('/dashboard/settings?integrations=1#gmb');
+				return;
+			}
+		} catch {
+			alert('Could not verify Google My Business credentials. Open Settings → Integrations.');
+			goto('/dashboard/settings?integrations=1#gmb');
+			return;
+		}
+
+		if (!userId) {
+			alert('Please sign in before connecting Google My Business.');
+			goto('/login');
+			return;
+		}
+
+		window.location.href = `/api/auth/gmb/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+
 	function toggleConnected(id: ChannelId) {
 		connected = connected.includes(id) ? connected.filter((x) => x !== id) : [...connected, id];
 	}
@@ -397,7 +473,7 @@
 						{#each weekDays as d (d.toISOString() + ':' + hr)}
 							<div
 								role="presentation"
-								class="relative h-20 border-b border-white/5 border-l border-white/5 hover:bg-white/2 transition-colors"
+								class="relative h-20 border-b border-white/5 border-l hover:bg-white/2 transition-colors"
 								ondragover={allowDrop}
 								ondrop={(e) => dropToSlot(e, d, hr)}
 							>
@@ -465,7 +541,19 @@
 						<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
 							{#each CHANNELS as ch (ch.id)}
 								<button
-									onclick={() => ch.id === 'instagramBusiness' ? connectInstagramBusiness() : toggleConnected(ch.id)}
+									onclick={() =>
+										ch.id === 'instagramBusiness'
+											? connectInstagramBusiness()
+											: ch.id === 'facebookPage'
+												? connectFacebookPages()
+											: ch.id === 'linkedin'
+												? connectLinkedIn('member')
+												: ch.id === 'linkedinPage'
+													? connectLinkedIn('org')
+													: ch.id === 'gmb'
+														? connectGmb()
+													: toggleConnected(ch.id)
+									}
 									class="group rounded-2xl bg-white/2 border border-white/6 hover:bg-white/4 transition-colors p-3 flex flex-col items-center gap-2">
 									<div class="w-11 h-11 rounded-2xl bg-white/3 border border-white/6 flex items-center justify-center">
 										<div>{@html ch.icon(connected.includes(ch.id))}</div>

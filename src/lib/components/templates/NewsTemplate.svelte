@@ -19,6 +19,7 @@
 		circleSize?: number;  // diameter in template px (bindable)
 		bgOffsetX?: number;   // background horizontal position 0–100% (bindable)
 		bgOffsetY?: number;   // background vertical position 0–100% (bindable)
+		textPanelOffsetY?: number; // bottom text panel offset (bindable, px)
 		overlays?: Overlay[];
 		onTextChange?: (t: string) => void;
 		onCircleMove?: (x: number, y: number) => void;
@@ -40,7 +41,8 @@
 		circleY    = $bindable(52),
 		circleSize = $bindable(256),
 		bgOffsetX  = $bindable(50),
-		bgOffsetY  = $bindable(0),
+		bgOffsetY  = $bindable(50),
+		textPanelOffsetY = $bindable(0),
 		overlays   = [],
 		onTextChange,
 		onCircleMove,
@@ -67,6 +69,13 @@
 	let editing = $state(false);
 	let editableEl = $state<HTMLElement | null>(null);
 	let hoveringText = $state(false);
+
+	// ── Text panel drag (HTML) ─────────────────────────────────────────────
+	const TEXT_PANEL_H = 520; // must match visual design; used for clamp range
+	let textDragging = $state(false);
+	let textStartY = 0;
+	let textStartOffset = 0;
+	let textMoved = false;
 
 	function startEdit(e: MouseEvent) {
 		if (!interactive) return;
@@ -98,13 +107,50 @@
 		if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); finishEdit(); }
 	}
 
+	function textPointerDown(e: PointerEvent) {
+		if (!interactive) return;
+		if (editing) return;
+		textDragging = true;
+		textMoved = false;
+		textStartY = e.clientY;
+		textStartOffset = textPanelOffsetY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+	}
+
+	function textPointerMove(e: PointerEvent) {
+		if (!textDragging) return;
+		const dy = (e.clientY - textStartY) / scale;
+		if (Math.abs(dy) > 4) textMoved = true;
+
+		// Allow dragging panel from its base position (0) all the way up to top
+		const baseTop = H - TEXT_PANEL_H; // y where panel starts (in template px)
+		const minOffset = -baseTop;
+		const maxOffset = 0;
+		textPanelOffsetY = Math.max(minOffset, Math.min(maxOffset, textStartOffset + dy));
+	}
+
+	function textPointerUp(e: PointerEvent) {
+		if (!textDragging) return;
+		textDragging = false;
+		// If this was effectively a click (not a drag), enter edit mode.
+		if (!textMoved) {
+			startEdit(e as any);
+		}
+	}
+
 	// ── Circle drag ────────────────────────────────────────────────────────
 	let dragging = $state(false);
+	let resizingCircle = $state(false);
 	let lastMx = 0;
 	let lastMy = 0;
+	let circleStartSize = 0;
+	let circleResizeStartMx = 0;
+	let circleResizeStartMy = 0;
 
 	function circlePointerDown(e: PointerEvent) {
 		if (!interactive) return;
+		if (resizingCircle) return;
 		dragging = true;
 		lastMx = e.clientX;
 		lastMy = e.clientY;
@@ -114,7 +160,7 @@
 	}
 
 	function circlePointerMove(e: PointerEvent) {
-		if (!dragging) return;
+		if (!dragging || resizingCircle) return;
 		const dx = (e.clientX - lastMx) / scale;
 		const dy = (e.clientY - lastMy) / scale;
 		lastMx = e.clientX;
@@ -128,6 +174,34 @@
 
 	function circlePointerUp() {
 		dragging = false;
+	}
+
+	function circleResizeDown(e: PointerEvent) {
+		if (!interactive) return;
+		resizingCircle = true;
+		circleStartSize = circleSize;
+		circleResizeStartMx = e.clientX;
+		circleResizeStartMy = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function circleResizeMove(e: PointerEvent) {
+		if (!resizingCircle) return;
+		const dx = (e.clientX - circleResizeStartMx) / scale;
+		const dy = (e.clientY - circleResizeStartMy) / scale;
+		const delta = Math.max(dx, dy);
+		const nextSize = Math.round(Math.max(128, Math.min(512, circleStartSize + delta)));
+		// Keep circle in bounds as it grows/shrinks
+		circleSize = nextSize;
+		circleX = Math.max(0, Math.min(W - circleSize, circleX));
+		circleY = Math.max(0, Math.min(H - circleSize, circleY));
+		onCircleMove?.(circleX, circleY);
+	}
+
+	function circleResizeUp() {
+		resizingCircle = false;
 	}
 
 	// ── Background pan ─────────────────────────────────────────────────────
@@ -219,6 +293,45 @@
 		onOverlaysChange?.(overlays.filter(o => o.id !== id));
 	}
 
+	// ── Add overlay image (upload) ─────────────────────────────────────────
+	let overlayInputEl = $state<HTMLInputElement | null>(null);
+
+	function openOverlayPicker(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		overlayInputEl?.click();
+	}
+
+	function onOverlayFile(e: Event) {
+		if (!interactive) return;
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		// reset input so same file can be re-added
+		(e.target as HTMLInputElement).value = '';
+
+		const reader = new FileReader();
+		reader.onload = () => {
+			const src = reader.result as string;
+			const img = new window.Image();
+			img.onload = () => {
+				const aspect = img.naturalWidth / img.naturalHeight;
+				const w0 = Math.min(320, img.naturalWidth || 320);
+				const h0 = w0 / aspect;
+				const next: Overlay = {
+					id: crypto.randomUUID(),
+					src,
+					w: Math.round(w0),
+					h: Math.round(h0),
+					x: Math.round((W - w0) / 2),
+					y: Math.round((H - h0) / 2),
+				};
+				onOverlaysChange?.([...(overlays ?? []), next]);
+			};
+			img.src = src;
+		};
+		reader.readAsDataURL(file);
+	}
+
 	// ── Pattern rendering helpers ──────────────────────────────────────────
 	function patternStyle(patternImage: string | undefined): string {
 		if (!patternImage) return '';
@@ -258,6 +371,38 @@
 			{interactive ? 'user-select: none;' : ''}
 		"
 	>
+		<!-- Add overlay image (upload) -->
+		{#if interactive}
+			<!-- svelte-ignore a11y_consider_explicit_label -->
+			<button
+				onclick={openOverlayPicker}
+				style="
+					position: absolute;
+					top: 18px; left: 18px;
+					z-index: 30;
+					padding: 10px 12px;
+					border-radius: 999px;
+					background: rgba(0,0,0,0.55);
+					border: 1px solid rgba(255,255,255,0.18);
+					color: rgba(255,255,255,0.85);
+					font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+					font-size: 14px;
+					letter-spacing: 0;
+					cursor: pointer;
+					backdrop-filter: blur(6px);
+				"
+			>
+				＋ Add image
+			</button>
+			<input
+				bind:this={overlayInputEl}
+				type="file"
+				accept="image/*"
+				style="display:none"
+				onchange={onOverlayFile}
+			/>
+		{/if}
+
 		<!-- Background: video takes priority over image -->
 		{#if backgroundVideo}
 			<!-- svelte-ignore a11y_media_has_caption -->
@@ -306,6 +451,7 @@
 				onpointermove={bgPointerMove}
 				onpointerup={bgPointerUp}
 				onpointercancel={bgPointerUp}
+				role="presentation"
 			></div>
 		{/if}
 
@@ -346,6 +492,7 @@
 				onpointercancel={overlayPointerUp}
 				onmouseenter={() => hoveredOverlayId = overlay.id}
 				onmouseleave={() => { if (hoveredOverlayId === overlay.id) hoveredOverlayId = null; }}
+				role="presentation"
 			>
 				<img
 					src={overlay.src}
@@ -387,6 +534,7 @@
 						onpointermove={(e) => overlayPointerMove(e, overlay.id)}
 						onpointerup={overlayPointerUp}
 						onpointercancel={overlayPointerUp}
+						role="presentation"
 					>⤡</div>
 
 					<!-- Selection outline -->
@@ -420,6 +568,7 @@
 				onpointermove={circlePointerMove}
 				onpointerup={circlePointerUp}
 				onpointercancel={circlePointerUp}
+				role="presentation"
 			>
 				<img
 					src={circleImage}
@@ -444,6 +593,26 @@
 						font-size: 22px; color: rgba(255,255,255,0.8);
 						pointer-events: none;
 					">⠿</div>
+					<!-- Resize handle (drag corner) -->
+					<div
+						style="
+							position: absolute;
+							right: -10px; bottom: -10px;
+							width: 26px; height: 26px;
+							border-radius: 8px;
+							background: rgba(0,0,0,0.85);
+							border: 2px solid rgba(255,255,255,0.45);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 12px; color: rgba(255,255,255,0.85);
+							cursor: nwse-resize;
+							touch-action: none;
+						"
+						onpointerdown={circleResizeDown}
+						onpointermove={circleResizeMove}
+						onpointerup={circleResizeUp}
+						onpointercancel={circleResizeUp}
+						role="presentation"
+					>⤡</div>
 				{/if}
 			</div>
 		{/if}
@@ -455,11 +624,14 @@
 				bottom: 0; left: 0; right: 0;
 				padding: 48px 64px 72px;
 				z-index: 10;
-				{interactive && !editing ? 'cursor: text;' : ''}
+				transform: translateY({textPanelOffsetY}px);
+				{interactive && !editing ? 'cursor: grab;' : ''}
 			"
-			onclick={startEdit}
+			onpointerdown={textPointerDown}
+			onpointermove={textPointerMove}
+			onpointerup={textPointerUp}
+			onpointercancel={textPointerUp}
 			role={interactive ? 'button' : undefined}
-			tabindex={interactive ? 0 : undefined}
 			onmouseenter={() => hoveringText = true}
 			onmouseleave={() => hoveringText = false}
 		>

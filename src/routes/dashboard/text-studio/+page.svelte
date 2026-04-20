@@ -128,7 +128,7 @@
 	}
 
 	// ── Preview scale ─────────────────────────────────────────────────────────
-	const PREVIEW_W = 360;
+	const PREVIEW_W = 520;
 	const previewScale = $derived(PREVIEW_W / 1080);
 
 	const THUMB_W = 88;

@@ -118,7 +118,10 @@
 
 	// Background pan (0–100 %)
 	let bgOffsetX = $state(50); // horizontal: 0=left, 100=right
-	let bgOffsetY = $state(0);  // vertical:   0=top,  100=bottom
+	let bgOffsetY = $state(50);  // vertical:   0=top,  100=bottom
+
+	// Text panel drag (template px)
+	let textPanelOffsetY = $state(0);
 
 	// Image overlays — per slide
 	let slideOverlays = $state<Overlay[][]>([]);
@@ -517,7 +520,7 @@
 	}
 
 	// Preview scale — fit within container
-	const PREVIEW_WIDTH = 340;
+	const PREVIEW_WIDTH = 520;
 	const previewScale = $derived(PREVIEW_WIDTH / 1080);
 </script>
 
@@ -828,11 +831,11 @@
 					<div class="grid grid-cols-2 gap-2">
 						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
 							<Image size={11} /> Photo
-							<input type="file" accept="image/*" class="hidden" onchange={handleBgUpload} />
+							<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
 						</label>
 						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
 							<span class="text-base leading-none" style="font-size:11px;">▶</span> Video
-							<input type="file" accept="video/mp4,video/webm,video/quicktime" class="hidden" onchange={handleVideoUpload} />
+							<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
 						</label>
 					</div>
 
@@ -942,7 +945,7 @@
 						</button>
 						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
 							<Image size={11} /> Upload custom image
-							<input type="file" accept="image/*" class="hidden" onchange={handleCircleUpload} />
+							<input type="file" accept="image/*" class="sr-only" onchange={handleCircleUpload} />
 						</label>
 					</div>
 				{/if}
@@ -965,7 +968,7 @@
 				<!-- Upload button -->
 				<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/50 glass glass-hover border border-white/[0.08] hover:border-white/20 transition-all cursor-pointer w-full mb-2">
 					<Image size={11} /> Add Image (PNG / JPG / GIF)
-					<input type="file" accept="image/*" class="hidden" onchange={handleOverlayUpload} />
+					<input type="file" accept="image/*" class="sr-only" onchange={handleOverlayUpload} />
 				</label>
 
 				<!-- Active overlays list -->
@@ -1031,11 +1034,11 @@
 				‹
 			</button>
 			<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">
-				{slides.length > 1 ? `Slide ${activeSlide + 1} / ${slides.length} — ` : ''}1080 × 1350
+				{slideCount > 1 ? `Slide ${activeSlide + 1} / ${slideCount} — ` : ''}1080 × 1350
 			</p>
 			<button
-				onclick={() => activeSlide = Math.min(slides.length - 1, activeSlide + 1)}
-				disabled={activeSlide === slides.length - 1}
+				onclick={() => activeSlide = Math.min(slideCount - 1, activeSlide + 1)}
+				disabled={activeSlide === slideCount - 1}
 				class="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/30 hover:text-white hover:border-white/30 disabled:opacity-20 disabled:cursor-not-allowed transition-all">
 				›
 			</button>
@@ -1062,6 +1065,7 @@
 				bind:circleSize
 				bind:bgOffsetX
 				bind:bgOffsetY
+				bind:textPanelOffsetY
 				backgroundImage={backgroundImage}
 				backgroundVideo={backgroundVideo}
 				circleImage={showCircle ? circleImage : ''}
@@ -1084,26 +1088,28 @@
 			</p>
 		{/if}
 
-		<!-- Slide filmstrip (shown when >1 slide) -->
-		{#if slides.length > 1}
+		<!-- Slide filmstrip (placeholders for selected slide count) -->
+		{#if slideCount > 1}
 			<div class="flex gap-2 overflow-x-auto max-w-full pb-1 px-1">
-				{#each slides as slideText, i}
+				{#each Array.from({ length: slideCount }, (_, i) => i) as i (i)}
+					{@const slideText = slides[i] ?? ''}
+					{@const isPlaceholder = !slides[i]}
 					<button
 						onclick={() => activeSlide = i}
 						class="flex-shrink-0 flex flex-col items-center gap-1 group"
 					>
-						<!-- Mini preview card -->
-						<div class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all
-							{activeSlide === i ? 'border-violet-500' : 'border-white/[0.06] group-hover:border-white/20'}
-							bg-[#111] relative">
+						<div class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
+							{activeSlide === i ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}">
 
 							{#if generatingImages[i]}
-								<!-- Per-slide image spinner -->
 								<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
 									<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
 								</div>
+							{:else if isPlaceholder}
+								<div class="absolute inset-0 flex items-center justify-center text-white/15">
+									<span class="text-[10px] font-mono">#{i + 1}</span>
+								</div>
 							{:else if backgroundVideos[i]}
-								<!-- Video thumbnail — just show a dark bg with play icon -->
 								<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
 									<span class="text-cyan-400 opacity-80" style="font-size:14px;">▶</span>
 								</div>
@@ -1111,13 +1117,14 @@
 								<img src={backgroundImages[i]} alt="" class="w-full h-full object-cover opacity-70" />
 							{/if}
 
-							<!-- Text overlay on thumb -->
-							<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
-								<p class="text-white leading-tight line-clamp-3"
-									style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
-									{slideText.replace(/\[\[|\]\]/g, '')}
-								</p>
-							</div>
+							{#if !isPlaceholder}
+								<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
+									<p class="text-white leading-tight line-clamp-3"
+										style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
+										{slideText.replace(/\[\[|\]\]/g, '')}
+									</p>
+								</div>
+							{/if}
 						</div>
 						<span class="text-[9px] font-mono {activeSlide === i ? 'text-violet-400' : 'text-white/20'}">
 							{i === 0 ? 'Hook' : `Slide ${i + 1}`}

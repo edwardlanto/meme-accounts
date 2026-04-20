@@ -12,7 +12,7 @@
 	import type { Overlay } from '$lib/types';
 	import {
 		Download, Loader, Copy, Plus, Trash2, CheckSquare, Square,
-		Image, Layers, Bird, Type, FileText, Newspaper,
+		Image, Layers, Bird, Type, FileText, Newspaper, Calendar,
 		Sparkles, RefreshCw, Search, FlaskConical, Wifi,
 		AlertCircle, Palette, ChevronDown
 	} from 'lucide-svelte';
@@ -42,6 +42,7 @@
 		circleImage: string; showCircle: boolean;
 		circleX: number; circleY: number; circleSize: number;
 		bgOffsetX: number; bgOffsetY: number;
+		textPanelOffsetY: number;
 		highlightColor: string; textColor: string;
 		highlightMode: 'solid' | 'pattern';
 		overlays: Overlay[];
@@ -71,7 +72,7 @@
 		return { text:'', image:'', accentColor:'#3ecf8e', bgColor:'#000000', logoSrc:'', logoRingColor:'#c9b97a', showSwipe:true, swipeText:'«« Swipe' };
 	}
 	function blankNews(): NewsData {
-		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:50, bgOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
+		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:50, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
 	}
 	function blankImageQuote(): ImageQuoteData {
 		return {
@@ -283,7 +284,7 @@
 	}
 
 	// ── Scales ────────────────────────────────────────────────────────────────
-	const PREVIEW_W  = 360;
+	const PREVIEW_W  = 520;
 	const THUMB_W    = 88;
 	const previewScale = $derived(PREVIEW_W / 1080);
 	const thumbScale   = THUMB_W / 1080;
@@ -411,7 +412,7 @@
 				<div class="w-9 h-9 rounded-full overflow-hidden bg-white/[0.06] flex-shrink-0 flex items-center justify-center">
 					{#if s.tweet.topAvatar}<img src={s.tweet.topAvatar} alt="" class="w-full h-full object-cover" />{:else}<span class="text-[10px] font-bold text-white/30">{s.tweet.topName.replace(/[^\w\s]/g,'').trim()[0]?.toUpperCase()??'?'}</span>{/if}
 				</div>
-				<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.tweet.topAvatar?'Change':'Upload'} avatar<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>slides[activeIdx].tweet.topAvatar=v)} /></label>
+								<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.tweet.topAvatar?'Change':'Upload'} avatar<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>slides[activeIdx].tweet.topAvatar=v)} /></label>
 				{#if s.tweet.topAvatar}<button onclick={()=>slides[activeIdx].tweet.topAvatar=''} class="text-white/20 hover:text-red-400 text-xs">✕</button>{/if}
 			</div>
 			<div class="flex flex-col gap-2 mb-2">
@@ -423,7 +424,7 @@
 			{#if s.tweet.topImage}
 				<div class="relative rounded-xl overflow-hidden mb-2"><img src={s.tweet.topImage} alt="" class="w-full h-20 object-cover" /><button onclick={()=>slides[activeIdx].tweet.topImage=''} class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs flex items-center justify-center hover:bg-red-500/80">✕</button></div>
 			{:else}
-				<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs text-white/25 border border-dashed border-white/[0.07] hover:border-white/20 cursor-pointer transition-colors mb-2"><Image size={11}/>Attach image<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>slides[activeIdx].tweet.topImage=v)} /></label>
+								<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs text-white/25 border border-dashed border-white/[0.07] hover:border-white/20 cursor-pointer transition-colors mb-2"><Image size={11}/>Attach image<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>slides[activeIdx].tweet.topImage=v)} /></label>
 			{/if}
 		</div>
 		<div class="border-t border-white/[0.05]"></div>
@@ -433,7 +434,7 @@
 				<div class="w-9 h-9 rounded-full overflow-hidden bg-white/[0.06] flex-shrink-0 flex items-center justify-center">
 					{#if s.tweet.bottomAvatar}<img src={s.tweet.bottomAvatar} alt="" class="w-full h-full object-cover" />{:else}<span class="text-[10px] font-bold text-white/30">{s.tweet.bottomName.trim()[0]?.toUpperCase()??'?'}</span>{/if}
 				</div>
-				<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.tweet.bottomAvatar?'Change':'Upload'} avatar<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>slides[activeIdx].tweet.bottomAvatar=v)} /></label>
+								<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.tweet.bottomAvatar?'Change':'Upload'} avatar<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>slides[activeIdx].tweet.bottomAvatar=v)} /></label>
 				{#if s.tweet.bottomAvatar}<button onclick={()=>slides[activeIdx].tweet.bottomAvatar=''} class="text-white/20 hover:text-red-400 text-xs">✕</button>{/if}
 			</div>
 			<div class="flex flex-col gap-2 mb-2">
@@ -452,7 +453,7 @@
 				<div class="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center" style="background:{s.text.bgColor};outline:2px solid {s.text.ringColor};outline-offset:2px;">
 					{#if s.text.avatar}<img src={s.text.avatar} alt="" class="w-full h-full object-cover"/>{:else}<span class="text-[10px] font-bold text-white">{s.text.name.replace(/[^\w\s]/g,'').trim().split(/\s+/).map((w:string)=>w[0]?.toUpperCase()??'').slice(0,2).join('')||'?'}</span>{/if}
 				</div>
-				<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.text.avatar?'Change':'Upload'} avatar<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>slides[activeIdx].text.avatar=v)} /></label>
+								<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.text.avatar?'Change':'Upload'} avatar<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>slides[activeIdx].text.avatar=v)} /></label>
 				{#if s.text.avatar}<button onclick={()=>slides[activeIdx].text.avatar=''} class="text-white/20 hover:text-red-400 text-xs">✕</button>{/if}
 			</div>
 			<div class="flex flex-col gap-2">
@@ -484,7 +485,7 @@
 			{#if s.article.image}
 				<div class="relative rounded-xl overflow-hidden"><img src={s.article.image} alt="" class="w-full h-28 object-cover"/><button onclick={()=>slides[activeIdx].article.image=''} class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/70 text-white text-xs flex items-center justify-center hover:bg-red-500/80">✕</button></div>
 			{:else}
-				<label class="flex items-center justify-center gap-2 py-3 rounded-xl text-xs text-white/30 border border-dashed border-white/[0.08] hover:border-emerald-500/30 cursor-pointer transition-colors"><Image size={12}/>Add image (optional)<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>slides[activeIdx].article.image=v)} /></label>
+								<label class="flex items-center justify-center gap-2 py-3 rounded-xl text-xs text-white/30 border border-dashed border-white/[0.08] hover:border-emerald-500/30 cursor-pointer transition-colors"><Image size={12}/>Add image (optional)<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>slides[activeIdx].article.image=v)} /></label>
 			{/if}
 		</div>
 		<div>
@@ -500,7 +501,7 @@
 				<div class="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center" style="background:{s.article.bgColor};outline:2px solid {s.article.logoRingColor};outline-offset:2px;">
 					{#if s.article.logoSrc}<img src={s.article.logoSrc} alt="" class="w-full h-full object-cover"/>{:else}<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z" fill="{s.article.logoRingColor}" stroke="{s.article.logoRingColor}" stroke-width="0.5" stroke-linejoin="round"/></svg>{/if}
 				</div>
-				<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.article.logoSrc?'Change':'Upload'} logo<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>slides[activeIdx].article.logoSrc=v)} /></label>
+								<label class="flex-1 text-[11px] font-mono text-white/30 border border-white/[0.07] rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-white/20 transition-colors">{s.article.logoSrc?'Change':'Upload'} logo<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>slides[activeIdx].article.logoSrc=v)} /></label>
 				{#if s.article.logoSrc}<button onclick={()=>slides[activeIdx].article.logoSrc=''} class="text-white/20 hover:text-red-400 text-xs">✕</button>{/if}
 			</div>
 			<div class="flex items-center gap-2 mb-3"><input type="color" bind:value={slides[activeIdx].article.logoRingColor} class="w-8 h-8 rounded-lg cursor-pointer border border-white/10"/><input bind:value={slides[activeIdx].article.logoRingColor} class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1.5 px-2 text-xs font-mono text-white/70 focus:outline-none"/></div>
@@ -521,7 +522,7 @@
 			{/if}
 			<label class="flex items-center justify-center gap-2 py-3 rounded-xl text-xs text-white/30 border border-dashed border-white/[0.08] hover:border-white/25 cursor-pointer transition-colors">
 				<Image size={12} /> {s.imageQuote.image ? 'Change image' : 'Upload image'}
-				<input type="file" accept="image/*" class="hidden" onchange={(e) => upload(e, (v) => (slides[activeIdx].imageQuote.image = v))} />
+				<input type="file" accept="image/*" class="sr-only" onchange={(e) => upload(e, (v) => (slides[activeIdx].imageQuote.image = v))} />
 			</label>
 		</div>
 
@@ -664,8 +665,8 @@
 			<div class="flex flex-col gap-2">
 				<button onclick={generateBg} disabled={s.news.generatingImage} class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/15 transition-all disabled:opacity-50">{#if s.news.generatingImage}<Loader size={11} class="animate-spin"/>Generating…{:else}<Sparkles size={11}/>Generate with AI{/if}</button>
 				<div class="grid grid-cols-2 gap-2">
-					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.06] hover:border-white/20 cursor-pointer transition-colors"><Image size={11}/>Photo<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>{slides[activeIdx].news.backgroundImage=v;slides[activeIdx].news.backgroundVideo='';})} /></label>
-					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.06] hover:border-white/20 cursor-pointer transition-colors">▶ Video<input type="file" accept="video/mp4,video/webm,video/quicktime" class="hidden" onchange={(e)=>{const f=(e.target as HTMLInputElement).files?.[0];if(f){const old=slides[activeIdx].news.backgroundVideo;if(old?.startsWith('blob:'))URL.revokeObjectURL(old);slides[activeIdx].news.backgroundVideo=URL.createObjectURL(f);slides[activeIdx].news.backgroundImage='';}}} /></label>
+					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.06] hover:border-white/20 cursor-pointer transition-colors"><Image size={11}/>Photo<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>{slides[activeIdx].news.backgroundImage=v;slides[activeIdx].news.backgroundVideo='';})} /></label>
+					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.06] hover:border-white/20 cursor-pointer transition-colors">▶ Video<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={(e)=>{const f=(e.target as HTMLInputElement).files?.[0];if(f){const old=slides[activeIdx].news.backgroundVideo;if(old?.startsWith('blob:'))URL.revokeObjectURL(old);slides[activeIdx].news.backgroundVideo=URL.createObjectURL(f);slides[activeIdx].news.backgroundImage='';}}} /></label>
 				</div>
 				{#if s.news.backgroundVideo}
 					<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20"><span class="text-cyan-400 text-[11px]">▶</span><span class="text-[11px] font-mono text-cyan-300 flex-1 truncate">Video active</span><button onclick={()=>{const old=s.news.backgroundVideo;if(old?.startsWith('blob:'))URL.revokeObjectURL(old);slides[activeIdx].news.backgroundVideo='';}} class="text-white/20 hover:text-red-400 text-xs">✕</button></div>
@@ -693,7 +694,7 @@
 					{/if}
 					<div class="flex items-center gap-2.5 px-1"><span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7">Size</span><input type="range" min="128" max="512" step="8" bind:value={slides[activeIdx].news.circleSize} class="flex-1 h-1 rounded-full accent-cyan-400 cursor-pointer"/><span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7 text-right">{s.news.circleSize}</span></div>
 					<button onclick={generateCircle} disabled={s.news.generatingCircle} class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">{#if s.news.generatingCircle}<Loader size={11} class="animate-spin"/>Generating…{:else}<Sparkles size={11}/>{s.news.circleImage?'Regenerate':'Generate'} with AI{/if}</button>
-					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.06] hover:border-white/20 cursor-pointer transition-colors"><Image size={11}/>Upload image<input type="file" accept="image/*" class="hidden" onchange={(e)=>upload(e,v=>slides[activeIdx].news.circleImage=v)} /></label>
+					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.06] hover:border-white/20 cursor-pointer transition-colors"><Image size={11}/>Upload image<input type="file" accept="image/*" class="sr-only" onchange={(e)=>upload(e,v=>slides[activeIdx].news.circleImage=v)} /></label>
 				</div>
 			{/if}
 		</div>
@@ -701,7 +702,7 @@
 		<!-- Image overlays -->
 		<div>
 			<div class="flex items-center justify-between mb-2"><p class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Image Overlays</p>{#if s.news.overlays.length>0}<span class="text-[10px] font-mono text-white/20">{s.news.overlays.length} layer{s.news.overlays.length!==1?'s':''}</span>{/if}</div>
-			<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.08] hover:border-white/20 cursor-pointer transition-colors w-full mb-2"><Image size={11}/>Add PNG / JPG / GIF<input type="file" accept="image/*" class="hidden" onchange={(e)=>{const f=(e.target as HTMLInputElement).files?.[0];if(!f)return;(e.target as HTMLInputElement).value='';const r=new FileReader();r.onload=()=>{const src=r.result as string;const img=new window.Image();img.onload=()=>{const aspect=img.naturalWidth/img.naturalHeight;const w=Math.min(300,img.naturalWidth);const h=w/aspect;slides[activeIdx].news.overlays=[...slides[activeIdx].news.overlays,{id:crypto.randomUUID(),src,x:Math.round((1080-w)/2),y:Math.round((1350-h)/2),w:Math.round(w),h:Math.round(h)}];};img.src=src;};r.readAsDataURL(f);}} /></label>
+			<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 border border-white/[0.08] hover:border-white/20 cursor-pointer transition-colors w-full mb-2"><Image size={11}/>Add PNG / JPG / GIF<input type="file" accept="image/*" class="sr-only" onchange={(e)=>{const f=(e.target as HTMLInputElement).files?.[0];if(!f)return;(e.target as HTMLInputElement).value='';const r=new FileReader();r.onload=()=>{const src=r.result as string;const img=new window.Image();img.onload=()=>{const aspect=img.naturalWidth/img.naturalHeight;const w=Math.min(300,img.naturalWidth);const h=w/aspect;slides[activeIdx].news.overlays=[...slides[activeIdx].news.overlays,{id:crypto.randomUUID(),src,x:Math.round((1080-w)/2),y:Math.round((1350-h)/2),w:Math.round(w),h:Math.round(h)}];};img.src=src;};r.readAsDataURL(f);}} /></label>
 			{#if s.news.overlays.length>0}
 				<div class="flex flex-col gap-1.5">
 					{#each s.news.overlays as ov,i (ov.id)}
@@ -729,6 +730,16 @@
 
 	</div>
 	</div>
+</div>
+
+<!-- Floating Post button -->
+<div class="fixed bottom-6 right-6 z-50">
+	<button
+		onclick={() => goto('/dashboard/post-scheduler')}
+		class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all bg-[#1a1a1a] border border-white/[0.12] text-white/70 hover:text-white hover:border-cyan-500/40 hover:bg-[#1e1e1e]"
+	>
+		<Calendar size={14} /> Post
+	</button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ PREVIEW -->
@@ -763,6 +774,7 @@
 				bind:circleSize={slides[activeIdx].news.circleSize}
 				bind:bgOffsetX={slides[activeIdx].news.bgOffsetX}
 				bind:bgOffsetY={slides[activeIdx].news.bgOffsetY}
+				bind:textPanelOffsetY={slides[activeIdx].news.textPanelOffsetY}
 				backgroundImage={s.news.backgroundImage}
 				backgroundVideo={s.news.backgroundVideo}
 				circleImage={s.news.showCircle ? s.news.circleImage : ''}

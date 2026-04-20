@@ -5,7 +5,9 @@
 	import { AlertTriangle, CheckCircle2, ExternalLink, Image, KeyRound } from 'lucide-svelte';
 
 	type Status = { ok: boolean; missing: string[]; present: string[] };
-	let status = $state<Status | null>(null);
+	let metaStatus = $state<Status | null>(null);
+	let linkedinStatus = $state<Status | null>(null);
+	let gmbStatus = $state<Status | null>(null);
 	let loading = $state(true);
 	let userId = $state<string>('');
 
@@ -14,10 +16,18 @@
 		userId = data.user?.id ?? '';
 
 		try {
-			const res = await fetch('/api/integrations/meta/status');
-			status = await res.json();
+			const [metaRes, liRes, gmbRes] = await Promise.all([
+				fetch('/api/integrations/meta/status'),
+				fetch('/api/integrations/linkedin/status'),
+				fetch('/api/integrations/gmb/status'),
+			]);
+			metaStatus = await metaRes.json();
+			linkedinStatus = await liRes.json();
+			gmbStatus = await gmbRes.json();
 		} catch {
-			status = { ok: false, missing: ['(failed to load status)'], present: [] };
+			metaStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
+			linkedinStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
+			gmbStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
 		}
 		loading = false;
 	});
@@ -28,19 +38,73 @@
 			goto('/login');
 			return;
 		}
-		if (!status?.ok) {
-			alert(`Missing credentials: ${(status?.missing ?? []).join(', ')}`);
+		if (!metaStatus?.ok) {
+			alert(`Missing credentials: ${(metaStatus?.missing ?? []).join(', ')}`);
 			return;
 		}
 		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
 
-	const envSnippet = $derived(
+	function connectLinkedIn(mode: 'member' | 'org' | 'both') {
+		if (!userId) {
+			alert('You must be logged in to connect LinkedIn.');
+			goto('/login');
+			return;
+		}
+		if (!linkedinStatus?.ok) {
+			alert(`Missing credentials: ${(linkedinStatus?.missing ?? []).join(', ')}`);
+			return;
+		}
+		window.location.href = `/api/auth/linkedin/start?userId=${encodeURIComponent(userId)}&mode=${encodeURIComponent(mode)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+
+	function connectGmb() {
+		if (!userId) {
+			alert('You must be logged in to connect Google My Business.');
+			goto('/login');
+			return;
+		}
+		if (!gmbStatus?.ok) {
+			alert(`Missing credentials: ${(gmbStatus?.missing ?? []).join(', ')}`);
+			return;
+		}
+		window.location.href = `/api/auth/gmb/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+
+	const metaEnvSnippet = $derived(
 		[
 			'## Required env vars (server-side)',
 			'META_APP_ID=',
 			'META_APP_SECRET=',
 			'META_REDIRECT_URI=',
+			'',
+			'## Already used by your server routes',
+			'SUPABASE_URL=',
+			'SUPABASE_SERVICE_KEY=',
+		].join('\n')
+	);
+
+	const linkedinEnvSnippet = $derived(
+		[
+			'## Required env vars (server-side)',
+			'LINKEDIN_CLIENT_ID=',
+			'LINKEDIN_CLIENT_SECRET=',
+			'LINKEDIN_REDIRECT_URI=',
+			'LINKEDIN_SCOPES=  # optional; defaults based on which button you click',
+			'',
+			'## Already used by your server routes',
+			'SUPABASE_URL=',
+			'SUPABASE_SERVICE_KEY=',
+		].join('\n')
+	);
+
+	const gmbEnvSnippet = $derived(
+		[
+			'## Required env vars (server-side)',
+			'GMB_CLIENT_ID=',
+			'GMB_CLIENT_SECRET=',
+			'GMB_REDIRECT_URI=',
+			'GMB_SCOPES=  # optional; defaults include business.manage + basic identity',
 			'',
 			'## Already used by your server routes',
 			'SUPABASE_URL=',
@@ -58,7 +122,7 @@
 	</div>
 
 	<div class="rounded-2xl bg-[#0d0d0d] border border-white/10 overflow-hidden">
-		<div class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
+		<div id="instagram" class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
 			<div class="flex items-center gap-2">
 				<Image size={16} class="text-pink-400" />
 				<p class="text-sm font-display font-semibold text-white/85">Instagram (Business) via Meta</p>
@@ -75,7 +139,7 @@
 			{#if loading}
 				<p class="text-sm text-white/40 font-body">Checking credentials…</p>
 			{:else}
-				{#if status?.ok}
+				{#if metaStatus?.ok}
 					<div class="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 mb-4 flex items-start gap-3">
 						<CheckCircle2 size={16} class="text-emerald-300 mt-0.5" />
 						<div class="min-w-0">
@@ -92,7 +156,7 @@
 						<div class="min-w-0">
 							<p class="text-sm font-body text-amber-200/90">Instagram connect is not configured yet.</p>
 							<p class="text-[12px] font-body text-amber-200/60 mt-1">
-								Missing: <span class="font-mono">{(status?.missing ?? []).join(', ')}</span>
+								Missing: <span class="font-mono">{(metaStatus?.missing ?? []).join(', ')}</span>
 							</p>
 						</div>
 					</div>
@@ -102,7 +166,7 @@
 							<KeyRound size={14} class="text-white/40" />
 							<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest">What to add to your env</p>
 						</div>
-						<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">{envSnippet}</pre>
+						<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">{metaEnvSnippet}</pre>
 						<p class="text-[12px] font-body text-white/35 mt-3">
 							When you set these, restart the dev server. This page will automatically turn green when it detects them.
 						</p>
@@ -113,8 +177,8 @@
 					<button
 						onclick={connectInstagram}
 						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
-							{status?.ok ? 'bg-pink-500/90 hover:bg-pink-500 text-white' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
-						disabled={!status?.ok}
+							{metaStatus?.ok ? 'bg-pink-500/90 hover:bg-pink-500 text-white' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
+						disabled={!metaStatus?.ok}
 					>
 						Connect Instagram
 					</button>
@@ -132,6 +196,156 @@
 					>
 						Meta docs (publishing)
 					</a>
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	<div class="h-6"></div>
+
+	<div class="rounded-2xl bg-[#0d0d0d] border border-white/10 overflow-hidden">
+		<div id="linkedin" class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
+			<div class="flex items-center gap-2">
+				<Image size={16} class="text-blue-400" />
+				<p class="text-sm font-display font-semibold text-white/85">LinkedIn OAuth</p>
+			</div>
+			<a
+				href="/dashboard/post-scheduler"
+				class="text-[11px] font-mono text-white/35 hover:text-white/70 transition-colors inline-flex items-center gap-1.5"
+			>
+				Back to scheduler <ExternalLink size={12} />
+			</a>
+		</div>
+
+		<div class="p-5">
+			{#if loading}
+				<p class="text-sm text-white/40 font-body">Checking credentials…</p>
+			{:else}
+				{#if linkedinStatus?.ok}
+					<div class="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 mb-4 flex items-start gap-3">
+						<CheckCircle2 size={16} class="text-emerald-300 mt-0.5" />
+						<div class="min-w-0">
+							<p class="text-sm font-body text-emerald-200/90">Credentials detected. You can connect LinkedIn.</p>
+							<p class="text-[12px] font-body text-emerald-200/50 mt-1">
+								Choose what you want to connect: your personal profile, company pages you admin, or both.
+							</p>
+						</div>
+					</div>
+				{:else}
+					<div class="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 mb-4 flex items-start gap-3">
+						<AlertTriangle size={16} class="text-amber-300 mt-0.5" />
+						<div class="min-w-0">
+							<p class="text-sm font-body text-amber-200/90">LinkedIn connect is not configured yet.</p>
+							<p class="text-[12px] font-body text-amber-200/60 mt-1">
+								Missing: <span class="font-mono">{(linkedinStatus?.missing ?? []).join(', ')}</span>
+							</p>
+						</div>
+					</div>
+
+					<div class="rounded-2xl bg-white/2 border border-white/8 p-4 mb-4">
+						<div class="flex items-center gap-2 mb-2">
+							<KeyRound size={14} class="text-white/40" />
+							<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest">What to add to your env</p>
+						</div>
+						<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">{linkedinEnvSnippet}</pre>
+						<p class="text-[12px] font-body text-white/35 mt-3">
+							When you set these, restart the dev server. This page will automatically turn green when it detects them.
+						</p>
+					</div>
+				{/if}
+
+				<div class="flex flex-wrap items-center gap-2">
+					<button
+						onclick={() => connectLinkedIn('member')}
+						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
+							{linkedinStatus?.ok ? 'bg-blue-500/90 hover:bg-blue-500 text-white' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
+						disabled={!linkedinStatus?.ok}
+					>
+						Connect profile
+					</button>
+					<button
+						onclick={() => connectLinkedIn('org')}
+						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
+							{linkedinStatus?.ok ? 'bg-blue-500/20 hover:bg-blue-500/30 text-white/85 border border-blue-500/30' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
+						disabled={!linkedinStatus?.ok}
+					>
+						Connect pages
+					</button>
+					<button
+						onclick={() => connectLinkedIn('both')}
+						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
+							{linkedinStatus?.ok ? 'bg-white/8 hover:bg-white/12 text-white/85 border border-white/10' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
+						disabled={!linkedinStatus?.ok}
+					>
+						Connect both
+					</button>
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	<div class="h-6"></div>
+
+	<div class="rounded-2xl bg-[#0d0d0d] border border-white/10 overflow-hidden">
+		<div id="gmb" class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
+			<div class="flex items-center gap-2">
+				<Image size={16} class="text-emerald-300" />
+				<p class="text-sm font-display font-semibold text-white/85">Google My Business (Business Profile)</p>
+			</div>
+			<a
+				href="/dashboard/post-scheduler"
+				class="text-[11px] font-mono text-white/35 hover:text-white/70 transition-colors inline-flex items-center gap-1.5"
+			>
+				Back to scheduler <ExternalLink size={12} />
+			</a>
+		</div>
+
+		<div class="p-5">
+			{#if loading}
+				<p class="text-sm text-white/40 font-body">Checking credentials…</p>
+			{:else}
+				{#if gmbStatus?.ok}
+					<div class="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 mb-4 flex items-start gap-3">
+						<CheckCircle2 size={16} class="text-emerald-300 mt-0.5" />
+						<div class="min-w-0">
+							<p class="text-sm font-body text-emerald-200/90">Credentials detected. You can connect Google Business Profile.</p>
+							<p class="text-[12px] font-body text-emerald-200/50 mt-1">
+								We’ll save your Google token plus each Location we can list under your Business Profile accounts.
+							</p>
+						</div>
+					</div>
+				{:else}
+					<div class="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 mb-4 flex items-start gap-3">
+						<AlertTriangle size={16} class="text-amber-300 mt-0.5" />
+						<div class="min-w-0">
+							<p class="text-sm font-body text-amber-200/90">Google My Business connect is not configured yet.</p>
+							<p class="text-[12px] font-body text-amber-200/60 mt-1">
+								Missing: <span class="font-mono">{(gmbStatus?.missing ?? []).join(', ')}</span>
+							</p>
+						</div>
+					</div>
+
+					<div class="rounded-2xl bg-white/2 border border-white/8 p-4 mb-4">
+						<div class="flex items-center gap-2 mb-2">
+							<KeyRound size={14} class="text-white/40" />
+							<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest">What to add to your env</p>
+						</div>
+						<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">{gmbEnvSnippet}</pre>
+						<p class="text-[12px] font-body text-white/35 mt-3">
+							When you set these, restart the dev server. This page will automatically turn green when it detects them.
+						</p>
+					</div>
+				{/if}
+
+				<div class="flex flex-wrap items-center gap-2">
+					<button
+						onclick={connectGmb}
+						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
+							{gmbStatus?.ok ? 'bg-emerald-500/90 hover:bg-emerald-500 text-white' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
+						disabled={!gmbStatus?.ok}
+					>
+						Connect Google Business Profile
+					</button>
 				</div>
 			{/if}
 		</div>
