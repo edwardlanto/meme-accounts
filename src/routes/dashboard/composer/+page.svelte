@@ -7,7 +7,6 @@
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
-	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
 	import {
@@ -88,6 +87,19 @@
 	}]);
 	let activeIdx = $state(0);
 	let s = $derived(slides[activeIdx]);
+
+	// ── Per-slide music (layout only) ─────────────────────────────────────────
+	let slideMusic = $state<{ song: string }[]>([]);
+	const SONG_OPTIONS = [
+		'No music', 'Lo-fi Chill', 'Upbeat Corporate',
+		'Cinematic Rise', 'Acoustic Mood', 'Electronic Pulse', 'Inspirational Piano',
+	];
+	$effect(() => {
+		const count = slides.length;
+		if (slideMusic.length !== count) {
+			slideMusic = Array.from({ length: count }, (_, i) => slideMusic[i] ?? { song: 'No music' });
+		}
+	});
 
 	function addSlide() {
 		slides = [...slides, blankSlide(s.template, s)];
@@ -263,8 +275,6 @@
 	function tColor(t: TemplateType) { return TEMPLATES.find(x => x.id === t)?.color ?? '#fff'; }
 </script>
 
-<FloatingActions {...({ slideLabels: slides.map((_, i) => `Slide ${i + 1}`) } as any)} />
-
 <div class="flex h-full overflow-hidden">
 
 <!-- ═══════════════════════════════════════════════════════════════ SIDEBAR -->
@@ -290,29 +300,64 @@
 		<div class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width:none;">
 			{#each slides as slide, i (slide.id)}
 				{@const tc = tColor(slide.template)}
-				<button onclick={() => activeIdx = i}
-					class="relative flex-shrink-0 group rounded-xl overflow-hidden border-2 transition-all"
-					style="width:{THUMB_W}px;height:{Math.round(THUMB_W*1350/1080)}px;border-color:{i===activeIdx ? tc : 'rgba(255,255,255,0.07)'};">
-					<div style="width:{THUMB_W}px;height:{Math.round(THUMB_W*1350/1080)}px;overflow:hidden;pointer-events:none;">
-						{#if slide.template==='tweet'}
-							<TweetTemplate {...slide.tweet} topText={slide.tweet.topText||'Tweet…'} bottomText={slide.tweet.bottomText||'Reply…'} scale={thumbScale} interactive={false} />
-						{:else if slide.template==='text'}
-							<TextCarouselTemplate {...slide.text} text={slide.text.text||'Text…'} scale={thumbScale} interactive={false} />
-						{:else if slide.template==='article'}
-							<ArticleTemplate {...slide.article} text={slide.article.text||'Text…'} scale={thumbScale} interactive={false} />
-						{:else if slide.template==='news'}
-							<NewsTemplate text={slide.news.text||'Headline…'} backgroundImage={slide.news.backgroundImage} circleImage={slide.news.showCircle?slide.news.circleImage:''} source={slide.news.source} highlightColor={slide.news.highlightColor} textColor={slide.news.textColor} scale={thumbScale} interactive={false} />
+				{@const music = slideMusic[i] ?? { song: 'No music' }}
+				<div class="flex-shrink-0 flex flex-col gap-1">
+					<button onclick={() => activeIdx = i}
+						class="relative group rounded-xl overflow-hidden border-2 transition-all"
+						style="width:{THUMB_W}px;height:{Math.round(THUMB_W*1350/1080)}px;border-color:{i===activeIdx ? tc : 'rgba(255,255,255,0.07)'};">
+						<div style="width:{THUMB_W}px;height:{Math.round(THUMB_W*1350/1080)}px;overflow:hidden;pointer-events:none;">
+							{#if slide.template==='tweet'}
+								<TweetTemplate {...slide.tweet} topText={slide.tweet.topText||'Tweet…'} bottomText={slide.tweet.bottomText||'Reply…'} scale={thumbScale} interactive={false} />
+							{:else if slide.template==='text'}
+								<TextCarouselTemplate {...slide.text} text={slide.text.text||'Text…'} scale={thumbScale} interactive={false} />
+							{:else if slide.template==='article'}
+								<ArticleTemplate {...slide.article} text={slide.article.text||'Text…'} scale={thumbScale} interactive={false} />
+							{:else if slide.template==='news'}
+								<NewsTemplate text={slide.news.text||'Headline…'} backgroundImage={slide.news.backgroundImage} circleImage={slide.news.showCircle?slide.news.circleImage:''} source={slide.news.source} highlightColor={slide.news.highlightColor} textColor={slide.news.textColor} scale={thumbScale} interactive={false} />
+							{/if}
+						</div>
+						<div class="absolute bottom-1 left-1 px-1 py-0.5 rounded text-[7px] font-mono font-bold uppercase" style="background:rgba(0,0,0,0.8);color:{tc};">{slide.template}</div>
+						<div class="absolute top-1 left-1 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center"><span class="text-[8px] font-mono text-white/70">{i+1}</span></div>
+						{#if slides.length > 1}
+							<button onclick={(e)=>{e.stopPropagation();deleteSlide(i);}} class="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/70 hover:bg-red-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Delete slide"><Trash2 size={7} class="text-white" /></button>
 						{/if}
+					</button>
+
+					<!-- Per-slide music -->
+					<div class="flex items-center gap-1" style="width:{THUMB_W}px;">
+						<select
+							value={music.song}
+							onchange={(e) => {
+								const arr = [...slideMusic];
+								arr[i] = { song: (e.target as HTMLSelectElement).value };
+								slideMusic = arr;
+							}}
+							class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1 px-1.5 text-[9px] font-body text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors [color-scheme:dark]"
+						>
+							{#each SONG_OPTIONS as opt}
+								<option value={opt}>{opt}</option>
+							{/each}
+						</select>
+						<button disabled class="px-2 py-1 rounded-lg text-[9px] font-mono text-white/35 bg-white/[0.04] border border-white/[0.08] cursor-not-allowed">
+							Burn
+						</button>
 					</div>
-					<div class="absolute bottom-1 left-1 px-1 py-0.5 rounded text-[7px] font-mono font-bold uppercase" style="background:rgba(0,0,0,0.8);color:{tc};">{slide.template}</div>
-					<div class="absolute top-1 left-1 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center"><span class="text-[8px] font-mono text-white/70">{i+1}</span></div>
-					{#if slides.length > 1}
-						<button onclick={(e)=>{e.stopPropagation();deleteSlide(i);}} class="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/70 hover:bg-red-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={7} class="text-white" /></button>
-					{/if}
-				</button>
+				</div>
 			{/each}
 			<button onclick={addSlide} class="flex-shrink-0 rounded-xl border-2 border-dashed border-white/[0.08] hover:border-white/25 flex items-center justify-center text-white/20 hover:text-white/50 transition-all" style="width:{THUMB_W}px;height:{Math.round(THUMB_W*1350/1080)}px;"><Plus size={16} /></button>
 		</div>
+
+		{#if slides.length > 1}
+			<div class="flex items-center justify-center gap-1.5 mt-2">
+				{#each slides as _, i (i)}
+					<button
+						onclick={() => (activeIdx = i)}
+						class="w-2 h-2 rounded-full transition-all {i === activeIdx ? 'bg-white/70' : 'bg-white/20 hover:bg-white/35'}"
+						aria-label={`Go to slide ${i + 1}`}
+					></button>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
 	<!-- ── Template selector ────────────────────────────────────────────────── -->

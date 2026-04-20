@@ -25,7 +25,7 @@
 		topAvatar    = '',
 		topVerified  = true,
 		topText      = 'Ketchup or mayo or mustard?',
-		topImage     = '',
+		topImage     = '/templates/tweet/demo-bg.jpg',
 		bottomName   = 'Mo Mohler',
 		bottomHandle = '@MoMohler',
 		bottomAvatar = '',
