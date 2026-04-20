@@ -25,6 +25,17 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		badgeColor: 'text-amber-400',
 	},
 	{
+		id: 'image-quote',
+		name: 'Image Quote',
+		description: 'Top image + bold all-caps quote block',
+		href: '/dashboard/composer',
+		previewBg: '/templates/image-quote/demo-bg.png',
+		previewText: '',
+		previewSource: '',
+		badge: 'Quote',
+		badgeColor: 'text-white/70',
+	},
+	{
 		id: 'tweet',
 		name: 'Tweet Carousel',
 		description: 'Turn viral tweet exchanges into shareable slides',

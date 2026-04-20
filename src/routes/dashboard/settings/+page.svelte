@@ -119,6 +119,12 @@
 						Connect Instagram
 					</button>
 					<a
+						href="/dashboard/docs/instagram"
+						class="text-[12px] font-body text-white/35 hover:text-white/70 transition-colors"
+					>
+						Activation guide
+					</a>
+					<a
 						href="https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/content-publishing"
 						target="_blank"
 						rel="noreferrer"

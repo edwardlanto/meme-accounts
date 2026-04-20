@@ -7,6 +7,7 @@
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
+	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight, Wand2 } from 'lucide-svelte';
 
 	let carousels: any[] = $state([]);
@@ -131,6 +132,15 @@
 								bottomVerified={true}
 								bottomText="3 straight misses chef. These appear to be French fries."
 								scale={templateScale}
+							/>
+						{:else if tmpl.id === 'image-quote'}
+							<ImageQuoteTemplate
+								image={tmpl.previewBg}
+								text={"YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT AND PUNCHY."}
+								footerLeft="$"
+								footerRight="WEALTHY SETUP"
+								scale={templateScale}
+								interactive={false}
 							/>
 						{:else if tmpl.id === 'text'}
 							<TextCarouselTemplate

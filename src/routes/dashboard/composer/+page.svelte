@@ -7,6 +7,7 @@
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
 	import {
@@ -17,7 +18,7 @@
 	} from 'lucide-svelte';
 
 	// ── Types ──────────────────────────────────────────────────────────────────
-	type TemplateType = 'tweet' | 'text' | 'article' | 'news';
+	type TemplateType = 'tweet' | 'text' | 'article' | 'news' | 'imageQuote';
 
 	interface TweetData {
 		topName: string; topHandle: string; topAvatar: string;
@@ -46,9 +47,18 @@
 		overlays: Overlay[];
 		generatingImage: boolean; generatingCircle: boolean;
 	}
+	interface ImageQuoteData {
+		image: string;
+		text: string;
+		footerLeft: string;
+		footerRight: string;
+		topRatio: number;
+		bgColor: string;
+		textColor: string;
+	}
 	interface Slide {
 		id: string; template: TemplateType;
-		tweet: TweetData; text: TextData; article: ArticleData; news: NewsData;
+		tweet: TweetData; text: TextData; article: ArticleData; news: NewsData; imageQuote: ImageQuoteData;
 	}
 
 	function blankTweet(): TweetData {
@@ -63,6 +73,17 @@
 	function blankNews(): NewsData {
 		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:50, bgOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
 	}
+	function blankImageQuote(): ImageQuoteData {
+		return {
+			image: '/templates/image-quote/demo-bg.png',
+			text: 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
+			footerLeft: '$',
+			footerRight: 'WEALTHY SETUP',
+			topRatio: 0.56,
+			bgColor: '#000000',
+			textColor: '#FFFFFF',
+		};
+	}
 	function blankSlide(template: TemplateType = 'tweet', inherit?: Slide): Slide {
 		return {
 			id: crypto.randomUUID(), template,
@@ -70,6 +91,7 @@
 			text:  inherit ? { ...inherit.text,  text:'' } : blankText(),
 			article: inherit ? { ...inherit.article, text:'', image:'' } : blankArticle(),
 			news: inherit ? { ...inherit.news, text:'', backgroundImage:'', backgroundVideo:'', overlays:[], generatingImage:false, generatingCircle:false } : blankNews(),
+			imageQuote: inherit ? { ...inherit.imageQuote } : blankImageQuote(),
 		};
 	}
 
@@ -83,7 +105,7 @@
 	let slides = $state<Slide[]>([{
 		id: crypto.randomUUID(), template: 'tweet',
 		tweet: { topName:'Chef 👨‍🍳', topHandle:'@chefsevenn', topAvatar:'', topVerified:true, topText:'Ketchup or mayo or mustard?', topImage:'', bottomName:'Mo Mohler', bottomHandle:'@MoMohler', bottomAvatar:'', bottomVerified:true, bottomText:'3 straight misses chef. These appear to be French fries.' },
-		text: blankText(), article: blankArticle(), news: blankNews(),
+		text: blankText(), article: blankArticle(), news: blankNews(), imageQuote: blankImageQuote(),
 	}]);
 	let activeIdx = $state(0);
 	let s = $derived(slides[activeIdx]);
@@ -271,6 +293,7 @@
 		{ id:'text'    as TemplateType, label:'Text',    icon: Type,      color:'#d4d4d4' },
 		{ id:'article' as TemplateType, label:'Article', icon: FileText,  color:'#34d399' },
 		{ id:'news'    as TemplateType, label:'News',    icon: Newspaper, color:'#F5A623' },
+		{ id:'imageQuote' as TemplateType, label:'Quote', icon: Image,    color:'#ffffff' },
 	];
 	function tColor(t: TemplateType) { return TEMPLATES.find(x => x.id === t)?.color ?? '#fff'; }
 </script>
@@ -363,7 +386,7 @@
 	<!-- ── Template selector ────────────────────────────────────────────────── -->
 	<div class="flex-shrink-0 px-3 pt-3 pb-3 border-b border-white/[0.04]">
 		<p class="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-2">Slide {activeIdx+1} template</p>
-		<div class="grid grid-cols-4 gap-1.5">
+		<div class="grid grid-cols-5 gap-1.5">
 			{#each TEMPLATES as tmpl}
 				{@const active = s.template === tmpl.id}
 				<button onclick={() => slides[activeIdx].template = tmpl.id}
@@ -483,6 +506,79 @@
 			<div class="flex items-center gap-2 mb-3"><input type="color" bind:value={slides[activeIdx].article.logoRingColor} class="w-8 h-8 rounded-lg cursor-pointer border border-white/10"/><input bind:value={slides[activeIdx].article.logoRingColor} class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1.5 px-2 text-xs font-mono text-white/70 focus:outline-none"/></div>
 			<button onclick={()=>slides[activeIdx].article.showSwipe=!slides[activeIdx].article.showSwipe} class="flex items-center gap-2 text-[11px] font-mono mb-2 {s.article.showSwipe?'text-emerald-400':'text-white/25'} hover:text-emerald-300 transition-colors">{#if s.article.showSwipe}<CheckSquare size={12}/>{:else}<Square size={12}/>{/if} Swipe pill</button>
 			{#if s.article.showSwipe}<input bind:value={slides[activeIdx].article.swipeText} class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2 px-3 text-sm font-body text-white focus:outline-none focus:border-emerald-500/40 transition-colors"/>{/if}
+		</div>
+
+	<!-- ════════════════════════ IMAGE QUOTE FORM -->
+	{:else if s.template === 'imageQuote'}
+		<div>
+			<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider mb-2">Top image</p>
+			{#if s.imageQuote.image}
+				<div class="relative rounded-xl overflow-hidden mb-2">
+					<img src={s.imageQuote.image} alt="" class="w-full h-28 object-cover" />
+					<button onclick={() => (slides[activeIdx].imageQuote.image = '')}
+						class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/70 text-white text-xs flex items-center justify-center hover:bg-red-500/80">✕</button>
+				</div>
+			{/if}
+			<label class="flex items-center justify-center gap-2 py-3 rounded-xl text-xs text-white/30 border border-dashed border-white/[0.08] hover:border-white/25 cursor-pointer transition-colors">
+				<Image size={12} /> {s.imageQuote.image ? 'Change image' : 'Upload image'}
+				<input type="file" accept="image/*" class="hidden" onchange={(e) => upload(e, (v) => (slides[activeIdx].imageQuote.image = v))} />
+			</label>
+		</div>
+
+		<div>
+			<div class="flex items-center justify-between mb-2">
+				<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Quote text</p>
+				<span class="text-[9px] font-mono text-white/20">new line = forced break</span>
+			</div>
+			<textarea
+				bind:value={slides[activeIdx].imageQuote.text}
+				rows={6}
+				placeholder={"WRITE YOUR STATEMENT HERE.\nUSE NEWLINES TO CONTROL WRAPPING."}
+				class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-3 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-colors resize-none leading-relaxed"
+			></textarea>
+		</div>
+
+		<div>
+			<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider mb-2">Footer</p>
+			<div class="flex gap-2">
+				<input bind:value={slides[activeIdx].imageQuote.footerLeft} placeholder="$" class="w-24 bg-white/[0.04] border border-white/[0.08] rounded-xl py-2 px-3 text-sm font-mono text-white/70 placeholder-white/20 focus:outline-none focus:border-white/30 transition-colors" />
+				<input bind:value={slides[activeIdx].imageQuote.footerRight} placeholder="BRAND" class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl py-2 px-3 text-sm font-mono text-white/70 placeholder-white/20 focus:outline-none focus:border-white/30 transition-colors" />
+			</div>
+		</div>
+
+		<div>
+			<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider mb-3">Layout</p>
+			<div class="flex items-center gap-3">
+				<div class="flex-1">
+					<p class="text-[10px] font-mono text-white/25 mb-1.5">Image height</p>
+					<input
+						type="range"
+						min="0.40"
+						max="0.70"
+						step="0.01"
+						value={s.imageQuote.topRatio}
+						oninput={(e) => (slides[activeIdx].imageQuote.topRatio = parseFloat((e.target as HTMLInputElement).value))}
+						class="w-full accent-white"
+					/>
+					<p class="text-[10px] font-mono text-white/20 mt-1">{Math.round(s.imageQuote.topRatio * 100)}%</p>
+				</div>
+			</div>
+			<div class="flex gap-3 mt-3">
+				<div class="flex-1">
+					<p class="text-[10px] font-mono text-white/25 mb-1.5">Background</p>
+					<div class="flex items-center gap-2">
+						<input type="color" bind:value={slides[activeIdx].imageQuote.bgColor} class="w-8 h-8 rounded-lg cursor-pointer border border-white/10" />
+						<input bind:value={slides[activeIdx].imageQuote.bgColor} class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1.5 px-2 text-xs font-mono text-white/70 focus:outline-none" />
+					</div>
+				</div>
+				<div class="flex-1">
+					<p class="text-[10px] font-mono text-white/25 mb-1.5">Text</p>
+					<div class="flex items-center gap-2">
+						<input type="color" bind:value={slides[activeIdx].imageQuote.textColor} class="w-8 h-8 rounded-lg cursor-pointer border border-white/10" />
+						<input bind:value={slides[activeIdx].imageQuote.textColor} class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1.5 px-2 text-xs font-mono text-white/70 focus:outline-none" />
+					</div>
+				</div>
+			</div>
 		</div>
 
 	<!-- ════════════════════════ NEWS FORM -->
@@ -646,6 +742,19 @@
 			<TextCarouselTemplate bind:exportRef {...s.text} scale={previewScale} />
 		{:else if s.template === 'article'}
 			<ArticleTemplate bind:exportRef {...s.article} scale={previewScale} />
+		{:else if s.template === 'imageQuote'}
+			<ImageQuoteTemplate
+				bind:exportRef
+				image={s.imageQuote.image}
+				text={s.imageQuote.text}
+				footerLeft={s.imageQuote.footerLeft}
+				footerRight={s.imageQuote.footerRight}
+				topRatio={s.imageQuote.topRatio}
+				bgColor={s.imageQuote.bgColor}
+				textColor={s.imageQuote.textColor}
+				scale={previewScale}
+				interactive={true}
+			/>
 		{:else if s.template === 'news'}
 			<NewsTemplate
 				bind:exportRef
