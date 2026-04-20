@@ -1,11 +1,27 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { supabase } from '$lib/supabase';
 	import { ArrowLeft, Calendar, Plus, X } from 'lucide-svelte';
 
 	type ChannelId = 'x' | 'linkedin' | 'linkedinPage' | 'reddit' | 'instagramBusiness' | 'instagram' | 'facebookPage' | 'threads' | 'youtube' | 'gmb' | 'tiktok' | 'pinterest';
 	type Channel = { id: ChannelId; label: string; accent: string; kind?: 'business' | 'page' | 'standalone'; icon: (active: boolean) => string };
-	type Draft = { id: string; title: string; channels: ChannelId[] };
-	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; startISO: string; durationMin: number };
+	type IgContentType = 'post' | 'reel' | 'carousel' | 'story';
+	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType };
+	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; startISO: string; durationMin: number };
+
+	function igTypeLabel(t: IgContentType) {
+		if (t === 'post') return 'Post';
+		if (t === 'reel') return 'Reel';
+		if (t === 'carousel') return 'Carousel';
+		return 'Story';
+	}
+	function igTypePillClass(t: IgContentType) {
+		if (t === 'reel') return 'bg-red-500/10 border-red-500/20 text-red-200/70';
+		if (t === 'carousel') return 'bg-violet-500/10 border-violet-500/20 text-violet-200/70';
+		if (t === 'story') return 'bg-amber-500/10 border-amber-500/20 text-amber-200/70';
+		return 'bg-sky-500/10 border-sky-500/20 text-sky-200/70';
+	}
 
 	const CHANNELS: Channel[] = [
 		{
@@ -122,6 +138,38 @@
 	// ── Channels UI ───────────────────────────────────────────────────────────
 	let connected = $state<ChannelId[]>(['instagramBusiness', 'linkedin', 'pinterest', 'youtube']);
 	let showAddChannel = $state(false);
+	let userId = $state('');
+
+	onMount(async () => {
+		const { data } = await supabase.auth.getUser();
+		userId = data.user?.id ?? '';
+	});
+
+	async function connectInstagramBusiness() {
+		// Credential check endpoint tells us if env is missing
+		try {
+			const res = await fetch('/api/integrations/meta/status');
+			const st = (await res.json()) as { ok: boolean; missing: string[] };
+			if (!st.ok) {
+				alert(`Instagram connect needs credentials: ${st.missing.join(', ')}.\n\nGo to Settings → Integrations to add them.`);
+				goto('/dashboard/settings?integrations=1#instagram');
+				return;
+			}
+		} catch {
+			alert('Could not verify Meta credentials. Open Settings → Integrations.');
+			goto('/dashboard/settings?integrations=1#instagram');
+			return;
+		}
+
+		if (!userId) {
+			alert('Please sign in before connecting Instagram.');
+			goto('/login');
+			return;
+		}
+
+		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+
 	function toggleConnected(id: ChannelId) {
 		connected = connected.includes(id) ? connected.filter((x) => x !== id) : [...connected, id];
 	}
@@ -151,12 +199,12 @@
 	const hours = $derived(Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i));
 
 	let drafts = $state<Draft[]>([
-		{ id: 'd1', title: 'Post today’s carousel', channels: ['instagramBusiness', 'pinterest'] },
-		{ id: 'd2', title: 'LinkedIn insight thread', channels: ['linkedin'] },
-		{ id: 'd3', title: 'YouTube short teaser', channels: ['youtube'] },
+		{ id: 'd1', title: 'IG carousel: brand studio export', channels: ['instagramBusiness', 'pinterest'], igType: 'carousel' },
+		{ id: 'd2', title: 'IG reel: teaser clip', channels: ['instagramBusiness'], igType: 'reel' },
+		{ id: 'd3', title: 'IG story: poll + link', channels: ['instagramBusiness'], igType: 'story' },
 	]);
 	let posts = $state<ScheduledPost[]>([
-		{ id: 'p1', title: 'Tweet Carousel: fries debate', channels: ['instagramBusiness', 'pinterest'], startISO: localIso(new Date(new Date().setHours(10, 0, 0, 0))), durationMin: 60 },
+		{ id: 'p1', title: 'Tweet Carousel: fries debate', channels: ['instagramBusiness', 'pinterest'], igType: 'carousel', startISO: localIso(new Date(new Date().setHours(10, 0, 0, 0))), durationMin: 60 },
 	]);
 
 	function postsForDay(day: Date) {
@@ -201,7 +249,7 @@
 		if (payload.kind === 'draft') {
 			const draft = drafts.find((x) => x.id === payload.id);
 			if (!draft) return;
-			posts = [...posts, { id: `p_${crypto.randomUUID()}`, title: draft.title, channels: draft.channels, startISO: localIso(d), durationMin: 60 }];
+			posts = [...posts, { id: `p_${crypto.randomUUID()}`, title: draft.title, channels: draft.channels, igType: draft.igType, startISO: localIso(d), durationMin: 60 }];
 		}
 	}
 
@@ -265,7 +313,28 @@
 						draggable="true"
 						ondragstart={(e) => dragStartDraft(e, d.id)}
 						class="cursor-grab active:cursor-grabbing select-none rounded-2xl bg-white/2 border border-white/6 p-3 hover:bg-white/3 transition-colors">
-						<p class="text-xs font-body text-white/75 mb-2">{d.title}</p>
+						<div class="flex items-start justify-between gap-2 mb-2">
+							<p class="text-xs font-body text-white/75">{d.title}</p>
+							<span class="shrink-0 text-[9px] font-mono px-2 py-1 rounded-lg border {igTypePillClass(d.igType)}">
+								{igTypeLabel(d.igType)}
+							</span>
+						</div>
+						<div class="flex items-center justify-between gap-2 mb-2">
+							<p class="text-[10px] font-mono text-white/25 uppercase tracking-widest">Instagram type</p>
+							<select
+								value={d.igType}
+								onchange={(e) => {
+									const v = (e.target as HTMLSelectElement).value as IgContentType;
+									drafts = drafts.map((x) => (x.id === d.id ? { ...x, igType: v } : x));
+								}}
+								class="bg-white/3 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-mono text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors scheme-dark cursor-pointer"
+							>
+								<option value="post">Post</option>
+								<option value="reel">Reel</option>
+								<option value="carousel">Carousel</option>
+								<option value="story">Story (manual)</option>
+							</select>
+						</div>
 						<div class="flex items-center gap-1.5 flex-wrap">
 							{#each d.channels as cid (cid)}
 								{@const c = channelById(cid)}
@@ -340,7 +409,12 @@
 										ondragstart={(e) => dragStartPost(e, p.id)}
 										class="absolute left-2 right-2 top-2 rounded-2xl bg-violet-500/14 border border-violet-500/25 p-2.5 cursor-grab active:cursor-grabbing select-none shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
 									>
-										<p class="text-[11px] font-body text-white/80 leading-tight mb-2 truncate">{p.title}</p>
+										<div class="flex items-start justify-between gap-2 mb-2">
+											<p class="text-[11px] font-body text-white/80 leading-tight truncate">{p.title}</p>
+											<span class="shrink-0 text-[9px] font-mono px-2 py-0.5 rounded-lg border {igTypePillClass(p.igType)}">
+												{igTypeLabel(p.igType)}
+											</span>
+										</div>
 										<div class="flex items-center gap-1.5 flex-wrap">
 											{#each p.channels as cid (cid)}
 												{@const c = channelById(cid)}
@@ -390,7 +464,8 @@
 					<div class="p-5">
 						<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
 							{#each CHANNELS as ch (ch.id)}
-								<button onclick={() => toggleConnected(ch.id)}
+								<button
+									onclick={() => ch.id === 'instagramBusiness' ? connectInstagramBusiness() : toggleConnected(ch.id)}
 									class="group rounded-2xl bg-white/2 border border-white/6 hover:bg-white/4 transition-colors p-3 flex flex-col items-center gap-2">
 									<div class="w-11 h-11 rounded-2xl bg-white/3 border border-white/6 flex items-center justify-center">
 										<div>{@html ch.icon(connected.includes(ch.id))}</div>
