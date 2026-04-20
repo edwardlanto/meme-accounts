@@ -2,7 +2,12 @@
 	import { supabase } from '$lib/supabase';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader } from 'lucide-svelte';
+	import { STARTER_TEMPLATES } from '$lib/templates';
+	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
+	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
+	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
+	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight } from 'lucide-svelte';
 
 	let carousels: any[] = $state([]);
 	let loading = $state(true);
@@ -10,12 +15,16 @@
 	let createError = $state('');
 	let userId = $state('');
 
+	// Preview scale for template cards — fixed 220px preview width
+	const TEMPLATE_CARD_W = 220;
+	const templateScale = TEMPLATE_CARD_W / 1080;
+
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
 
-		const { data } = await supabase.from('carousels').select('*').order('updated_at', { ascending: false });
+		const { data } = await (supabase as any).from('carousels').select('*').order('updated_at', { ascending: false });
 		carousels = data ?? [];
 		loading = false;
 	});
@@ -23,7 +32,7 @@
 	async function createNew() {
 		creating = true;
 		createError = '';
-		const { data, error } = await supabase.from('carousels').insert({
+		const { data, error } = await (supabase as any).from('carousels').insert({
 			user_id: userId,
 			title: 'Untitled carousel',
 			status: 'draft',
@@ -41,7 +50,7 @@
 
 	async function deleteCarousel(id: string) {
 		if (!confirm('Delete this carousel?')) return;
-		await supabase.from('carousels').delete().eq('id', id);
+		await (supabase as any).from('carousels').delete().eq('id', id);
 		carousels = carousels.filter(c => c.id !== id);
 	}
 
@@ -54,7 +63,9 @@
 </script>
 
 <div class="p-8 max-w-5xl">
-	<div class="flex items-start justify-between mb-8">
+
+	<!-- ── Header ─────────────────────────────────────────────────────────── -->
+	<div class="flex items-start justify-between mb-10">
 		<div>
 			<h1 class="font-display font-bold text-2xl text-white mb-1">Carousels</h1>
 			<p class="font-body text-sm text-white/40">Your carousel library — drafts, published, and scheduled</p>
@@ -69,11 +80,99 @@
 	{#if createError}
 		<div class="mb-6 flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs font-body text-red-400">
 			<span>⚠ {createError}</span>
-			{#if createError.includes('schema cache') || createError.includes('users')}
-				<span class="text-red-300/60">— Run <code class="font-mono bg-red-500/10 px-1 rounded">supabase-migration-001.sql</code> in your Supabase SQL editor.</span>
-			{/if}
 		</div>
 	{/if}
+
+	<!-- ── Starter Templates ───────────────────────────────────────────────── -->
+	<div class="mb-10">
+		<div class="flex items-center justify-between mb-4">
+			<h2 class="font-display font-semibold text-sm text-white/60 uppercase tracking-widest">Start from a template</h2>
+		</div>
+
+		<div class="flex gap-4 flex-wrap">
+			{#each STARTER_TEMPLATES as tmpl}
+				<a
+					href={tmpl.href}
+					class="group flex flex-col rounded-2xl overflow-hidden border border-white/[0.08] transition-all duration-200 flex-shrink-0
+						{tmpl.id === 'tweet'
+							? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
+							: tmpl.id === 'text'
+							? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
+							: tmpl.id === 'article'
+							? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
+							: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}"
+					style="width: {TEMPLATE_CARD_W}px;"
+				>
+					<!-- Live template preview — pick component by id -->
+					<div style="width: {TEMPLATE_CARD_W}px; height: {Math.round(TEMPLATE_CARD_W * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative;">
+						{#if tmpl.id === 'news'}
+							<NewsTemplate
+								backgroundImage={tmpl.previewBg}
+								text={tmpl.previewText}
+								source={tmpl.previewSource}
+								highlightColor="#F5A623"
+								textColor="#FFFFFF"
+								scale={templateScale}
+								interactive={false}
+							/>
+						{:else if tmpl.id === 'tweet'}
+							<TweetTemplate
+								topName="Chef 👨‍🍳"
+								topHandle="@chefsevenn"
+								topVerified={true}
+								topText="Ketchup or mayo or mustard?"
+								bottomName="Mo Mohler"
+								bottomHandle="@MoMohler"
+								bottomVerified={true}
+								bottomText="3 straight misses chef. These appear to be French fries."
+								scale={templateScale}
+							/>
+						{:else if tmpl.id === 'text'}
+							<TextCarouselTemplate
+								name="Captains of industry"
+								handle="@captainsofindustryy"
+								text={"When your home is titled in your name, it becomes a legal target.\n\nCourts, creditors, and attorneys see it as your asset…"}
+								showSwipe={true}
+								scale={templateScale}
+								interactive={false}
+							/>
+						{:else if tmpl.id === 'article'}
+							<ArticleTemplate
+								text={"Here's the trillion-dollar problem everyone avoids.\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate."}
+								showSwipe={true}
+								scale={templateScale}
+								interactive={false}
+							/>
+						{/if}
+					</div>
+
+					<!-- Card footer -->
+					<div class="px-3 py-2.5 bg-[#111] flex items-center justify-between gap-2 border-t border-white/[0.05]">
+						<div class="min-w-0">
+							<p class="text-xs font-display font-semibold text-white truncate">{tmpl.name}</p>
+							<p class="text-[10px] font-body text-white/30 truncate leading-tight">{tmpl.description}</p>
+						</div>
+						<ArrowRight size={13} class="text-white/20 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+					</div>
+				</a>
+			{/each}
+
+			<!-- "More coming" placeholder -->
+			<div class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/[0.05] text-white/15 flex-shrink-0"
+				style="width: {TEMPLATE_CARD_W}px; height: {Math.round(TEMPLATE_CARD_W * 1350/1080) + 46}px;">
+				<Plus size={18} class="mb-2 opacity-40" />
+				<span class="text-[10px] font-mono">More templates soon</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- ── Divider ────────────────────────────────────────────────────────── -->
+	<div class="border-t border-white/[0.04] mb-8"></div>
+
+	<!-- ── Your Carousels ─────────────────────────────────────────────────── -->
+	<div class="flex items-center justify-between mb-4">
+		<h2 class="font-display font-semibold text-sm text-white/60 uppercase tracking-widest">Your carousels</h2>
+	</div>
 
 	{#if loading}
 		<div class="grid grid-cols-3 gap-4">
@@ -82,15 +181,15 @@
 			{/each}
 		</div>
 	{:else if carousels.length === 0}
-		<div class="flex flex-col items-center justify-center py-28 text-center">
-			<div class="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/15 flex items-center justify-center mb-6">
-				<ImagePlus size={24} class="text-violet-400" />
+		<div class="flex flex-col items-center justify-center py-20 text-center">
+			<div class="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/15 flex items-center justify-center mb-5">
+				<ImagePlus size={22} class="text-violet-400" />
 			</div>
-			<h3 class="font-display font-semibold text-base text-white mb-2">No carousels yet</h3>
-			<p class="font-body text-sm text-white/35 max-w-sm mb-6">Create your first carousel from scratch or head to Discover to remix a viral post.</p>
+			<h3 class="font-display font-semibold text-base text-white mb-1.5">No carousels yet</h3>
+			<p class="font-body text-sm text-white/35 max-w-xs mb-5">Pick a template above or create a blank carousel.</p>
 			<button onclick={createNew}
 				class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 transition-all hover:shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-				<Plus size={14} /> Create first carousel
+				<Plus size={14} /> Create blank carousel
 			</button>
 		</div>
 	{:else}
@@ -136,7 +235,7 @@
 				</div>
 			{/each}
 
-			<!-- New card -->
+			<!-- New blank card -->
 			<button onclick={createNew} disabled={creating}
 				class="aspect-[4/5] rounded-2xl border-2 border-dashed border-white/[0.08] hover:border-violet-500/40 flex flex-col items-center justify-center gap-2 transition-all text-white/20 hover:text-violet-400 group">
 				<div class="w-10 h-10 rounded-xl border-2 border-current flex items-center justify-center group-hover:scale-110 transition-transform">

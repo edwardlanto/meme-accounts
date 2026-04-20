@@ -1,0 +1,60 @@
+/** Starter template definitions — add new templates here */
+
+export interface StarterTemplate {
+	id: string;
+	name: string;
+	description: string;
+	href: string;           // where clicking navigates
+	previewBg: string;      // static asset path for the preview background
+	previewText: string;    // placeholder headline shown in the card
+	previewSource: string;  // source label shown in the card
+	badge: string;          // chip label (e.g. "News")
+	badgeColor: string;     // tailwind text colour class for the badge
+}
+
+export const STARTER_TEMPLATES: StarterTemplate[] = [
+	{
+		id: 'news',
+		name: 'News Studio',
+		description: 'AI writes the copy, Vertex generates the images',
+		href: '/dashboard/studio',
+		previewBg: '/templates/news/demo-bg.jpg',
+		previewText: 'YOUR HEADLINE WILL APPEAR HERE',
+		previewSource: 'Markets',
+		badge: 'News',
+		badgeColor: 'text-amber-400',
+	},
+	{
+		id: 'tweet',
+		name: 'Tweet Studio',
+		description: 'Turn viral tweet exchanges into shareable slides',
+		href: '/dashboard/tweet-studio',
+		previewBg: '',
+		previewText: '',
+		previewSource: '',
+		badge: 'Tweet',
+		badgeColor: 'text-sky-400',
+	},
+	{
+		id: 'text',
+		name: 'Text Studio',
+		description: 'Dark branded text carousels for any niche',
+		href: '/dashboard/text-studio',
+		previewBg: '',
+		previewText: '',
+		previewSource: '',
+		badge: 'Text',
+		badgeColor: 'text-white/60',
+	},
+	{
+		id: 'article',
+		name: 'Article Studio',
+		description: 'Text + image breakdown slides with accent highlights',
+		href: '/dashboard/article-studio',
+		previewBg: '',
+		previewText: '',
+		previewSource: '',
+		badge: 'Article',
+		badgeColor: 'text-emerald-400',
+	},
+];

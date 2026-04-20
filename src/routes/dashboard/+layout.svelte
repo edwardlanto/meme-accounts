@@ -2,15 +2,18 @@
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
-	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, Zap, Newspaper, Video, Sparkles } from 'lucide-svelte';
+	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, Zap, Newspaper, Video, Sparkles, Bird, Type, FileText } from 'lucide-svelte';
 
 	let { children } = $props();
 
 	const nav = [
-		{ href: '/dashboard',           label: 'Overview',    icon: LayoutDashboard },
-		{ href: '/dashboard/carousels', label: 'Carousels',   icon: ImagePlus },
-		{ href: '/dashboard/studio',    label: 'News Studio', icon: Newspaper },
-		{ href: '/dashboard/discover',  label: 'Discover',    icon: Search },
+		{ href: '/dashboard',                label: 'Overview',      icon: LayoutDashboard },
+		{ href: '/dashboard/carousels',      label: 'Carousels',     icon: ImagePlus },
+		{ href: '/dashboard/studio',         label: 'News Studio',   icon: Newspaper },
+		{ href: '/dashboard/tweet-studio',   label: 'Tweet Studio',  icon: Bird },
+		{ href: '/dashboard/text-studio',    label: 'Text Studio',     icon: Type },
+		{ href: '/dashboard/article-studio', label: 'Article Studio',  icon: FileText },
+		{ href: '/dashboard/discover',       label: 'Discover',        icon: Search },
 	];
 
 	async function signOut() {
