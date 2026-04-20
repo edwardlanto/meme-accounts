@@ -57,4 +57,15 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		badge: 'Article',
 		badgeColor: 'text-emerald-400',
 	},
+	{
+		id: 'brand',
+		name: 'Brand Carousel',
+		description: 'Upload brand images → AI extracts style → 7-slide branded carousel',
+		href: '/dashboard/brand-studio',
+		previewBg: '',
+		previewText: '',
+		previewSource: '',
+		badge: 'Brand',
+		badgeColor: 'text-violet-400',
+	},
 ];

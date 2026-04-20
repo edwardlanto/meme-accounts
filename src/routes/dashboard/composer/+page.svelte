@@ -7,6 +7,7 @@
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
 	import {
@@ -261,6 +262,8 @@
 	];
 	function tColor(t: TemplateType) { return TEMPLATES.find(x => x.id === t)?.color ?? '#fff'; }
 </script>
+
+<FloatingActions {...({ slideLabels: slides.map((_, i) => `Slide ${i + 1}`) } as any)} />
 
 <div class="flex h-full overflow-hidden">
 

@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { toPng } from 'html-to-image';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
 	import {
@@ -519,6 +520,8 @@
 	const PREVIEW_WIDTH = 340;
 	const previewScale = $derived(PREVIEW_WIDTH / 1080);
 </script>
+
+<FloatingActions {...({ slideLabels: slides.map((_, i) => `Slide ${i + 1}`) } as any)} />
 
 <div class="flex h-full overflow-hidden">
 

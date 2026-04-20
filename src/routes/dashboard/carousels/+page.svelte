@@ -7,7 +7,7 @@
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
-	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight } from 'lucide-svelte';
+	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight, Wand2 } from 'lucide-svelte';
 
 	let carousels: any[] = $state([]);
 	let loading = $state(true);
@@ -91,19 +91,24 @@
 
 		<div class="flex gap-4 flex-wrap">
 			{#each STARTER_TEMPLATES as tmpl}
+				{@const hoverClass =
+						tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
+						: tmpl.id === 'text'  ? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
+						: tmpl.id === 'article' ? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
+						: tmpl.id === 'brand' ? 'hover:border-violet-500/40 hover:shadow-[0_0_28px_rgba(139,92,246,0.15)]'
+						: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}
+				{@const arrowColor =
+						tmpl.id === 'tweet'   ? 'group-hover:text-sky-400'
+						: tmpl.id === 'text'  ? 'group-hover:text-white/70'
+						: tmpl.id === 'article' ? 'group-hover:text-emerald-400'
+						: tmpl.id === 'brand' ? 'group-hover:text-violet-400'
+						: 'group-hover:text-amber-400'}
 				<a
 					href={tmpl.href}
-					class="group flex flex-col rounded-2xl overflow-hidden border border-white/[0.08] transition-all duration-200 flex-shrink-0
-						{tmpl.id === 'tweet'
-							? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
-							: tmpl.id === 'text'
-							? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
-							: tmpl.id === 'article'
-							? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
-							: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}"
+					class="group flex flex-col rounded-2xl overflow-hidden border border-white/[0.08] transition-all duration-200 flex-shrink-0 {hoverClass}"
 					style="width: {TEMPLATE_CARD_W}px;"
 				>
-					<!-- Live template preview — pick component by id -->
+					<!-- Preview area -->
 					<div style="width: {TEMPLATE_CARD_W}px; height: {Math.round(TEMPLATE_CARD_W * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative;">
 						{#if tmpl.id === 'news'}
 							<NewsTemplate
@@ -143,6 +148,93 @@
 								scale={templateScale}
 								interactive={false}
 							/>
+						{:else if tmpl.id === 'brand'}
+							<!-- Brand Studio static preview -->
+							<div style="
+								width: 100%; height: 100%;
+								background: linear-gradient(135deg, #0f0a1e 0%, #1a0f3a 45%, #0d1a2e 100%);
+								display: flex; flex-direction: column;
+								align-items: center; justify-content: center;
+								gap: 14px; padding: 20px; position: relative; overflow: hidden;
+							">
+								<!-- Background glow -->
+								<div style="position:absolute;top:-30px;left:50%;transform:translateX(-50%);width:140px;height:140px;border-radius:50%;background:rgba(139,92,246,0.15);filter:blur(40px);pointer-events:none;"></div>
+
+								<!-- Icon -->
+								<div style="
+									width: 44px; height: 44px; border-radius: 14px;
+									background: rgba(139,92,246,0.2); border: 1.5px solid rgba(139,92,246,0.4);
+									display: flex; align-items: center; justify-content: center;
+									position: relative; z-index: 1;
+								">
+									<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(167,139,250,1)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/>
+										<path d="m3 3 18 18" opacity="0"/>
+										<circle cx="12" cy="12" r="3"/>
+										<path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>
+									</svg>
+								</div>
+
+								<!-- Slide strip preview -->
+								<div style="display:flex; gap:5px; position:relative;z-index:1;">
+									{#each [
+										{ bg: '#FDFCF8', label: 'HERO', accent: '#8B5CF6' },
+										{ bg: '#1A0F3A', label: 'PROB', accent: '#c4b5fd' },
+										{ bg: '#F8F9FA', label: 'TIP', accent: '#8B5CF6' },
+										{ bg: '#1A0F3A', label: 'CTA', accent: '#c4b5fd' },
+									] as slide}
+										<div style="
+											width: 34px; height: 43px; border-radius: 4px;
+											background: {slide.bg};
+											border: 1px solid rgba(255,255,255,0.1);
+											display: flex; flex-direction: column;
+											align-items: center; justify-content: center; gap: 3px;
+											flex-shrink: 0;
+										">
+											<div style="width: 20px; height: 2px; background: {slide.accent}; border-radius: 1px;"></div>
+											<div style="width: 16px; height: 1.5px; background: {slide.accent}; opacity: 0.5; border-radius: 1px;"></div>
+											<div style="width: 18px; height: 1.5px; background: {slide.accent}; opacity: 0.3; border-radius: 1px;"></div>
+										</div>
+									{/each}
+									<div style="
+										width: 34px; height: 43px; border-radius: 4px;
+										border: 1px dashed rgba(139,92,246,0.3);
+										display: flex; align-items: center; justify-content: center;
+										flex-shrink: 0;
+									">
+										<span style="font-size:14px;color:rgba(139,92,246,0.4);">+</span>
+									</div>
+								</div>
+
+								<!-- Color swatches -->
+								<div style="display:flex;gap:4px;position:relative;z-index:1;">
+									{#each ['#8B5CF6','#C4B5FD','#1A0F3A','#F8F9FA','#FDFCF8'] as swatch}
+										<div style="width:14px;height:14px;border-radius:50%;background:{swatch};border:1px solid rgba(255,255,255,0.15);flex-shrink:0;"></div>
+									{/each}
+									<div style="width:14px;height:14px;border-radius:50%;border:1.5px dashed rgba(255,255,255,0.2);flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+										<span style="font-size:8px;color:rgba(255,255,255,0.3);">+</span>
+									</div>
+								</div>
+
+								<!-- Label -->
+								<div style="position:relative;z-index:1;text-align:center;">
+									<p style="font-family:'Nunito Sans',sans-serif;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(167,139,250,0.8);margin-bottom:2px;">Upload images</p>
+									<p style="font-family:'Nunito Sans',sans-serif;font-size:9px;color:rgba(255,255,255,0.25);letter-spacing:0.04em;">AI copies your brand style</p>
+								</div>
+
+								<!-- Bottom bar in preview -->
+								<div style="
+									position:absolute;bottom:0;left:0;right:0;
+									padding: 8px 12px;
+									background: linear-gradient(to top, rgba(15,10,30,0.95), transparent);
+								">
+									<div style="display:flex;gap:4px;">
+										{#each [30,60,45,70,50] as w}
+											<div style="height:2px;flex:{w};background:rgba(139,92,246,0.4);border-radius:1px;"></div>
+										{/each}
+									</div>
+								</div>
+							</div>
 						{/if}
 					</div>
 
@@ -152,7 +244,7 @@
 							<p class="text-xs font-display font-semibold text-white truncate">{tmpl.name}</p>
 							<p class="text-[10px] font-body text-white/30 truncate leading-tight">{tmpl.description}</p>
 						</div>
-						<ArrowRight size={13} class="text-white/20 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+						<ArrowRight size={13} class="text-white/20 {arrowColor} group-hover:translate-x-0.5 transition-all flex-shrink-0" />
 					</div>
 				</a>
 			{/each}

@@ -322,7 +322,7 @@
 
 			{#if activeSlide}
 				<div class="relative rounded-2xl overflow-hidden shadow-2xl"
-					style="width:320px;height:400px;background:{activeSlide.bg};display:flex;flex-direction:column;align-items:{activeSlide.align==='left'?'flex-start':activeSlide.align==='right'?'flex-end':'center'};justify-content:center;padding:32px;">
+					style="width:420px;height:525px;background:{activeSlide.bg};display:flex;flex-direction:column;align-items:{activeSlide.align==='left'?'flex-start':activeSlide.align==='right'?'flex-end':'center'};justify-content:center;padding:48px 36px;">
 					<div class="absolute inset-0 opacity-30" style="background:radial-gradient(ellipse at 30% 20%,rgba(139,92,246,0.15) 0%,transparent 60%)"></div>
 					<div class="relative z-10 w-full" style="text-align:{activeSlide.align}">
 						<div class="inline-block mb-4 px-2 py-0.5 rounded-full border" style="border-color:{activeSlide.textColor}22;background:{activeSlide.textColor}11">

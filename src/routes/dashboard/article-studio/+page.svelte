@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { toPng } from 'html-to-image';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
+	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import { Download, Loader, Copy, Plus, Trash2, CheckSquare, Square, Image, FileText } from 'lucide-svelte';
 
 	// ── Types ──────────────────────────────────────────────────────────────────
@@ -122,6 +123,8 @@
 	const THUMB_W    = 88;
 	const thumbScale = THUMB_W / 1080;
 </script>
+
+<FloatingActions {...({ slideLabels: slides.map((_, i) => `Slide ${i + 1}`) } as any)} />
 
 <div class="flex h-full overflow-hidden">
 
