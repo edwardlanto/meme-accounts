@@ -122,8 +122,15 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 				{ onConflict: 'user_id,provider,provider_account_id' }
 			);
 
-			const page = await graphGet<any>(`${p.id}?fields=instagram_business_account`, pageToken);
-			const igId = page?.instagram_business_account?.id as string | undefined;
+			// Depending on how the Page is linked, Meta may expose the connected IG account as
+			// `instagram_business_account` or `connected_instagram_account`.
+			const page = await graphGet<any>(
+				`${p.id}?fields=instagram_business_account,connected_instagram_account`,
+				pageToken
+			);
+			const igId =
+				(page?.instagram_business_account?.id as string | undefined) ??
+				(page?.connected_instagram_account?.id as string | undefined);
 			if (igId) {
 				connections.push({
 					provider_account_id: igId,
@@ -173,7 +180,26 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 		throw redirect(303, `${next}?meta_connected=1&ig_found=1`);
 	} catch (e: any) {
-		throw redirect(303, `${next}?meta_error=${encodeURIComponent(e?.message ?? 'unknown')}`);
+		// SvelteKit uses thrown objects for redirects (and http errors).
+		// Do not wrap successful redirects as "meta_error".
+		if (e && typeof e === 'object' && 'status' in e && 'location' in e) {
+			const st = Number((e as any).status);
+			if ([301, 302, 303, 307, 308].includes(st)) throw e;
+		}
+
+		const msg =
+			typeof e?.message === 'string'
+				? e.message
+				: typeof e === 'string'
+					? e
+					: (() => {
+							try {
+								return JSON.stringify(e);
+							} catch {
+								return String(e);
+							}
+						})();
+		throw redirect(303, `${next}?meta_error=${encodeURIComponent(msg || 'unknown')}`);
 	}
 };
 

@@ -135,6 +135,20 @@
 	let exporting = $state(false);
 	let exportRef: HTMLElement | null = $state(null);
 
+	// ── Output format (canvas size) ───────────────────────────────────────
+	type FormatId = 'post' | 'reel' | 'story' | 'square';
+	type Format = { id: FormatId; label: string; w: number; h: number; igType: 'post' | 'reel' | 'story' };
+	const FORMATS: Format[] = [
+		{ id: 'post', label: 'Post', w: 1080, h: 1350, igType: 'post' },     // 4:5
+		{ id: 'reel', label: 'Reel', w: 1080, h: 1920, igType: 'reel' },     // 9:16
+		{ id: 'story', label: 'Story', w: 1080, h: 1920, igType: 'story' },  // 9:16
+		{ id: 'square', label: 'Square', w: 1080, h: 1080, igType: 'post' }, // 1:1
+	];
+	let formatId = $state<FormatId>('post');
+	const format = $derived(FORMATS.find((f) => f.id === formatId) ?? FORMATS[0]);
+	const CANVAS_W = $derived(format.w);
+	const CANVAS_H = $derived(format.h);
+
 	// ── Auth ──────────────────────────────────────────────────────────────
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
@@ -480,8 +494,8 @@
 					id: crypto.randomUUID(),
 					src,
 					// Centre on canvas
-					x: Math.round((1080 - w) / 2),
-					y: Math.round((1350 - h) / 2),
+					x: Math.round((CANVAS_W - w) / 2),
+					y: Math.round((CANVAS_H - h) / 2),
 					w: Math.round(w),
 					h: Math.round(h),
 				};
@@ -499,17 +513,17 @@
 		exporting = true;
 
 		try {
-			// Render at full 1080x1350 resolution
+			// Render at full canvas resolution
 			const dataUrl = await toPng(exportRef, {
-				width: 1080,
-				height: 1350,
+				width: CANVAS_W,
+				height: CANVAS_H,
 				pixelRatio: 1,
 				style: { transform: 'scale(1)', transformOrigin: 'top left' },
 			});
 
 			const a = document.createElement('a');
 			a.href = dataUrl;
-			a.download = `carousel-studio-${Date.now()}.png`;
+			a.download = `news-${formatId}-${Date.now()}.png`;
 			a.click();
 		} catch (e: any) {
 			console.error('Export failed:', e);
@@ -521,7 +535,7 @@
 
 	// Preview scale — fit within container
 	const PREVIEW_WIDTH = 520;
-	const previewScale = $derived(PREVIEW_WIDTH / 1080);
+	const previewScale = $derived(PREVIEW_WIDTH / CANVAS_W);
 </script>
 
 <FloatingActions {...({ slideLabels: slides.map((_, i) => `Slide ${i + 1}`) } as any)} />
@@ -1009,7 +1023,7 @@
 				{#if exporting}
 					<Loader size={13} class="animate-spin" /> Exporting...
 				{:else}
-					<Download size={13} /> Export 1080×1350 PNG
+					<Download size={13} /> Export {CANVAS_W}×{CANVAS_H} PNG
 				{/if}
 			</button>
 
@@ -1025,6 +1039,20 @@
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
 	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4">
 
+		<!-- Format tabs -->
+		<div class="flex items-center rounded-2xl bg-white/2 border border-white/6 overflow-hidden">
+			{#each FORMATS as f (f.id)}
+				<button
+					onclick={() => (formatId = f.id)}
+					class="px-3 py-2 text-[10px] font-mono transition-colors
+						{formatId === f.id ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
+					title={`${f.w}×${f.h}`}
+				>
+					{f.label}
+				</button>
+			{/each}
+		</div>
+
 		<!-- Slide indicator + nav arrows -->
 		<div class="flex items-center gap-3">
 			<button
@@ -1034,7 +1062,7 @@
 				‹
 			</button>
 			<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">
-				{slideCount > 1 ? `Slide ${activeSlide + 1} / ${slideCount} — ` : ''}1080 × 1350
+				{slideCount > 1 ? `Slide ${activeSlide + 1} / ${slideCount} — ` : ''}{CANVAS_W} × {CANVAS_H}
 			</p>
 			<button
 				onclick={() => activeSlide = Math.min(slideCount - 1, activeSlide + 1)}
@@ -1045,7 +1073,7 @@
 		</div>
 
 		<!-- Main preview -->
-		<div style="width: {PREVIEW_WIDTH}px; height: {1350 * previewScale}px;" class="relative">
+		<div style="width: {PREVIEW_WIDTH}px; height: {CANVAS_H * previewScale}px;" class="relative">
 			{#if generatingImages[activeSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
@@ -1073,6 +1101,8 @@
 				source={source}
 				highlightColor={highlightColor}
 				textColor={textColor}
+				w={CANVAS_W}
+				h={CANVAS_H}
 				scale={previewScale}
 				interactive={true}
 				overlays={activeOverlays}

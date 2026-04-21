@@ -2,13 +2,34 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabase';
-	import { ArrowLeft, Calendar, Plus, X } from 'lucide-svelte';
+	import { ArrowLeft, Calendar, Plus, X, GripVertical } from 'lucide-svelte';
 
-	type ChannelId = 'x' | 'linkedin' | 'linkedinPage' | 'reddit' | 'instagramBusiness' | 'instagram' | 'facebookPage' | 'threads' | 'youtube' | 'gmb' | 'tiktok' | 'pinterest';
+	type ChannelId = 'x' | 'linkedin' | 'linkedinPage' | 'reddit' | 'instagramBusiness' | 'facebookPage' | 'threads' | 'youtube' | 'gmb' | 'tiktok' | 'pinterest';
 	type Channel = { id: ChannelId; label: string; accent: string; kind?: 'business' | 'page' | 'standalone'; icon: (active: boolean) => string };
 	type IgContentType = 'post' | 'reel' | 'carousel' | 'story';
 	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType };
 	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; startISO: string; durationMin: number };
+
+	type DbScheduledPost = {
+		id: string;
+		user_id: string;
+		connection_provider: string;
+		connection_provider_account_id: string;
+		content: any;
+		scheduled_at: string;
+		status: 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
+		job_id: string | null;
+	};
+
+	type DbSocialConnection = {
+		id: string;
+		user_id: string;
+		provider: string;
+		provider_account_id: string;
+		provider_account_label: string;
+		access_token: string;
+		meta: any;
+	};
 
 	function igTypeLabel(t: IgContentType) {
 		if (t === 'post') return 'Post';
@@ -75,21 +96,6 @@
 </svg>`,
 		},
 		{
-			id: 'instagram', label: 'Instagram', kind: 'standalone', accent: 'bg-pink-400',
-			icon: (active) => `
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="ig2" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-      <stop stop-color="${active ? '#ec4899' : 'rgba(236,72,153,0.55)'}"/>
-      <stop offset="1" stop-color="${active ? '#a855f7' : 'rgba(168,85,247,0.55)'}"/>
-    </linearGradient>
-  </defs>
-  <rect x="3" y="3" width="18" height="18" rx="5" stroke="url(#ig2)" stroke-width="2"/>
-  <circle cx="12" cy="12" r="4" stroke="url(#ig2)" stroke-width="2"/>
-  <circle cx="17.5" cy="6.5" r="1" fill="url(#ig2)"/>
-</svg>`,
-		},
-		{
 			id: 'facebookPage', label: 'Facebook Page', kind: 'page', accent: 'bg-blue-400',
 			icon: (active) => `
 <svg width="24" height="24" viewBox="0 0 24 24" fill="${active ? '#60a5fa' : 'rgba(96,165,250,0.55)'}" xmlns="http://www.w3.org/2000/svg">
@@ -136,14 +142,159 @@
 	}
 
 	// ── Channels UI ───────────────────────────────────────────────────────────
-	let connected = $state<ChannelId[]>(['instagramBusiness', 'linkedin', 'pinterest', 'youtube']);
+	let connected = $state<ChannelId[]>([]);
 	let showAddChannel = $state(false);
 	let userId = $state('');
+	let connections = $state<DbSocialConnection[]>([]);
+	let connectionsError = $state('');
+	let loadingPosts = $state(false);
+	let postsError = $state('');
+	let metaBanner = $state<{ kind: 'error' | 'success'; message: string } | null>(null);
 
 	onMount(async () => {
+		// Surface Meta OAuth redirect results (callback appends query params).
+		const params = new URLSearchParams(window.location.search);
+		const metaError = params.get('meta_error');
+		const igFound = params.get('ig_found');
+		const metaConnected = params.get('meta_connected');
+		if (metaError) {
+			metaBanner = {
+				kind: 'error',
+				message:
+					`Meta connect failed: ${metaError}` +
+					(params.get('desc') ? ` — ${params.get('desc')}` : '') +
+					(params.get('reason') ? ` (${params.get('reason')})` : ''),
+			};
+		} else if (metaConnected === '1') {
+			metaBanner = {
+				kind: 'success',
+				message: igFound === '1'
+					? 'Meta connected. Instagram business account found.'
+					: 'Meta connected. No Instagram business account found yet (link IG to a Facebook Page).',
+			};
+		}
+
+		// Clean URL so refresh doesn't keep showing the banner.
+		if (metaBanner) {
+			await goto('/dashboard/post-scheduler', { replaceState: true });
+		}
+
 		const { data } = await supabase.auth.getUser();
 		userId = data.user?.id ?? '';
+		if (!userId) {
+			goto('/login');
+			return;
+		}
+		await Promise.all([loadConnections(), loadScheduledPosts()]);
 	});
+
+	async function loadConnections() {
+		connectionsError = '';
+		const { data, error } = await (supabase as any)
+			.from('social_connections')
+			.select('id,user_id,provider,provider_account_id,provider_account_label,access_token,meta')
+			.eq('user_id', userId)
+			.eq('provider', 'meta');
+		if (error) {
+			connectionsError = error.message ?? 'Failed to load connections';
+			return;
+		}
+		connections = (data ?? []) as DbSocialConnection[];
+
+		const nextConnected = new Set<ChannelId>();
+		for (const c of connections) {
+			const kind = String(c?.meta?.kind ?? '');
+			if (kind === 'instagram_business') nextConnected.add('instagramBusiness');
+			if (kind === 'facebook_page') nextConnected.add('facebookPage');
+		}
+		connected = Array.from(nextConnected);
+	}
+
+	async function disconnectChannel(id: ChannelId) {
+		if (!userId) return;
+
+		const label =
+			id === 'instagramBusiness' ? 'Instagram (Business)' :
+			id === 'facebookPage' ? 'Facebook Page' :
+			id;
+
+		if (!confirm(`Disconnect ${label}? You can reconnect anytime.`)) return;
+
+		// Delete only the relevant connection rows.
+		// Note: IG publishing relies on a Page link, so disconnecting the Page may also require reconnecting IG later.
+		const kind =
+			id === 'instagramBusiness' ? 'instagram_business' :
+			id === 'facebookPage' ? 'facebook_page' :
+			'';
+
+		try {
+			if (!kind) return;
+			const { error } = await (supabase as any)
+				.from('social_connections')
+				.delete()
+				.eq('user_id', userId)
+				.eq('provider', 'meta')
+				.contains('meta', { kind });
+			if (error) throw error;
+
+			// Refresh UI state
+			drafts = [];
+			await Promise.all([loadConnections(), loadScheduledPosts()]);
+		} catch (e: any) {
+			alert(`Could not disconnect: ${e?.message ?? 'unknown error'}`);
+		}
+	}
+
+	function postChannelsFromProvider(provider: string, acct: string, meta: any): ChannelId[] {
+		if (provider === 'meta') {
+			if (acct.startsWith('fbpage:') || meta?.kind === 'facebook_page') return ['facebookPage'];
+			return ['instagramBusiness'];
+		}
+		if (provider === 'gmb') return ['gmb'];
+		if (provider === 'linkedin') return ['linkedin'];
+		return [];
+	}
+
+	function deriveTitle(content: any, provider: string, acct: string) {
+		const c = content ?? {};
+		return (
+			String(c.title ?? '').trim() ||
+			String(c.caption ?? '').trim() ||
+			String(c.message ?? '').trim() ||
+			(provider === 'meta' && acct.startsWith('fbpage:') ? 'Facebook Page post' : 'Instagram post')
+		).slice(0, 120);
+	}
+
+	async function loadScheduledPosts() {
+		loadingPosts = true;
+		postsError = '';
+		try {
+			const { data, error } = await (supabase as any)
+				.from('scheduled_posts')
+				.select('id,user_id,connection_provider,connection_provider_account_id,content,scheduled_at,status,job_id')
+				.eq('user_id', userId)
+				.in('status', ['scheduled', 'publishing'])
+				.order('scheduled_at', { ascending: true });
+			if (error) throw error;
+
+			const rows = (data ?? []) as DbScheduledPost[];
+			posts = rows.map((r) => {
+				const content = r.content ?? {};
+				const igType = (String(content.igType ?? content.ig_type ?? 'post') as IgContentType) || 'post';
+				return {
+					id: r.id,
+					title: deriveTitle(content, r.connection_provider, r.connection_provider_account_id),
+					channels: postChannelsFromProvider(r.connection_provider, r.connection_provider_account_id, content?.meta),
+					igType,
+					startISO: new Date(r.scheduled_at).toISOString(),
+					durationMin: 60,
+				} satisfies ScheduledPost;
+			});
+		} catch (e: any) {
+			postsError = e?.message ?? 'Failed to load scheduled posts';
+		}
+		loadingPosts = false;
+	}
 
 	async function connectInstagramBusiness() {
 		// Credential check endpoint tells us if env is missing
@@ -274,14 +425,22 @@
 	const END_HOUR = 22;
 	const hours = $derived(Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i));
 
-	let drafts = $state<Draft[]>([
-		{ id: 'd1', title: 'IG carousel: brand studio export', channels: ['instagramBusiness', 'pinterest'], igType: 'carousel' },
-		{ id: 'd2', title: 'IG reel: teaser clip', channels: ['instagramBusiness'], igType: 'reel' },
-		{ id: 'd3', title: 'IG story: poll + link', channels: ['instagramBusiness'], igType: 'story' },
-	]);
-	let posts = $state<ScheduledPost[]>([
-		{ id: 'p1', title: 'Tweet Carousel: fries debate', channels: ['instagramBusiness', 'pinterest'], igType: 'carousel', startISO: localIso(new Date(new Date().setHours(10, 0, 0, 0))), durationMin: 60 },
-	]);
+	let drafts = $state<Draft[]>([]);
+	let posts = $state<ScheduledPost[]>([]);
+
+	// Minimal starter drafts once connections are available (UI convenience only)
+	$effect(() => {
+		if (drafts.length > 0) return;
+		const next: Draft[] = [];
+		if (connected.includes('facebookPage')) {
+			next.push({ id: crypto.randomUUID(), title: 'Facebook Page: text post', channels: ['facebookPage'], igType: 'post' });
+		}
+		if (connected.includes('instagramBusiness')) {
+			next.push({ id: crypto.randomUUID(), title: 'Instagram: post (needs public image URL)', channels: ['instagramBusiness'], igType: 'post' });
+		}
+		// Avoid infinite loops: don't write drafts back to an empty array.
+		if (next.length > 0) drafts = next;
+	});
 
 	function postsForDay(day: Date) {
 		const yyyy = day.getFullYear();
@@ -319,19 +478,130 @@
 		const d = new Date(day);
 		d.setHours(hour, 0, 0, 0);
 		if (payload.kind === 'post') {
+			// Rescheduling not wired to backend yet.
 			posts = posts.map((p) => (p.id === payload.id ? { ...p, startISO: localIso(d) } : p));
 			return;
 		}
 		if (payload.kind === 'draft') {
 			const draft = drafts.find((x) => x.id === payload.id);
 			if (!draft) return;
-			posts = [...posts, { id: `p_${crypto.randomUUID()}`, title: draft.title, channels: draft.channels, igType: draft.igType, startISO: localIso(d), durationMin: 60 }];
+			void scheduleDraft(draft, d);
 		}
 	}
 
 	function prev() { anchor = addDays(anchor, view === 'week' ? -7 : -1); }
 	function next() { anchor = addDays(anchor, view === 'week' ? 7 : 1); }
 	function today() { anchor = new Date(); }
+
+	function pickMetaConnectionForChannel(channel: ChannelId): DbSocialConnection | null {
+		if (channel === 'facebookPage') {
+			return connections.find((c) => String(c?.meta?.kind ?? '') === 'facebook_page') ?? null;
+		}
+		if (channel === 'instagramBusiness') {
+			return connections.find((c) => String(c?.meta?.kind ?? '') === 'instagram_business') ?? null;
+		}
+		return null;
+	}
+
+	async function scheduleDraft(draft: Draft, when: Date) {
+		if (!userId) {
+			alert('Please sign in.');
+			return;
+		}
+
+		// Choose first channel in the draft that we can actually schedule
+		const target = draft.channels.find((c) => c === 'facebookPage' || c === 'instagramBusiness') ?? null;
+		if (!target) {
+			alert('This draft has no supported channel yet.');
+			return;
+		}
+
+		const conn = pickMetaConnectionForChannel(target);
+		if (!conn) {
+			alert(`No connection found for ${target}. Click “Add Channel” and connect first.`);
+			return;
+		}
+
+		let content: any = {};
+		if (target === 'facebookPage') {
+			content = { message: `Scheduled from Social Poster — ${new Date().toLocaleString()}` };
+		} else {
+			// IG needs a public URL; we don't have asset upload wired on this page yet.
+			alert('Instagram auto-publish requires a public image/video URL. For now, test scheduling/cancel with a Facebook Page connection.');
+			return;
+		}
+
+		try {
+			const res = await fetch('/api/scheduler/schedule', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					userId,
+					connectionProvider: 'meta',
+					connectionProviderAccountId: conn.provider_account_id,
+					scheduledAt: when.toISOString(),
+					content,
+				}),
+			});
+			const data = await res.json();
+			if (!res.ok || !data?.ok) throw new Error(data?.error ?? 'Failed to schedule');
+			await loadScheduledPosts();
+		} catch (e: any) {
+			alert(`Could not schedule: ${e?.message ?? 'unknown error'}`);
+		}
+	}
+
+	async function postNow(draft: Draft) {
+		// Give the queue a tiny buffer so job delay doesn't go negative on slow clients.
+		const when = new Date(Date.now() + 2000);
+		await scheduleDraft(draft, when);
+	}
+
+	async function pickTimeAndSchedule(draft: Draft) {
+		const input = prompt('Schedule time (local) as YYYY-MM-DD HH:MM', '');
+		if (!input) return;
+		const m = input.trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+		if (!m) {
+			alert('Invalid format. Use YYYY-MM-DD HH:MM');
+			return;
+		}
+		const [_, ys, mos, ds, hs, mis] = m;
+		const when = new Date(
+			Number(ys),
+			Number(mos) - 1,
+			Number(ds),
+			Number(hs),
+			Number(mis),
+			0,
+			0
+		);
+		if (Number.isNaN(when.getTime())) {
+			alert('Invalid date/time.');
+			return;
+		}
+		await scheduleDraft(draft, when);
+	}
+
+	async function unschedulePost(postId: string) {
+		if (!userId) return;
+		// Remove immediately for responsiveness
+		posts = posts.filter((p) => p.id !== postId);
+
+		try {
+			const res = await fetch('/api/scheduler/cancel', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ userId, postId }),
+			});
+			const data = await res.json();
+			if (!res.ok || !data?.ok) {
+				throw new Error(data?.error ?? 'Failed to unschedule');
+			}
+			await loadScheduledPosts();
+		} catch (e: any) {
+			alert(`Could not unschedule: ${e?.message ?? 'unknown error'}`);
+		}
+	}
 </script>
 
 <div class="h-[calc(100vh-0px)] w-full flex overflow-hidden">
@@ -359,11 +629,31 @@
 				</button>
 			</div>
 
+			{#if connectionsError}
+				<div class="rounded-2xl bg-red-500/10 border border-red-500/20 p-3 mb-3">
+					<p class="text-[11px] font-body text-red-300/80">{connectionsError}</p>
+				</div>
+			{/if}
+
+			{#if userId && connected.length === 0 && !connectionsError}
+				<div class="rounded-2xl bg-white/2 border border-white/6 p-3 mb-3">
+					<p class="text-xs font-body text-white/70">No connected channels yet.</p>
+					<p class="text-[11px] font-body text-white/35 mt-1 leading-relaxed">
+						If you just connected Meta, make sure `SUPABASE_SERVICE_KEY` is valid so the server can save `social_connections`.
+					</p>
+				</div>
+			{/if}
+
 			<div class="flex flex-col gap-1.5">
 				{#each connected as id (id)}
 					{@const ch = channelById(id)}
-					<button onclick={() => toggleConnected(id)}
-						class="group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-white/6 bg-white/2 hover:bg-white/4 transition-colors text-left">
+					<div
+						role="button"
+						tabindex="0"
+						onclick={() => toggleConnected(id)}
+						onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleConnected(id)}
+						class="group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-white/6 bg-white/2 hover:bg-white/4 transition-colors text-left"
+					>
 						<div class="w-9 h-9 rounded-xl bg-white/3 border border-white/6 flex items-center justify-center">
 							<div class="opacity-90">{@html ch?.icon(true) ?? ''}</div>
 						</div>
@@ -371,8 +661,18 @@
 							<p class="text-xs font-body text-white/75 truncate">{ch?.label ?? id}</p>
 							<p class="text-[10px] font-mono text-white/25 truncate">{ch?.kind ?? 'channel'}</p>
 						</div>
-						<div class="w-2 h-2 rounded-full {ch?.accent ?? 'bg-white/30'}"></div>
-					</button>
+						<div class="flex items-center gap-2">
+							<div class="w-2 h-2 rounded-full {ch?.accent ?? 'bg-white/30'}"></div>
+							<button
+								onclick={(e) => { e.stopPropagation(); void disconnectChannel(id); }}
+								class="w-7 h-7 rounded-xl bg-white/2 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/30 hover:text-red-200 transition-all flex items-center justify-center"
+								aria-label={`Disconnect ${ch?.label ?? id}`}
+								title="Disconnect"
+							>
+								<X size={14} />
+							</button>
+						</div>
+					</div>
 				{/each}
 			</div>
 		</div>
@@ -383,17 +683,58 @@
 				<p class="text-[10px] font-mono text-white/20">drag to calendar</p>
 			</div>
 			<div class="flex flex-col gap-2">
+				{#if drafts.length === 0}
+					<div class="rounded-2xl bg-white/2 border border-white/6 p-3">
+						<p class="text-xs font-body text-white/70">No drafts yet.</p>
+						<p class="text-[11px] font-body text-white/35 mt-1 leading-relaxed">
+							Connect a channel (Facebook Page / Instagram Business) to generate starter drafts you can drag onto the calendar.
+						</p>
+						<button
+							onclick={() => (showAddChannel = true)}
+							class="mt-3 w-full px-3 py-2 rounded-xl bg-violet-500/15 border border-violet-500/25 text-xs font-mono text-violet-200 hover:bg-violet-500/20 transition-colors"
+						>
+							Connect channel
+						</button>
+					</div>
+				{/if}
+
 				{#each drafts as d (d.id)}
-					<div
-						role="listitem"
-						draggable="true"
-						ondragstart={(e) => dragStartDraft(e, d.id)}
-						class="cursor-grab active:cursor-grabbing select-none rounded-2xl bg-white/2 border border-white/6 p-3 hover:bg-white/3 transition-colors">
+					<div role="listitem" class="select-none rounded-2xl bg-white/2 border border-white/6 hover:bg-white/3 transition-colors overflow-hidden">
+						<!-- Drag handle (so users know where to grab) -->
+						<div
+							role="button"
+							tabindex="0"
+							draggable="true"
+							ondragstart={(e) => dragStartDraft(e, d.id)}
+							class="cursor-grab active:cursor-grabbing px-3 py-2 bg-white/2 border-b border-white/6 flex items-center gap-2"
+							title="Drag onto a calendar slot to schedule"
+						>
+							<GripVertical size={14} class="text-white/35" />
+							<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Drag to schedule</p>
+						</div>
+
+						<div class="p-3">
 						<div class="flex items-start justify-between gap-2 mb-2">
 							<p class="text-xs font-body text-white/75">{d.title}</p>
-							<span class="shrink-0 text-[9px] font-mono px-2 py-1 rounded-lg border {igTypePillClass(d.igType)}">
-								{igTypeLabel(d.igType)}
-							</span>
+							<div class="flex items-center gap-2 shrink-0">
+								<button
+									onclick={(e) => { e.stopPropagation(); void postNow(d); }}
+									class="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-mono text-emerald-200 hover:bg-emerald-500/20 transition-colors"
+									title="Publish immediately"
+								>
+									Post now
+								</button>
+								<button
+									onclick={(e) => { e.stopPropagation(); void pickTimeAndSchedule(d); }}
+									class="px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-mono text-cyan-200/80 hover:bg-cyan-500/15 transition-colors"
+									title="Schedule without dragging"
+								>
+									Pick time
+								</button>
+								<span class="text-[9px] font-mono px-2 py-1 rounded-lg border {igTypePillClass(d.igType)}">
+									{igTypeLabel(d.igType)}
+								</span>
+							</div>
 						</div>
 						<div class="flex items-center justify-between gap-2 mb-2">
 							<p class="text-[10px] font-mono text-white/25 uppercase tracking-widest">Instagram type</p>
@@ -420,6 +761,7 @@
 								</span>
 							{/each}
 						</div>
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -427,6 +769,26 @@
 	</aside>
 
 	<main class="flex-1 bg-[#070707] overflow-hidden">
+		{#if metaBanner}
+			<div class="px-6 py-3 border-b border-white/5">
+				<div class="rounded-2xl p-3 text-sm font-body border
+					{metaBanner.kind === 'error'
+						? 'bg-red-500/10 border-red-500/20 text-red-300/80'
+						: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200/80'}">
+					<div class="flex items-start justify-between gap-3">
+						<p class="min-w-0">{metaBanner.message}</p>
+						<button
+							onclick={() => (metaBanner = null)}
+							class="shrink-0 w-8 h-8 rounded-xl bg-white/3 border border-white/8 hover:bg-white/6 text-white/45 hover:text-white/80 transition-all flex items-center justify-center"
+							aria-label="Dismiss"
+						>
+							<X size={14} />
+						</button>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
 			<div class="flex items-center gap-3">
 				<div class="w-9 h-9 rounded-xl bg-white/3 border border-white/6 flex items-center justify-center">
@@ -450,8 +812,19 @@
 			</div>
 		</div>
 
+		{#if postsError}
+			<div class="px-6 py-3 border-b border-white/5">
+				<div class="rounded-2xl bg-red-500/10 border border-red-500/20 p-3 text-sm font-body text-red-300/80">
+					{postsError}
+				</div>
+			</div>
+		{/if}
+
 		<div class="h-[calc(100%-73px)] overflow-auto">
 			<div class="min-w-[980px]">
+				{#if loadingPosts}
+					<div class="px-6 py-6 text-sm font-body text-white/40">Loading scheduled posts…</div>
+				{/if}
 				<div class="grid" style="grid-template-columns: 72px repeat(7, 1fr);">
 					<div class="h-14 border-b border-white/5"></div>
 					{#each weekDays as d (d.toISOString())}
@@ -487,9 +860,22 @@
 									>
 										<div class="flex items-start justify-between gap-2 mb-2">
 											<p class="text-[11px] font-body text-white/80 leading-tight truncate">{p.title}</p>
-											<span class="shrink-0 text-[9px] font-mono px-2 py-0.5 rounded-lg border {igTypePillClass(p.igType)}">
-												{igTypeLabel(p.igType)}
-											</span>
+											<div class="flex items-center gap-1.5 shrink-0">
+												<span class="text-[9px] font-mono px-2 py-0.5 rounded-lg border {igTypePillClass(p.igType)}">
+													{igTypeLabel(p.igType)}
+												</span>
+												<button
+													onclick={(e) => {
+														e.stopPropagation();
+														if (confirm('Unschedule this post?')) unschedulePost(p.id);
+													}}
+													class="w-6 h-6 rounded-lg bg-white/3 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/35 hover:text-red-200 transition-all flex items-center justify-center"
+													aria-label="Unschedule post"
+													title="Unschedule"
+												>
+													<X size={12} />
+												</button>
+											</div>
 										</div>
 										<div class="flex items-center gap-1.5 flex-wrap">
 											{#each p.channels as cid (cid)}

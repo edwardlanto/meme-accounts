@@ -3,6 +3,9 @@
 	import type { Overlay } from '$lib/types';
 
 	interface Props {
+		// Canvas size (template pixels). Default is IG portrait 4:5.
+		w?: number;
+		h?: number;
 		backgroundImage?: string;
 		backgroundVideo?: string; // blob URL or data URL for video background
 		circleImage?: string;
@@ -27,6 +30,8 @@
 	}
 
 	let {
+		w = 1080,
+		h = 1350,
 		backgroundImage = '',
 		backgroundVideo = '',
 		circleImage,
@@ -52,8 +57,8 @@
 	// Whether there's any background media (image or video)
 	const hasBg = $derived(!!(backgroundVideo || backgroundImage));
 
-	const W = 1080;
-	const H = 1350;
+	const W = $derived(Math.max(320, Number(w) || 1080));
+	const H = $derived(Math.max(320, Number(h) || 1350));
 
 	let parsed   = $derived(parseHighlightMarkup(text, highlightColor));
 	let segments = $derived(segmentText(parsed));
@@ -356,7 +361,7 @@
 	flex-shrink: 0;
 	position: relative;
 ">
-	<!-- Inner at 1080×1350 — scaled via CSS transform -->
+	<!-- Inner at W×H — scaled via CSS transform -->
 	<div
 		bind:this={exportRef}
 		style="

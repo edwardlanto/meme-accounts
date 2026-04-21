@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { Music, Calendar, X, Send } from 'lucide-svelte';
+	import { goto } from '$app/navigation';
 
 	interface $$Props {
 		slideLabels?: string[];
 		rightOffsetPx?: number;
 		bottomOffsetPx?: number;
 		zIndex?: number;
+		postUrl?: string;
 	}
 
 	let {
@@ -13,6 +15,7 @@
 		rightOffsetPx = 24,
 		bottomOffsetPx = 24,
 		zIndex = 50,
+		postUrl = '/dashboard/post-scheduler',
 	} = ($props() as $$Props);
 
 	interface SlideMusicSettings { song: string; seconds: number; }
@@ -155,10 +158,7 @@
 			{/if}
 
 			<button
-				onclick={() => {
-					showPostPanel = !showPostPanel;
-					showMusicPanel = false;
-				}}
+				onclick={() => goto(postUrl)}
 				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all
 					{showPostPanel
 						? 'bg-cyan-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]'
