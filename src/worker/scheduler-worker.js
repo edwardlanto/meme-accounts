@@ -63,10 +63,134 @@ async function metaGraphGet(path, params, accessToken) {
 }
 
 /**
- * @param {{ pageId: string; pageAccessToken: string; message: string }} args
+ * @param {string} dataUrl
  */
-async function publishFacebookPageText({ pageId, pageAccessToken, message }) {
-	const url = new URL(`https://graph.facebook.com/v20.0/${pageId}/feed`);
+function dataUrlToBlob(dataUrl) {
+	const m = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+	if (!m) return null;
+	const [, mime, b64] = m;
+	const buf = Buffer.from(b64, 'base64');
+	return { mime, buf };
+}
+
+/**
+ * Upload a photo to a Facebook Page.
+ * Supports either:
+ * - public URL (params.url)
+ * - data URL (params.dataUrl)
+ *
+ * @param {{ pageId: string; pageAccessToken: string; url?: string; dataUrl?: string; caption?: string; published?: boolean }} args
+ */
+async function uploadFacebookPagePhoto({ pageId, pageAccessToken, url, dataUrl, caption, published }) {
+	const endpoint = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/photos`);
+
+	// If we have a data URL, send multipart.
+	if (dataUrl && String(dataUrl).startsWith('data:')) {
+		const blob = dataUrlToBlob(dataUrl);
+		if (!blob) throw new Error('Invalid data URL for photo');
+		const form = new FormData();
+		form.set('access_token', pageAccessToken);
+		form.set('published', published === false ? 'false' : 'true');
+		if (caption) form.set('caption', caption);
+		// @ts-ignore node fetch supports Blob
+		form.set('source', new Blob([blob.buf], { type: blob.mime }), 'image');
+		const res = await fetch(endpoint.toString(), { method: 'POST', body: form });
+		const out = await res.json();
+		if (!res.ok) throw new Error(out?.error?.message ?? 'Facebook photo upload failed');
+		return out; // contains id / post_id depending on published
+	}
+
+	// Otherwise use URL-based upload (Meta fetches it).
+	if (url) {
+		const body = new URLSearchParams({
+			access_token: pageAccessToken,
+			published: published === false ? 'false' : 'true',
+			url: String(url),
+			...(caption ? { caption: String(caption) } : {}),
+		});
+		const res = await fetch(endpoint.toString(), {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			body,
+		});
+		const out = await res.json();
+		if (!res.ok) throw new Error(out?.error?.message ?? 'Facebook photo upload failed');
+		return out;
+	}
+
+	throw new Error('Missing url or dataUrl for Facebook photo upload');
+}
+
+/**
+ * Publish to a Facebook Page.
+ * content shapes:
+ * - { message: string }
+ * - { message?: string, link?: string }
+ * - { message?: string, images?: string[] } where images are public URLs or data URLs
+ *
+ * @param {{ pageId: string; pageAccessToken: string; content: any }} args
+ */
+async function publishFacebookPage({ pageId, pageAccessToken, content }) {
+	const message = String(content?.message ?? '').trim();
+	const link = String(content?.link ?? '').trim();
+	const images = Array.isArray(content?.images)
+		? content.images.map((/** @type {unknown} */ x) => String(x)).filter(Boolean)
+		: [];
+
+	// Link post (no images)
+	if (link && images.length === 0) {
+		const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/feed`);
+		const body = new URLSearchParams({
+			access_token: pageAccessToken,
+			link,
+			...(message ? { message } : {}),
+		});
+		const res = await fetch(url.toString(), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+		const data = await res.json();
+		if (!res.ok) throw new Error(data?.error?.message ?? 'Facebook link post failed');
+		return data;
+	}
+
+	// Photo / carousel post
+	if (images.length > 0) {
+		// Upload all images as unpublished, then attach to a feed post.
+		const mediaFbids = [];
+		for (let i = 0; i < images.length; i++) {
+			const img = images[i];
+			const up = await uploadFacebookPagePhoto({
+				pageId,
+				pageAccessToken,
+				url: img.startsWith('http') ? img : undefined,
+				dataUrl: img.startsWith('data:') ? img : undefined,
+				// caption only on the first image if we end up publishing photos directly (we don't)
+				caption: undefined,
+				published: false,
+			});
+			const id = String(up?.id ?? '');
+			if (!id) throw new Error('Facebook photo upload did not return id');
+			mediaFbids.push(id);
+		}
+
+		// Graph expects attached_media[0]={"media_fbid":"..."} style params
+		const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/feed`);
+		const body = new URLSearchParams({ access_token: pageAccessToken });
+		if (message) body.set('message', message);
+		for (let i = 0; i < mediaFbids.length; i++) {
+			body.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: mediaFbids[i] }));
+		}
+		const res = await fetch(url.toString(), {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			body,
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data?.error?.message ?? 'Facebook carousel post failed');
+		return data;
+	}
+
+	// Text-only post
+	if (!message) throw new Error('Missing content.message for Facebook Page post');
+	const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/feed`);
 	const res = await fetch(url.toString(), {
 		method: 'POST',
 		headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -74,7 +198,7 @@ async function publishFacebookPageText({ pageId, pageAccessToken, message }) {
 	});
 	const data = await res.json();
 	if (!res.ok) throw new Error(data?.error?.message ?? 'Facebook publish failed');
-	return data; // contains id
+	return data;
 }
 
 /**
@@ -224,8 +348,6 @@ new Worker(
 
 			if (provider === 'meta' && typeof acct === 'string' && acct.startsWith('fbpage:')) {
 				const pageId = acct.slice('fbpage:'.length);
-				const message = String(content.message ?? '').trim();
-				if (!message) throw new Error('Missing content.message for Facebook Page post');
 
 				const { data: conn, error: connErr } = await supabase
 					.from('social_connections')
@@ -237,10 +359,10 @@ new Worker(
 				if (connErr) throw new Error(connErr.message);
 				if (!conn) throw new Error('Missing social connection for Facebook Page');
 
-				const publishRes = await publishFacebookPageText({
+				const publishRes = await publishFacebookPage({
 					pageId,
 					pageAccessToken: conn.access_token,
-					message,
+					content,
 				});
 
 				await supabase

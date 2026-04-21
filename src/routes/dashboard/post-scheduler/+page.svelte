@@ -429,7 +429,9 @@
 	let posts = $state<ScheduledPost[]>([]);
 
 	// Minimal starter drafts once connections are available (UI convenience only)
+	let seededStarterDrafts = $state(false);
 	$effect(() => {
+		if (seededStarterDrafts) return;
 		if (drafts.length > 0) return;
 		const next: Draft[] = [];
 		if (connected.includes('facebookPage')) {
@@ -439,8 +441,17 @@
 			next.push({ id: crypto.randomUUID(), title: 'Instagram: post (needs public image URL)', channels: ['instagramBusiness'], igType: 'post' });
 		}
 		// Avoid infinite loops: don't write drafts back to an empty array.
-		if (next.length > 0) drafts = next;
+		if (next.length > 0) {
+			drafts = next;
+			seededStarterDrafts = true;
+		}
 	});
+
+	function deleteDraft(draftId: string) {
+		drafts = drafts.filter((d) => d.id !== draftId);
+		// If the user deletes all drafts, don't immediately regenerate starter drafts this session.
+		seededStarterDrafts = true;
+	}
 
 	function postsForDay(day: Date) {
 		const yyyy = day.getFullYear();
@@ -554,7 +565,14 @@
 	async function postNow(draft: Draft) {
 		// Give the queue a tiny buffer so job delay doesn't go negative on slow clients.
 		const when = new Date(Date.now() + 2000);
+		metaBanner = { kind: 'success', message: 'Posting now… (it may appear briefly on the calendar while publishing)' };
 		await scheduleDraft(draft, when);
+
+		// Poll a few times so the UI reflects published → disappears (we only show scheduled/publishing).
+		for (let i = 0; i < 6; i++) {
+			await new Promise((r) => setTimeout(r, 1500));
+			await loadScheduledPosts();
+		}
 	}
 
 	async function pickTimeAndSchedule(draft: Draft) {
@@ -717,6 +735,14 @@
 						<div class="flex items-start justify-between gap-2 mb-2">
 							<p class="text-xs font-body text-white/75">{d.title}</p>
 							<div class="flex items-center gap-2 shrink-0">
+								<button
+									onclick={(e) => { e.stopPropagation(); deleteDraft(d.id); }}
+									class="w-7 h-7 rounded-xl bg-white/2 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/30 hover:text-red-200 transition-all flex items-center justify-center"
+									aria-label="Delete draft"
+									title="Delete draft"
+								>
+									<X size={14} />
+								</button>
 								<button
 									onclick={(e) => { e.stopPropagation(); void postNow(d); }}
 									class="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-mono text-emerald-200 hover:bg-emerald-500/20 transition-colors"

@@ -4,6 +4,9 @@
 	import { goto } from '$app/navigation';
 	import { toPng } from 'html-to-image';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
+	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
+	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
@@ -62,6 +65,27 @@
 	let slides = $state<string[]>(['YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY']);
 	let activeSlide = $state(0);
 	let articleSnippet = $state(''); // full article text for variants call
+
+	// ── Per-slide template selection ──────────────────────────────────────
+	type TemplateId = 'news' | 'article' | 'textCarousel' | 'imageQuote';
+	type TemplateDef = { id: TemplateId; label: string };
+	const TEMPLATES: TemplateDef[] = [
+		{ id: 'news', label: 'News' },
+		{ id: 'article', label: 'Article' },
+		{ id: 'textCarousel', label: 'Text carousel' },
+		{ id: 'imageQuote', label: 'Image quote' },
+	];
+	let slideTemplates = $state<TemplateId[]>(['news']);
+	let lastTemplateUsed = $state<TemplateId>('news');
+	const activeTemplate = $derived(slideTemplates[activeSlide] ?? 'news');
+	function setActiveTemplate(t: TemplateId) {
+		lastTemplateUsed = t;
+		slideTemplates = slideTemplates.map((x, i) => (i === activeSlide ? t : x));
+	}
+	function applyTemplateToAll(t: TemplateId) {
+		lastTemplateUsed = t;
+		slideTemplates = slideTemplates.map(() => t);
+	}
 
 	// Convenience derived for current active slide text
 	const overlayText = $derived(slides[activeSlide] ?? '');
@@ -149,11 +173,131 @@
 	const CANVAS_W = $derived(format.w);
 	const CANVAS_H = $derived(format.h);
 
+	// ── Draft persistence (Supabase) ──────────────────────────────────────
+	type DraftRow = { id: string; kind: string; state: any; updated_at: string };
+	const DRAFT_KIND = 'news_studio';
+	let draftId = $state<string>('');
+	let draftLoaded = $state(false);
+	let draftSaving = $state(false);
+	let draftError = $state('');
+	let saveTimer: any = null;
+
+	async function loadLatestDraft() {
+		draftError = '';
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.select('id,kind,state,updated_at')
+			.eq('user_id', userId)
+			.eq('kind', DRAFT_KIND)
+			.order('updated_at', { ascending: false })
+			.limit(1)
+			.maybeSingle();
+		if (error) {
+			draftError = error.message ?? 'Failed to load draft';
+			return;
+		}
+		if (!data) return;
+
+		const row = data as DraftRow;
+		draftId = row.id;
+		const s = row.state ?? {};
+
+		// Restore (best-effort)
+		if (typeof s.formatId === 'string') formatId = s.formatId as FormatId;
+		if (typeof s.lastTemplateUsed === 'string') lastTemplateUsed = s.lastTemplateUsed as TemplateId;
+		if (Array.isArray(s.slides)) slides = s.slides;
+		if (typeof s.activeSlide === 'number') activeSlide = Math.max(0, Math.min((s.slides?.length ?? slides.length) - 1, s.activeSlide));
+		if (typeof s.category === 'string') category = s.category;
+		if (typeof s.search === 'string') search = s.search;
+		if (typeof s.source === 'string') source = s.source;
+		if (typeof s.articleUrl === 'string') articleUrl = s.articleUrl;
+		if (typeof s.articleTitle === 'string') articleTitle = s.articleTitle;
+		if (typeof s.articleSnippet === 'string') articleSnippet = s.articleSnippet;
+
+		if (Array.isArray(s.slideTemplates)) slideTemplates = s.slideTemplates;
+		if (Array.isArray(s.backgroundImages)) backgroundImages = s.backgroundImages;
+		if (Array.isArray(s.backgroundVideos)) backgroundVideos = s.backgroundVideos; // note: blob: URLs won't survive reload
+		if (Array.isArray(s.slideOverlays)) slideOverlays = s.slideOverlays;
+
+		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
+		if (typeof s.circleImage === 'string') circleImage = s.circleImage;
+		if (typeof s.circleX === 'number') circleX = s.circleX;
+		if (typeof s.circleY === 'number') circleY = s.circleY;
+		if (typeof s.circleSize === 'number') circleSize = s.circleSize;
+		if (typeof s.bgOffsetX === 'number') bgOffsetX = s.bgOffsetX;
+		if (typeof s.bgOffsetY === 'number') bgOffsetY = s.bgOffsetY;
+		if (typeof s.textPanelOffsetY === 'number') textPanelOffsetY = s.textPanelOffsetY;
+		if (typeof s.highlightColor === 'string') highlightColor = s.highlightColor;
+		if (typeof s.textColor === 'string') textColor = s.textColor;
+		if (typeof s.slideCount === 'number') slideCount = s.slideCount;
+	}
+
+	function buildDraftState() {
+		return {
+			formatId,
+			lastTemplateUsed,
+			slideCount,
+			category,
+			search,
+			source,
+			articleUrl,
+			articleTitle,
+			articleSnippet,
+			activeSlide,
+			slides,
+			slideTemplates,
+			backgroundImages,
+			backgroundVideos,
+			slideOverlays,
+			showCircle,
+			circleImage,
+			circleX,
+			circleY,
+			circleSize,
+			bgOffsetX,
+			bgOffsetY,
+			textPanelOffsetY,
+			highlightColor,
+			textColor,
+		};
+	}
+
+	async function saveDraftNow() {
+		if (!userId) return;
+		draftSaving = true;
+		draftError = '';
+		const payload = {
+			user_id: userId,
+			kind: DRAFT_KIND,
+			state: buildDraftState(),
+			...(draftId ? { id: draftId } : {}),
+		};
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.upsert(payload, { onConflict: 'id' })
+			.select('id')
+			.single();
+		draftSaving = false;
+		if (error) {
+			draftError = error.message ?? 'Failed to save draft';
+			return;
+		}
+		if (data?.id) draftId = data.id;
+	}
+
+	function scheduleDraftSave() {
+		if (!draftLoaded) return;
+		if (saveTimer) clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => void saveDraftNow(), 900);
+	}
+
 	// ── Auth ──────────────────────────────────────────────────────────────
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
+		await loadLatestDraft();
+		draftLoaded = true;
 	});
 
 	// ── Categories ────────────────────────────────────────────────────────
@@ -243,6 +387,8 @@
 
 			// Show slide 1 immediately
 			slides = [hookText];
+			// Default new content to the last template you used
+			slideTemplates = [lastTemplateUsed];
 			backgroundImages = [articleImageUrl]; // slide 0 gets article image right away
 			backgroundVideos = ['']; // reset video
 			generatingImages = [false];
@@ -411,6 +557,7 @@
 		backgroundVideos = new Array(slides.length).fill('');
 		generatingImages = new Array(slides.length).fill(true);
 		slideOverlays    = new Array(slides.length).fill(null).map(() => []);
+		slideTemplates   = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
 		// Slide 0: use article image directly if available, otherwise Vertex
 		if (articleImageUrl) {
@@ -429,6 +576,21 @@
 
 		await Promise.all(promises);
 	}
+
+	// Keep slideTemplates aligned with slide count when slide text array changes (variants, etc.)
+	$effect(() => {
+		const n = slides.length;
+		if (slideTemplates.length !== n) {
+			slideTemplates = Array.from({ length: n }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
+		}
+	});
+
+	// Auto-save draft (debounced). This will persist editor state across reloads.
+	$effect(() => {
+		// Reading the state here makes it reactive without TS comma-operator issues.
+		buildDraftState();
+		scheduleDraftSave();
+	});
 
 	// ── Generate circle image via Vertex ─────────────────────────────────
 	async function generateCircleImage() {
@@ -658,6 +820,31 @@
 							<Loader size={9} class="animate-spin" /> Writing slides…
 						</span>
 					{/if}
+				</div>
+
+				<!-- Per-slide template selector -->
+				<div class="flex items-center gap-2 mb-2">
+					<div class="flex-1">
+						<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-1.5">Template (this slide)</p>
+						<select
+							value={activeTemplate}
+							onchange={(e) => setActiveTemplate((e.target as HTMLSelectElement).value as TemplateId)}
+							class="w-full bg-white/3 border border-white/10 rounded-xl py-2 px-3 text-xs font-mono text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors scheme-dark cursor-pointer"
+						>
+							{#each TEMPLATES as t (t.id)}
+								<option value={t.id}>{t.label}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="pt-6">
+						<button
+							onclick={() => applyTemplateToAll(activeTemplate)}
+							class="px-3 py-2 rounded-xl bg-white/2 border border-white/6 text-[10px] font-mono text-white/55 hover:bg-white/4 transition-colors"
+							title="Apply this template to all slides"
+						>
+							Apply all
+						</button>
+					</div>
 				</div>
 
 				<!-- Slide tabs -->
@@ -1086,30 +1273,55 @@
 					<p class="text-xs font-mono text-white/30">Writing slide {activeSlide + 1}…</p>
 				</div>
 			{/if}
-			<NewsTemplate
-				bind:exportRef
-				bind:circleX
-				bind:circleY
-				bind:circleSize
-				bind:bgOffsetX
-				bind:bgOffsetY
-				bind:textPanelOffsetY
-				backgroundImage={backgroundImage}
-				backgroundVideo={backgroundVideo}
-				circleImage={showCircle ? circleImage : ''}
-				text={overlayText}
-				source={source}
-				highlightColor={highlightColor}
-				textColor={textColor}
-				w={CANVAS_W}
-				h={CANVAS_H}
-				scale={previewScale}
-				interactive={true}
-				overlays={activeOverlays}
-				onTextChange={(t) => setActiveSlideText(t)}
-				onCircleMove={(x, y) => { circleX = x; circleY = y; }}
-				onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
-			/>
+			{#if activeTemplate === 'news'}
+				<NewsTemplate
+					bind:exportRef
+					bind:circleX
+					bind:circleY
+					bind:circleSize
+					bind:bgOffsetX
+					bind:bgOffsetY
+					bind:textPanelOffsetY
+					backgroundImage={backgroundImage}
+					backgroundVideo={backgroundVideo}
+					circleImage={showCircle ? circleImage : ''}
+					text={overlayText}
+					source={source}
+					highlightColor={highlightColor}
+					textColor={textColor}
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					overlays={activeOverlays}
+					onTextChange={(t) => setActiveSlideText(t)}
+					onCircleMove={(x, y) => { circleX = x; circleY = y; }}
+					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+				/>
+			{:else if activeTemplate === 'article'}
+				<ArticleTemplate
+					bind:exportRef
+					text={overlayText}
+					image={backgroundImage}
+					scale={previewScale}
+					interactive={true}
+				/>
+			{:else if activeTemplate === 'textCarousel'}
+				<TextCarouselTemplate
+					bind:exportRef
+					text={overlayText}
+					scale={previewScale}
+					interactive={true}
+				/>
+			{:else}
+				<ImageQuoteTemplate
+					bind:exportRef
+					text={overlayText}
+					image={backgroundImage}
+					scale={previewScale}
+					interactive={true}
+				/>
+			{/if}
 		</div>
 
 		{#if !backgroundImage}
