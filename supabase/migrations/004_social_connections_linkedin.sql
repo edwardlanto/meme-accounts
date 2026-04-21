@@ -1,4 +1,7 @@
 -- Expand social_connections.provider to include LinkedIn
+alter table public.social_connections
+  drop constraint if exists social_connections_provider_check;
+
 do $$
 declare
   r record;

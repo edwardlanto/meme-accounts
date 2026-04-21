@@ -1,0 +1,311 @@
+// @ts-check
+import { Worker } from 'bullmq';
+import Redis from 'ioredis';
+import { createClient } from '@supabase/supabase-js';
+
+const {
+	REDIS_URL,
+	SUPABASE_URL,
+	SUPABASE_SERVICE_KEY,
+} = process.env;
+
+if (!REDIS_URL) throw new Error('Missing REDIS_URL');
+if (!SUPABASE_URL) throw new Error('Missing SUPABASE_URL');
+if (!SUPABASE_SERVICE_KEY) throw new Error('Missing SUPABASE_SERVICE_KEY');
+
+const redis = new Redis(REDIS_URL, {
+	maxRetriesPerRequest: null,
+});
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+const QUEUE_NAME = 'scheduled-posts';
+const META_GRAPH_VERSION = 'v20.0';
+
+/**
+ * @param {number} ms
+ */
+async function sleep(ms) {
+	return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * @param {string} path
+ * @param {Record<string,string>} params
+ * @param {string} accessToken
+ */
+async function metaGraphPost(path, params, accessToken) {
+	const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${path.replace(/^\//, '')}`);
+	const body = new URLSearchParams({ ...params, access_token: accessToken });
+	const res = await fetch(url.toString(), {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body,
+	});
+	const data = await res.json();
+	if (!res.ok) throw new Error(data?.error?.message ?? `Meta Graph POST failed: ${path}`);
+	return data;
+}
+
+/**
+ * @param {string} path
+ * @param {Record<string,string>} params
+ * @param {string} accessToken
+ */
+async function metaGraphGet(path, params, accessToken) {
+	const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${path.replace(/^\//, '')}`);
+	for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+	url.searchParams.set('access_token', accessToken);
+	const res = await fetch(url.toString());
+	const data = await res.json();
+	if (!res.ok) throw new Error(data?.error?.message ?? `Meta Graph GET failed: ${path}`);
+	return data;
+}
+
+/**
+ * @param {{ pageId: string; pageAccessToken: string; message: string }} args
+ */
+async function publishFacebookPageText({ pageId, pageAccessToken, message }) {
+	const url = new URL(`https://graph.facebook.com/v20.0/${pageId}/feed`);
+	const res = await fetch(url.toString(), {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({ message, access_token: pageAccessToken }),
+	});
+	const data = await res.json();
+	if (!res.ok) throw new Error(data?.error?.message ?? 'Facebook publish failed');
+	return data; // contains id
+}
+
+/**
+ * Instagram container-based publishing.
+ * content shape:
+ * - { igType: 'post', caption?: string, imageUrl: string }
+ * - { igType: 'carousel', caption?: string, children: Array<{ imageUrl?: string, videoUrl?: string }> }
+ * - { igType: 'reel', caption?: string, videoUrl: string }
+ *
+ * Note: URLs must be publicly reachable by Meta.
+ *
+ * @param {{ igUserId: string; accessToken: string; content: any }} args
+ */
+async function publishInstagram({ igUserId, accessToken, content }) {
+	const igType = String(content.igType ?? '').toLowerCase();
+	const caption = String(content.caption ?? '').trim();
+
+	if (igType === 'post') {
+		const imageUrl = String(content.imageUrl ?? '').trim();
+		if (!imageUrl) throw new Error('Missing content.imageUrl for IG post');
+		const c = await metaGraphPost(`${igUserId}/media`, { image_url: imageUrl, ...(caption ? { caption } : {}) }, accessToken);
+		const creationId = String(c?.id ?? '');
+		if (!creationId) throw new Error('IG create container did not return id');
+		const pub = await metaGraphPost(`${igUserId}/media_publish`, { creation_id: creationId }, accessToken);
+		return { creation_id: creationId, publish: pub };
+	}
+
+	if (igType === 'reel') {
+		const videoUrl = String(content.videoUrl ?? '').trim();
+		if (!videoUrl) throw new Error('Missing content.videoUrl for IG reel');
+		const c = await metaGraphPost(
+			`${igUserId}/media`,
+			{ media_type: 'REELS', video_url: videoUrl, ...(caption ? { caption } : {}) },
+			accessToken
+		);
+		const creationId = String(c?.id ?? '');
+		if (!creationId) throw new Error('IG create reel container did not return id');
+
+		// Poll until video is finished processing
+		for (let i = 0; i < 40; i++) {
+			const st = await metaGraphGet(`${creationId}`, { fields: 'status_code' }, accessToken);
+			const code = String(st?.status_code ?? '');
+			if (code === 'FINISHED') break;
+			if (code === 'ERROR') throw new Error('IG reel processing failed');
+			await sleep(5000);
+		}
+
+		const pub = await metaGraphPost(`${igUserId}/media_publish`, { creation_id: creationId }, accessToken);
+		return { creation_id: creationId, publish: pub };
+	}
+
+	if (igType === 'carousel') {
+		const children = Array.isArray(content.children) ? content.children : [];
+		if (children.length < 2) throw new Error('IG carousel requires content.children with 2-10 items');
+		if (children.length > 10) throw new Error('IG carousel supports up to 10 items');
+
+		/** @type {string[]} */
+		const childIds = [];
+		for (const child of children) {
+			const imageUrl = String(child?.imageUrl ?? '').trim();
+			const videoUrl = String(child?.videoUrl ?? '').trim();
+			if (!imageUrl && !videoUrl) throw new Error('Carousel child must have imageUrl or videoUrl');
+
+			if (imageUrl) {
+				const c = await metaGraphPost(
+					`${igUserId}/media`,
+					{ image_url: imageUrl, is_carousel_item: 'true' },
+					accessToken
+				);
+				const id = String(c?.id ?? '');
+				if (!id) throw new Error('IG carousel child container did not return id');
+				childIds.push(id);
+				continue;
+			}
+
+			// Video child (some docs still use media_type=VIDEO for carousel items)
+			const c = await metaGraphPost(
+				`${igUserId}/media`,
+				{ media_type: 'VIDEO', video_url: videoUrl, is_carousel_item: 'true' },
+				accessToken
+			);
+			const id = String(c?.id ?? '');
+			if (!id) throw new Error('IG carousel video child container did not return id');
+			// Poll processing
+			for (let i = 0; i < 40; i++) {
+				const st = await metaGraphGet(`${id}`, { fields: 'status_code' }, accessToken);
+				const code = String(st?.status_code ?? '');
+				if (code === 'FINISHED') break;
+				if (code === 'ERROR') throw new Error('IG carousel video child processing failed');
+				await sleep(5000);
+			}
+			childIds.push(id);
+		}
+
+		const parent = await metaGraphPost(
+			`${igUserId}/media`,
+			{
+				media_type: 'CAROUSEL',
+				children: childIds.join(','),
+				...(caption ? { caption } : {}),
+			},
+			accessToken
+		);
+		const creationId = String(parent?.id ?? '');
+		if (!creationId) throw new Error('IG carousel parent container did not return id');
+
+		const pub = await metaGraphPost(`${igUserId}/media_publish`, { creation_id: creationId }, accessToken);
+		return { creation_id: creationId, child_creation_ids: childIds, publish: pub };
+	}
+
+	throw new Error(`Unknown IG content.igType: ${String(content.igType ?? '')}`);
+}
+
+new Worker(
+	QUEUE_NAME,
+	async (job) => {
+		const postId = job.data?.postId;
+		if (!postId) throw new Error('Missing postId');
+
+		// Load post
+		const { data: post, error: postErr } = await supabase
+			.from('scheduled_posts')
+			.select('*')
+			.eq('id', postId)
+			.maybeSingle();
+		if (postErr) throw new Error(postErr.message);
+		if (!post) return;
+
+		// If cancelled/published already, no-op
+		if (post.status === 'cancelled' || post.status === 'published') return;
+
+		// Claim (best-effort): only one worker should proceed
+		const { data: claimed, error: claimErr } = await supabase
+			.from('scheduled_posts')
+			.update({ status: 'publishing' })
+			.eq('id', postId)
+			.eq('status', 'scheduled')
+			.select('*')
+			.maybeSingle();
+		if (claimErr) throw new Error(claimErr.message);
+		if (!claimed) return; // someone else claimed or not in scheduled state
+
+		try {
+			const provider = claimed.connection_provider;
+			const acct = claimed.connection_provider_account_id;
+			const content = claimed.content ?? {};
+
+			if (provider === 'meta' && typeof acct === 'string' && acct.startsWith('fbpage:')) {
+				const pageId = acct.slice('fbpage:'.length);
+				const message = String(content.message ?? '').trim();
+				if (!message) throw new Error('Missing content.message for Facebook Page post');
+
+				const { data: conn, error: connErr } = await supabase
+					.from('social_connections')
+					.select('*')
+					.eq('user_id', claimed.user_id)
+					.eq('provider', 'meta')
+					.eq('provider_account_id', acct)
+					.maybeSingle();
+				if (connErr) throw new Error(connErr.message);
+				if (!conn) throw new Error('Missing social connection for Facebook Page');
+
+				const publishRes = await publishFacebookPageText({
+					pageId,
+					pageAccessToken: conn.access_token,
+					message,
+				});
+
+				await supabase
+					.from('scheduled_posts')
+					.update({
+						status: 'published',
+						published_at: new Date().toISOString(),
+						last_error: null,
+						content: { ...content, provider_result: publishRes },
+					})
+					.eq('id', postId);
+				return;
+			}
+
+			// Instagram Business/Creator (Meta)
+			if (provider === 'meta' && typeof acct === 'string' && !acct.startsWith('fbpage:') && String(content.igType ?? '')) {
+				const igUserId = acct;
+				const { data: conn, error: connErr } = await supabase
+					.from('social_connections')
+					.select('*')
+					.eq('user_id', claimed.user_id)
+					.eq('provider', 'meta')
+					.eq('provider_account_id', igUserId)
+					.maybeSingle();
+				if (connErr) throw new Error(connErr.message);
+				if (!conn) throw new Error('Missing social connection for Instagram Business');
+
+				const publishRes = await publishInstagram({
+					igUserId,
+					accessToken: conn.access_token,
+					content,
+				});
+
+				await supabase
+					.from('scheduled_posts')
+					.update({
+						status: 'published',
+						published_at: new Date().toISOString(),
+						last_error: null,
+						content: { ...content, provider_result: publishRes },
+					})
+					.eq('id', postId);
+				return;
+			}
+
+			// TODO: add LinkedIn, GBP publishing implementations here.
+			throw new Error(`Publishing not implemented for ${provider}:${acct}`);
+		} catch (e) {
+			const err = /** @type {any} */ (e);
+			const msg = err?.message ?? String(err);
+			await supabase
+				.from('scheduled_posts')
+				.update({
+					status: 'failed',
+					last_error: msg,
+					attempt_count: (claimed.attempt_count ?? 0) + 1,
+				})
+				.eq('id', postId);
+			throw e; // let BullMQ apply retry policy
+		}
+	},
+	{
+		connection: redis,
+	}
+);
+
+console.log(`[worker] listening on queue "${QUEUE_NAME}"`);
+
