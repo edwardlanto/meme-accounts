@@ -7,7 +7,7 @@
 	type ChannelId = 'x' | 'linkedin' | 'linkedinPage' | 'reddit' | 'instagramBusiness' | 'facebookPage' | 'threads' | 'youtube' | 'gmb' | 'tiktok' | 'pinterest';
 	type Channel = { id: ChannelId; label: string; accent: string; kind?: 'business' | 'page' | 'standalone'; icon: (active: boolean) => string };
 	type IgContentType = 'post' | 'reel' | 'carousel' | 'story';
-	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType };
+	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; images?: string[]; video?: string };
 	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; startISO: string; durationMin: number };
 
 	type DbScheduledPost = {
@@ -150,6 +150,7 @@
 	let loadingPosts = $state(false);
 	let postsError = $state('');
 	let metaBanner = $state<{ kind: 'error' | 'success'; message: string } | null>(null);
+	let studioDraftId = $state<string>('');
 
 	onMount(async () => {
 		// Surface Meta OAuth redirect results (callback appends query params).
@@ -174,11 +175,6 @@
 			};
 		}
 
-		// Clean URL so refresh doesn't keep showing the banner.
-		if (metaBanner) {
-			await goto('/dashboard/post-scheduler', { replaceState: true });
-		}
-
 		const { data } = await supabase.auth.getUser();
 		userId = data.user?.id ?? '';
 		if (!userId) {
@@ -186,7 +182,59 @@
 			return;
 		}
 		await Promise.all([loadConnections(), loadScheduledPosts()]);
+		await loadLatestNewsStudioExports(params);
+
+		// If we came from Studio and export succeeded, show a clear banner so the user posts the right draft.
+		if (params.get('from') === 'studio' && params.get('exported') === '1' && studioDraftId) {
+			metaBanner = {
+				kind: 'success',
+				message: 'Studio export ready. Use the top “News Studio: carousel …” draft to post images to Facebook.',
+			};
+		}
+
+		// Clean URL so refresh doesn't keep showing banners.
+		if (metaBanner || params.get('from') === 'studio') {
+			await goto('/dashboard/post-scheduler', { replaceState: true });
+		}
 	});
+
+	async function loadLatestNewsStudioExports(params?: URLSearchParams) {
+		// Optional: surface "real" carousel images exported from News Studio (saved in drafts.state.exportedSlides)
+		try {
+			const { data, error } = await (supabase as any)
+				.from('drafts')
+				.select('id,kind,state,updated_at')
+				.eq('kind', 'news_studio')
+				.eq('user_id', userId)
+				.order('updated_at', { ascending: false })
+				.limit(1);
+			if (error) return;
+			const row = (data?.[0] ?? null) as any;
+			const exported = Array.isArray(row?.state?.exportedSlides) ? row.state.exportedSlides.map((x: any) => String(x)).filter(Boolean) : [];
+			if (!exported.length) return;
+
+			// Prepend a draft that actually contains images so Facebook carousel posting works.
+			// Use a stable id so it doesn't duplicate across reloads.
+			const id = `studio:${String(row.id ?? 'latest')}`;
+			if (drafts.some((d) => d.id === id)) return;
+			studioDraftId = id;
+
+			// If we explicitly came from Studio export, pin the studio draft and avoid confusing starter drafts.
+			const preferStudio = params?.get('from') === 'studio' && params?.get('exported') === '1';
+			drafts = [
+				{
+					id,
+					title: `News Studio: carousel (${exported.length} slides)`,
+					channels: ['facebookPage'],
+					igType: 'carousel',
+					images: exported,
+				},
+				...(preferStudio ? drafts.filter((d) => d.id.startsWith('studio:')) : drafts),
+			];
+		} catch {
+			// ignore
+		}
+	}
 
 	async function loadConnections() {
 		connectionsError = '';
@@ -535,7 +583,14 @@
 
 		let content: any = {};
 		if (target === 'facebookPage') {
-			content = { message: `Scheduled from Social Poster — ${new Date().toLocaleString()}` };
+			const message = `Scheduled from Social Poster — ${new Date().toLocaleString()}`;
+			if (draft.images?.length) {
+				content = { message, images: draft.images };
+			} else if (draft.video) {
+				content = { message, video: draft.video };
+			} else {
+				content = { message };
+			}
 		} else {
 			// IG needs a public URL; we don't have asset upload wired on this page yet.
 			alert('Instagram auto-publish requires a public image/video URL. For now, test scheduling/cancel with a Facebook Page connection.');

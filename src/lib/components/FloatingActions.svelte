@@ -8,6 +8,7 @@
 		bottomOffsetPx?: number;
 		zIndex?: number;
 		postUrl?: string;
+		onPost?: () => void | Promise<void>;
 	}
 
 	let {
@@ -16,6 +17,7 @@
 		bottomOffsetPx = 24,
 		zIndex = 50,
 		postUrl = '/dashboard/post-scheduler',
+		onPost = undefined,
 	} = ($props() as $$Props);
 
 	interface SlideMusicSettings { song: string; seconds: number; }
@@ -51,6 +53,14 @@
 		selectedPlatforms = selectedPlatforms.includes(p)
 			? selectedPlatforms.filter((x) => x !== p)
 			: [...selectedPlatforms, p];
+	}
+
+	async function handlePostClick() {
+		if (onPost) {
+			await onPost();
+			return;
+		}
+		await goto(postUrl);
 	}
 </script>
 
@@ -158,7 +168,7 @@
 			{/if}
 
 			<button
-				onclick={() => goto(postUrl)}
+				onclick={handlePostClick}
 				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all
 					{showPostPanel
 						? 'bg-cyan-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]'

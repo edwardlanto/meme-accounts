@@ -122,11 +122,62 @@ async function uploadFacebookPagePhoto({ pageId, pageAccessToken, url, dataUrl, 
 }
 
 /**
+ * Upload a video to a Facebook Page.
+ * Supports either:
+ * - public URL (args.url)
+ * - data URL (args.dataUrl) (must be video/* base64)
+ *
+ * Note: Facebook generally supports one video per feed post via API.
+ *
+ * @param {{ pageId: string; pageAccessToken: string; url?: string; dataUrl?: string; description?: string; published?: boolean }} args
+ */
+async function uploadFacebookPageVideo({ pageId, pageAccessToken, url, dataUrl, description, published }) {
+	const endpoint = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/videos`);
+
+	if (dataUrl && String(dataUrl).startsWith('data:')) {
+		const blob = dataUrlToBlob(dataUrl);
+		if (!blob) throw new Error('Invalid data URL for video');
+		if (!String(blob.mime).startsWith('video/')) throw new Error('Video data URL must be video/*');
+		const form = new FormData();
+		form.set('access_token', pageAccessToken);
+		form.set('published', published === false ? 'false' : 'true');
+		if (description) form.set('description', description);
+		// @ts-ignore node fetch supports Blob
+		form.set('source', new Blob([blob.buf], { type: blob.mime }), 'video');
+		const res = await fetch(endpoint.toString(), { method: 'POST', body: form });
+		const out = await res.json();
+		if (!res.ok) throw new Error(out?.error?.message ?? 'Facebook video upload failed');
+		return out;
+	}
+
+	if (url) {
+		// Graph supports url param for some video uploads; if it fails, surface the message.
+		const body = new URLSearchParams({
+			access_token: pageAccessToken,
+			published: published === false ? 'false' : 'true',
+			file_url: String(url),
+			...(description ? { description: String(description) } : {}),
+		});
+		const res = await fetch(endpoint.toString(), {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			body,
+		});
+		const out = await res.json();
+		if (!res.ok) throw new Error(out?.error?.message ?? 'Facebook video upload failed');
+		return out;
+	}
+
+	throw new Error('Missing url or dataUrl for Facebook video upload');
+}
+
+/**
  * Publish to a Facebook Page.
  * content shapes:
  * - { message: string }
  * - { message?: string, link?: string }
  * - { message?: string, images?: string[] } where images are public URLs or data URLs
+ * - { message?: string, video?: string } where video is a public URL or data URL
  *
  * @param {{ pageId: string; pageAccessToken: string; content: any }} args
  */
@@ -136,6 +187,7 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 	const images = Array.isArray(content?.images)
 		? content.images.map((/** @type {unknown} */ x) => String(x)).filter(Boolean)
 		: [];
+	const video = String(content?.video ?? '').trim();
 
 	// Link post (no images)
 	if (link && images.length === 0) {
@@ -186,6 +238,19 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 		const data = await res.json();
 		if (!res.ok) throw new Error(data?.error?.message ?? 'Facebook carousel post failed');
 		return data;
+	}
+
+	// Video post (single)
+	if (video) {
+		const up = await uploadFacebookPageVideo({
+			pageId,
+			pageAccessToken,
+			url: video.startsWith('http') ? video : undefined,
+			dataUrl: video.startsWith('data:') ? video : undefined,
+			description: message || undefined,
+			published: true,
+		});
+		return up;
 	}
 
 	// Text-only post

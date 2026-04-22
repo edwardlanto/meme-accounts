@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { supabase } from '$lib/supabase';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { toPng } from 'html-to-image';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
@@ -117,6 +117,26 @@
 		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
 	}
 
+	async function toExportSafeImageUrl(url: string) {
+		const src = String(url ?? '').trim();
+		if (!src) return '';
+		if (src.startsWith('data:')) return src;
+		if (src.startsWith('http://') || src.startsWith('https://')) {
+			try {
+				const res = await fetch('/api/media/to-data-url', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ url: src }),
+				});
+				const data = await res.json();
+				if (res.ok && data?.ok && typeof data.dataUrl === 'string') return data.dataUrl;
+			} catch {
+				// ignore
+			}
+		}
+		return src;
+	}
+
 	function setSlideVideo(i: number, url: string) {
 		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? url : v);
 		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img); // clear image
@@ -157,6 +177,7 @@
 
 	// Export
 	let exporting = $state(false);
+	let exportingAll = $state(false);
 	let exportRef: HTMLElement | null = $state(null);
 
 	// ── Output format (canvas size) ───────────────────────────────────────
@@ -259,8 +280,13 @@
 			textPanelOffsetY,
 			highlightColor,
 			textColor,
+			// Rendered PNG exports (data URLs) for scheduler publishing (FB supports data URLs; IG needs public URLs)
+			exportedSlides,
 		};
 	}
+
+	// Rendered PNGs (data URLs) of each slide's final template output
+	let exportedSlides = $state<string[]>([]);
 
 	async function saveDraftNow() {
 		if (!userId) return;
@@ -561,7 +587,8 @@
 
 		// Slide 0: use article image directly if available, otherwise Vertex
 		if (articleImageUrl) {
-			setSlideImage(0, articleImageUrl);
+			const safe = await toExportSafeImageUrl(articleImageUrl);
+			setSlideImage(0, safe);
 		}
 
 		// Fire all Vertex requests in parallel (skip slide 0 if we have article image)
@@ -681,7 +708,9 @@
 				height: CANVAS_H,
 				pixelRatio: 1,
 				style: { transform: 'scale(1)', transformOrigin: 'top left' },
-			});
+				// Prevent export failures on cross-origin stylesheets (e.g. Google Fonts)
+				fontEmbedCSS: '',
+			} as any);
 
 			const a = document.createElement('a');
 			a.href = dataUrl;
@@ -695,12 +724,74 @@
 		exporting = false;
 	}
 
+	async function exportAllSlidesToDraft() {
+		if (!exportRef) return 0;
+		if (!slides.length) return 0;
+		exportingAll = true;
+		const prev = activeSlide;
+		try {
+			const out: string[] = [];
+			for (let i = 0; i < slides.length; i++) {
+				activeSlide = i;
+				// Let the DOM update before rasterizing (Svelte + next paint)
+				await tick();
+				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+				const node = exportRef;
+				if (!node) throw new Error('Preview not ready for export');
+
+				const dataUrl = await toPng(node, {
+					width: CANVAS_W,
+					height: CANVAS_H,
+					pixelRatio: 1,
+					style: { transform: 'scale(1)', transformOrigin: 'top left' },
+					cacheBust: true,
+					// Prevent export failures on cross-origin stylesheets (e.g. Google Fonts)
+					fontEmbedCSS: '',
+				} as any);
+				out.push(dataUrl);
+			}
+			exportedSlides = out;
+			await saveDraftNow();
+			return out.length;
+		} catch (e: any) {
+			const msg =
+				typeof e?.message === 'string' && e.message.trim()
+					? e.message
+					: (() => {
+							try { return JSON.stringify(e); } catch { return String(e); }
+						})();
+			console.error('Export all failed:', e);
+			alert(
+				'Export all failed: ' +
+					(msg || 'unknown error') +
+					'\n\nMost common cause: a background image/video from another site blocks canvas export (CORS).'
+			);
+			return 0;
+		} finally {
+			activeSlide = prev;
+			exportingAll = false;
+		}
+	}
+
 	// Preview scale — fit within container
 	const PREVIEW_WIDTH = 520;
 	const previewScale = $derived(PREVIEW_WIDTH / CANVAS_W);
 </script>
 
-<FloatingActions {...({ slideLabels: slides.map((_, i) => `Slide ${i + 1}`) } as any)} />
+<FloatingActions
+	{...({
+		slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
+		onPost: async () => {
+			const n = await exportAllSlidesToDraft();
+			if (!n) {
+				alert('Could not export slides to PNG, so nothing was sent to the scheduler.\n\nFix the background media (CORS/video) and try Post again.');
+				return;
+			}
+			await goto('/dashboard/post-scheduler?from=studio&exported=1');
+		},
+	} as any)}
+/>
 
 <div class="flex h-full overflow-hidden">
 
@@ -1205,7 +1296,7 @@
 			<div class="border-t border-white/[0.05] my-3"></div>
 
 			<!-- Export -->
-			<button onclick={exportPng} disabled={exporting}
+			<button onclick={exportPng} disabled={exporting || exportingAll}
 				class="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all disabled:opacity-50">
 				{#if exporting}
 					<Loader size={13} class="animate-spin" /> Exporting...
@@ -1213,6 +1304,8 @@
 					<Download size={13} /> Export {CANVAS_W}×{CANVAS_H} PNG
 				{/if}
 			</button>
+
+			<!-- Posting now automatically exports slides; no separate export button -->
 
 			{#if articleUrl}
 				<a href={articleUrl} target="_blank" rel="noopener noreferrer"
