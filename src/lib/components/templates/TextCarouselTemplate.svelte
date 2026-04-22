@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	interface Props {
 		name?: string;
 		handle?: string;
@@ -115,16 +116,11 @@
 		<!-- ── Body text ──────────────────────────────────────────────────── -->
 		<div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
 			{#each paragraphs as para, i}
-				<p style="
-					margin: 0;
-					{i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''}
-					font-size: 72px;
-					font-weight: 500;
-					color: #ffffff;
-					line-height: 1.38;
-					letter-spacing: -0.8px;
-					word-break: break-word;
-				">{para}</p>
+				<HighlightedText
+					as="p"
+					text={para}
+					style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: #ffffff; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word;"
+				/>
 			{/each}
 		</div>
 

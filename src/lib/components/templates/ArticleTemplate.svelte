@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	interface Segment { text: string; accent: boolean; }
 
 	interface Props {
@@ -100,9 +101,14 @@
 						">
 							{#each block as seg}
 								{#if seg.accent}
-									<span style="color: {accentColor}; font-weight: 600;">{seg.text}</span>
+									<HighlightedText
+										as="span"
+										text={seg.text}
+										defaultColor={accentColor}
+										style="color: {accentColor}; font-weight: 600;"
+									/>
 								{:else}
-									{seg.text}
+									<HighlightedText as="span" text={seg.text} defaultColor={accentColor} />
 								{/if}
 							{/each}
 						</p>

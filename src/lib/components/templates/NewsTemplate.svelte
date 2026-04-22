@@ -29,6 +29,11 @@
 		circleSize?: number;  // diameter in template px (bindable)
 		bgOffsetX?: number;   // background horizontal position 0–100% (bindable)
 		bgOffsetY?: number;   // background vertical position 0–100% (bindable)
+		/** Background zoom as a percentage of frame size. 100 = exact cover,
+		 *  values >100 zoom in, values <100 shrink the image and letterbox it.
+		 *  We always *render* at max(bgZoom, 115) so both pan sliders still have
+		 *  room to work regardless of the source aspect ratio. */
+		bgZoom?: number;      // default 100
 		textPanelOffsetY?: number; // bottom text panel offset (bindable, px)
 		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 75. */
 		shadowHeight?: number;
@@ -70,6 +75,7 @@
 		circleSize = $bindable(256),
 		bgOffsetX  = $bindable(50),
 		bgOffsetY  = $bindable(50),
+		bgZoom     = $bindable(100),
 		textPanelOffsetY = $bindable(0),
 		shadowHeight = $bindable(75),
 		shadowStrength = $bindable(1),
@@ -139,6 +145,24 @@
 	// Whether there's any background media (image or video)
 	const hasBg = $derived(!!(backgroundVideo || backgroundImage));
 
+	// Effective background zoom. We render at max(bgZoom, 115) so the X/Y pan
+	// sliders always have room to move the image regardless of source aspect
+	// ratio (even a 1:1 image inside a 4:5 frame). When the user asks for LESS
+	// than 100% (shrink), the image is positioned inside a full-frame solid
+	// backdrop (letterboxed) rather than stretched. That case is handled with
+	// a separate render path below.
+	const bgZoomPct = $derived(Math.max(30, Math.min(300, Number(bgZoom) || 100)));
+	const bgRenderSize = $derived(Math.max(bgZoomPct, 115));
+	const bgRenderOverflowPct = $derived(bgRenderSize - 100); // total overflow
+	const bgTranslateX = $derived((-bgOffsetX * bgRenderOverflowPct) / bgRenderSize);
+	const bgTranslateY = $derived((-bgOffsetY * bgRenderOverflowPct) / bgRenderSize);
+	// When shrinking below 100%, the image no longer covers the frame. In that
+	// case we center it and the X/Y sliders instead pan the shrunk image within
+	// the frame (so 0→100% shifts the image from one edge to the other).
+	const bgIsShrunk = $derived(bgZoomPct < 100);
+	const bgShrunkLeftPct = $derived(bgIsShrunk ? bgOffsetX * (100 - bgZoomPct) / 100 : 0);
+	const bgShrunkTopPct = $derived(bgIsShrunk ? bgOffsetY * (100 - bgZoomPct) / 100 : 0);
+
 	// Bottom shadow gradient — height/strength controllable.
 	const shadowGradient = $derived.by(() => {
 		const sh = Math.max(0, Math.min(100, shadowHeight));
@@ -183,8 +207,6 @@
 		if (!interactive) return;
 		e.stopPropagation();
 		editing = true;
-		// HighlightEditor focuses itself via its contenteditable when it mounts;
-		// we just need to re-enter the element on next tick for the caret.
 		setTimeout(() => {
 			const ce = editableEl?.querySelector<HTMLElement>('[contenteditable="true"]');
 			if (ce) {
@@ -196,6 +218,10 @@
 				sel?.removeAllRanges();
 				sel?.addRange(range);
 			}
+			// Re-anchor the floating toolbar to the editor container so it sits
+			// consistently above the text while the user is editing — never
+			// covering the text selection.
+			if (editableEl) onTextSelect?.('headline', editableEl);
 		}, 10);
 	}
 
@@ -592,35 +618,74 @@
 			/>
 		{/if}
 
-		<!-- Background: video takes priority over image -->
+		<!-- Background: video takes priority over image.
+
+		     Zoom + pan model:
+		     - At zoom ≥ 100%, we render the media at max(zoom, 115)% using
+		       object-fit:cover so the image always fills the frame; pan
+		       sliders translate the oversize element within the clip.
+		     - At zoom < 100% (shrink), we letterbox the media inside a dark
+		       backdrop and the pan sliders reposition the shrunken media
+		       within the visible frame.
+		     - The outer div always clips so nothing leaks into other layers. -->
 		{#if backgroundVideo}
-			<!-- svelte-ignore a11y_media_has_caption -->
-			<video
-				src={backgroundVideo}
-				autoplay
-				loop
-				muted
-				playsinline
-				style="
-					position: absolute; inset: 0;
-					width: 100%; height: 100%;
-					object-fit: cover;
-					object-position: {bgOffsetX}% {bgOffsetY}%;
-					pointer-events: none;
-				"
-			></video>
+			<div style="position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #0a0a0a;">
+				{#if bgIsShrunk}
+					<!-- svelte-ignore a11y_media_has_caption -->
+					<video
+						src={backgroundVideo}
+						autoplay loop muted playsinline
+						style="
+							position: absolute;
+							top: {bgShrunkTopPct}%; left: {bgShrunkLeftPct}%;
+							width: {bgZoomPct}%; height: {bgZoomPct}%;
+							object-fit: contain;
+						"
+					></video>
+				{:else}
+					<!-- svelte-ignore a11y_media_has_caption -->
+					<video
+						src={backgroundVideo}
+						autoplay loop muted playsinline
+						style="
+							position: absolute;
+							top: 0; left: 0;
+							width: {bgRenderSize}%; height: {bgRenderSize}%;
+							object-fit: cover;
+							object-position: {bgOffsetX}% {bgOffsetY}%;
+							transform: translate({bgTranslateX}%, {bgTranslateY}%);
+						"
+					></video>
+				{/if}
+			</div>
 		{:else if backgroundImage}
-			<img
-				src={backgroundImage}
-				alt=""
-				style="
-					position: absolute; inset: 0;
-					width: 100%; height: 100%;
-					object-fit: cover;
-					object-position: {bgOffsetX}% {bgOffsetY}%;
-					pointer-events: none;
-				"
-			/>
+			<div style="position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #0a0a0a;">
+				{#if bgIsShrunk}
+					<img
+						src={backgroundImage}
+						alt=""
+						style="
+							position: absolute;
+							top: {bgShrunkTopPct}%; left: {bgShrunkLeftPct}%;
+							width: {bgZoomPct}%; height: {bgZoomPct}%;
+							object-fit: contain;
+						"
+					/>
+				{:else}
+					<img
+						src={backgroundImage}
+						alt=""
+						style="
+							position: absolute;
+							top: 0; left: 0;
+							width: {bgRenderSize}%; height: {bgRenderSize}%;
+							object-fit: cover;
+							object-position: {bgOffsetX}% {bgOffsetY}%;
+							transform: translate({bgTranslateX}%, {bgTranslateY}%);
+						"
+					/>
+				{/if}
+			</div>
 		{:else}
 			<div style="
 				position: absolute; inset: 0;
@@ -803,18 +868,35 @@
 			pixel-perfectly with the background behind it.
 		-->
 		{#if showSubjectCutout && subjectCutout}
-			<img
-				src={subjectCutout}
-				alt=""
-				style="
-					position: absolute; inset: 0;
-					width: 100%; height: 100%;
-					object-fit: cover;
-					object-position: {bgOffsetX}% {bgOffsetY}%;
-					z-index: 25;
-					pointer-events: none;
-				"
-			/>
+			<!-- Cutout must pan + zoom identically to the background (it was
+			     derived from the same pixels). Mirror the zoom/pan math above. -->
+			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 25; pointer-events: none;">
+				{#if bgIsShrunk}
+					<img
+						src={subjectCutout}
+						alt=""
+						style="
+							position: absolute;
+							top: {bgShrunkTopPct}%; left: {bgShrunkLeftPct}%;
+							width: {bgZoomPct}%; height: {bgZoomPct}%;
+							object-fit: contain;
+						"
+					/>
+				{:else}
+					<img
+						src={subjectCutout}
+						alt=""
+						style="
+							position: absolute;
+							top: 0; left: 0;
+							width: {bgRenderSize}%; height: {bgRenderSize}%;
+							object-fit: cover;
+							object-position: {bgOffsetX}% {bgOffsetY}%;
+							transform: translate({bgTranslateX}%, {bgTranslateY}%);
+						"
+					/>
+				{/if}
+			</div>
 		{/if}
 
 		<!-- ── Text area ──────────────────────────────────────────────────── -->
@@ -897,21 +979,25 @@
 					onkeydown={onEditKeydown}
 					onclick={(e) => e.stopPropagation()}
 					style="
-						margin: 0; padding: 8px;
+						margin: 0; padding: 0;
 						{headlineCss}
 						text-transform: uppercase;
 						word-break: break-word;
-						outline: 2px solid rgba(255,255,255,0.4);
+						box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
 						border-radius: 4px;
-						min-height: 80px;
 						cursor: text;
 						white-space: pre-wrap;
 					"
 				>
 					<HighlightEditor
 						value={text}
+						rows={1}
 						onChange={(v) => onTextChange?.(v)}
 						onBlur={finishEdit}
+						onSelectionChange={(has, r) => {
+							if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
+							else onHeadlineRangeSelect?.(-1, -1);
+						}}
 						ariaLabel="Headline editor"
 					/>
 				</div>

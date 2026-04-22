@@ -9,16 +9,15 @@
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
-	import CarouselPreview from '$lib/components/CarouselPreview.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import { dndzone } from 'svelte-dnd-action';
-	import { AVAILABLE_PATTERNS, applyHighlight, type HighlightSpec } from '$lib/highlight';
+	import { applyHighlight, type HighlightSpec } from '$lib/highlight';
 	import type { Overlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
-		Image, Palette, Type, ChevronDown, Search, FlaskConical, Wifi, Layers,
-		Scissors, Eye, EyeOff
+		Image, Type, ChevronDown, Search, FlaskConical, Wifi, Layers,
+		Scissors, Eye, EyeOff, Flame, Music, Play, X
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -65,7 +64,6 @@
 	let slideCount = $state(3); // 1–10
 
 	// Preview/edit view toggle for the canvas area.
-	let viewMode = $state<'edit' | 'preview'>('edit');
 	let fetchingNews = $state(false);
 	let generatingVariants = $state(false);
 	let newsError = $state('');
@@ -111,6 +109,25 @@
 	let backgroundImages = $state<string[]>([]);
 	let backgroundVideos = $state<string[]>([]); // blob URLs — one per slide
 	let generatingImages = $state<boolean[]>([]); // per-slide loading state
+
+	// Per-slide music. Picking any track other than "No music" marks the slide
+	// as a video (we burn the selected track onto the still image at publish
+	// time). Users get a visual flame/▶ badge so they know this slide will be
+	// posted as a video rather than a static image.
+	type MusicTrack = { id: string; name: string; url?: string };
+	const MUSIC_LIBRARY: MusicTrack[] = [
+		{ id: 'lofi-chill',        name: 'Lo-fi Chill' },
+		{ id: 'upbeat-corporate',  name: 'Upbeat Corporate' },
+		{ id: 'cinematic-rise',    name: 'Cinematic Rise' },
+		{ id: 'acoustic-mood',     name: 'Acoustic Mood' },
+		{ id: 'electronic-pulse',  name: 'Electronic Pulse' },
+		{ id: 'inspirational',     name: 'Inspirational Piano' },
+		{ id: 'trap-beat',         name: 'Trap Beat' },
+		{ id: 'jazz-cafe',         name: 'Jazz Cafe' },
+	];
+	let slideMusic = $state<(MusicTrack | null)[]>([]);
+	let musicPickerForSlide = $state<number | null>(null); // which slide's picker is open
+	const activeMusic = $derived(slideMusic[activeSlide] ?? null);
 
 	// Subject cutouts — transparent PNG of the foreground subject, per slide.
 	// When set + `showCutout` true for a slide, we layer the cutout over the circle
@@ -188,7 +205,8 @@
 
 	// Background pan (0–100 %)
 	let bgOffsetX = $state(50); // horizontal: 0=left, 100=right
-	let bgOffsetY = $state(50);  // vertical:   0=top,  100=bottom
+	let bgOffsetY = $state(50); // vertical:   0=top,  100=bottom
+	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in
 
 	// Text panel drag (template px)
 	let textPanelOffsetY = $state(0);
@@ -222,6 +240,28 @@
 		}
 	});
 
+	$effect(() => {
+		if (slideMusic.length < slideCount) {
+			slideMusic = [...slideMusic, ...Array(slideCount - slideMusic.length).fill(null)];
+		} else if (slideMusic.length > slideCount) {
+			slideMusic = slideMusic.slice(0, slideCount);
+		}
+	});
+
+	// Close the music picker when the user clicks anywhere outside it. We scope
+	// the "inside" check to known data-attributes on both the popover and the
+	// flame toggles so toggling works naturally.
+	$effect(() => {
+		if (musicPickerForSlide === null) return;
+		const onDocDown = (e: MouseEvent) => {
+			const t = e.target as HTMLElement;
+			if (t.closest('[data-music-popover]') || t.closest('[data-music-toggle]')) return;
+			musicPickerForSlide = null;
+		};
+		document.addEventListener('mousedown', onDocDown);
+		return () => document.removeEventListener('mousedown', onDocDown);
+	});
+
 	/**
 	 * Reorder all per-slide arrays to match a new order of indices.
 	 * `newOrder` is an array of old indices in their new positions.
@@ -245,6 +285,7 @@
 		sourceStyles     = pickOr(sourceStyles, {} as TextStyle);
 		if (exportedSlides.length) exportedSlides = pickOr(exportedSlides, '');
 		slideIds        = pickOr(slideIds, newSlideId());
+		slideMusic      = pickOr(slideMusic, null);
 
 		// Keep the same logical slide focused after reorder.
 		const newActive = newOrder.indexOf(activeSlide);
@@ -399,6 +440,7 @@
 		if (Array.isArray(s.sourceStyles)) sourceStyles = s.sourceStyles;
 		if (Array.isArray(s.subjectCutouts)) subjectCutouts = s.subjectCutouts;
 		if (Array.isArray(s.showCutout)) showCutout = s.showCutout;
+		if (Array.isArray(s.slideMusic)) slideMusic = s.slideMusic;
 
 		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
 		if (typeof s.circleImage === 'string') circleImage = s.circleImage;
@@ -407,6 +449,7 @@
 		if (typeof s.circleSize === 'number') circleSize = s.circleSize;
 		if (typeof s.bgOffsetX === 'number') bgOffsetX = s.bgOffsetX;
 		if (typeof s.bgOffsetY === 'number') bgOffsetY = s.bgOffsetY;
+		if (typeof s.bgZoom === 'number') bgZoom = s.bgZoom;
 		if (typeof s.textPanelOffsetY === 'number') textPanelOffsetY = s.textPanelOffsetY;
 		if (typeof s.shadowHeight === 'number') shadowHeight = s.shadowHeight;
 		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
@@ -436,6 +479,7 @@
 			sourceStyles,
 			subjectCutouts,
 			showCutout,
+			slideMusic,
 			showCircle,
 			circleImage,
 			circleX,
@@ -443,6 +487,7 @@
 			circleSize,
 			bgOffsetX,
 			bgOffsetY,
+			bgZoom,
 			textPanelOffsetY,
 			shadowHeight,
 			shadowStrength,
@@ -644,73 +689,6 @@
 			console.error('[variants]', e.message);
 			newsError = `Slide variants: ${e.message}`;
 		}
-	}
-
-	// ── Highlight mode — solid color OR image pattern, never both ────────
-	// 'solid'   → [[WORD]] / [[#hex: WORD]] highlights
-	// 'pattern' → [[pattern(name): WORD]] image-fill highlights
-	let highlightMode = $state<'solid' | 'pattern'>('solid');
-	let noSelectionHint = $state(false);
-
-	/** Strip all pattern markup from text, leaving bare words */
-	function stripPatterns(text: string): string {
-		return text.replace(/\[\[pattern\([\w-]+\):\s*/gi, '[[');
-	}
-
-	/** Strip all solid [[...]] highlights (but keep [[pattern(...)]] intact) */
-	function stripSolidHighlights(text: string): string {
-		// Remove [[#hex: word]] → word
-		text = text.replace(/\[\[#[0-9a-fA-F]{3,8}:\s*([^\]]+)\]\]/g, '$1');
-		// Remove plain [[word]] that are NOT pattern/grad
-		text = text.replace(/\[\[(?!pattern\(|grad\()([^\]]+)\]\]/g, '$1');
-		return text;
-	}
-
-	function switchToSolid() {
-		highlightMode = 'solid';
-		setActiveSlideText(stripPatterns(overlayText));
-	}
-
-	function switchToPattern() {
-		highlightMode = 'pattern';
-		setActiveSlideText(stripSolidHighlights(overlayText));
-	}
-
-	/** Wrap selected text in the textarea with [[pattern(name): sel]] */
-	function insertPattern(patternName: string) {
-		const textarea = document.querySelector<HTMLTextAreaElement>('textarea[data-slide-text]');
-		if (!textarea) return;
-		const start = textarea.selectionStart;
-		const end   = textarea.selectionEnd;
-		const rawSel = textarea.value.slice(start, end);
-		// Strip any existing markup from the selection
-		const sel = rawSel.replace(/\[\[(?:pattern\([\w-]+\)|grad\([^)]+\)|#[0-9a-fA-F]{3,8}):\s*/gi, '').replace(/\]\]/g, '').trim();
-
-		if (!sel) {
-			noSelectionHint = true;
-			setTimeout(() => noSelectionHint = false, 2000);
-			return;
-		}
-
-		// Switch mode and strip conflicting highlights from the full text first
-		highlightMode = 'pattern';
-		const cleaned = stripSolidHighlights(textarea.value);
-		const markup  = `[[pattern(${patternName}): ${sel}]]`;
-		const newVal  = cleaned.slice(0, start) + markup + cleaned.slice(end);
-		setActiveSlideText(newVal);
-	}
-
-	/** Wrap selected text in a gradient highlight */
-	function insertGradient(from: string, to: string) {
-		const textarea = document.querySelector<HTMLTextAreaElement>('textarea[data-slide-text]');
-		if (!textarea) return;
-		const start = textarea.selectionStart;
-		const end   = textarea.selectionEnd;
-		const sel   = textarea.value.slice(start, end).replace(/\[\[.*?:\s*/g, '').replace(/\]\]/g, '').trim();
-		if (!sel) return;
-		const markup = `[[grad(${from},${to}): ${sel}]]`;
-		const newVal = textarea.value.slice(0, start) + markup + textarea.value.slice(end);
-		setActiveSlideText(newVal);
 	}
 
 	// ── Generate background image for a single slide ─────────────────────
@@ -1190,6 +1168,7 @@
 						value={overlayText}
 						rows={4}
 						showToolbar={true}
+						defaultColor={highlightColor}
 						placeholder="Type your headline, select words, then click a color…"
 						ariaLabel="Slide text editor"
 						onChange={(v) => setActiveSlideText(v)}
@@ -1253,104 +1232,6 @@
 
 			<!-- Divider -->
 			<div class="border-t border-white/[0.05] my-3"></div>
-
-			<!-- ── Text Highlights (solid OR pattern — exclusive) ── -->
-			<div>
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">
-					<Palette size={9} class="inline mr-1" />Text Highlights
-				</label>
-
-				<!-- Mode toggle -->
-				<div class="flex rounded-xl overflow-hidden border border-white/[0.07] mb-3">
-					<button
-						onclick={switchToSolid}
-						class="flex-1 py-1.5 text-[11px] font-mono transition-all
-							{highlightMode === 'solid'
-								? 'bg-violet-500/20 text-violet-300'
-								: 'text-white/30 hover:text-white/50'}">
-						Solid Color
-					</button>
-					<div class="w-px bg-white/[0.07]"></div>
-					<button
-						onclick={switchToPattern}
-						class="flex-1 py-1.5 text-[11px] font-mono transition-all
-							{highlightMode === 'pattern'
-								? 'bg-amber-500/20 text-amber-300'
-								: 'text-white/30 hover:text-white/50'}">
-						Pattern
-					</button>
-				</div>
-
-				{#if highlightMode === 'solid'}
-					<!-- Solid color swatches -->
-					<div class="flex items-center gap-2">
-						{#each ['#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFFFFF'] as color}
-							<button onclick={() => { highlightColor = color; switchToSolid(); }}
-								class="w-7 h-7 rounded-lg border-2 transition-all flex-shrink-0
-									{highlightColor === color ? 'border-white scale-110' : 'border-transparent hover:scale-105'}"
-								style="background: {color};">
-							</button>
-						{/each}
-						<input type="color" bind:value={highlightColor}
-							class="w-8 h-7 rounded-lg cursor-pointer bg-transparent border border-white/[0.08] flex-shrink-0" />
-					</div>
-					<!-- Gradient presets -->
-					<div class="flex items-center gap-1.5 mt-2">
-						<span class="text-[10px] font-mono text-white/25 flex-shrink-0">Gradient</span>
-						{#each [['#F5A623','#FF3B5C'],['#08EBFF','#A855F7'],['#10B981','#08EBFF'],['#FFFFFF','#F5A623']] as [from, to]}
-							<button onclick={() => insertGradient(from, to)}
-								class="h-5 w-9 rounded border border-white/10 hover:scale-105 transition-all flex-shrink-0"
-								style="background: linear-gradient(90deg, {from}, {to});"
-								title="Select text then click">
-							</button>
-						{/each}
-					</div>
-					<p class="text-[10px] font-body text-white/15 mt-1.5">
-						Use <code class="text-violet-400/50">[[WORD]]</code> in the text field above
-					</p>
-
-				{:else}
-					<!-- Pattern image fills -->
-					<!-- "Select text first" hint -->
-					{#if noSelectionHint}
-						<div class="flex items-center gap-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-2">
-							<span class="text-[11px] font-mono text-amber-400">← Select text in the field first</span>
-						</div>
-					{/if}
-
-					<div class="grid grid-cols-2 gap-2">
-						{#each AVAILABLE_PATTERNS as pat}
-							<button onclick={() => insertPattern(pat.name)}
-								class="flex flex-col items-center gap-1.5 p-2 rounded-xl border transition-all overflow-hidden group
-									bg-white/[0.02] border-white/[0.07] hover:border-white/25 hover:bg-white/[0.05]">
-								<!-- Pattern image preview with text clipped to it -->
-								<div class="w-full h-10 rounded-lg overflow-hidden relative">
-									<img src={pat.url} alt={pat.label} class="absolute inset-0 w-full h-full object-cover" />
-									<div class="absolute inset-0 flex items-center justify-center">
-										<span style="
-											background-image: url('{pat.url}');
-											background-size: cover;
-											background-position: center;
-											-webkit-background-clip: text;
-											-webkit-text-fill-color: transparent;
-											background-clip: text;
-											font-family: 'Bebas Neue', Impact, sans-serif;
-											font-size: 22px;
-											letter-spacing: 2px;
-											filter: contrast(1.4) brightness(1.2);
-										">WORD</span>
-									</div>
-								</div>
-								<span class="text-[10px] font-mono text-white/40 group-hover:text-white/70 transition-colors">{pat.label}</span>
-							</button>
-						{/each}
-					</div>
-
-					<p class="text-[10px] font-body text-white/15 mt-2 leading-relaxed">
-						Select text above → click pattern to apply
-					</p>
-				{/if}
-			</div>
 
 			<!-- Text color -->
 			<div>
@@ -1526,6 +1407,29 @@
 								/>
 								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">↓</span>
 							</div>
+
+							<!-- Zoom: <100% shrinks (letterboxed on dark bg),
+							     >100% zooms in. Double-click the label to reset. -->
+							<div class="flex items-center justify-between mt-1 mb-0.5">
+								<button
+									type="button"
+									onclick={() => bgZoom = 100}
+									class="text-[10px] font-mono text-white/25 uppercase tracking-wider hover:text-violet-400 transition-colors"
+									title="Reset zoom to 100%"
+								>
+									Zoom
+								</button>
+								<span class="text-[9px] font-mono text-white/40">{bgZoom}%</span>
+							</div>
+							<div class="flex items-center gap-2.5">
+								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">−</span>
+								<input
+									type="range" min="30" max="200" step="1"
+									bind:value={bgZoom}
+									class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+								/>
+								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">+</span>
+							</div>
 						</div>
 					{/if}
 				</div>
@@ -1690,24 +1594,9 @@
 				{/each}
 			</div>
 
-			{#if slideCount > 1}
-				<div class="flex items-center rounded-2xl bg-white/2 border border-white/6 overflow-hidden">
-					<button
-						onclick={() => (viewMode = 'edit')}
-						class="px-3 py-2 text-[10px] font-mono transition-colors
-							{viewMode === 'edit' ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
-					>Edit</button>
-					<button
-						onclick={() => (viewMode = 'preview')}
-						class="px-3 py-2 text-[10px] font-mono transition-colors
-							{viewMode === 'preview' ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
-					>Carousel preview</button>
-				</div>
-			{/if}
 		</div>
 
 		<!-- Slide indicator + nav arrows -->
-		{#if viewMode === 'edit'}
 		<div class="flex items-center gap-3">
 			<button
 				onclick={() => activeSlide = Math.max(0, activeSlide - 1)}
@@ -1725,65 +1614,7 @@
 				›
 			</button>
 		</div>
-		{/if}
 
-		{#if viewMode === 'preview' && slideCount > 1}
-			<!-- ── Apple-style 3-up carousel preview ───────────────────────── -->
-			<CarouselPreview
-				count={slideCount}
-				active={activeSlide}
-				canvasW={CANVAS_W}
-				canvasH={CANVAS_H}
-				centerWidth={Math.min(420, PREVIEW_WIDTH)}
-				onActiveChange={(i) => (activeSlide = i)}
-			>
-				{#snippet slide({ index })}
-					{@const tpl = slideTemplates[index] ?? 'news'}
-					{@const txt = slides[index] ?? ''}
-					{@const bgI = backgroundImages[index] ?? ''}
-					{@const bgV = backgroundVideos[index] ?? ''}
-					{@const cut = subjectCutouts[index] ?? ''}
-					{@const scut = showCutout[index] ?? false}
-					{@const hs = headlineStyles[index] ?? {}}
-					{@const ss = sourceStyles[index] ?? {}}
-					{@const ovs = slideOverlays[index] ?? []}
-					{#if tpl === 'news'}
-						<NewsTemplate
-							backgroundImage={bgI}
-							backgroundVideo={bgV}
-							subjectCutout={cut}
-							showSubjectCutout={scut}
-							circleImage={showCircle ? circleImage : ''}
-							text={txt}
-							source={source}
-							highlightColor={highlightColor}
-							textColor={textColor}
-							w={CANVAS_W}
-							h={CANVAS_H}
-							scale={1}
-							interactive={false}
-							overlays={ovs}
-							headlineStyle={hs}
-							sourceStyle={ss}
-							circleX={circleX}
-							circleY={circleY}
-							circleSize={circleSize}
-							bgOffsetX={bgOffsetX}
-							bgOffsetY={bgOffsetY}
-							textPanelOffsetY={textPanelOffsetY}
-							shadowHeight={shadowHeight}
-							shadowStrength={shadowStrength}
-						/>
-					{:else if tpl === 'article'}
-						<ArticleTemplate text={txt} image={bgI} scale={1} interactive={false} />
-					{:else if tpl === 'textCarousel'}
-						<TextCarouselTemplate text={txt} scale={1} interactive={false} />
-					{:else}
-						<ImageQuoteTemplate text={txt} image={bgI} scale={1} interactive={false} />
-					{/if}
-				{/snippet}
-			</CarouselPreview>
-		{:else}
 		<!-- Main preview -->
 		<div style="width: {PREVIEW_WIDTH}px; height: {CANVAS_H * previewScale}px;" class="relative">
 			{#if generatingImages[activeSlide]}
@@ -1806,6 +1637,7 @@
 					bind:circleSize
 					bind:bgOffsetX
 					bind:bgOffsetY
+					bind:bgZoom
 					bind:textPanelOffsetY
 					bind:shadowHeight
 					bind:shadowStrength
@@ -1857,7 +1689,6 @@
 				/>
 			{/if}
 		</div>
-		{/if}
 
 		{#if !backgroundImage}
 			<p class="font-body text-xs text-white/20 text-center max-w-xs">
@@ -1873,6 +1704,7 @@
 				text: slides[i] ?? '',
 				img: backgroundImages[i] ?? '',
 				vid: backgroundVideos[i] ?? '',
+				music: slideMusic[i] ?? null,
 				loading: !!generatingImages[i],
 			}))}
 			<div
@@ -1896,46 +1728,140 @@
 			>
 				{#each dndItems as item, i (item.id)}
 					{@const isPlaceholder = !item.text}
+					{@const hasMusic = !!item.music}
+					{@const isVideo = !!item.vid || hasMusic}
 					<div class="flex-shrink-0 flex flex-col items-center gap-1 group cursor-grab active:cursor-grabbing">
-						<button
-							type="button"
-							onclick={() => activeSlide = i}
-							class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
-								{activeSlide === i ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
-							aria-label={`Focus slide ${i + 1}`}
-						>
-							{#if item.loading}
-								<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
-									<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
-								</div>
-							{:else if isPlaceholder}
-								<div class="absolute inset-0 flex items-center justify-center text-white/15">
-									<span class="text-[10px] font-mono">#{i + 1}</span>
-								</div>
-							{:else if item.vid}
-								<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
-									<span class="text-cyan-400 opacity-80" style="font-size:14px;">▶</span>
-								</div>
-							{:else if item.img}
-								<img src={item.img} alt="" class="w-full h-full object-cover opacity-70" draggable="false" />
+						<div class="relative">
+							<button
+								type="button"
+								onclick={() => activeSlide = i}
+								class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
+									{activeSlide === i ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
+								aria-label={`Focus slide ${i + 1}`}
+							>
+								{#if item.loading}
+									<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
+										<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
+									</div>
+								{:else if isPlaceholder}
+									<div class="absolute inset-0 flex items-center justify-center text-white/15">
+										<span class="text-[10px] font-mono">#{i + 1}</span>
+									</div>
+								{:else if item.vid}
+									<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
+										<Play size={14} class="text-cyan-400 opacity-80" fill="currentColor" />
+									</div>
+								{:else if item.img}
+									<img src={item.img} alt="" class="w-full h-full object-cover opacity-70" draggable="false" />
+								{/if}
+
+								{#if !isPlaceholder}
+									<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
+										<p class="text-white leading-tight line-clamp-3"
+											style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
+											{item.text.replace(/\[\[|\]\]/g, '')}
+										</p>
+									</div>
+								{/if}
+
+								<!-- Video/music badge: pinned top-left so users know at a
+								     glance this slide publishes as a video (with optional audio). -->
+								{#if isVideo && !item.loading}
+									<div
+										class="absolute top-0.5 left-0.5 flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-cyan-400/30"
+										title={hasMusic ? `Video · ${item.music?.name}` : 'Video'}
+									>
+										<Play size={7} class="text-cyan-400" fill="currentColor" />
+										{#if hasMusic}
+											<Music size={7} class="text-cyan-400" />
+										{/if}
+									</div>
+								{/if}
+							</button>
+
+							<!-- Flame (burn-to-video) button. Adds/changes music and
+							     marks the slide as a video on publish. Hidden until
+							     hover for empty slides; always visible when active. -->
+							{#if !isPlaceholder}
+								<button
+									type="button"
+									data-music-toggle
+									onclick={(e) => { e.stopPropagation(); musicPickerForSlide = musicPickerForSlide === i ? null : i; }}
+									title={hasMusic ? `Change music: ${item.music?.name}` : 'Add music — publishes as video'}
+									aria-label={`Choose music for slide ${i + 1}`}
+									class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center border transition-all
+										{hasMusic
+											? 'bg-orange-500/90 border-orange-400 text-white shadow-lg shadow-orange-500/30'
+											: 'bg-[#1a1a1a] border-white/10 text-white/40 hover:text-orange-400 hover:border-orange-400/50 opacity-0 group-hover:opacity-100 focus:opacity-100'}"
+								>
+									<Flame size={10} fill={hasMusic ? 'currentColor' : 'none'} />
+								</button>
 							{/if}
 
-							{#if !isPlaceholder}
-								<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
-									<p class="text-white leading-tight line-clamp-3"
-										style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
-										{item.text.replace(/\[\[|\]\]/g, '')}
+							<!-- Music picker popover -->
+							{#if musicPickerForSlide === i}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<div
+									data-music-popover
+									class="absolute top-[74px] left-1/2 -translate-x-1/2 z-40 w-52 p-2 rounded-xl bg-[#1a1a1a] border border-white/10 shadow-2xl"
+									onclick={(e) => e.stopPropagation()}
+								>
+									<div class="flex items-center justify-between mb-1.5">
+										<span class="text-[10px] font-mono text-white/40 uppercase tracking-wider">
+											Music · Slide {i + 1}
+										</span>
+										<button
+											onclick={() => musicPickerForSlide = null}
+											class="text-white/30 hover:text-white/70 transition-colors"
+											aria-label="Close music picker"
+										>
+											<X size={11} />
+										</button>
+									</div>
+									<p class="text-[9px] font-body text-cyan-400/70 mb-2 leading-snug">
+										Picking a track turns this slide into a video on publish.
 									</p>
+
+									<button
+										onclick={() => { slideMusic = slideMusic.map((m, idx) => idx === i ? null : m); musicPickerForSlide = null; }}
+										class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors
+											{hasMusic ? 'hover:bg-white/[0.05] text-white/50' : 'bg-white/[0.05] text-white'}"
+									>
+										<span class="w-4 h-4 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center">
+											{#if !hasMusic}<span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>{/if}
+										</span>
+										<span class="text-[11px] font-body">No music (image)</span>
+									</button>
+
+									<div class="max-h-44 overflow-y-auto mt-1 flex flex-col gap-0.5">
+										{#each MUSIC_LIBRARY as track (track.id)}
+											{@const selected = item.music?.id === track.id}
+											<button
+												onclick={() => { slideMusic = slideMusic.map((m, idx) => idx === i ? track : m); musicPickerForSlide = null; }}
+												class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors
+													{selected ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30' : 'hover:bg-white/[0.05] text-white/70 border border-transparent'}"
+											>
+												<span class="w-4 h-4 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center shrink-0">
+													<Music size={8} class={selected ? 'text-orange-400' : 'text-white/30'} />
+												</span>
+												<span class="text-[11px] font-body flex-1 truncate">{track.name}</span>
+											</button>
+										{/each}
+									</div>
 								</div>
 							{/if}
-						</button>
-						<span class="text-[9px] font-mono {activeSlide === i ? 'text-violet-400' : 'text-white/20'}">
+						</div>
+						<span class="text-[9px] font-mono flex items-center gap-1 {activeSlide === i ? 'text-violet-400' : 'text-white/20'}">
 							{i === 0 ? 'Hook' : `Slide ${i + 1}`}
+							{#if isVideo}
+								<Play size={7} class="text-cyan-400/60" fill="currentColor" />
+							{/if}
 						</span>
 					</div>
 				{/each}
 			</div>
-			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder posting order</p>
+			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder · Click <Flame size={9} class="inline text-orange-400/70" /> to burn music and publish as video</p>
 		{/if}
 	</div>
 

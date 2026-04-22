@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	interface Props {
 		image?: string;
 		text?: string;
@@ -95,21 +96,11 @@
 		>
 			<div style="display:flex;flex-direction:column;gap:18px;">
 				{#each splitLines(text) as line, i (i)}
-					<div
-						style="
-							color: {textColor};
-							font-weight: 900;
-							text-transform: uppercase;
-							letter-spacing: 0.02em;
-							line-height: 1.02;
-							font-size: 82px;
-							text-align: center;
-							text-shadow: 0 2px 0 rgba(0,0,0,0.4);
-							font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif;
-						"
-					>
-						{line}
-					</div>
+					<HighlightedText
+						as="div"
+						text={line}
+						style="color: {textColor}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,0.4); font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif;"
+					/>
 				{/each}
 			</div>
 

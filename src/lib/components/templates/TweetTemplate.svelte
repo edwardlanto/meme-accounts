@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	interface Props {
 		// Top tweet
 		topName?: string;
@@ -120,16 +121,11 @@
 			</div>
 
 			<!-- Tweet text -->
-			<p style="
-				font-size:58px;
-				font-weight:400;
-				color:#0F1419;
-				line-height:1.35;
-				margin:0 0 44px;
-				letter-spacing:-0.3px;
-				word-break:break-word;
-				flex-shrink: 0;
-			">{topText}</p>
+			<HighlightedText
+				as="p"
+				text={topText}
+				style="font-size:58px; font-weight:400; color:#0F1419; line-height:1.35; margin:0 0 44px; letter-spacing:-0.3px; word-break:break-word; flex-shrink: 0;"
+			/>
 
 			<!-- Attached image -->
 			{#if topImage}
@@ -199,15 +195,11 @@
 			</div>
 
 			<!-- Reply text -->
-			<p style="
-				font-size:56px;
-				font-weight:400;
-				color:#0F1419;
-				line-height:1.35;
-				margin:0;
-				letter-spacing:-0.3px;
-				word-break:break-word;
-			">{bottomText}</p>
+			<HighlightedText
+				as="p"
+				text={bottomText}
+				style="font-size:56px; font-weight:400; color:#0F1419; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word;"
+			/>
 		</div>
 
 		<!-- X watermark -->

@@ -9,7 +9,7 @@
 	 * - On every input, serializes the DOM back to raw markup and emits `onChange`.
 	 * - Exposes `applyHighlightToSelection(spec)` for the parent toolbar.
 	 */
-	import { parseHighlightMarkup, segmentText, applyHighlight, type HighlightSpec } from '$lib/highlight';
+	import { parseHighlightMarkup, segmentText, applyHighlight, AVAILABLE_PATTERNS, type HighlightSpec } from '$lib/highlight';
 	import { tick } from 'svelte';
 
 	interface Props {
@@ -29,7 +29,7 @@
 		class?: string;
 		ariaLabel?: string;
 		onChange: (next: string) => void;
-		onSelectionChange?: (hasRange: boolean) => void;
+		onSelectionChange?: (hasRange: boolean, range?: { start: number; end: number } | null) => void;
 		onFocus?: () => void;
 		onBlur?: () => void;
 	}
@@ -60,6 +60,26 @@
 	const DEFAULT_SWATCHES = [
 		'#F59E0B', '#3B82F6', '#EF4444', '#A855F7', '#10B981', '#EC4899', '#FFFFFF',
 	];
+	const GRADIENT_PRESETS: [string, string][] = [
+		['#F5A623', '#FF3B5C'],
+		['#08EBFF', '#A855F7'],
+		['#10B981', '#08EBFF'],
+		['#FFFFFF', '#F5A623'],
+	];
+	let patternOpen = $state(false);
+	let gradientOpen = $state(false);
+
+	$effect(() => {
+		if (!patternOpen && !gradientOpen) return;
+		const onDocDown = (e: MouseEvent) => {
+			const t = e.target as HTMLElement;
+			if (t.closest('[data-hl-popover]') || t.closest('[data-hl-toggle]')) return;
+			patternOpen = false;
+			gradientOpen = false;
+		};
+		document.addEventListener('mousedown', onDocDown);
+		return () => document.removeEventListener('mousedown', onDocDown);
+	});
 
 	// Render raw markup → DOM spans inside `editorEl`.
 	function renderMarkupToDom(raw: string) {
@@ -240,8 +260,8 @@
 		const next = !!r;
 		if (next !== hasRange) {
 			hasRange = next;
-			onSelectionChange?.(next);
 		}
+		onSelectionChange?.(next, r);
 	}
 
 	export function applyHighlightToSelection(spec: HighlightSpec): boolean {
@@ -306,6 +326,71 @@
 				class="px-1.5 h-5 rounded-md border border-white/20 text-[9px] font-mono text-white/70 {hasRange ? 'hover:bg-white/10' : 'opacity-30 cursor-not-allowed'}"
 				title="Default highlight"
 			>Aa</button>
+			<!-- Gradient picker -->
+			<div class="relative">
+				<button
+					type="button"
+					data-hl-toggle
+					onmousedown={(e) => e.preventDefault()}
+					onclick={() => { gradientOpen = !gradientOpen; patternOpen = false; }}
+					disabled={!hasRange}
+					class="w-5 h-5 rounded-md border border-white/20 {hasRange ? 'hover:scale-110' : 'opacity-30 cursor-not-allowed'}"
+					style="background: linear-gradient(90deg, #F5A623, #FF3B5C);"
+					title="Gradient highlight"
+					aria-label="Apply gradient highlight"
+				></button>
+				{#if gradientOpen && hasRange}
+					<div data-hl-popover class="absolute top-6 left-0 z-50 p-1.5 rounded-lg bg-[#1a1a1a] border border-white/10 shadow-xl flex flex-col gap-1">
+						{#each GRADIENT_PRESETS as [from, to] (from + to)}
+							<button
+								type="button"
+								onmousedown={(e) => e.preventDefault()}
+								onclick={() => { applyHighlightToSelection({ kind: 'gradient', from, to }); gradientOpen = false; }}
+								class="w-24 h-5 rounded border border-white/20 hover:scale-105 transition-transform"
+								style="background: linear-gradient(90deg, {from}, {to});"
+								title={`${from} → ${to}`}
+								aria-label={`Gradient ${from} to ${to}`}
+							></button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+
+			<!-- Pattern picker -->
+			{#if AVAILABLE_PATTERNS.length > 0}
+				<div class="relative">
+					<button
+						type="button"
+						data-hl-toggle
+						onmousedown={(e) => e.preventDefault()}
+						onclick={() => { patternOpen = !patternOpen; gradientOpen = false; }}
+						disabled={!hasRange}
+						class="px-1.5 h-5 rounded-md border border-white/20 text-[9px] font-mono text-white/70 {hasRange ? 'hover:bg-white/10' : 'opacity-30 cursor-not-allowed'}"
+						title="Pattern highlight"
+						aria-label="Apply pattern highlight"
+					>▩</button>
+					{#if patternOpen && hasRange}
+						<div data-hl-popover class="absolute top-6 left-0 z-50 p-1.5 rounded-lg bg-[#1a1a1a] border border-white/10 shadow-xl flex flex-col gap-1 min-w-[140px]">
+							{#each AVAILABLE_PATTERNS as p (p.name)}
+								<button
+									type="button"
+									onmousedown={(e) => e.preventDefault()}
+									onclick={() => { applyHighlightToSelection({ kind: 'pattern', name: p.name }); patternOpen = false; }}
+									class="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-white/10 transition-colors"
+									title={p.label}
+								>
+									<span
+										class="w-6 h-4 rounded border border-white/20 shrink-0"
+										style="background: url('{p.url}') center/cover;"
+									></span>
+									<span class="text-[10px] font-mono text-white/70">{p.label}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
 			<button
 				type="button"
 				onmousedown={(e) => e.preventDefault()}
