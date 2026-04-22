@@ -43,6 +43,10 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 			'pages_read_engagement',
 			'instagram_basic',
 			'instagram_content_publish',
+			// `business_management` lets us see Pages owned by a Meta Business
+			// Portfolio (Business Manager). Without it, /me/accounts returns an
+			// empty list when all the user's Pages live under a Business.
+			'business_management',
 		].join(',');
 
 	const authUrl = new URL('https://www.facebook.com/v20.0/dialog/oauth');
@@ -51,6 +55,11 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	authUrl.searchParams.set('state', state);
 	authUrl.searchParams.set('response_type', 'code');
 	authUrl.searchParams.set('scope', scope);
+	// Force Facebook to re-show the full permission/Page picker screen every
+	// time, even if the user has previously granted the app. Without this FB
+	// will silently skip the Page picker and reuse the old grant, which makes
+	// debugging painful.
+	authUrl.searchParams.set('auth_type', 'rerequest');
 
 	throw redirect(303, authUrl.toString());
 };

@@ -94,6 +94,12 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 		const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
 
+		// Clear any stale Meta rows for this user before writing fresh ones.
+		// Without this, revoked/old Page tokens (from previous OAuth grants)
+		// stay in the table and break /api/debug/meta and any publishing that
+		// picks them up.
+		await supabase.from('social_connections').delete().eq('user_id', userId).eq('provider', 'meta');
+
 		const connections: Array<{
 			provider_account_id: string;
 			provider_account_label: string;

@@ -17,6 +17,12 @@ type VideoItem = {
 type Body = {
 	pageProviderAccountId: string; // e.g. "fbpage:123..."
 	content: {
+		// Optional discriminator to force a specific publish path.
+		//   'feed'        — text/link/photos/carousel (default if images/message/link present)
+		//   'reel'        — publish a single vertical video as a Reel (9:16)
+		//   'photo_story' — publish a single image as a Story (24h expiry)
+		//   'video_story' — publish a single vertical video as a Story (24h expiry)
+		kind?: 'feed' | 'reel' | 'photo_story' | 'video_story';
 		title?: string; // optional human-readable label for the calendar UI
 		message?: string;
 		link?: string;
@@ -28,6 +34,11 @@ type Body = {
 		imagesMode?: 'carousel' | 'individual';
 		video?: string; // single video (http(s) URL or data: URL)
 		videos?: VideoItem[]; // multiple videos -> one FB video post each
+		// Reel / Story payloads
+		reelVideo?: VideoItem; // single vertical video (9:16)
+		reelDescription?: string;
+		storyPhoto?: string; // http(s) URL or data: URL (vertical, 9:16 recommended)
+		storyVideo?: VideoItem; // single vertical video
 	};
 };
 
@@ -100,6 +111,115 @@ async function uploadVideo(pageId: string, token: string, item: VideoItem) {
 	}
 
 	throw new Error('Video item must have url, dataUrl, or serverPath');
+}
+
+// Resolve a VideoItem to raw bytes + mime + filename (for resumable upload flows).
+async function resolveVideoBytes(item: VideoItem): Promise<{ mime: string; buf: Buffer; filename: string }> {
+	if (item.dataUrl && item.dataUrl.startsWith('data:')) {
+		const m = item.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+		if (!m) throw new Error('Invalid video data URL');
+		if (!m[1].startsWith('video/')) throw new Error('Video data URL must be video/*');
+		return { mime: m[1], buf: Buffer.from(m[2], 'base64'), filename: 'video' };
+	}
+	if (item.serverPath) {
+		return await readStaticVideo(item.serverPath);
+	}
+	if (item.url && /^https?:\/\//i.test(item.url)) {
+		const res = await fetch(item.url);
+		if (!res.ok) throw new Error(`Failed to fetch video URL (${res.status})`);
+		const mime = res.headers.get('content-type') ?? 'video/mp4';
+		const buf = Buffer.from(await res.arrayBuffer());
+		return { mime, buf, filename: 'video' };
+	}
+	throw new Error('Video item must have url, dataUrl, or serverPath');
+}
+
+// Resumable video upload used by Reels and Video Stories.
+// endpoint should be `/{page-id}/video_reels` or `/{page-id}/video_stories`.
+// Returns the `video_id` that the caller then passes to the `finish` step.
+async function resumableVideoUpload(pageId: string, token: string, endpointPath: 'video_reels' | 'video_stories', item: VideoItem): Promise<string> {
+	const base = `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/${endpointPath}`;
+
+	// Phase 1: start — returns video_id + upload_url
+	const startRes = await fetch(base, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({ access_token: token, upload_phase: 'start' }),
+	});
+	const startOut = await startRes.json();
+	if (!startRes.ok) throw new Error(startOut?.error?.message ?? `${endpointPath} start failed`);
+	const videoId = String(startOut.video_id ?? '');
+	const uploadUrl = String(startOut.upload_url ?? '');
+	if (!videoId || !uploadUrl) throw new Error(`${endpointPath} start did not return video_id/upload_url`);
+
+	// Phase 2: upload the bytes (Graph's resumable endpoint uses a special header format).
+	const { buf } = await resolveVideoBytes(item);
+	const uploadRes = await fetch(uploadUrl, {
+		method: 'POST',
+		headers: {
+			Authorization: `OAuth ${token}`,
+			offset: '0',
+			file_size: String(buf.length),
+		},
+		// @ts-expect-error Node runtime accepts Buffer as BodyInit
+		body: buf,
+	});
+	const uploadOut = await uploadRes.json().catch(() => ({}));
+	if (!uploadRes.ok || uploadOut?.success === false) {
+		throw new Error(uploadOut?.error?.message ?? uploadOut?.debug_info?.message ?? `${endpointPath} upload failed`);
+	}
+	return videoId;
+}
+
+async function publishReel(pageId: string, token: string, item: VideoItem, description?: string) {
+	const videoId = await resumableVideoUpload(pageId, token, 'video_reels', item);
+	const finishUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/video_reels`;
+	const params = new URLSearchParams({
+		access_token: token,
+		video_id: videoId,
+		upload_phase: 'finish',
+		video_state: 'PUBLISHED',
+	});
+	if (description) params.set('description', description);
+	const res = await fetch(finishUrl, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: params,
+	});
+	const out = await res.json();
+	if (!res.ok || out?.success === false) throw new Error(out?.error?.message ?? 'Reel finish failed');
+	return { videoId, result: out };
+}
+
+async function publishVideoStory(pageId: string, token: string, item: VideoItem) {
+	const videoId = await resumableVideoUpload(pageId, token, 'video_stories', item);
+	const finishUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/video_stories`;
+	const res = await fetch(finishUrl, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({
+			access_token: token,
+			video_id: videoId,
+			upload_phase: 'finish',
+		}),
+	});
+	const out = await res.json();
+	if (!res.ok || out?.success === false) throw new Error(out?.error?.message ?? 'Video Story finish failed');
+	return { videoId, result: out };
+}
+
+async function publishPhotoStory(pageId: string, token: string, img: string) {
+	// Step 1: upload photo as unpublished, get photo_id.
+	const photoId = await uploadPhoto(pageId, token, img, undefined, false);
+	// Step 2: attach to a photo story.
+	const res = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/photo_stories`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({ access_token: token, photo_id: photoId }),
+	});
+	const out = await res.json();
+	if (!res.ok || out?.success === false) throw new Error(out?.error?.message ?? 'Photo Story publish failed');
+	return { photoId, result: out };
 }
 
 function dataUrlToBlob(dataUrl: string): { mime: string; buf: Buffer } | null {
@@ -194,8 +314,31 @@ export const POST: RequestHandler = async ({ request }) => {
 	const feedMessage = buildCarouselMessage();
 	const video = String(content?.video ?? '').trim();
 	const videos: VideoItem[] = Array.isArray(content?.videos) ? content.videos : [];
+	const kind = content?.kind;
 
 	try {
+		// --- Reels ---
+		if (kind === 'reel') {
+			if (!content?.reelVideo) return json({ ok: false, error: 'reelVideo is required for kind=reel' }, { status: 400 });
+			const out = await publishReel(pageId, token, content.reelVideo, content.reelDescription);
+			return json({ ok: true, kind: 'reel', ...out });
+		}
+
+		// --- Photo Story ---
+		if (kind === 'photo_story') {
+			const img = String(content?.storyPhoto ?? '').trim();
+			if (!img) return json({ ok: false, error: 'storyPhoto is required for kind=photo_story' }, { status: 400 });
+			const out = await publishPhotoStory(pageId, token, img);
+			return json({ ok: true, kind: 'photo_story', ...out });
+		}
+
+		// --- Video Story ---
+		if (kind === 'video_story') {
+			if (!content?.storyVideo) return json({ ok: false, error: 'storyVideo is required for kind=video_story' }, { status: 400 });
+			const out = await publishVideoStory(pageId, token, content.storyVideo);
+			return json({ ok: true, kind: 'video_story', ...out });
+		}
+
 		// Individual photo mode: N separate feed posts, each with its own caption.
 		// This is the only way per-slide captions show up in the Facebook feed.
 		if (images.length > 0 && imagesMode === 'individual' && images.length > 1) {
@@ -212,13 +355,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (images.length > 0) {
 			const mediaIds: string[] = [];
 			for (let i = 0; i < images.length; i++) {
-				// IMPORTANT: do NOT send a per-photo caption on carousel uploads —
-				// Facebook sometimes overrides the parent feed `message` with the
-				// first photo's caption, making the main caption invisible.
-				mediaIds.push(await uploadPhoto(pageId, token, images[i]));
+				// Attach per-photo caption on the unpublished upload so it shows when
+				// viewing that photo individually. The parent feed post also gets its
+				// own `message` (merged captions or the user's message) so the caption
+				// is visible directly under the carousel in the feed.
+				const slideCap = (imageCaptions[i] ?? '').trim();
+				mediaIds.push(await uploadPhoto(pageId, token, images[i], slideCap || undefined));
 			}
 			const feedUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/feed`;
 			const form = new URLSearchParams({ access_token: token });
+			// Always set a parent message when we have one — otherwise FB may fall
+			// back to the first photo's caption as the post message.
 			if (feedMessage) form.set('message', feedMessage);
 			mediaIds.forEach((id, i) => form.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: id })));
 			const res = await fetch(feedUrl, {

@@ -385,12 +385,28 @@
 		const imgs = Array.isArray(c.images) ? c.images.length : 0;
 		const vids = Array.isArray(c.videos) ? c.videos.length : c.video ? 1 : 0;
 
+		// Worker IG content uses `igType` + sometimes `kind: ig_*`.
+		const igType = String(c.igType ?? '').toLowerCase();
+		const rawKind = String(c.kind ?? '').toLowerCase();
+		const isIg = provider === 'meta' && typeof acct === 'string' && !acct.startsWith('fbpage:');
+
 		let kind = '';
-		if (imgs > 1) kind = `Carousel (${imgs})`;
+		if (rawKind === 'reel') kind = 'Reel';
+		else if (rawKind === 'photo_story') kind = 'Photo Story';
+		else if (rawKind === 'video_story') kind = 'Video Story';
+		else if (isIg && igType === 'post') kind = 'IG Photo';
+		else if (isIg && igType === 'reel') kind = 'IG Reel';
+		else if (isIg && igType === 'carousel') {
+			const n = Array.isArray(c.children) ? c.children.length : 0;
+			kind = n ? `IG Carousel (${n})` : 'IG Carousel';
+		}
+		else if (isIg && (igType === 'story_image' || igType === 'photo_story')) kind = 'IG Photo Story';
+		else if (isIg && (igType === 'story_video' || igType === 'video_story')) kind = 'IG Video Story';
+		else if (imgs > 1) kind = `Carousel (${imgs})`;
 		else if (imgs === 1) kind = 'Photo';
 		else if (vids > 1) kind = `Videos (${vids})`;
 		else if (vids === 1) kind = 'Video';
-		else kind = provider === 'meta' && acct.startsWith('fbpage:') ? 'FB text' : 'Post';
+		else kind = provider === 'meta' && acct.startsWith('fbpage:') ? 'FB text' : isIg ? 'IG' : 'Post';
 
 		return (msg ? `${kind} — ${msg}` : kind).slice(0, 120);
 	}
@@ -1157,13 +1173,17 @@
 							<span class="text-[10px] font-mono text-white/20">{hr === 12 ? '12 PM' : hr < 12 ? `${hr} AM` : `${hr - 12} PM`}</span>
 						</div>
 						{#each weekDays as d (d.toISOString() + ':' + hr)}
+							{@const slotPosts = postsForDay(d)
+								.filter(p => new Date(p.startISO).getHours() === hr)
+								.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
 							<div
 								role="presentation"
-								class="relative h-20 border-b border-white/5 border-l hover:bg-white/2 transition-colors"
+								class="relative h-20 border-b border-white/5 border-l hover:bg-white/2 transition-colors overflow-y-auto overflow-x-hidden scrollbar-thin"
 								ondragover={allowDrop}
 								ondrop={(e) => dropToSlot(e, d, hr)}
 							>
-								{#each postsForDay(d).filter(p => new Date(p.startISO).getHours() === hr) as p (p.id)}
+								<div class="flex flex-col gap-1 p-1">
+								{#each slotPosts as p, idx (p.id)}
 									{@const isDone = p.status === 'published'}
 									{@const isFailed = p.status === 'failed'}
 									{@const isPublishing = p.status === 'publishing'}
@@ -1187,17 +1207,14 @@
 										tabindex="0"
 										draggable={!isDone && !isFailed && !isPublishing}
 										ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
-										class="absolute left-2 right-2 top-2 rounded-2xl {pillClass} p-2.5 {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} select-none shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-										title={isFailed && p.lastError ? `Failed: ${p.lastError}` : ''}
+										class="shrink-0 rounded-xl border {pillClass} p-2 {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} select-none shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.45)] transition-shadow"
+										title={isFailed && p.lastError ? `Failed: ${p.lastError}\n\n${p.title}` : p.title}
 									>
-										<div class="flex items-start justify-between gap-2 mb-2">
-											<p class="text-[11px] font-body text-white/80 leading-tight truncate">{p.title}</p>
-											<div class="flex items-center gap-1.5 shrink-0">
-												<span class="text-[9px] font-mono px-2 py-0.5 rounded-lg border {statusLabelClass}">
+										<div class="flex items-start justify-between gap-2 mb-1.5">
+											<p class="text-[11px] font-body text-white/85 leading-tight line-clamp-1 flex-1 min-w-0">{p.title}</p>
+											<div class="flex items-center gap-1 shrink-0">
+												<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {statusLabelClass}">
 													{statusLabel}
-												</span>
-												<span class="text-[9px] font-mono px-2 py-0.5 rounded-lg border {igTypePillClass(p.igType)}">
-													{igTypeLabel(p.igType)}
 												</span>
 												{#if !isDone && !isPublishing}
 													<button
@@ -1206,29 +1223,30 @@
 															const msg = isFailed ? 'Remove this failed post from the calendar?' : 'Unschedule this post?';
 															if (confirm(msg)) unschedulePost(p.id);
 														}}
-														class="w-6 h-6 rounded-lg bg-white/3 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/35 hover:text-red-200 transition-all flex items-center justify-center"
+														class="w-5 h-5 rounded-md bg-white/5 border border-white/10 hover:bg-red-500/20 hover:border-red-500/30 text-white/40 hover:text-red-200 transition-all flex items-center justify-center"
 														aria-label={isFailed ? 'Remove failed post' : 'Unschedule post'}
 														title={isFailed ? 'Remove from calendar' : 'Unschedule'}
 													>
-														<X size={12} />
+														<X size={10} />
 													</button>
 												{/if}
 											</div>
 										</div>
-										<div class="flex items-center gap-1.5 flex-wrap">
+										<div class="flex items-center gap-1 flex-wrap">
+											<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {igTypePillClass(p.igType)}">
+												{igTypeLabel(p.igType)}
+											</span>
 											{#each p.channels as cid (cid)}
 												{@const c = channelById(cid)}
-												<span class="text-[9px] font-mono text-white/45 bg-white/3 border border-white/6 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
-													<span class="w-1.5 h-1.5 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
+												<span class="text-[9px] font-mono text-white/55 bg-white/3 border border-white/6 px-1.5 py-0.5 rounded-md flex items-center gap-1">
+													<span class="w-1 h-1 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
 													{c?.label ?? cid}
 												</span>
 											{/each}
 										</div>
-										{#if isFailed && p.lastError}
-											<p class="mt-1.5 text-[10px] font-mono text-red-300/80 leading-tight line-clamp-2">{p.lastError}</p>
-										{/if}
 									</div>
 								{/each}
+								</div>
 							</div>
 						{/each}
 					{/each}

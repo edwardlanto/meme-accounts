@@ -17,7 +17,10 @@
 	}
 
 	async function loginWithGoogle() {
-		await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${location.origin}/dashboard` } });
+		await supabase.auth.signInWithOAuth({
+			provider: 'google',
+			options: { redirectTo: `${location.origin}/auth/callback?next=/dashboard` },
+		});
 	}
 </script>
 

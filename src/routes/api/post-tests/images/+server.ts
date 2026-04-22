@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { env } from '$env/dynamic/private';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -12,12 +13,18 @@ function mimeFromExt(p: string) {
 	return 'application/octet-stream';
 }
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ url }) => {
 	try {
 		const root = process.cwd();
 		const dir = path.join(root, 'static', 'post-tests', 'pictures');
 		const files = (await readdir(dir)).filter((f) => /\.(png|jpe?g|webp|gif)$/i.test(f));
 		files.sort();
+
+		// Instagram Graph API needs a public HTTPS URL. Prefer PUBLIC_APP_URL (set in
+		// production / via ngrok tunnel). Otherwise, leave publicUrl empty — caller
+		// can use `dataUrl` for Facebook (which accepts multipart uploads) but IG will
+		// require setting PUBLIC_APP_URL before IG tests can work.
+		const base = (env.PUBLIC_APP_URL ?? '').replace(/\/+$/, '');
 
 		const items = await Promise.all(
 			files.map(async (f) => {
@@ -25,15 +32,18 @@ export const GET: RequestHandler = async () => {
 				const buf = await readFile(abs);
 				const mime = mimeFromExt(f);
 				const dataUrl = `data:${mime};base64,${buf.toString('base64')}`;
-				return {
-					name: f,
-					publicPath: `/post-tests/pictures/${f}`,
-					dataUrl,
-				};
+				const publicPath = `/post-tests/pictures/${f}`;
+				const publicUrl = base ? `${base}${publicPath}` : '';
+				return { name: f, publicPath, publicUrl, dataUrl };
 			})
 		);
 
-		return json({ ok: true, items });
+		return json({
+			ok: true,
+			items,
+			publicBaseUrl: base,
+			publicBaseReady: Boolean(base && /^https:\/\//i.test(base)),
+		});
 	} catch (e: any) {
 		return json({ ok: false, error: e?.message ?? 'Failed to load test images' }, { status: 500 });
 	}

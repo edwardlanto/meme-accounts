@@ -207,6 +207,127 @@ async function uploadFacebookPageVideo({ pageId, pageAccessToken, url, dataUrl, 
 }
 
 /**
+ * Resolve a video item to raw bytes + mime + filename.
+ * @param {{ url?: string; dataUrl?: string; serverPath?: string }} item
+ * @returns {Promise<{ mime: string; buf: Buffer; filename: string }>}
+ */
+async function resolveVideoBytes(item) {
+	if (item.dataUrl && String(item.dataUrl).startsWith('data:')) {
+		const blob = dataUrlToBlob(item.dataUrl);
+		if (!blob) throw new Error('Invalid data URL for video');
+		if (!String(blob.mime).startsWith('video/')) throw new Error('Video data URL must be video/*');
+		return { mime: blob.mime, buf: blob.buf, filename: 'video' };
+	}
+	if (item.serverPath) {
+		return await readStaticVideo(item.serverPath);
+	}
+	if (item.url && /^https?:\/\//i.test(item.url)) {
+		const res = await fetch(item.url);
+		if (!res.ok) throw new Error(`Failed to fetch video URL (${res.status})`);
+		const mime = res.headers.get('content-type') ?? 'video/mp4';
+		const buf = Buffer.from(await res.arrayBuffer());
+		return { mime, buf, filename: 'video' };
+	}
+	throw new Error('Video item must have url, dataUrl, or serverPath');
+}
+
+/**
+ * Resumable upload used by Reels and Video Stories. Returns video_id.
+ * @param {string} pageId
+ * @param {string} token
+ * @param {'video_reels'|'video_stories'} endpointPath
+ * @param {{ url?: string; dataUrl?: string; serverPath?: string }} item
+ * @returns {Promise<string>}
+ */
+async function resumableVideoUpload(pageId, token, endpointPath, item) {
+	const base = `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/${endpointPath}`;
+	const startRes = await fetch(base, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({ access_token: token, upload_phase: 'start' }),
+	});
+	const startOut = await startRes.json();
+	if (!startRes.ok) throw new Error(startOut?.error?.message ?? `${endpointPath} start failed`);
+	const videoId = String(startOut.video_id ?? '');
+	const uploadUrl = String(startOut.upload_url ?? '');
+	if (!videoId || !uploadUrl) throw new Error(`${endpointPath} start did not return video_id/upload_url`);
+
+	const { buf } = await resolveVideoBytes(item);
+	const uploadRes = await fetch(uploadUrl, {
+		method: 'POST',
+		headers: {
+			Authorization: `OAuth ${token}`,
+			offset: '0',
+			file_size: String(buf.length),
+		},
+		// Node fetch accepts Buffer as body despite TS BodyInit typings.
+		// eslint-disable-next-line
+		body: /** @type {any} */ (buf),
+	});
+	const uploadOut = await uploadRes.json().catch(() => ({}));
+	if (!uploadRes.ok || uploadOut?.success === false) {
+		throw new Error(uploadOut?.error?.message ?? uploadOut?.debug_info?.message ?? `${endpointPath} upload failed`);
+	}
+	return videoId;
+}
+
+/** @param {string} pageId @param {string} token @param {any} item @param {string=} description */
+async function publishReel(pageId, token, item, description) {
+	const videoId = await resumableVideoUpload(pageId, token, 'video_reels', item);
+	const params = new URLSearchParams({
+		access_token: token,
+		video_id: videoId,
+		upload_phase: 'finish',
+		video_state: 'PUBLISHED',
+	});
+	if (description) params.set('description', description);
+	const res = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/video_reels`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: params,
+	});
+	const out = await res.json();
+	if (!res.ok || out?.success === false) throw new Error(out?.error?.message ?? 'Reel finish failed');
+	return { videoId, result: out };
+}
+
+/** @param {string} pageId @param {string} token @param {any} item */
+async function publishVideoStory(pageId, token, item) {
+	const videoId = await resumableVideoUpload(pageId, token, 'video_stories', item);
+	const res = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/video_stories`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({ access_token: token, video_id: videoId, upload_phase: 'finish' }),
+	});
+	const out = await res.json();
+	if (!res.ok || out?.success === false) throw new Error(out?.error?.message ?? 'Video Story finish failed');
+	return { videoId, result: out };
+}
+
+/** @param {string} pageId @param {string} token @param {string} img */
+async function publishPhotoStory(pageId, token, img) {
+	// Upload photo unpublished, then attach to photo story.
+	const up = await uploadFacebookPagePhoto({
+		pageId,
+		pageAccessToken: token,
+		url: img.startsWith('http') ? img : undefined,
+		dataUrl: img.startsWith('data:') ? img : undefined,
+		caption: undefined,
+		published: false,
+	});
+	const photoId = String(up?.id ?? '');
+	if (!photoId) throw new Error('Photo upload for Story did not return id');
+	const res = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/photo_stories`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({ access_token: token, photo_id: photoId }),
+	});
+	const out = await res.json();
+	if (!res.ok || out?.success === false) throw new Error(out?.error?.message ?? 'Photo Story publish failed');
+	return { photoId, result: out };
+}
+
+/**
  * Publish to a Facebook Page.
  * content shapes:
  * - { message: string }
@@ -242,6 +363,22 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 		return message;
 	}
 	const feedMessage = buildCarouselMessage();
+	const kind = content?.kind;
+
+	// --- Reels / Stories ---
+	if (kind === 'reel') {
+		if (!content?.reelVideo) throw new Error('reelVideo is required for kind=reel');
+		return await publishReel(pageId, pageAccessToken, content.reelVideo, content.reelDescription);
+	}
+	if (kind === 'photo_story') {
+		const img = String(content?.storyPhoto ?? '').trim();
+		if (!img) throw new Error('storyPhoto is required for kind=photo_story');
+		return await publishPhotoStory(pageId, pageAccessToken, img);
+	}
+	if (kind === 'video_story') {
+		if (!content?.storyVideo) throw new Error('storyVideo is required for kind=video_story');
+		return await publishVideoStory(pageId, pageAccessToken, content.storyVideo);
+	}
 
 	// Multiple videos → one post each (FB has no video-carousel API)
 	if (videos.length > 0) {
@@ -303,16 +440,18 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 		// IMPORTANT: do NOT send per-photo captions here — FB will sometimes
 		// use the first photo's caption as the post message, hiding our main
 		// feed message. Captions are instead merged into the feed message.
-		console.log(`[worker] carousel publishing ${images.length} image(s); feedMessage length=${feedMessage.length}`);
+		console.log(`[worker] carousel publishing ${images.length} image(s); feedMessage length=${feedMessage.length} preview=${JSON.stringify(feedMessage.slice(0, 120))}`);
 		const mediaFbids = [];
 		for (let i = 0; i < images.length; i++) {
 			const img = images[i];
+			const slideCap = String(imageCaptions[i] ?? '').trim();
+			console.log(`[worker]   photo[${i}] caption=${JSON.stringify(slideCap.slice(0, 80))}`);
 			const up = await uploadFacebookPagePhoto({
 				pageId,
 				pageAccessToken,
 				url: img.startsWith('http') ? img : undefined,
 				dataUrl: img.startsWith('data:') ? img : undefined,
-				caption: undefined,
+				caption: slideCap || undefined,
 				published: false,
 			});
 			const id = String(up?.id ?? '');
@@ -327,12 +466,14 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 		for (let i = 0; i < mediaFbids.length; i++) {
 			body.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: mediaFbids[i] }));
 		}
+		console.log(`[worker] POST /${pageId}/feed  message=${JSON.stringify(feedMessage.slice(0, 200))}  attached=${mediaFbids.length}`);
 		const res = await fetch(url.toString(), {
 			method: 'POST',
 			headers: { 'content-type': 'application/x-www-form-urlencoded' },
 			body,
 		});
 		const data = await res.json();
+		console.log(`[worker] feed response status=${res.status} body=${JSON.stringify(data).slice(0, 400)}`);
 		if (!res.ok) throw new Error(data?.error?.message ?? 'Facebook carousel post failed');
 		return data;
 	}
@@ -469,6 +610,41 @@ async function publishInstagram({ igUserId, accessToken, content }) {
 
 		const pub = await metaGraphPost(`${igUserId}/media_publish`, { creation_id: creationId }, accessToken);
 		return { creation_id: creationId, child_creation_ids: childIds, publish: pub };
+	}
+
+	if (igType === 'story_image' || igType === 'photo_story') {
+		const imageUrl = String(content.imageUrl ?? '').trim();
+		if (!imageUrl) throw new Error('Missing content.imageUrl for IG story_image');
+		const c = await metaGraphPost(
+			`${igUserId}/media`,
+			{ media_type: 'STORIES', image_url: imageUrl },
+			accessToken
+		);
+		const creationId = String(c?.id ?? '');
+		if (!creationId) throw new Error('IG story container did not return id');
+		const pub = await metaGraphPost(`${igUserId}/media_publish`, { creation_id: creationId }, accessToken);
+		return { creation_id: creationId, publish: pub };
+	}
+
+	if (igType === 'story_video' || igType === 'video_story') {
+		const videoUrl = String(content.videoUrl ?? '').trim();
+		if (!videoUrl) throw new Error('Missing content.videoUrl for IG story_video');
+		const c = await metaGraphPost(
+			`${igUserId}/media`,
+			{ media_type: 'STORIES', video_url: videoUrl },
+			accessToken
+		);
+		const creationId = String(c?.id ?? '');
+		if (!creationId) throw new Error('IG video story container did not return id');
+		for (let i = 0; i < 40; i++) {
+			const st = await metaGraphGet(`${creationId}`, { fields: 'status_code' }, accessToken);
+			const code = String(st?.status_code ?? '');
+			if (code === 'FINISHED') break;
+			if (code === 'ERROR') throw new Error('IG video story processing failed');
+			await sleep(5000);
+		}
+		const pub = await metaGraphPost(`${igUserId}/media_publish`, { creation_id: creationId }, accessToken);
+		return { creation_id: creationId, publish: pub };
 	}
 
 	throw new Error(`Unknown IG content.igType: ${String(content.igType ?? '')}`);
