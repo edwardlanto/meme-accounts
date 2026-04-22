@@ -19,6 +19,7 @@
 		/** Circle border color (bindable). */
 		circleBorderColor?: string;
 		/** Optional second circle badge (for a second photo/logo). */
+		showCircle2?: boolean;
 		circle2Image?: string;
 		circle2BorderColor?: string;
 		circle2X?: number;
@@ -57,8 +58,10 @@
 		onTextChange?: (t: string) => void;
 		onCircleMove?: (x: number, y: number) => void;
 		onCircleImageChange?: (src: string) => void;
+		onCircleAIClick?: () => void;
 		onCircle2Move?: (x: number, y: number) => void;
 		onCircle2ImageChange?: (src: string) => void;
+		onCircle2AIClick?: () => void;
 		onOverlaysChange?: (overlays: Overlay[]) => void;
 		onTextOverlaysChange?: (overlays: TextOverlay[]) => void;
 		/** Fired when the user clicks a stylable text element. */
@@ -77,6 +80,7 @@
 		showSubjectCutout = false,
 		circleImage,
 		circleBorderColor = $bindable('#FFFFFF'),
+		showCircle2 = false,
 		circle2Image = '',
 		circle2BorderColor = $bindable('#FFFFFF'),
 		text,
@@ -106,8 +110,10 @@
 		onTextChange,
 		onCircleMove,
 		onCircleImageChange,
+		onCircleAIClick,
 		onCircle2Move,
 		onCircle2ImageChange,
+		onCircle2AIClick,
 		onOverlaysChange,
 		onTextOverlaysChange,
 		onTextSelect,
@@ -1062,7 +1068,7 @@
 		{/each}
 
 		<!-- ── Draggable circle badge ──────────────────────────────────────── -->
-		{#if circleImage}
+		{#if circleImage || interactive}
 			<input
 				bind:this={circleFileEl}
 				type="file"
@@ -1087,7 +1093,9 @@
 					border-radius: 50%;
 					border: 8px solid {circleBorderColor};
 					overflow: visible;
-					z-index: 20;
+					/* Keep circle controls above the shadow gradient (z=30),
+					   but below the main text layer (z=40). */
+					z-index: 32;
 					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 					cursor: {interactive ? (dragging ? 'grabbing' : 'grab') : 'default'};
 					touch-action: none;
@@ -1098,28 +1106,42 @@
 				onpointercancel={circlePointerUp}
 				role="presentation"
 			>
-				<img
-					src={circleImage}
-					alt=""
-					style="
+				{#if circleImage}
+					<img
+						src={circleImage}
+						alt=""
+						style="
+							width: 100%; height: 100%;
+							object-fit: cover; object-position: center;
+							border-radius: 50%;
+							pointer-events: none;
+						"
+					/>
+				{:else}
+					<div style="
 						width: 100%; height: 100%;
-						object-fit: cover; object-position: center;
 						border-radius: 50%;
+						background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.12), rgba(255,255,255,0.03));
+						display: flex; align-items: center; justify-content: center;
+						color: rgba(255,255,255,0.35);
+						font-family: system-ui, -apple-system, sans-serif;
+						font-weight: 700;
+						letter-spacing: 0.02em;
 						pointer-events: none;
-					"
-				/>
+					">Circle</div>
+				{/if}
 				<!-- Drag indicator (only in interactive mode) -->
 			{#if interactive}
 				<!-- Drag indicator (bottom-right) -->
 				<div style="
 					position: absolute;
-					bottom: -30px; right: -30px;
-					width: 48px; height: 48px;
+					bottom: -38px; right: -38px;
+					width: 60px; height: 60px;
 					border-radius: 50%;
 					background: rgba(0,0,0,0.75);
 					border: 2px solid rgba(255,255,255,0.3);
 					display: flex; align-items: center; justify-content: center;
-					font-size: 22px; color: rgba(255,255,255,0.8);
+					font-size: 28px; color: rgba(255,255,255,0.8);
 					pointer-events: none;
 				">⠿</div>
 
@@ -1127,9 +1149,9 @@
 				<div
 					style="
 						position: absolute;
-						top: -18px; left: -18px;
+						top: -22px; left: -22px;
 						display: flex;
-						gap: 6px;
+						gap: 8px;
 						pointer-events: auto;
 					"
 					role="presentation"
@@ -1137,14 +1159,31 @@
 					<!-- svelte-ignore a11y_consider_explicit_label -->
 					<button
 						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={removeCircle}
+						onclick={() => onCircleAIClick?.()}
 						style="
-							width: 34px; height: 34px;
+							width: 42px; height: 42px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
 							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
 							font-size: 14px; color: rgba(255,255,255,0.9);
+							cursor: pointer;
+							touch-action: none;
+						"
+						title="Generate with AI"
+					>AI</button>
+
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+						onclick={removeCircle}
+						style="
+							width: 42px; height: 42px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 18px; color: rgba(255,255,255,0.9);
 							cursor: pointer;
 							touch-action: none;
 						"
@@ -1156,12 +1195,12 @@
 						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={openCirclePicker}
 						style="
-							width: 34px; height: 34px;
+							width: 42px; height: 42px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
 							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
-							font-size: 14px; color: rgba(255,255,255,0.9);
+							font-size: 18px; color: rgba(255,255,255,0.9);
 							cursor: pointer;
 							touch-action: none;
 						"
@@ -1173,7 +1212,7 @@
 						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={openCircleBorderPicker}
 						style="
-							width: 34px; height: 34px;
+							width: 42px; height: 42px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
 							border: 2px solid rgba(255,255,255,0.24);
@@ -1183,7 +1222,7 @@
 						"
 						title="Change border color"
 					>
-						<span style="width:14px;height:14px;border-radius:5px;border:2px solid rgba(255,255,255,0.35);background:{circleBorderColor};display:block;"></span>
+						<span style="width:18px;height:18px;border-radius:6px;border:2px solid rgba(255,255,255,0.35);background:{circleBorderColor};display:block;"></span>
 					</button>
 				</div>
 
@@ -1191,13 +1230,13 @@
 				<div
 					style="
 						position: absolute;
-						bottom: -30px; left: 50%; transform: translateX(-50%);
-						width: 26px; height: 26px;
-						border-radius: 8px;
+						bottom: -38px; left: 50%; transform: translateX(-50%);
+						width: 34px; height: 34px;
+						border-radius: 10px;
 						background: rgba(0,0,0,0.85);
 						border: 2px solid rgba(255,255,255,0.45);
 						display: flex; align-items: center; justify-content: center;
-						font-size: 12px; color: rgba(255,255,255,0.85);
+						font-size: 15px; color: rgba(255,255,255,0.85);
 						cursor: nwse-resize;
 						touch-action: none;
 					"
@@ -1212,7 +1251,7 @@
 		{/if}
 
 		<!-- ── Optional second circle badge ───────────────────────────────── -->
-		{#if circle2Image}
+		{#if circle2Image || (interactive && showCircle2)}
 			<input
 				bind:this={circle2FileEl}
 				type="file"
@@ -1237,7 +1276,8 @@
 					border-radius: 50%;
 					border: 8px solid {circle2BorderColor};
 					overflow: visible;
-					z-index: 19;
+					/* Above gradient (z=30), below text (z=40), below main circle (z=32). */
+					z-index: 31;
 					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 					cursor: {interactive ? (dragging2 ? 'grabbing' : 'grab') : 'default'};
 					touch-action: none;
@@ -1248,27 +1288,41 @@
 				onpointercancel={circle2PointerUp}
 				role="presentation"
 			>
-				<img
-					src={circle2Image}
-					alt=""
-					style="
+				{#if circle2Image}
+					<img
+						src={circle2Image}
+						alt=""
+						style="
+							width: 100%; height: 100%;
+							object-fit: cover; object-position: center;
+							border-radius: 50%;
+							pointer-events: none;
+						"
+					/>
+				{:else}
+					<div style="
 						width: 100%; height: 100%;
-						object-fit: cover; object-position: center;
 						border-radius: 50%;
+						background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.12), rgba(255,255,255,0.03));
+						display: flex; align-items: center; justify-content: center;
+						color: rgba(255,255,255,0.35);
+						font-family: system-ui, -apple-system, sans-serif;
+						font-weight: 700;
+						letter-spacing: 0.02em;
 						pointer-events: none;
-					"
-				/>
+					">Circle</div>
+				{/if}
 			{#if interactive}
 				<!-- Drag indicator (bottom-right) -->
 				<div style="
 					position: absolute;
-					bottom: -30px; right: -30px;
-					width: 48px; height: 48px;
+					bottom: -38px; right: -38px;
+					width: 60px; height: 60px;
 					border-radius: 50%;
 					background: rgba(0,0,0,0.75);
 					border: 2px solid rgba(255,255,255,0.3);
 					display: flex; align-items: center; justify-content: center;
-					font-size: 22px; color: rgba(255,255,255,0.8);
+					font-size: 28px; color: rgba(255,255,255,0.8);
 					pointer-events: none;
 				">⠿</div>
 
@@ -1276,9 +1330,9 @@
 				<div
 					style="
 						position: absolute;
-						top: -18px; left: -18px;
+						top: -22px; left: -22px;
 						display: flex;
-						gap: 6px;
+						gap: 8px;
 						pointer-events: auto;
 					"
 					role="presentation"
@@ -1286,14 +1340,31 @@
 					<!-- svelte-ignore a11y_consider_explicit_label -->
 					<button
 						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={removeCircle2}
+						onclick={() => onCircle2AIClick?.()}
 						style="
-							width: 34px; height: 34px;
+							width: 42px; height: 42px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
 							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
 							font-size: 14px; color: rgba(255,255,255,0.9);
+							cursor: pointer;
+							touch-action: none;
+						"
+						title="Generate with AI"
+					>AI</button>
+
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+						onclick={removeCircle2}
+						style="
+							width: 42px; height: 42px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 18px; color: rgba(255,255,255,0.9);
 							cursor: pointer;
 							touch-action: none;
 						"
@@ -1305,12 +1376,12 @@
 						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={openCircle2Picker}
 						style="
-							width: 34px; height: 34px;
+							width: 42px; height: 42px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
 							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
-							font-size: 14px; color: rgba(255,255,255,0.9);
+							font-size: 18px; color: rgba(255,255,255,0.9);
 							cursor: pointer;
 							touch-action: none;
 						"
@@ -1322,7 +1393,7 @@
 						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={openCircle2BorderPicker}
 						style="
-							width: 34px; height: 34px;
+							width: 42px; height: 42px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
 							border: 2px solid rgba(255,255,255,0.24);
@@ -1332,7 +1403,7 @@
 						"
 						title="Change border color"
 					>
-						<span style="width:14px;height:14px;border-radius:5px;border:2px solid rgba(255,255,255,0.35);background:{circle2BorderColor};display:block;"></span>
+						<span style="width:18px;height:18px;border-radius:6px;border:2px solid rgba(255,255,255,0.35);background:{circle2BorderColor};display:block;"></span>
 					</button>
 				</div>
 
@@ -1340,13 +1411,13 @@
 				<div
 					style="
 						position: absolute;
-						bottom: -30px; left: 50%; transform: translateX(-50%);
-						width: 26px; height: 26px;
-						border-radius: 8px;
+						bottom: -38px; left: 50%; transform: translateX(-50%);
+						width: 34px; height: 34px;
+						border-radius: 10px;
 						background: rgba(0,0,0,0.85);
 						border: 2px solid rgba(255,255,255,0.45);
 						display: flex; align-items: center; justify-content: center;
-						font-size: 12px; color: rgba(255,255,255,0.85);
+						font-size: 15px; color: rgba(255,255,255,0.85);
 						cursor: nwse-resize;
 						touch-action: none;
 					"
@@ -1493,6 +1564,8 @@
 					<HighlightEditor
 						value={text}
 						rows={1}
+						showToolbar={true}
+						defaultColor={highlightColor}
 						onChange={(v) => onTextChange?.(v)}
 						onBlur={finishEdit}
 						onSelectionChange={(has, r) => {

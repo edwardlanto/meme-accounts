@@ -260,13 +260,13 @@
 	function newSlideId() { return `s_${++_slideUid}_${Date.now().toString(36)}`; }
 	let slideIds = $state<string[]>([newSlideId()]);
 	$effect(() => {
-		// Keep slideIds length in sync with slideCount (pad or trim).
+		// Keep slideIds length in sync with slideCount (pad only).
+		// We intentionally avoid trimming here because it can make a slide
+		// "disappear" if slideCount is temporarily out of sync during drag/drop.
 		if (slideIds.length < slideCount) {
 			const add: string[] = [];
 			for (let i = slideIds.length; i < slideCount; i++) add.push(newSlideId());
 			slideIds = [...slideIds, ...add];
-		} else if (slideIds.length > slideCount) {
-			slideIds = slideIds.slice(0, slideCount);
 		}
 	});
 
@@ -331,9 +331,34 @@
 		const newOrder = nextIds
 			.map((id) => idToOldIndex.get(id))
 			.filter((v): v is number => typeof v === 'number');
-		// If something went wrong, bail rather than corrupt arrays.
-		if (newOrder.length !== prevIds.length) return;
+		// If something went wrong, fall back to a safe no-op reorder rather than losing slides.
+		if (newOrder.length !== prevIds.length) {
+			const seen = new Set(newOrder);
+			for (let i = 0; i < prevIds.length; i++) if (!seen.has(i)) newOrder.push(i);
+		}
 		reorderSlides(newOrder);
+	}
+
+	function normalizeDragIds(rawItems: any[]): string[] {
+		// svelte-dnd-action injects transient "shadow" items while dragging.
+		// We always want to render a full, stable list of real slide ids.
+		const allowed = new Set(slideIds);
+		const seen = new Set<string>();
+		const picked: string[] = [];
+		for (const it of rawItems ?? []) {
+			const id = typeof it?.id === 'string' ? (it.id as string) : null;
+			if (!id) continue;
+			if (it?.shadow) continue;
+			if (!allowed.has(id)) continue;
+			if (seen.has(id)) continue;
+			seen.add(id);
+			picked.push(id);
+		}
+		// Append any missing ids in their original order so length is preserved.
+		for (const id of slideIds) {
+			if (!seen.has(id)) picked.push(id);
+		}
+		return picked;
 	}
 
 	// While dragging thumbnails, we keep a temporary visual order here.
@@ -512,7 +537,7 @@
 		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
 		if (typeof s.highlightColor === 'string') highlightColor = s.highlightColor;
 		if (typeof s.textColor === 'string') textColor = s.textColor;
-		if (typeof s.slideCount === 'number') slideCount = s.slideCount;
+		// slideCount is derived from slides.length; do not restore it directly.
 	}
 
 	function buildDraftState() {
@@ -906,6 +931,59 @@
 			if (data.dataUrl) circleImage = data.dataUrl;
 		} catch { /* ignore */ }
 		generatingCircle = false;
+	}
+
+	async function generateCircleFromPrompt(which: 1 | 2) {
+		// Open Tailwind prompt modal instead of window.prompt()
+		openCircleAIModal(which);
+	}
+
+	// ── Circle AI modal state ─────────────────────────────────────────────
+	let circleAIModalFor = $state<1 | 2 | null>(null);
+	let circleAIPrompt = $state('');
+	let circleAIGenerating = $state(false);
+
+	function openCircleAIModal(which: 1 | 2) {
+		circleAIModalFor = which;
+		circleAIPrompt = '';
+	}
+	function closeCircleAIModal() {
+		circleAIModalFor = null;
+		circleAIPrompt = '';
+		circleAIGenerating = false;
+	}
+
+	async function submitCircleAIModal() {
+		if (!circleAIModalFor) return;
+		const which = circleAIModalFor;
+		const userPrompt = circleAIPrompt.trim();
+		if (!userPrompt) return;
+		circleAIGenerating = true;
+		if (which === 1) generatingCircle = true;
+		try {
+			const prompt = `Bold editorial close-up photo. ${userPrompt}. Square crop, single strong subject, dramatic lighting, no text.`;
+			const res = await fetch('/api/vertex', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ prompt, aspect: '1:1' }),
+			});
+			const data = await res.json();
+			if (data.dataUrl) {
+				if (which === 1) {
+					circleImage = data.dataUrl;
+					showCircle = true;
+				} else {
+					circle2Image = data.dataUrl;
+					showCircle2 = true;
+				}
+			}
+		} catch {
+			/* ignore */
+		} finally {
+			if (which === 1) generatingCircle = false;
+			circleAIGenerating = false;
+			closeCircleAIModal();
+		}
 	}
 
 	// ── Handle image uploads ──────────────────────────────────────────────
@@ -1522,98 +1600,7 @@
 				</div>
 			</div>
 
-			<!-- Circle badge -->
-			<div>
-				<!-- Header row with toggle -->
-				<div class="flex items-center justify-between mb-2">
-					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Circle Badge</label>
-					<button
-						onclick={() => { showCircle = !showCircle; if (!showCircle) circleImage = ''; }}
-						class="relative w-9 h-[18px] rounded-full transition-colors duration-200 flex-shrink-0
-							{showCircle ? 'bg-cyan-500/40' : 'bg-white/[0.08]'}"
-					>
-						<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full shadow transition-transform duration-200
-							{showCircle ? 'translate-x-[18px] bg-cyan-400' : 'translate-x-0 bg-white/30'}">
-						</span>
-					</button>
-				</div>
-
-				{#if showCircle}
-					<div class="flex flex-col gap-2">
-						<!-- Preview + spinner -->
-						{#if generatingCircle}
-							<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-								<div class="w-8 h-8 rounded-full bg-white/[0.05] flex items-center justify-center flex-shrink-0">
-									<Loader size={12} class="animate-spin text-cyan-400" />
-								</div>
-								<span class="text-[11px] font-mono text-white/30">Generating…</span>
-							</div>
-						{:else if circleImage}
-							<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-								<img src={circleImage} alt="circle badge" class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-white/10" />
-								<span class="text-[11px] font-mono text-white/30 flex-1">Auto-generated</span>
-								<button onclick={generateCircleImage} title="Regenerate" class="text-white/20 hover:text-cyan-400 transition-colors">
-									<RefreshCw size={11} />
-								</button>
-								<button onclick={() => circleImage = ''} title="Remove" class="text-white/20 hover:text-red-400 transition-colors">
-									✕
-								</button>
-							</div>
-						{/if}
-
-						<!-- Size slider -->
-						<div class="flex items-center gap-2.5 px-1">
-							<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7">Size</span>
-							<input
-								type="range"
-								min="128" max="512" step="8"
-								bind:value={circleSize}
-								class="flex-1 h-1 rounded-full accent-cyan-400 cursor-pointer"
-							/>
-							<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7 text-right">{circleSize}</span>
-						</div>
-
-						<!-- Border color -->
-						<div class="flex items-center gap-2 px-1">
-							<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-12">Border</span>
-							<div class="flex items-center gap-1.5 flex-1">
-								{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981'] as c}
-									<button
-										type="button"
-										onclick={() => circleBorderColor = c}
-										class="w-6 h-6 rounded-lg border-2 transition-all {circleBorderColor === c ? 'border-violet-400 scale-110' : 'border-white/10 hover:scale-105'}"
-										style="background: {c};"
-										title="Set border {c}"
-									></button>
-								{/each}
-							</div>
-							<input
-								type="color"
-								bind:value={circleBorderColor}
-								class="w-8 h-7 rounded-lg bg-transparent border border-white/10 cursor-pointer"
-								title="Custom border color"
-							/>
-						</div>
-
-						<!-- Action buttons -->
-						<button onclick={generateCircleImage} disabled={generatingCircle}
-							class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
-							{#if generatingCircle}
-								<Loader size={11} class="animate-spin" /> Generating…
-							{:else}
-								<Sparkles size={11} /> {circleImage ? 'Regenerate' : 'Generate'} with AI
-							{/if}
-						</button>
-						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
-							<Image size={11} /> Upload custom image
-							<input type="file" accept="image/*" class="sr-only" onchange={handleCircleUpload} />
-						</label>
-					</div>
-				{/if}
-			</div>
-
-			<!-- Divider -->
-			<div class="border-t border-white/[0.05] my-3"></div>
+			<!-- Circle badge controls removed from sidebar (managed on-canvas) -->
 
 			<!-- Export -->
 			<button onclick={exportPng} disabled={exporting || exportingAll}
@@ -1696,6 +1683,7 @@
 					subjectCutout={activeCutout}
 					showSubjectCutout={activeShowCutout}
 					circleImage={showCircle ? circleImage : ''}
+					showCircle2={showCircle2}
 					circle2Image={showCircle2 ? circle2Image : ''}
 					text={overlayText}
 					source={source}
@@ -1713,8 +1701,10 @@
 					onTextChange={(t) => setActiveSlideText(t)}
 					onCircleMove={(x, y) => { circleX = x; circleY = y; }}
 					onCircleImageChange={(src) => { circleImage = src; showCircle = true; }}
+					onCircleAIClick={() => generateCircleFromPrompt(1)}
 					onCircle2Move={(x, y) => { circle2X = x; circle2Y = y; }}
-					onCircle2ImageChange={(src) => { circle2Image = src; showCircle2 = true; }}
+					onCircle2ImageChange={(src) => { circle2Image = src; showCircle2 = src ? true : false; }}
+					onCircle2AIClick={() => generateCircleFromPrompt(2)}
 					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
 					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={onTextSelect}
@@ -1836,10 +1826,10 @@
 				onconsider={(e) => {
 					// Only update the visual order while dragging; don't reorder slide data yet
 					// (reordering arrays mid-drag can cause items to "vanish").
-					filmstripIds = (e.detail.items as any[]).map((it) => it.id as string);
+					filmstripIds = normalizeDragIds(e.detail.items as any[]);
 				}}
 				onfinalize={(e) => {
-					const nextIds = (e.detail.items as any[]).map((it) => it.id as string);
+					const nextIds = normalizeDragIds(e.detail.items as any[]);
 					reorderSlidesByIds(nextIds);
 					// Clear temp visual order so we fall back to slideIds (now reordered).
 					filmstripIds = [];
@@ -1986,6 +1976,70 @@
 	</div>
 
 </div>
+
+{#if circleAIModalFor !== null}
+	<!-- Circle AI prompt modal -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 z-[100] flex items-center justify-center"
+		onclick={closeCircleAIModal}
+	>
+		<div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+		<div
+			class="relative w-[520px] max-w-[92vw] rounded-2xl bg-[#111] border border-white/10 shadow-2xl p-4"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="flex items-center justify-between mb-3">
+				<div>
+					<p class="text-[10px] font-mono text-white/40 uppercase tracking-wider">Circle AI</p>
+					<p class="text-sm font-body text-white/80 -mt-0.5">Generate an image for circle {circleAIModalFor}</p>
+				</div>
+				<button
+					type="button"
+					onclick={closeCircleAIModal}
+					class="w-8 h-8 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-white/60 hover:text-white flex items-center justify-center transition-colors"
+					aria-label="Close"
+				>
+					<X size={14} />
+				</button>
+			</div>
+
+			<label class="block text-[10px] font-mono text-white/30 uppercase tracking-wider mb-1.5">Prompt</label>
+			<input
+				bind:value={circleAIPrompt}
+				placeholder="e.g. A smiling founder portrait, studio lighting…"
+				class="w-full bg-white/[0.04] border border-white/[0.10] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-cyan-400/40 transition-colors"
+				onkeydown={(e) => { if (e.key === 'Enter') submitCircleAIModal(); if (e.key === 'Escape') closeCircleAIModal(); }}
+				autofocus
+			/>
+			<p class="text-[10px] font-body text-white/25 mt-2 leading-relaxed">
+				Tip: describe a subject and vibe. Keep it short—no text in the image.
+			</p>
+
+			<div class="flex items-center justify-end gap-2 mt-4">
+				<button
+					type="button"
+					onclick={closeCircleAIModal}
+					class="px-3 py-2 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-xs font-mono text-white/60 transition-colors"
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					onclick={submitCircleAIModal}
+					disabled={circleAIGenerating || !circleAIPrompt.trim()}
+					class="px-3 py-2 rounded-xl text-xs font-semibold font-body text-white bg-gradient-to-r from-cyan-500 to-violet-600 disabled:opacity-50"
+				>
+					{#if circleAIGenerating}
+						<span class="inline-flex items-center gap-2"><Loader size={12} class="animate-spin" /> Generating…</span>
+					{:else}
+						Generate
+					{/if}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <!-- Canva-style floating toolbar for text formatting -->
 <FloatingTextToolbar
