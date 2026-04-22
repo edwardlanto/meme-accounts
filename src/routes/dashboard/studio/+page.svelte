@@ -64,6 +64,10 @@
 	// News controls
 	let search = $state('');
 	let category = $state('business');
+	/** Sidebar mode for the News template generator: live articles vs synthetic fact/story. */
+	type NewsStudioContentMode = 'news' | 'fact' | 'story';
+	let newsContentMode = $state<NewsStudioContentMode>('news');
+	let storyCategory = $state('health');
 	let slideCount = $state(3); // 1–10
 
 	// Preview/edit view toggle for the canvas area.
@@ -529,6 +533,10 @@
 		if (Array.isArray(s.slides)) slides = s.slides;
 		if (typeof s.activeSlide === 'number') activeSlide = Math.max(0, Math.min((s.slides?.length ?? slides.length) - 1, s.activeSlide));
 		if (typeof s.category === 'string') category = s.category;
+		if (s.newsContentMode === 'news' || s.newsContentMode === 'fact' || s.newsContentMode === 'story') {
+			newsContentMode = s.newsContentMode;
+		}
+		if (typeof s.storyCategory === 'string') storyCategory = s.storyCategory;
 		if (typeof s.search === 'string') search = s.search;
 		if (typeof s.source === 'string') source = s.source;
 		if (typeof s.articleUrl === 'string') articleUrl = s.articleUrl;
@@ -594,6 +602,8 @@
 			lastTemplateUsed,
 			slideCount,
 			category,
+			newsContentMode,
+			storyCategory,
 			search,
 			source,
 			articleUrl,
@@ -709,6 +719,99 @@
 		general: 'News',
 	};
 
+	const storyThemes = [
+		{ id: 'health', label: 'Health' },
+		{ id: 'wealth', label: 'Wealth' },
+		{ id: 'relationships', label: 'Relationships' },
+		{ id: 'career', label: 'Career' },
+		{ id: 'mindset', label: 'Mindset' },
+		{ id: 'productivity', label: 'Productivity' },
+		{ id: 'fitness', label: 'Fitness' },
+		{ id: 'money', label: 'Money' },
+	] as const;
+
+	const MOCK_FACTS = [
+		{
+			hookText: 'OCTOPUSES HAVE [[THREE HEARTS]] — TWO STOP WHEN THEY SWIM',
+			rawText:
+				'Two branchial hearts pump blood to the gills while a systemic heart circulates blood to the rest of the body. When an octopus swims, the systemic heart actually pauses, which is one reason they prefer crawling. This unusual cardiovascular design supports their active, short-lived lives in complex reef environments.',
+			source: 'Did you know',
+		},
+		{
+			hookText: 'BANANAS ARE [[BERRIES]] — BUT STRAWBERRIES ARE NOT',
+			rawText:
+				'Botanically, a berry develops from a single ovary and typically contains seeds inside the flesh. Bananas fit that definition. Strawberries aggregate from multiple ovaries and wear their seeds on the outside. The everyday fruit names we use often diverge sharply from botanical taxonomy.',
+			source: 'Did you know',
+		},
+	] as const;
+
+	const MOCK_STORIES: Record<string, { hookText: string; rawText: string; source: string }[]> = {
+		health: [
+			{
+				hookText: 'SHE SWAPPED [[MIDNIGHT SNACKS]] FOR [[MAGNESIUM]] — SLEEP CHANGED FAST',
+				rawText:
+					'Her nights were restless from screens and sugar spikes. She moved protein earlier, dimmed lights, and tried magnesium glycinate on doctor advice. Week one felt placebo. By week four, wake-ups were fewer. It was not magic—just stacking small levers until the nervous system calmed.',
+				source: 'Health',
+			},
+		],
+		wealth: [
+			{
+				hookText: 'AT 28 HE HAD [[NO INHERITANCE]] — AT 35 HE HAD [[OPTIONALITY]]',
+				rawText:
+					'He avoided debt that did not build skills. Side income funded an emergency runway first, then index funds on autopilot. Raises were invisible to lifestyle. Friends bought cars; he bought time. Optionality meant saying no to bad jobs without panic.',
+				source: 'Wealth',
+			},
+		],
+		relationships: [
+			{
+				hookText: 'THEY AGREED TO [[ONE HARD CONVERSATION]] A WEEK — RESENTMENT [[SHRUNK]]',
+				rawText:
+					'Small irritations had become a background hum. They scheduled a protected hour: phones off, notes allowed, no winners. Topics rotated: money, family, intimacy. Some weeks were brutal. Others were boring. The habit mattered more than the perfect script.',
+				source: 'Relationships',
+			},
+		],
+		career: [
+			{
+				hookText: 'HER PORTFOLIO WAS [[MESSY]] — SO SHE SHIPPED [[ONE PUBLIC CASE STUDY]]',
+				rawText:
+					'Recruiters skim. She reframed one project with metrics, screenshots, and lessons learned. LinkedIn posts followed the same narrative arc. Interviews shifted from trivia to depth. One artifact did more than fifty bullet points on a resume.',
+				source: 'Career',
+			},
+		],
+		mindset: [
+			{
+				hookText: 'HE STOPPED CHASING [[CONFIDENCE]] AND STARTED COLLECTING [[PROOF]]',
+				rawText:
+					'Confidence felt like a mood he could not control. Proof was receipts: shipped work, saved messages, logged reps. He built a brag doc not for arrogance but for bad brain days. The inner critic lost a few debates on evidence.',
+				source: 'Mindset',
+			},
+		],
+		productivity: [
+			{
+				hookText: 'SHE TIME-BOXED [[SLACK]] TO 30 MINUTES — TEAM OUTPUT [[ROSE]]',
+				rawText:
+					'Constant pings fractured design work. She proposed office hours for questions. Leadership feared bottlenecks; instead, answers got documented. Async improved. Meetings shrank. The policy spread to two other teams after a quarter.',
+				source: 'Productivity',
+			},
+		],
+		fitness: [
+			{
+				hookText: 'HE COULD NOT DO [[ONE PULL-UP]] — SIX MONTHS LATER HE DID [[TWELVE]]',
+				rawText:
+					'Negatives and band-assisted reps built tendon patience. He tracked range of motion, not ego weight. Sleep and protein were boring pillars. Progress was invisible for weeks, then sudden. The lesson was patience with progressive overload.',
+				source: 'Fitness',
+			},
+		],
+		money: [
+			{
+				hookText: 'THEY FOUND [[$340]] A MONTH IN [[GHOST SUBSCRIPTIONS]]',
+				rawText:
+					'Old trials, duplicate streaming tiers, forgotten SaaS seats. They canceled ruthlessly for thirty days, then re-added only what they missed. Automated weekly account reviews kept drift low. The win was attention, not austerity.',
+				source: 'Money',
+			},
+		],
+	};
+
 	// ── Fetch news ────────────────────────────────────────────────────────
 	async function fetchNews() {
 		fetchingNews = true;
@@ -732,30 +835,51 @@
 
 			if (useTestData) {
 				// ── Mock mode ────────────────────────────────────────────────
-				await new Promise(r => setTimeout(r, 400));
-				const pool = search
-					? MOCK_NEWS.filter(a =>
-						a.title.toLowerCase().includes(search.toLowerCase()) ||
-						a.description.toLowerCase().includes(search.toLowerCase())
-					  )
-					: MOCK_NEWS;
-				const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
+				await new Promise((r) => setTimeout(r, 400));
+				if (newsContentMode === 'fact') {
+					const pick = MOCK_FACTS[Math.floor(Math.random() * MOCK_FACTS.length)] ?? MOCK_FACTS[0];
+					hookText = pick.hookText;
+					rawText = pick.rawText;
+					source = pick.source;
+					articleUrl = '';
+					articleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
+					articleImageUrl = '';
+				} else if (newsContentMode === 'story') {
+					const pool = MOCK_STORIES[storyCategory] ?? MOCK_STORIES.health;
+					const pick = pool[Math.floor(Math.random() * pool.length)] ?? pool[0];
+					hookText = pick.hookText;
+					rawText = pick.rawText;
+					source = pick.source;
+					articleUrl = '';
+					articleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
+					articleImageUrl = '';
+				} else {
+					const pool = search
+						? MOCK_NEWS.filter(
+								(a) =>
+									a.title.toLowerCase().includes(search.toLowerCase()) ||
+									a.description.toLowerCase().includes(search.toLowerCase()),
+							)
+						: MOCK_NEWS;
+					const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
 
-				hookText        = article.title;
-				rawText         = `${article.title}. ${article.description}. ${article.snippet}`;
-				source          = sourceLabels[category] ?? article.source ?? 'News';
-				articleUrl      = article.url;
-				articleTitle    = article.title;
-				articleImageUrl = article.image_url;
-
+					hookText = article.title;
+					rawText = `${article.title}. ${article.description}. ${article.snippet}`;
+					source = sourceLabels[category] ?? article.source ?? 'News';
+					articleUrl = article.url;
+					articleTitle = article.title;
+					articleImageUrl = article.image_url;
+				}
 			} else {
 				// ── Live mode ────────────────────────────────────────────────
 				const res = await fetch('/api/news', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
-						search: search || undefined,
-						categories: category,
+						mode: newsContentMode,
+						storyCategory,
+						search: newsContentMode === 'news' ? search || undefined : undefined,
+						categories: newsContentMode === 'news' ? category : undefined,
 						autoHighlight: true,
 						pick: 'first',
 					}),
@@ -763,11 +887,18 @@
 				const data = await res.json();
 				if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
 
-				hookText        = data.text ?? '';
-				rawText         = data.description ?? data.title ?? '';
-				source          = sourceLabels[category] ?? data.source ?? 'News';
-				articleUrl      = data.url ?? '';
-				articleTitle    = data.title ?? '';
+				hookText = data.text ?? '';
+				rawText = data.description ?? data.title ?? '';
+				source =
+					newsContentMode === 'news'
+						? sourceLabels[category] ?? data.source ?? 'News'
+						: typeof data.source === 'string' && data.source
+							? data.source
+							: newsContentMode === 'fact'
+								? 'Did you know'
+								: storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Story';
+				articleUrl = data.url ?? '';
+				articleTitle = data.title ?? '';
 				articleImageUrl = data.imageUrl ?? '';
 			}
 
@@ -1257,29 +1388,80 @@
 
 		<div class="flex flex-col gap-1 p-4">
 
-			<!-- Category -->
-			<div class="mb-1">
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Category</label>
-				<div class="relative">
-					<select bind:value={category}
-						class="w-full appearance-none bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-3 pr-8 text-sm font-body text-white focus:outline-none focus:border-violet-500/50 transition-colors">
-						{#each categories as cat}
-							<option value={cat.id}>{cat.label}</option>
-						{/each}
-					</select>
-					<ChevronDown size={13} class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+			<!-- Content type (News template generator) -->
+			<div class="mb-2">
+				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Content</label>
+				<div class="flex rounded-xl p-0.5 bg-white/[0.04] border border-white/[0.08] gap-0.5">
+					<button
+						type="button"
+						onclick={() => (newsContentMode = 'news')}
+						class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
+							{newsContentMode === 'news'
+								? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
+								: 'text-white/45 hover:text-white/70 border border-transparent'}"
+					>News</button>
+					<button
+						type="button"
+						onclick={() => (newsContentMode = 'fact')}
+						class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
+							{newsContentMode === 'fact'
+								? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
+								: 'text-white/45 hover:text-white/70 border border-transparent'}"
+					>Random fact</button>
+					<button
+						type="button"
+						onclick={() => (newsContentMode = 'story')}
+						class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
+							{newsContentMode === 'story'
+								? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
+								: 'text-white/45 hover:text-white/70 border border-transparent'}"
+					>Random story</button>
 				</div>
 			</div>
 
-			<!-- Search -->
-			<div class="mb-3">
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Search (optional)</label>
-				<div class="relative">
-					<Search size={13} class="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-					<input bind:value={search} placeholder="e.g. interest rates, Tesla..."
-						class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-8 pr-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors" />
+			{#if newsContentMode === 'news'}
+				<!-- News category -->
+				<div class="mb-1">
+					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Category</label>
+					<div class="relative">
+						<select bind:value={category}
+							class="w-full appearance-none bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-3 pr-8 text-sm font-body text-white focus:outline-none focus:border-violet-500/50 transition-colors">
+							{#each categories as cat}
+								<option value={cat.id}>{cat.label}</option>
+							{/each}
+						</select>
+						<ChevronDown size={13} class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+					</div>
 				</div>
-			</div>
+
+				<!-- Search -->
+				<div class="mb-3">
+					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Search (optional)</label>
+					<div class="relative">
+						<Search size={13} class="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+						<input bind:value={search} placeholder="e.g. interest rates, Tesla..."
+							class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-8 pr-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors" />
+					</div>
+				</div>
+			{:else if newsContentMode === 'story'}
+				<div class="mb-3">
+					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Story theme</label>
+					<div class="relative">
+						<select bind:value={storyCategory}
+							class="w-full appearance-none bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-3 pr-8 text-sm font-body text-white focus:outline-none focus:border-violet-500/50 transition-colors">
+							{#each storyThemes as th}
+								<option value={th.id}>{th.label}</option>
+							{/each}
+						</select>
+						<ChevronDown size={13} class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+					</div>
+					<p class="text-[10px] font-body text-white/25 mt-1.5 leading-relaxed">Generate uses this theme for the micro-story hook and carousel context.</p>
+				</div>
+			{:else}
+				<p class="text-[10px] font-body text-white/25 mb-3 leading-relaxed">
+					One surprising fact-style line plus context for follow-up slides. No news API required.
+				</p>
+			{/if}
 
 			<!-- Slide count -->
 			<div class="mb-1">
@@ -1329,16 +1511,30 @@
 				</button>
 			</div>
 
-			<!-- Fetch button -->
+			<!-- Fetch / Generate button -->
 			<button onclick={fetchNews} disabled={fetchingNews}
 				class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all disabled:opacity-50">
 				{#if fetchingNews}
-					<Loader size={13} class="animate-spin" /> {useTestData ? 'Loading mock...' : 'Fetching + Rewriting...'}
+					<Loader size={13} class="animate-spin" />
+					{#if useTestData}
+						Loading mock…
+					{:else if newsContentMode === 'news'}
+						Fetching + Rewriting…
+					{:else}
+						Generating…
+					{/if}
 				{:else}
 					{#if useTestData}
-						<FlaskConical size={13} /> Load Test Article
-					{:else}
+						<FlaskConical size={13} />
+						{#if newsContentMode === 'news'}
+							Load Test Article
+						{:else}
+							Generate (test)
+						{/if}
+					{:else if newsContentMode === 'news'}
 						<Newspaper size={13} /> Fetch Live News
+					{:else}
+						<Sparkles size={13} /> Generate
 					{/if}
 				{/if}
 			</button>

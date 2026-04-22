@@ -4,6 +4,262 @@ import type { RequestHandler } from './$types';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
 
+type ContentMode = 'news' | 'fact' | 'story';
+
+async function openRouterComplete(
+	messages: { role: string; content: string }[],
+	temperature: number,
+	max_tokens: number,
+): Promise<string | null> {
+	if (!env.OPENROUTER_API_KEY) return null;
+	try {
+		const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+				'Content-Type': 'application/json',
+				'HTTP-Referer': 'https://carouselstudio.app',
+				'X-Title': 'Carousel Studio',
+			},
+			body: JSON.stringify({
+				model: 'anthropic/claude-sonnet-4.5',
+				messages,
+				temperature,
+				max_tokens,
+			}),
+		});
+		if (!r.ok) return null;
+		const c = await r.json();
+		return c.choices?.[0]?.message?.content?.trim() ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function applyHighlightMarkup(overlayText: string): Promise<string> {
+	const highlightPrompt = `You are a graphic designer. Given this Instagram overlay text, wrap 1-3 key phrases in [[...]] for highlighting.
+
+Rules:
+- Wrap ONLY nouns, numbers, proper nouns, or the most impactful words
+- Never wrap: articles (the, a, an), prepositions, conjunctions
+- Max 3 wrapped phrases
+- Keep the original text exactly — only add [[ and ]]
+- Example: "TESLA RAISES [[PRICES BY 12%]] ACROSS ALL MODELS"
+
+Text: "${overlayText}"
+
+Return ONLY the modified text with [[ ]] markup. No explanation.`;
+
+	const highlighted = await openRouterComplete(
+		[{ role: 'user', content: highlightPrompt }],
+		0.3,
+		120,
+	);
+	if (highlighted && highlighted.includes('[[')) return highlighted;
+	return overlayText;
+}
+
+function parseSyntheticJson(raw: string): { hook: string; context: string } | null {
+	const stripped = raw
+		.replace(/^```(?:json)?\s*/i, '')
+		.replace(/\s*```\s*$/i, '')
+		.trim();
+	const tryParse = (s: string) => {
+		try {
+			const j = JSON.parse(s);
+			if (j && typeof j.hook === 'string' && typeof j.context === 'string') {
+				return { hook: j.hook.trim(), context: j.context.trim() };
+			}
+		} catch {
+			/* ignore */
+		}
+		return null;
+	};
+	const direct = tryParse(stripped);
+	if (direct) return direct;
+	const m = stripped.match(/\{[\s\S]*"hook"[\s\S]*"context"[\s\S]*\}/);
+	if (m) return tryParse(m[0]);
+	return null;
+}
+
+function titleFromHook(hook: string): string {
+	const plain = hook.replace(/\[\[|\]\]/g, '').trim();
+	return plain.slice(0, 120) || 'Generated';
+}
+
+function demoSynthetic(mode: 'fact' | 'story', storyCategory: string) {
+	const cat = (storyCategory || 'health').toLowerCase();
+	if (mode === 'fact') {
+		return {
+			text: 'HONEY NEVER [[SPOILS]] — ARCHAEOLOGISTS FOUND EDIBLE JARS IN ANCIENT TOMBS',
+			imageUrl: null,
+			title: 'Honey never spoils',
+			description:
+				'Honey is naturally acidic and low in moisture, which prevents bacteria and mold from growing. Archaeologists have found pots of honey in Egyptian tombs that were still safe to eat after thousands of years. Enzymes from bees also contribute to its stability. This is why honey is one of the few foods that can last indefinitely when stored sealed.',
+			source: 'Did you know',
+			url: null,
+			uuid: 'demo-fact',
+			categories: [],
+			demo: true,
+		};
+	}
+	type DemoStoryRow = {
+		text: string;
+		title: string;
+		description: string;
+		source: string;
+		uuid: string;
+	};
+	const byTheme: Record<string, DemoStoryRow> = {
+		health: {
+			text: 'SHE QUIT [[CAFFEINE]] FOR 30 DAYS — THEN HER SLEEP [[FLIPPED]]',
+			title: 'Caffeine reset',
+			description:
+				'After years of late coffees, she tracked her resting heart rate and sleep latency. The first week brought headaches and fog. By week three, deep sleep increased and afternoon crashes vanished. She kept a simple journal of energy scores. The story is about small habits compounding into better recovery, not perfection.',
+			source: 'Health',
+			uuid: 'demo-story-health',
+		},
+		wealth: {
+			text: 'HE [[AUTOMATED]] HIS SAVINGS — THREE YEARS LATER THE NUMBER [[STUNNED]] HIM',
+			title: 'Automated savings',
+			description:
+				'He started by routing 10% of every paycheck to a separate account before touching spending money. Raises went straight to investments. He avoided lifestyle creep by delaying big purchases 30 days. Small raises stacked into index contributions. The narrative follows discipline over income level.',
+			source: 'Wealth',
+			uuid: 'demo-story-wealth',
+		},
+		relationships: {
+			text: 'THEY STOPPED TEXTING [[GOOD MORNINGS]] — SIX MONTHS LATER THE SILENCE [[HURT LESS]]',
+			title: 'Boundaries in love',
+			description:
+				'They realized performative check-ins masked resentment. Weekly honest walks replaced constant pings. Therapy vocabulary entered the kitchen: bids for connection, repair attempts. Arguments got shorter because they named fears earlier. It was not a movie ending—it was maintenance.',
+			source: 'Relationships',
+			uuid: 'demo-story-relationships',
+		},
+		career: {
+			text: 'SHE TURNED DOWN [[THE PROMOTION]] — THEN HER WORK [[GOT BETTER]]',
+			title: 'Career tradeoff',
+			description:
+				'The new title meant twelve more meetings a week. She mapped where impact actually came from: deep work blocks and mentoring juniors. She proposed a hybrid role with fewer reports. Leadership pushed back, then agreed on a trial quarter. Output metrics rose while burnout scores fell.',
+			source: 'Career',
+			uuid: 'demo-story-career',
+		},
+		mindset: {
+			text: 'HE REPLACED [[MOTIVATION]] WITH [[ONE BORING RULE]]',
+			title: 'Mindset shift',
+			description:
+				'Motivation spiked and vanished. He chose a minimum viable habit: ten minutes before coffee. Missed days did not reset the score to zero. He tracked streaks loosely and focused on never missing twice. Identity shifted from athlete to person who shows up. Compounding beat intensity.',
+			source: 'Mindset',
+			uuid: 'demo-story-mindset',
+		},
+		productivity: {
+			text: 'SHE DELETED [[THREE APPS]] — HER AFTERNOONS [[DOUBLED]]',
+			title: 'Productivity cut',
+			description:
+				'Notifications were the real workload. She batch-processed email twice daily. Calendar blocks got names that matched outcomes, not tasks. Deep work lived in the morning; admin slid to four pm. Colleagues adapted after two weeks of slower replies. Throughput went up, not down.',
+			source: 'Productivity',
+			uuid: 'demo-story-productivity',
+		},
+		fitness: {
+			text: 'HE ONLY TRAINED [[20 MINUTES]] — BUT NEVER [[SKIPPED]]',
+			title: 'Fitness minimums',
+			description:
+				'Long gym sessions were a fantasy with travel. He kept dumbbells in the closet and a timer. Twenty minutes of compounds, three times a week. Progress was modest on paper but joints felt better. Consistency beat heroic January weeks. The habit became non-negotiable.',
+			source: 'Fitness',
+			uuid: 'demo-story-fitness',
+		},
+		money: {
+			text: 'THEY TRACKED [[EVERY DOLLAR]] FOR ONE MONTH — THEN [[CUT]] THREE LEAKS',
+			title: 'Money awareness',
+			description:
+				'Subscriptions had duplicated quietly. Takeout was a social tax they did not notice. They categorized without shame, then chose two cuts. Automated transfers followed. The spreadsheet was boring; the relief was not. They kept one splint intentionally so the plan felt human.',
+			source: 'Money',
+			uuid: 'demo-story-money',
+		},
+	};
+	const row = byTheme[cat] ?? byTheme.health;
+	return {
+		...row,
+		imageUrl: null,
+		url: null,
+		categories: [] as string[],
+		demo: true,
+	};
+}
+
+async function syntheticContent(mode: 'fact' | 'story', storyCategory: string, autoHighlight: boolean) {
+	const theme = (storyCategory || 'health').trim() || 'health';
+	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
+
+	const userPrompt =
+		mode === 'fact'
+			? `You write viral Instagram overlay copy. Output ONLY valid JSON (no markdown fences) with this shape:
+{"hook":"...","context":"..."}
+
+Rules for "hook":
+- One punchy fact-style line, max 28 words
+- Write in ALL CAPS
+- No hashtags, no emojis
+- Should feel surprising but plausible (avoid obvious urban myths)
+
+Rules for "context":
+- 5–8 full sentences in normal sentence case
+- Expand the fact with vivid, concrete detail a carousel writer can mine for follow-up slides
+- Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications`
+
+			: `You write viral Instagram micro-stories for overlay text. Output ONLY valid JSON (no markdown fences) with this shape:
+{"hook":"...","context":"..."}
+
+Theme for the story: "${themeLabel}"
+
+Rules for "hook":
+- Opening beat of a micro-story, max 28 words
+- ALL CAPS
+- No hashtags, no emojis
+- Strong narrative hook aligned with the theme
+
+Rules for "context":
+- 6–10 full sentences in normal sentence case
+- Continue the story world: character tension, a turning point, stakes, and a lesson or twist writers can split across carousel slides
+- Do not paste the hook verbatim as the first sentence`;
+
+	const jsonRaw = await openRouterComplete([{ role: 'user', content: userPrompt }], 0.88, 500);
+	let overlayText = '';
+	let description = '';
+
+	const parsed = jsonRaw ? parseSyntheticJson(jsonRaw) : null;
+	if (parsed) {
+		overlayText = parsed.hook;
+		description = parsed.context;
+	} else {
+		overlayText =
+			mode === 'fact'
+				? 'YOUR BRAIN CAN SPOT A FAMILIAR FACE IN AS LITTLE AS [[150 MILLISECONDS]]'
+				: `SHE WALKED AWAY FROM [[EVERYTHING SAFE]] TO BET ON ${themeLabel.toUpperCase()}`;
+		description =
+			mode === 'fact'
+				? 'Research in cognitive neuroscience suggests humans process familiar faces faster than many other visual patterns. The brain prioritizes social information. Studies using rapid serial visual presentation measure how quickly recognition occurs. This speed may have evolved for cooperation and threat detection in groups.'
+				: `The protagonist had stability on paper but felt stalled. Friends questioned the timing. Small steps replaced big announcements: savings, boundaries, and one risky project on weekends. Doubt showed up weekly. Progress was uneven but directional. By the end of the season, the bet was not success—it was agency.`;
+	}
+
+	const title = titleFromHook(overlayText);
+
+	if (autoHighlight && overlayText && !overlayText.includes('[[')) {
+		overlayText = await applyHighlightMarkup(overlayText);
+	}
+
+	return {
+		text: overlayText,
+		imageUrl: null,
+		title,
+		description,
+		source: mode === 'fact' ? 'Did you know' : themeLabel,
+		url: null,
+		uuid: null,
+		categories: [],
+		demo: false,
+	};
+}
+
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
 	const {
@@ -12,11 +268,22 @@ export const POST: RequestHandler = async ({ request }) => {
 		locale = 'us',
 		language = 'en',
 		limit = 3,
-		pick = 'first',           // 'first' | 'random'
+		pick = 'first',
 		autoHighlight = true,
 	} = body;
 
-	// ── 1. Fetch from TheNewsAPI ──────────────────────────────────────────
+	const mode: ContentMode =
+		body.mode === 'fact' || body.mode === 'story' ? body.mode : 'news';
+	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
+
+	if (mode === 'fact' || mode === 'story') {
+		if (!env.OPENROUTER_API_KEY) {
+			return json(demoSynthetic(mode, storyCategory), { status: 200 });
+		}
+		return json(await syntheticContent(mode, storyCategory, autoHighlight !== false), { status: 200 });
+	}
+
+	// ── News mode: fetch from TheNewsAPI ──────────────────────────────────
 	if (!env.THENEWSAPI_TOKEN) {
 		return json(demoArticle(), { status: 200 });
 	}
@@ -45,11 +312,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (!articles.length) return json(demoArticle(), { status: 200 });
 
-	const article = pick === 'random'
-		? articles[Math.floor(Math.random() * articles.length)]
-		: articles[0];
+	const article =
+		pick === 'random' ? articles[Math.floor(Math.random() * articles.length)] : articles[0];
 
-	// ── 2. Rewrite headline with OpenRouter ──────────────────────────────
 	let overlayText = article.title ?? '';
 
 	if (env.OPENROUTER_API_KEY) {
@@ -68,70 +333,15 @@ Headline & snippet: "${snippet}"
 
 Return ONLY the rewritten text. No quotes, no explanation.`;
 
-		try {
-			const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-					'Content-Type': 'application/json',
-					'HTTP-Referer': 'https://carouselstudio.app',
-					'X-Title': 'Carousel Studio',
-				},
-				body: JSON.stringify({
-					model: 'anthropic/claude-sonnet-4.5',
-					messages: [{ role: 'user', content: rewritePrompt }],
-					temperature: 0.8,
-					max_tokens: 120,
-				}),
-			});
-			if (r.ok) {
-				const c = await r.json();
-				const candidate = c.choices?.[0]?.message?.content?.trim();
-				if (candidate) overlayText = candidate;
-			}
-		} catch {
-			// Fall through with original title
-		}
+		const candidate = await openRouterComplete(
+			[{ role: 'user', content: rewritePrompt }],
+			0.8,
+			120,
+		);
+		if (candidate) overlayText = candidate;
 
-		// ── 3. Auto-highlight key words ─────────────────────────────────
 		if (autoHighlight && overlayText) {
-			const highlightPrompt = `You are a graphic designer. Given this Instagram overlay text, wrap 1-3 key phrases in [[...]] for highlighting.
-
-Rules:
-- Wrap ONLY nouns, numbers, proper nouns, or the most impactful words
-- Never wrap: articles (the, a, an), prepositions, conjunctions
-- Max 3 wrapped phrases
-- Keep the original text exactly — only add [[ and ]]
-- Example: "TESLA RAISES [[PRICES BY 12%]] ACROSS ALL MODELS"
-
-Text: "${overlayText}"
-
-Return ONLY the modified text with [[ ]] markup. No explanation.`;
-
-			try {
-				const r2 = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-					method: 'POST',
-					headers: {
-						Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-						'Content-Type': 'application/json',
-						'HTTP-Referer': 'https://carouselstudio.app',
-						'X-Title': 'Carousel Studio',
-					},
-					body: JSON.stringify({
-						model: 'anthropic/claude-sonnet-4.5',
-						messages: [{ role: 'user', content: highlightPrompt }],
-						temperature: 0.3,
-						max_tokens: 120,
-					}),
-				});
-				if (r2.ok) {
-					const c2 = await r2.json();
-					const highlighted = c2.choices?.[0]?.message?.content?.trim();
-					if (highlighted && highlighted.includes('[[')) overlayText = highlighted;
-				}
-			} catch {
-				// Fall through without highlights
-			}
+			overlayText = await applyHighlightMarkup(overlayText);
 		}
 	}
 
