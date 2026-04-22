@@ -1,5 +1,10 @@
 <script lang="ts">
 	import type { AnalyticsPlatform, ConnectionSummary, PostStats } from './+page.server';
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
+	import { invalidateAll } from '$app/navigation';
+	import { goto } from '$app/navigation';
+	import { supabase } from '$lib/supabase';
 	import {
 		BarChart3,
 		Camera,
@@ -10,7 +15,13 @@
 		ArrowRight,
 		Link2,
 		PlugZap,
+		AlertTriangle,
+		CheckCircle2,
+		ExternalLink,
+		X,
 	} from 'lucide-svelte';
+
+	type Status = { ok: boolean; missing: string[]; present: string[] };
 
 	let { data } = $props();
 
@@ -23,6 +34,192 @@
 		{ id: 'linkedin', label: 'LinkedIn', icon: Building2, accent: 'from-sky-600/20 to-blue-800/15' },
 		{ id: 'gmb', label: 'Google Business', icon: MapPin, accent: 'from-emerald-500/15 to-teal-600/15' },
 	];
+
+	let metaStatus = $state<Status | null>(null);
+	let linkedinStatus = $state<Status | null>(null);
+	let gmbStatus = $state<Status | null>(null);
+	let statusLoading = $state(true);
+	let userId = $state('');
+	let banner = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+	function oauthNext(channel: AnalyticsPlatform): string {
+		return `/dashboard/analytics?channel=${encodeURIComponent(channel)}`;
+	}
+
+	async function loadIntegrationStatuses() {
+		statusLoading = true;
+		try {
+			const [mr, lr, gr] = await Promise.all([
+				fetch('/api/integrations/meta/status'),
+				fetch('/api/integrations/linkedin/status'),
+				fetch('/api/integrations/gmb/status'),
+			]);
+			metaStatus = await mr.json();
+			linkedinStatus = await lr.json();
+			gmbStatus = await gr.json();
+		} catch {
+			metaStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
+			linkedinStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
+			gmbStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
+		}
+		statusLoading = false;
+	}
+
+	function isChannel(s: string | null): s is AnalyticsPlatform {
+		return (
+			s === 'instagram' ||
+			s === 'facebook' ||
+			s === 'tiktok' ||
+			s === 'linkedin' ||
+			s === 'gmb'
+		);
+	}
+
+	onMount(async () => {
+		const { data: auth } = await supabase.auth.getUser();
+		userId = auth.user?.id ?? '';
+
+		if (browser) {
+			const sp = new URLSearchParams(window.location.search);
+			const ch = sp.get('channel');
+			if (isChannel(ch)) tab = ch;
+
+			const err =
+				sp.get('meta_error') ??
+				sp.get('linkedin_error') ??
+				sp.get('gmb_error') ??
+				sp.get('tiktok_error');
+			const errDesc = sp.get('desc');
+			if (err) {
+				let t = decodeURIComponent(err.replace(/\+/g, ' '));
+				if (errDesc) t += ` — ${decodeURIComponent(errDesc.replace(/\+/g, ' '))}`;
+				banner = { kind: 'err', text: t };
+			}
+
+			if (
+				sp.get('meta_connected') ||
+				sp.get('linkedin_connected') ||
+				sp.get('gmb_connected') ||
+				sp.get('tiktok_connected')
+			) {
+				await invalidateAll();
+				if (!err) {
+					const ig = sp.get('ig_found');
+					const loc = sp.get('locations');
+					let msg = 'Connected successfully.';
+					if (sp.get('meta_connected')) msg = ig === '1' ? 'Meta connected — Instagram account saved.' : 'Meta connected.';
+					if (sp.get('linkedin_connected')) msg = 'LinkedIn connected.';
+					if (sp.get('gmb_connected')) msg = loc ? `Google Business Profile connected (${loc} locations).` : 'Google Business Profile connected.';
+					if (sp.get('tiktok_connected')) msg = 'TikTok connected.';
+					banner = { kind: 'ok', text: msg };
+				}
+			}
+
+			if (window.location.search) {
+				const keep = ch && isChannel(ch) ? `?channel=${encodeURIComponent(ch)}` : '';
+				window.history.replaceState({}, '', `/dashboard/analytics${keep}`);
+			}
+		}
+
+		await loadIntegrationStatuses();
+	});
+
+	async function ensureMetaOk(): Promise<boolean> {
+		try {
+			const res = await fetch('/api/integrations/meta/status');
+			const st = (await res.json()) as Status;
+			if (!st.ok) {
+				banner = { kind: 'err', text: `Meta is not configured yet. Missing: ${st.missing.join(', ')}` };
+				return false;
+			}
+			return true;
+		} catch {
+			banner = { kind: 'err', text: 'Could not verify Meta credentials.' };
+			return false;
+		}
+	}
+
+	async function ensureLinkedinOk(): Promise<boolean> {
+		try {
+			const res = await fetch('/api/integrations/linkedin/status');
+			const st = (await res.json()) as Status;
+			if (!st.ok) {
+				banner = { kind: 'err', text: `LinkedIn is not configured yet. Missing: ${st.missing.join(', ')}` };
+				return false;
+			}
+			return true;
+		} catch {
+			banner = { kind: 'err', text: 'Could not verify LinkedIn credentials.' };
+			return false;
+		}
+	}
+
+	async function ensureGmbOk(): Promise<boolean> {
+		try {
+			const res = await fetch('/api/integrations/gmb/status');
+			const st = (await res.json()) as Status;
+			if (!st.ok) {
+				banner = { kind: 'err', text: `Google Business is not configured yet. Missing: ${st.missing.join(', ')}` };
+				return false;
+			}
+			return true;
+		} catch {
+			banner = { kind: 'err', text: 'Could not verify Google Business credentials.' };
+			return false;
+		}
+	}
+
+	async function connectInstagram() {
+		if (!(await ensureMetaOk())) return;
+		if (!userId) {
+			goto('/login');
+			return;
+		}
+		const next = oauthNext('instagram');
+		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
+	}
+
+	async function connectFacebook() {
+		if (!(await ensureMetaOk())) return;
+		if (!userId) {
+			goto('/login');
+			return;
+		}
+		const next = oauthNext('facebook');
+		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
+	}
+
+	function connectTiktok() {
+		if (!userId) {
+			goto('/login');
+			return;
+		}
+		const next = oauthNext('tiktok');
+		window.location.href = `/api/auth/tiktok/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
+	}
+
+	async function connectLinkedin(mode: 'member' | 'org' | 'both') {
+		if (!(await ensureLinkedinOk())) return;
+		if (!userId) {
+			goto('/login');
+			return;
+		}
+		const next = oauthNext('linkedin');
+		window.location.href =
+			`/api/auth/linkedin/start?userId=${encodeURIComponent(userId)}` +
+			`&mode=${encodeURIComponent(mode)}` +
+			`&next=${encodeURIComponent(next)}`;
+	}
+
+	async function connectGmb() {
+		if (!(await ensureGmbOk())) return;
+		if (!userId) {
+			goto('/login');
+			return;
+		}
+		const next = oauthNext('gmb');
+		window.location.href = `/api/auth/gmb/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
+	}
 
 	function connectionsFor(tabId: AnalyticsPlatform): ConnectionSummary[] {
 		const list = data.connections ?? [];
@@ -37,7 +234,6 @@
 					String((c.meta as { kind?: string } | null)?.kind ?? '') === 'facebook_page'
 			);
 		}
-		// Instagram: Meta rows that are not Facebook pages (skip placeholder `me` if present)
 		return meta.filter((c) => {
 			const acct = String(c.provider_account_id ?? '');
 			const kind = String((c.meta as { kind?: string } | null)?.kind ?? '');
@@ -61,6 +257,10 @@
 	const activeConnections = $derived(connectionsFor(tab));
 	const activeStats = $derived(statsFor(tab));
 	const tabLabel = $derived(platforms.find((x) => x.id === tab)?.label ?? 'Channel');
+
+	const metaReady = $derived(!!metaStatus?.ok);
+	const linkedinReady = $derived(!!linkedinStatus?.ok);
+	const gmbReady = $derived(!!gmbStatus?.ok);
 </script>
 
 <div class="page">
@@ -79,6 +279,20 @@
 			<ArrowRight size={14} />
 		</a>
 	</header>
+
+	{#if banner}
+		<div class="banner {banner.kind === 'ok' ? 'banner-ok' : 'banner-err'}">
+			{#if banner.kind === 'ok'}
+				<CheckCircle2 size={16} class="shrink-0 mt-0.5" />
+			{:else}
+				<AlertTriangle size={16} class="shrink-0 mt-0.5" />
+			{/if}
+			<p class="banner-text">{banner.text}</p>
+			<button type="button" class="banner-dismiss" onclick={() => (banner = null)} aria-label="Dismiss">
+				<X size={14} />
+			</button>
+		</div>
+	{/if}
 
 	<!-- One menu: horizontal channel tabs -->
 	<nav class="tabs" aria-label="Social channels">
@@ -103,7 +317,7 @@
 			<h2 class="panel-title">{tabLabel}</h2>
 			<a href="/dashboard/settings" class="link-muted">
 				<PlugZap size={13} />
-				Manage connections
+				Env / advanced
 			</a>
 		</div>
 
@@ -142,13 +356,146 @@
 
 		<hr class="sep" />
 
+		<h3 class="section-label">Connect</h3>
+		{#if statusLoading}
+			<p class="status-loading">Checking platform credentials…</p>
+		{:else if tab === 'instagram'}
+			<div class="connect-card">
+				<p class="connect-desc">
+					Sign in with Meta to link an Instagram Business account to your Facebook Page. You can add more
+					accounts anytime.
+				</p>
+				{#if metaReady}
+					<div class="cred-ok">
+						<CheckCircle2 size={14} class="text-emerald-400 shrink-0" />
+						<span>Meta app credentials look good.</span>
+					</div>
+				{:else}
+					<div class="cred-bad">
+						<AlertTriangle size={14} class="text-amber-400 shrink-0" />
+						<span>Server env missing: <span class="mono">{metaStatus?.missing?.join(', ') ?? 'unknown'}</span></span>
+					</div>
+				{/if}
+				<div class="btn-row">
+					<button type="button" class="btn-primary" disabled={!metaReady} onclick={() => void connectInstagram()}>
+						Connect Instagram
+					</button>
+					<a href="/dashboard/docs/instagram" class="btn-link">Setup guide</a>
+				</div>
+			</div>
+		{:else if tab === 'facebook'}
+			<div class="connect-card">
+				<p class="connect-desc">
+					Uses the same Meta login as Instagram. After authorizing, we save Facebook Pages you manage so you can
+					schedule posts to them.
+				</p>
+				{#if metaReady}
+					<div class="cred-ok">
+						<CheckCircle2 size={14} class="text-emerald-400 shrink-0" />
+						<span>Meta app credentials look good.</span>
+					</div>
+				{:else}
+					<div class="cred-bad">
+						<AlertTriangle size={14} class="text-amber-400 shrink-0" />
+						<span>Server env missing: <span class="mono">{metaStatus?.missing?.join(', ') ?? 'unknown'}</span></span>
+					</div>
+				{/if}
+				<div class="btn-row">
+					<button type="button" class="btn-primary" disabled={!metaReady} onclick={() => void connectFacebook()}>
+						Connect Facebook Page
+					</button>
+					<a
+						href="https://developers.facebook.com/docs/graph-api/reference/page"
+						target="_blank"
+						rel="noreferrer"
+						class="btn-link"
+					>
+						Page API docs <ExternalLink size={11} class="inline opacity-60" />
+					</a>
+				</div>
+			</div>
+		{:else if tab === 'tiktok'}
+			<div class="connect-card">
+				<p class="connect-desc">
+					OAuth opens TikTok’s consent screen. For local dev you need HTTPS (for example ngrok) and matching
+					redirect URIs in the TikTok developer portal.
+				</p>
+				<div class="btn-row">
+					<button type="button" class="btn-primary" onclick={connectTiktok}>Connect TikTok</button>
+					<a href="/dashboard/post-tests" class="btn-link">Test posting</a>
+				</div>
+			</div>
+		{:else if tab === 'linkedin'}
+			<div class="connect-card">
+				<p class="connect-desc">
+					Choose a personal profile, organization pages you admin, or both. Tokens are stored like other
+					channels.
+				</p>
+				{#if linkedinReady}
+					<div class="cred-ok">
+						<CheckCircle2 size={14} class="text-emerald-400 shrink-0" />
+						<span>LinkedIn app credentials look good.</span>
+					</div>
+				{:else}
+					<div class="cred-bad">
+						<AlertTriangle size={14} class="text-amber-400 shrink-0" />
+						<span>Server env missing: <span class="mono">{linkedinStatus?.missing?.join(', ') ?? 'unknown'}</span></span>
+					</div>
+				{/if}
+				<div class="btn-row flex-wrap">
+					<button type="button" class="btn-primary" disabled={!linkedinReady} onclick={() => void connectLinkedin('member')}>
+						Connect profile
+					</button>
+					<button
+						type="button"
+						class="btn-secondary"
+						disabled={!linkedinReady}
+						onclick={() => void connectLinkedin('org')}
+					>
+						Connect pages
+					</button>
+					<button
+						type="button"
+						class="btn-secondary"
+						disabled={!linkedinReady}
+						onclick={() => void connectLinkedin('both')}
+					>
+						Connect both
+					</button>
+				</div>
+			</div>
+		{:else if tab === 'gmb'}
+			<div class="connect-card">
+				<p class="connect-desc">
+					Connect your Google Business Profile to list locations and schedule Google posts from the scheduler.
+				</p>
+				{#if gmbReady}
+					<div class="cred-ok">
+						<CheckCircle2 size={14} class="text-emerald-400 shrink-0" />
+						<span>Google Business OAuth credentials look good.</span>
+					</div>
+				{:else}
+					<div class="cred-bad">
+						<AlertTriangle size={14} class="text-amber-400 shrink-0" />
+						<span>Server env missing: <span class="mono">{gmbStatus?.missing?.join(', ') ?? 'unknown'}</span></span>
+					</div>
+				{/if}
+				<div class="btn-row">
+					<button type="button" class="btn-primary" disabled={!gmbReady} onclick={() => void connectGmb()}>
+						Connect Google Business Profile
+					</button>
+				</div>
+			</div>
+		{/if}
+
+		<hr class="sep" />
+
 		<h3 class="section-label">Connected accounts</h3>
 		{#if activeConnections.length === 0}
 			<div class="empty">
 				<Link2 size={22} class="text-white/15 mb-2" />
-				<p class="empty-title">No {tabLabel} accounts linked</p>
-				<p class="empty-body">Connect in Settings, then schedule from Post Scheduler.</p>
-				<a href="/dashboard/settings" class="cta ghost">Open Settings</a>
+				<p class="empty-title">No {tabLabel} accounts linked yet</p>
+				<p class="empty-body">Use Connect above — you can link multiple accounts by running through OAuth again.</p>
 			</div>
 		{:else}
 			<ul class="acct-list">
@@ -167,6 +514,7 @@
 					</li>
 				{/each}
 			</ul>
+			<p class="after-list">Need another workspace? Run <strong>Connect</strong> again for this channel.</p>
 		{/if}
 	</section>
 </div>
@@ -184,6 +532,46 @@
 		gap: 1rem;
 		margin-bottom: 1.75rem;
 		flex-wrap: wrap;
+	}
+
+	.banner {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.65rem;
+		padding: 0.75rem 1rem;
+		border-radius: 12px;
+		margin-bottom: 1rem;
+		font-size: 0.8125rem;
+		line-height: 1.45;
+	}
+	.banner-ok {
+		background: rgba(16, 185, 129, 0.1);
+		border: 1px solid rgba(16, 185, 129, 0.25);
+		color: rgba(167, 243, 208, 0.95);
+	}
+	.banner-err {
+		background: rgba(251, 146, 60, 0.08);
+		border: 1px solid rgba(251, 146, 60, 0.25);
+		color: rgba(254, 215, 170, 0.95);
+	}
+	.banner-text {
+		margin: 0;
+		flex: 1;
+		font-family: 'DM Sans', sans-serif;
+	}
+	.banner-dismiss {
+		flex-shrink: 0;
+		padding: 0.2rem;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: inherit;
+		opacity: 0.6;
+		cursor: pointer;
+	}
+	.banner-dismiss:hover {
+		opacity: 1;
+		background: rgba(0, 0, 0, 0.15);
 	}
 
 	.icon-wrap {
@@ -232,17 +620,6 @@
 	.cta:hover {
 		transform: translateY(-1px);
 		box-shadow: 0 8px 24px rgba(232, 255, 72, 0.15);
-	}
-
-	.cta.ghost {
-		background: rgba(255, 255, 255, 0.06);
-		color: rgba(255, 255, 255, 0.75);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-	}
-	.cta.ghost:hover {
-		background: rgba(255, 255, 255, 0.1);
-		color: #fff;
-		box-shadow: none;
 	}
 
 	.tabs {
@@ -400,11 +777,109 @@
 		font-family: 'Space Mono', monospace;
 	}
 
+	.status-loading {
+		font-size: 0.8125rem;
+		color: rgba(255, 255, 255, 0.35);
+		margin: 0 0 1rem;
+	}
+
+	.connect-card {
+		padding: 1rem 1.1rem;
+		border-radius: 12px;
+		background: rgba(0, 0, 0, 0.22);
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		margin-bottom: 0.5rem;
+	}
+
+	.connect-desc {
+		margin: 0 0 0.75rem;
+		font-size: 0.8125rem;
+		line-height: 1.5;
+		color: rgba(255, 255, 255, 0.45);
+		font-family: 'DM Sans', sans-serif;
+	}
+
+	.cred-ok,
+	.cred-bad {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		margin-bottom: 0.85rem;
+		padding: 0.5rem 0.65rem;
+		border-radius: 8px;
+	}
+	.cred-ok {
+		background: rgba(16, 185, 129, 0.08);
+		color: rgba(167, 243, 208, 0.88);
+	}
+	.cred-bad {
+		background: rgba(245, 158, 11, 0.08);
+		color: rgba(253, 230, 138, 0.9);
+	}
+
+	.btn-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.btn-primary {
+		padding: 0.55rem 1.1rem;
+		border-radius: 10px;
+		border: none;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		font-family: 'DM Sans', sans-serif;
+		cursor: pointer;
+		background: #e8ff48;
+		color: #0a0a0a;
+		transition: opacity 0.12s, transform 0.12s;
+	}
+	.btn-primary:hover:not(:disabled) {
+		transform: translateY(-1px);
+	}
+	.btn-primary:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+
+	.btn-secondary {
+		padding: 0.55rem 1rem;
+		border-radius: 10px;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		font-family: 'DM Sans', sans-serif;
+		cursor: pointer;
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.85);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		transition: opacity 0.12s, background 0.12s;
+	}
+	.btn-secondary:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.12);
+	}
+	.btn-secondary:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+
+	.btn-link {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.4);
+		text-decoration: none;
+		font-family: 'DM Sans', sans-serif;
+	}
+	.btn-link:hover {
+		color: #e8ff48;
+	}
+
 	.empty {
 		text-align: center;
-		padding: 2rem 1rem;
+		padding: 1.5rem 1rem;
 		border-radius: 12px;
-		background: rgba(0, 0, 0, 0.25);
+		background: rgba(0, 0, 0, 0.2);
 		border: 1px dashed rgba(255, 255, 255, 0.08);
 	}
 
@@ -416,9 +891,16 @@
 	}
 
 	.empty-body {
-		margin: 0 0 1rem;
+		margin: 0;
 		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.32);
+	}
+
+	.after-list {
+		margin: 0.85rem 0 0;
+		font-size: 0.72rem;
+		color: rgba(255, 255, 255, 0.28);
+		font-family: 'DM Sans', sans-serif;
 	}
 
 	.acct-list {
