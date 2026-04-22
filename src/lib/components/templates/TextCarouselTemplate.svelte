@@ -1,5 +1,8 @@
 <script lang="ts">
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
+	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+	import type { TextElementKind, TextStyle } from '$lib/types';
+
 	interface Props {
 		name?: string;
 		handle?: string;
@@ -11,6 +14,12 @@
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
+		selectedText?: TextElementKind | null;
+		onTextChange?: (t: string) => void;
+		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
+		onHeadlineRangeSelect?: (start: number, end: number) => void;
+		headlineStyle?: TextStyle;
+		showToolbar?: boolean;
 	}
 
 	let {
@@ -24,7 +33,27 @@
 		scale     = 1,
 		interactive = true,
 		exportRef = $bindable(null),
+		selectedText = null,
+		onTextChange,
+		onTextSelect,
+		onHeadlineRangeSelect,
+		headlineStyle = {},
+		showToolbar = false,
 	}: Props = $props();
+
+	const bodyTypeCss = $derived.by(() => {
+		const s = headlineStyle;
+		const bits: string[] = [];
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Display', sans-serif;`);
+		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
+		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
+		if (s.italic) bits.push('font-style: italic;');
+		if (s.underline) bits.push('text-decoration: underline;');
+		if (s.color) bits.push(`color: ${s.color};`);
+		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
+		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
+		return bits.join(' ');
+	});
 
 	const W = 1080;
 	const H = 1350;
@@ -115,13 +144,31 @@
 
 		<!-- ── Body text ──────────────────────────────────────────────────── -->
 		<div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
-			{#each paragraphs as para, i}
-				<HighlightedText
-					as="p"
-					text={para}
-					style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: #ffffff; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word;"
-				/>
-			{/each}
+			<CanvasMarkupTextBlock
+				value={text}
+				{interactive}
+				selected={selectedText === 'headline'}
+				rows={10}
+				ariaLabel="Carousel text"
+				fontFamily={headlineStyle.fontFamily}
+				fontSize={headlineStyle.fontSize}
+				{showToolbar}
+				onTextChange={onTextChange}
+				onTextSelect={onTextSelect}
+				onHeadlineRangeSelect={onHeadlineRangeSelect}
+			>
+				{#snippet display()}
+					<div style="display: flex; flex-direction: column; justify-content: flex-start;">
+						{#each paragraphs as para, i}
+							<HighlightedText
+								as="p"
+								text={para}
+								style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: #ffffff; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss}"
+							/>
+						{/each}
+					</div>
+				{/snippet}
+			</CanvasMarkupTextBlock>
 		</div>
 
 		<!-- ── Swipe indicator ─────────────────────────────────────────────── -->

@@ -1,5 +1,8 @@
 <script lang="ts">
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
+	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+	import type { TextElementKind, TextStyle } from '$lib/types';
+
 	interface Segment { text: string; accent: boolean; }
 
 	interface Props {
@@ -18,6 +21,13 @@
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
+		selectedText?: TextElementKind | null;
+		onTextChange?: (t: string) => void;
+		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
+		onHeadlineRangeSelect?: (start: number, end: number) => void;
+		headlineStyle?: TextStyle;
+		/** When true, inline highlight controls show while editing (no parent floating toolbar). */
+		showToolbar?: boolean;
 	}
 
 	let {
@@ -32,7 +42,27 @@
 		scale        = 1,
 		interactive  = true,
 		exportRef    = $bindable(null),
+		selectedText = null,
+		onTextChange,
+		onTextSelect,
+		onHeadlineRangeSelect,
+		headlineStyle = {},
+		showToolbar = false,
 	}: Props = $props();
+
+	const bodyTypeCss = $derived.by(() => {
+		const s = headlineStyle;
+		const bits: string[] = [];
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Text', sans-serif;`);
+		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
+		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
+		if (s.italic) bits.push('font-style: italic;');
+		if (s.underline) bits.push('text-decoration: underline;');
+		if (s.color) bits.push(`color: ${s.color};`);
+		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
+		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
+		return bits.join(' ');
+	});
 
 	const W = 1080;
 	const H = 1350;
@@ -86,35 +116,53 @@
 			overflow: hidden;
 		">
 			<!-- Text blocks -->
-			<div style="flex-shrink: 0; margin-bottom: {image ? '56px' : '0'};">
-				{#each blocks as block, bi}
-					{#if block !== null}
-						<p style="
-							margin: 0;
-							{bi > 0 ? 'margin-top: 40px;' : ''}
-							font-size: 46px;
-							font-weight: 400;
-							line-height: 1.42;
-							letter-spacing: -0.3px;
-							color: #ffffff;
-							word-break: break-word;
-						">
-							{#each block as seg}
-								{#if seg.accent}
-									<HighlightedText
-										as="span"
-										text={seg.text}
-										defaultColor={accentColor}
-										style="color: {accentColor}; font-weight: 600;"
-									/>
-								{:else}
-									<HighlightedText as="span" text={seg.text} defaultColor={accentColor} />
-								{/if}
-							{/each}
-						</p>
-					{/if}
-				{/each}
-			</div>
+			<CanvasMarkupTextBlock
+				value={text}
+				{interactive}
+				defaultColor={accentColor}
+				selected={selectedText === 'headline'}
+				rows={12}
+				ariaLabel="Article body"
+				fontFamily={headlineStyle.fontFamily}
+				fontSize={headlineStyle.fontSize}
+				{showToolbar}
+				onTextChange={onTextChange}
+				onTextSelect={onTextSelect}
+				onHeadlineRangeSelect={onHeadlineRangeSelect}
+			>
+				{#snippet display()}
+					<div style="flex-shrink: 0; margin-bottom: {image ? '56px' : '0'};">
+						{#each blocks as block, bi}
+							{#if block !== null}
+								<p style="
+									margin: 0;
+									{bi > 0 ? 'margin-top: 40px;' : ''}
+									font-size: 46px;
+									font-weight: 400;
+									line-height: 1.42;
+									letter-spacing: -0.3px;
+									color: #ffffff;
+									word-break: break-word;
+									{bodyTypeCss}
+								">
+									{#each block as seg}
+										{#if seg.accent}
+											<HighlightedText
+												as="span"
+												text={seg.text}
+												defaultColor={accentColor}
+												style="color: {accentColor}; font-weight: 600;"
+											/>
+										{:else}
+											<HighlightedText as="span" text={seg.text} defaultColor={accentColor} />
+										{/if}
+									{/each}
+								</p>
+							{/if}
+						{/each}
+					</div>
+				{/snippet}
+			</CanvasMarkupTextBlock>
 
 			<!-- Embedded image -->
 			{#if image}

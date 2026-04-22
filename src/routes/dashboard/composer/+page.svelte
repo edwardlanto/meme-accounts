@@ -748,11 +748,11 @@
 
 	<div style="width:{PREVIEW_W}px;height:{Math.round(PREVIEW_W*1350/1080)}px;">
 		{#if s.template === 'tweet'}
-			<TweetTemplate bind:exportRef {...s.tweet} scale={previewScale} />
+			<TweetTemplate bind:exportRef {...s.tweet} scale={previewScale} interactive={false} />
 		{:else if s.template === 'text'}
-			<TextCarouselTemplate bind:exportRef {...s.text} scale={previewScale} />
+			<TextCarouselTemplate bind:exportRef {...s.text} scale={previewScale} interactive={false} />
 		{:else if s.template === 'article'}
-			<ArticleTemplate bind:exportRef {...s.article} scale={previewScale} />
+			<ArticleTemplate bind:exportRef {...s.article} scale={previewScale} interactive={false} />
 		{:else if s.template === 'imageQuote'}
 			<ImageQuoteTemplate
 				bind:exportRef
@@ -764,7 +764,7 @@
 				bgColor={s.imageQuote.bgColor}
 				textColor={s.imageQuote.textColor}
 				scale={previewScale}
-				interactive={true}
+				interactive={false}
 			/>
 		{:else if s.template === 'news'}
 			<NewsTemplate

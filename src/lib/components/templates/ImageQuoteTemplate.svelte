@@ -1,5 +1,8 @@
 <script lang="ts">
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
+	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+	import type { TextElementKind, TextStyle } from '$lib/types';
+
 	interface Props {
 		image?: string;
 		text?: string;
@@ -12,6 +15,12 @@
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
+		selectedText?: TextElementKind | null;
+		onTextChange?: (t: string) => void;
+		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
+		onHeadlineRangeSelect?: (start: number, end: number) => void;
+		headlineStyle?: TextStyle;
+		showToolbar?: boolean;
 	}
 
 	let {
@@ -25,7 +34,28 @@
 		scale = 1,
 		interactive = true,
 		exportRef = $bindable(null),
+		selectedText = null,
+		onTextChange,
+		onTextSelect,
+		onHeadlineRangeSelect,
+		headlineStyle = {},
+		showToolbar = false,
 	}: Props = $props();
+
+	const quoteTypeCss = $derived.by(() => {
+		const s = headlineStyle;
+		const bits: string[] = [];
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', Impact, 'Arial Black', 'Inter', system-ui, sans-serif;`);
+		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
+		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
+		if (s.italic) bits.push('font-style: italic;');
+		if (s.underline) bits.push('text-decoration: underline;');
+		if (s.color) bits.push(`color: ${s.color};`);
+		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
+		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
+		if (s.align) bits.push(`text-align: ${s.align};`);
+		return bits.join(' ');
+	});
 
 	const W = 1080;
 	const H = 1350;
@@ -94,15 +124,32 @@
 				gap: 28px;
 			"
 		>
-			<div style="display:flex;flex-direction:column;gap:18px;">
-				{#each splitLines(text) as line, i (i)}
-					<HighlightedText
-						as="div"
-						text={line}
-						style="color: {textColor}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,0.4); font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif;"
-					/>
-				{/each}
-			</div>
+			<CanvasMarkupTextBlock
+				value={text}
+				{interactive}
+				selected={selectedText === 'headline'}
+				rows={5}
+				uppercase={true}
+				ariaLabel="Quote text"
+				fontFamily={headlineStyle.fontFamily}
+				fontSize={headlineStyle.fontSize}
+				{showToolbar}
+				onTextChange={onTextChange}
+				onTextSelect={onTextSelect}
+				onHeadlineRangeSelect={onHeadlineRangeSelect}
+			>
+				{#snippet display()}
+					<div style="display:flex;flex-direction:column;gap:18px;">
+						{#each splitLines(text) as line, i (i)}
+							<HighlightedText
+								as="div"
+								text={line}
+								style="color: {textColor}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,0.4); font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif; {quoteTypeCss}"
+							/>
+						{/each}
+					</div>
+				{/snippet}
+			</CanvasMarkupTextBlock>
 
 			<!-- Footer -->
 			<div

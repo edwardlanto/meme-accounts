@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
+	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	interface Props {
 		// Top tweet
 		topName?: string;
@@ -18,6 +19,9 @@
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
+		/** When set, tweet body is editable on the canvas (built-in highlight toolbar). */
+		onTopTextChange?: (v: string) => void;
+		onBottomTextChange?: (v: string) => void;
 	}
 
 	let {
@@ -35,7 +39,13 @@
 		scale        = 1,
 		interactive  = true,
 		exportRef    = $bindable(null),
+		onTopTextChange,
+		onBottomTextChange,
 	}: Props = $props();
+
+	const topEditable = $derived(!!interactive && typeof onTopTextChange === 'function');
+	const bottomEditable = $derived(!!interactive && typeof onBottomTextChange === 'function');
+	const tweetHighlightDefault = '#1D9BF0';
 
 	const W = 1080;
 	const H = 1350;
@@ -121,11 +131,24 @@
 			</div>
 
 			<!-- Tweet text -->
-			<HighlightedText
-				as="p"
-				text={topText}
-				style="font-size:58px; font-weight:400; color:#0F1419; line-height:1.35; margin:0 0 44px; letter-spacing:-0.3px; word-break:break-word; flex-shrink: 0;"
-			/>
+			<CanvasMarkupTextBlock
+				value={topText}
+				interactive={topEditable}
+				defaultColor={tweetHighlightDefault}
+				rows={5}
+				showToolbar={true}
+				ariaLabel="Tweet text"
+				onTextChange={onTopTextChange}
+			>
+				{#snippet display()}
+					<HighlightedText
+						as="p"
+						text={topText}
+						defaultColor={tweetHighlightDefault}
+						style="font-size:58px; font-weight:400; color:#0F1419; line-height:1.35; margin:0 0 44px; letter-spacing:-0.3px; word-break:break-word; flex-shrink: 0;"
+					/>
+				{/snippet}
+			</CanvasMarkupTextBlock>
 
 			<!-- Attached image -->
 			{#if topImage}
@@ -195,11 +218,24 @@
 			</div>
 
 			<!-- Reply text -->
-			<HighlightedText
-				as="p"
-				text={bottomText}
-				style="font-size:56px; font-weight:400; color:#0F1419; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word;"
-			/>
+			<CanvasMarkupTextBlock
+				value={bottomText}
+				interactive={bottomEditable}
+				defaultColor={tweetHighlightDefault}
+				rows={5}
+				showToolbar={true}
+				ariaLabel="Reply text"
+				onTextChange={onBottomTextChange}
+			>
+				{#snippet display()}
+					<HighlightedText
+						as="p"
+						text={bottomText}
+						defaultColor={tweetHighlightDefault}
+						style="font-size:56px; font-weight:400; color:#0F1419; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word;"
+					/>
+				{/snippet}
+			</CanvasMarkupTextBlock>
 		</div>
 
 		<!-- X watermark -->

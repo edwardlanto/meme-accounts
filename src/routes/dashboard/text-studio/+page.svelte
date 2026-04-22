@@ -392,6 +392,11 @@
 				text={s.text}
 				showSwipe={s.showSwipe}
 				scale={previewScale}
+				showToolbar={true}
+				onTextChange={(v) => {
+					const i = activeIdx;
+					slides = slides.map((sl, j) => (j === i ? { ...sl, text: v } : sl));
+				}}
 			/>
 		</div>
 

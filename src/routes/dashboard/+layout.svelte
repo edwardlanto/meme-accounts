@@ -2,7 +2,7 @@
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
-	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, Zap, Sparkles, Wand2, FlaskConical } from 'lucide-svelte';
+	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, Zap, Sparkles, Wand2, FlaskConical, BarChart3 } from 'lucide-svelte';
 
 	let { children } = $props();
 
@@ -12,6 +12,7 @@
 		{ href: '/dashboard/composer',     label: 'Composer',     icon: Layers },
 		{ href: '/dashboard/brand-studio', label: 'Brand Studio', icon: Wand2 },
 		{ href: '/dashboard/discover',     label: 'Discover',     icon: Search },
+		{ href: '/dashboard/analytics',    label: 'Analytics',    icon: BarChart3 },
 		{ href: '/dashboard/post-tests',   label: 'Post Tests',   icon: FlaskConical },
 	];
 
@@ -48,11 +49,12 @@
 		<nav class="nav-list">
 			{#each nav as item}
 				{@const active = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href))}
+				{@const Icon = item.icon}
 				<a
 					href={item.href}
 					class="nav-item {active ? 'active' : ''}"
 				>
-					<svelte:component this={item.icon} size={15} />
+					<Icon size={15} />
 					<span>{item.label}</span>
 					{#if active}<div class="active-bar"></div>{/if}
 				</a>

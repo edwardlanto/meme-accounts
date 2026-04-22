@@ -54,14 +54,17 @@
 			</div>
 		</a>
 
-		<div class="group p-5 rounded-2xl glass border border-white/[0.05] hover:border-white/10 transition-all cursor-default">
-			<div class="w-9 h-9 rounded-xl bg-white/[0.05] flex items-center justify-center mb-4">
-				<TrendingUp size={16} class="text-white/30" />
+		<a href="/dashboard/analytics"
+			class="group p-5 rounded-2xl glass border border-white/[0.05] hover:border-lime-400/25 transition-all cursor-pointer">
+			<div class="w-9 h-9 rounded-xl bg-lime-400/10 flex items-center justify-center mb-4 group-hover:bg-lime-400/18 transition-colors">
+				<TrendingUp size={16} class="text-lime-300/90" />
 			</div>
-			<h3 class="font-display font-semibold text-sm text-white mb-1">Performance</h3>
-			<p class="font-body text-xs text-white/35 leading-relaxed">Analytics coming soon — track your viral posts</p>
-			<div class="mt-3 px-2 py-0.5 rounded-full bg-white/[0.05] text-[10px] font-mono text-white/25 w-fit">Soon</div>
-		</div>
+			<h3 class="font-display font-semibold text-sm text-white mb-1">Analytics</h3>
+			<p class="font-body text-xs text-white/35 leading-relaxed">Queue stats and connected accounts per channel</p>
+			<div class="flex items-center gap-1 mt-3 text-xs font-mono text-lime-300/80 opacity-0 group-hover:opacity-100 transition-opacity">
+				Open <ArrowRight size={11} />
+			</div>
+		</a>
 	</div>
 
 	<div class="grid grid-cols-2 gap-6">

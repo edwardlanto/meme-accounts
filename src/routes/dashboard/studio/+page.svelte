@@ -809,9 +809,10 @@
 		}
 	});
 
-	// Clear toolbar selection when user switches slides.
+	// Clear toolbar selection when user switches slides or template.
 	$effect(() => {
 		activeSlide;
+		activeTemplate;
 		closeToolbar();
 	});
 
@@ -1671,6 +1672,11 @@
 					image={backgroundImage}
 					scale={previewScale}
 					interactive={true}
+					headlineStyle={activeHeadlineStyle}
+					selectedText={selectedText}
+					onTextChange={(t) => setActiveSlideText(t)}
+					onTextSelect={onTextSelect}
+					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{:else if activeTemplate === 'textCarousel'}
 				<TextCarouselTemplate
@@ -1678,6 +1684,11 @@
 					text={overlayText}
 					scale={previewScale}
 					interactive={true}
+					headlineStyle={activeHeadlineStyle}
+					selectedText={selectedText}
+					onTextChange={(t) => setActiveSlideText(t)}
+					onTextSelect={onTextSelect}
+					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{:else}
 				<ImageQuoteTemplate
@@ -1686,6 +1697,11 @@
 					image={backgroundImage}
 					scale={previewScale}
 					interactive={true}
+					headlineStyle={activeHeadlineStyle}
+					selectedText={selectedText}
+					onTextChange={(t) => setActiveSlideText(t)}
+					onTextSelect={onTextSelect}
+					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{/if}
 		</div>

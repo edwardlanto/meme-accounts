@@ -338,6 +338,11 @@
 				image={s.image}
 				{accentColor} {bgColor} {logoSrc} {logoRingColor} {showSwipe} {swipeText}
 				scale={previewScale}
+				showToolbar={true}
+				onTextChange={(v) => {
+					const i = activeIdx;
+					slides = slides.map((sl, j) => (j === i ? { ...sl, text: v } : sl));
+				}}
 			/>
 		</div>
 

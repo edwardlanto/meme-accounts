@@ -417,6 +417,14 @@
 				bottomVerified={s.bottomVerified}
 				bottomText={s.bottomText}
 				scale={previewScale}
+				onTopTextChange={(v) => {
+					const i = activeIdx;
+					slides = slides.map((sl, j) => (j === i ? { ...sl, topText: v } : sl));
+				}}
+				onBottomTextChange={(v) => {
+					const i = activeIdx;
+					slides = slides.map((sl, j) => (j === i ? { ...sl, bottomText: v } : sl));
+				}}
 			/>
 		</div>
 
