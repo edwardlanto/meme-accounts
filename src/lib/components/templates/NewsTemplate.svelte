@@ -16,6 +16,14 @@
 		subjectCutout?: string;
 		showSubjectCutout?: boolean;
 		circleImage?: string;
+		/** Circle border color (bindable). */
+		circleBorderColor?: string;
+		/** Optional second circle badge (for a second photo/logo). */
+		circle2Image?: string;
+		circle2BorderColor?: string;
+		circle2X?: number;
+		circle2Y?: number;
+		circle2Size?: number;
 		text: string;
 		source?: string;
 		highlightColor?: string;
@@ -47,6 +55,9 @@
 		selectedText?: TextElementKind | null;
 		onTextChange?: (t: string) => void;
 		onCircleMove?: (x: number, y: number) => void;
+		onCircleImageChange?: (src: string) => void;
+		onCircle2Move?: (x: number, y: number) => void;
+		onCircle2ImageChange?: (src: string) => void;
 		onOverlaysChange?: (overlays: Overlay[]) => void;
 		/** Fired when the user clicks a stylable text element. */
 		onTextSelect?: (kind: TextElementKind, anchor: HTMLElement) => void;
@@ -63,6 +74,9 @@
 		subjectCutout = '',
 		showSubjectCutout = false,
 		circleImage,
+		circleBorderColor = $bindable('#FFFFFF'),
+		circle2Image = '',
+		circle2BorderColor = $bindable('#FFFFFF'),
 		text,
 		source = 'Markets',
 		highlightColor = '#F5A623',
@@ -73,6 +87,9 @@
 		circleX    = $bindable(772),
 		circleY    = $bindable(52),
 		circleSize = $bindable(256),
+		circle2X   = $bindable(80),
+		circle2Y   = $bindable(80),
+		circle2Size = $bindable(220),
 		bgOffsetX  = $bindable(50),
 		bgOffsetY  = $bindable(50),
 		bgZoom     = $bindable(100),
@@ -85,6 +102,9 @@
 		selectedText = null,
 		onTextChange,
 		onCircleMove,
+		onCircleImageChange,
+		onCircle2Move,
+		onCircle2ImageChange,
 		onOverlaysChange,
 		onTextSelect,
 		onHeadlineRangeSelect,
@@ -218,10 +238,13 @@
 				sel?.removeAllRanges();
 				sel?.addRange(range);
 			}
-			// Re-anchor the floating toolbar to the editor container so it sits
-			// consistently above the text while the user is editing — never
-			// covering the text selection.
-			if (editableEl) onTextSelect?.('headline', editableEl);
+			// Anchor the toolbar to a fixed rect at the top of the editable area
+			// during inline editing so it doesn't vanish as the editor expands.
+			if (editableEl) {
+				const rect = editableEl.getBoundingClientRect();
+				const fixedRect = new DOMRect(rect.left, rect.top, rect.width, 0);
+				onTextSelect?.('headline', wrapRectAsAnchor(fixedRect));
+			}
 		}, 10);
 	}
 
@@ -362,6 +385,26 @@
 	let circleStartSize = 0;
 	let circleResizeStartMx = 0;
 	let circleResizeStartMy = 0;
+	let circleFileEl = $state<HTMLInputElement | null>(null);
+
+	function openCirclePicker(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		circleFileEl?.click();
+	}
+
+	function onCircleFile(e: Event) {
+		if (!interactive) return;
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		(e.target as HTMLInputElement).value = '';
+		const reader = new FileReader();
+		reader.onload = () => {
+			const src = reader.result as string;
+			onCircleImageChange?.(src);
+		};
+		reader.readAsDataURL(file);
+	}
 
 	function circlePointerDown(e: PointerEvent) {
 		if (!interactive) return;
@@ -419,6 +462,90 @@
 		resizingCircle = false;
 	}
 
+	// ── Second circle drag ────────────────────────────────────────────────
+	let dragging2 = $state(false);
+	let resizingCircle2 = $state(false);
+	let lastMx2 = 0;
+	let lastMy2 = 0;
+	let circle2StartSize = 0;
+	let circle2ResizeStartMx = 0;
+	let circle2ResizeStartMy = 0;
+	let circle2FileEl = $state<HTMLInputElement | null>(null);
+
+	function openCircle2Picker(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		circle2FileEl?.click();
+	}
+
+	function onCircle2File(e: Event) {
+		if (!interactive) return;
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		(e.target as HTMLInputElement).value = '';
+		const reader = new FileReader();
+		reader.onload = () => {
+			const src = reader.result as string;
+			onCircle2ImageChange?.(src);
+		};
+		reader.readAsDataURL(file);
+	}
+
+	function circle2PointerDown(e: PointerEvent) {
+		if (!interactive) return;
+		if (resizingCircle2) return;
+		dragging2 = true;
+		lastMx2 = e.clientX;
+		lastMy2 = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function circle2PointerMove(e: PointerEvent) {
+		if (!dragging2 || resizingCircle2) return;
+		const dx = (e.clientX - lastMx2) / scale;
+		const dy = (e.clientY - lastMy2) / scale;
+		lastMx2 = e.clientX;
+		lastMy2 = e.clientY;
+		const nx = Math.max(0, Math.min(W - circle2Size, circle2X + dx));
+		const ny = Math.max(0, Math.min(H - circle2Size, circle2Y + dy));
+		circle2X = nx;
+		circle2Y = ny;
+		onCircle2Move?.(nx, ny);
+	}
+
+	function circle2PointerUp() {
+		dragging2 = false;
+	}
+
+	function circle2ResizeDown(e: PointerEvent) {
+		if (!interactive) return;
+		resizingCircle2 = true;
+		circle2StartSize = circle2Size;
+		circle2ResizeStartMx = e.clientX;
+		circle2ResizeStartMy = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function circle2ResizeMove(e: PointerEvent) {
+		if (!resizingCircle2) return;
+		const dx = (e.clientX - circle2ResizeStartMx) / scale;
+		const dy = (e.clientY - circle2ResizeStartMy) / scale;
+		const delta = Math.max(dx, dy);
+		const nextSize = Math.round(Math.max(128, Math.min(512, circle2StartSize + delta)));
+		circle2Size = nextSize;
+		circle2X = Math.max(0, Math.min(W - circle2Size, circle2X));
+		circle2Y = Math.max(0, Math.min(H - circle2Size, circle2Y));
+		onCircle2Move?.(circle2X, circle2Y);
+	}
+
+	function circle2ResizeUp() {
+		resizingCircle2 = false;
+	}
+
 	// ── Background pan ─────────────────────────────────────────────────────
 	let bgDragging = $state(false);
 	let bgLastMx = 0;
@@ -438,9 +565,10 @@
 		const dy = (e.clientY - bgLastMy) / scale;
 		bgLastMx = e.clientX;
 		bgLastMy = e.clientY;
-		// "Grab and drag right" → image shifts right → offset decreases (shows left side)
-		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - (dx / W) * 100));
-		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - (dy / H) * 100));
+		// Apply 3x multiplier for much more responsive dragging, and allow
+		// going beyond 0-100 range so the image can be dragged partially off-canvas.
+		bgOffsetX = bgOffsetX - (dx / W) * 100 * 3;
+		bgOffsetY = bgOffsetY - (dy / H) * 100 * 3;
 	}
 
 	function bgPointerUp() {
@@ -508,45 +636,6 @@
 		onOverlaysChange?.(overlays.filter(o => o.id !== id));
 	}
 
-	// ── Add overlay image (upload) ─────────────────────────────────────────
-	let overlayInputEl = $state<HTMLInputElement | null>(null);
-
-	function openOverlayPicker(e: MouseEvent) {
-		if (!interactive) return;
-		e.stopPropagation();
-		overlayInputEl?.click();
-	}
-
-	function onOverlayFile(e: Event) {
-		if (!interactive) return;
-		const file = (e.target as HTMLInputElement).files?.[0];
-		if (!file) return;
-		// reset input so same file can be re-added
-		(e.target as HTMLInputElement).value = '';
-
-		const reader = new FileReader();
-		reader.onload = () => {
-			const src = reader.result as string;
-			const img = new window.Image();
-			img.onload = () => {
-				const aspect = img.naturalWidth / img.naturalHeight;
-				const w0 = Math.min(320, img.naturalWidth || 320);
-				const h0 = w0 / aspect;
-				const next: Overlay = {
-					id: crypto.randomUUID(),
-					src,
-					w: Math.round(w0),
-					h: Math.round(h0),
-					x: Math.round((W - w0) / 2),
-					y: Math.round((H - h0) / 2),
-				};
-				onOverlaysChange?.([...(overlays ?? []), next]);
-			};
-			img.src = src;
-		};
-		reader.readAsDataURL(file);
-	}
-
 	// ── Pattern rendering helpers ──────────────────────────────────────────
 	function patternStyle(patternImage: string | undefined): string {
 		if (!patternImage) return '';
@@ -586,38 +675,6 @@
 			{interactive ? 'user-select: none;' : ''}
 		"
 	>
-		<!-- Add overlay image (upload) -->
-		{#if interactive}
-			<!-- svelte-ignore a11y_consider_explicit_label -->
-			<button
-				onclick={openOverlayPicker}
-				style="
-					position: absolute;
-					top: 18px; left: 18px;
-					z-index: 30;
-					padding: 10px 12px;
-					border-radius: 999px;
-					background: rgba(0,0,0,0.55);
-					border: 1px solid rgba(255,255,255,0.18);
-					color: rgba(255,255,255,0.85);
-					font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
-					font-size: 14px;
-					letter-spacing: 0;
-					cursor: pointer;
-					backdrop-filter: blur(6px);
-				"
-			>
-				＋ Add image
-			</button>
-			<input
-				bind:this={overlayInputEl}
-				type="file"
-				accept="image/*"
-				style="display:none"
-				onchange={onOverlayFile}
-			/>
-		{/if}
-
 		<!-- Background: video takes priority over image.
 
 		     Zoom + pan model:
@@ -793,6 +850,13 @@
 
 		<!-- ── Draggable circle badge ──────────────────────────────────────── -->
 		{#if circleImage}
+			<input
+				bind:this={circleFileEl}
+				type="file"
+				accept="image/*"
+				style="display:none"
+				onchange={onCircleFile}
+			/>
 			<div
 				style="
 					position: absolute;
@@ -801,7 +865,7 @@
 					width: {circleSize}px;
 					height: {circleSize}px;
 					border-radius: 50%;
-					border: 8px solid #fff;
+					border: 8px solid {circleBorderColor};
 					overflow: visible;
 					z-index: 20;
 					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
@@ -837,6 +901,25 @@
 						font-size: 22px; color: rgba(255,255,255,0.8);
 						pointer-events: none;
 					">⠿</div>
+					<!-- Edit button -->
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onclick={openCirclePicker}
+						style="
+							position: absolute;
+							bottom: -2px; right: 52px;
+							width: 48px; height: 48px;
+							border-radius: 50%;
+							background: rgba(0,0,0,0.75);
+							border: 2px solid rgba(255,255,255,0.3);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 18px; color: rgba(255,255,255,0.85);
+							cursor: pointer;
+							pointer-events: auto;
+							touch-action: none;
+						"
+						title="Edit circle image"
+					>✎</button>
 					<!-- Resize handle (drag corner) -->
 					<div
 						style="
@@ -855,6 +938,99 @@
 						onpointermove={circleResizeMove}
 						onpointerup={circleResizeUp}
 						onpointercancel={circleResizeUp}
+						role="presentation"
+					>⤡</div>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- ── Optional second circle badge ───────────────────────────────── -->
+		{#if circle2Image}
+			<input
+				bind:this={circle2FileEl}
+				type="file"
+				accept="image/*"
+				style="display:none"
+				onchange={onCircle2File}
+			/>
+			<div
+				style="
+					position: absolute;
+					left: {circle2X}px;
+					top: {circle2Y}px;
+					width: {circle2Size}px;
+					height: {circle2Size}px;
+					border-radius: 50%;
+					border: 8px solid {circle2BorderColor};
+					overflow: visible;
+					z-index: 19;
+					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+					cursor: {interactive ? (dragging2 ? 'grabbing' : 'grab') : 'default'};
+					touch-action: none;
+				"
+				onpointerdown={circle2PointerDown}
+				onpointermove={circle2PointerMove}
+				onpointerup={circle2PointerUp}
+				onpointercancel={circle2PointerUp}
+				role="presentation"
+			>
+				<img
+					src={circle2Image}
+					alt=""
+					style="
+						width: 100%; height: 100%;
+						object-fit: cover; object-position: center;
+						border-radius: 50%;
+						pointer-events: none;
+					"
+				/>
+				{#if interactive}
+					<div style="
+						position: absolute;
+						bottom: -2px; right: -2px;
+						width: 48px; height: 48px;
+						border-radius: 50%;
+						background: rgba(0,0,0,0.75);
+						border: 2px solid rgba(255,255,255,0.3);
+						display: flex; align-items: center; justify-content: center;
+						font-size: 22px; color: rgba(255,255,255,0.8);
+						pointer-events: none;
+					">⠿</div>
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onclick={openCircle2Picker}
+						style="
+							position: absolute;
+							bottom: -2px; right: 52px;
+							width: 48px; height: 48px;
+							border-radius: 50%;
+							background: rgba(0,0,0,0.75);
+							border: 2px solid rgba(255,255,255,0.3);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 18px; color: rgba(255,255,255,0.85);
+							cursor: pointer;
+							pointer-events: auto;
+							touch-action: none;
+						"
+						title="Edit circle image"
+					>✎</button>
+					<div
+						style="
+							position: absolute;
+							right: -10px; bottom: -10px;
+							width: 26px; height: 26px;
+							border-radius: 8px;
+							background: rgba(0,0,0,0.85);
+							border: 2px solid rgba(255,255,255,0.45);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 12px; color: rgba(255,255,255,0.85);
+							cursor: nwse-resize;
+							touch-action: none;
+						"
+						onpointerdown={circle2ResizeDown}
+						onpointermove={circle2ResizeMove}
+						onpointerup={circle2ResizeUp}
+						onpointercancel={circle2ResizeUp}
 						role="presentation"
 					>⤡</div>
 				{/if}
@@ -976,8 +1152,10 @@
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					bind:this={editableEl}
+					data-text-selectable="headline"
 					onkeydown={onEditKeydown}
 					onclick={(e) => e.stopPropagation()}
+					onmousedown={(e) => e.stopPropagation()}
 					style="
 						margin: 0; padding: 0;
 						{headlineCss}
@@ -991,7 +1169,7 @@
 				>
 					<HighlightEditor
 						value={text}
-						rows={1}
+						rows={4}
 						onChange={(v) => onTextChange?.(v)}
 						onBlur={finishEdit}
 						onSelectionChange={(has, r) => {

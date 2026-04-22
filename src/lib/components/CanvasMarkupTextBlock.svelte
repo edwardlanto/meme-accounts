@@ -136,7 +136,13 @@
 				s?.removeAllRanges();
 				s?.addRange(range);
 			}
-			if (editableEl) onTextSelect?.(toolbarKind, editableEl);
+			// Anchor the toolbar to a fixed rect at the top of the editable area
+			// during inline editing so it doesn't vanish as the editor expands.
+			if (editableEl) {
+				const rect = editableEl.getBoundingClientRect();
+				const fixedRect = new DOMRect(rect.left, rect.top, rect.width, 0);
+				onTextSelect?.(toolbarKind, wrapRectAsAnchor(fixedRect));
+			}
 		}, 10);
 	}
 
@@ -160,8 +166,10 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={editableEl}
+		data-text-selectable="true"
 		onkeydown={onEditKeydown}
 		onclick={(e) => e.stopPropagation()}
+		onmousedown={(e) => e.stopPropagation()}
 		style="margin: 0; padding: 0; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.55); border-radius: 4px; cursor: text;"
 	>
 		<HighlightEditor

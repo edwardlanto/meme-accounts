@@ -144,6 +144,10 @@
 	const activeCutting = $derived(cuttingOut[activeSlide] ?? false);
 	let showCircle = $state(true);       // toggle — default ON
 	let circleImage = $state('');
+	let circleBorderColor = $state('#FFFFFF');
+	let showCircle2 = $state(false);
+	let circle2Image = $state('');
+	let circle2BorderColor = $state('#FFFFFF');
 	let generatingCircle = $state(false);
 	let bgError = $state('');
 
@@ -202,6 +206,9 @@
 	let circleX    = $state(772);
 	let circleY    = $state(52);
 	let circleSize = $state(256); // diameter in template px (128–512)
+	let circle2X    = $state(80);
+	let circle2Y    = $state(80);
+	let circle2Size = $state(220);
 
 	// Background pan (0–100 %)
 	let bgOffsetX = $state(50); // horizontal: 0=left, 100=right
@@ -291,6 +298,18 @@
 		const newActive = newOrder.indexOf(activeSlide);
 		if (newActive >= 0) activeSlide = newActive;
 		void saveDraftNow?.();
+	}
+
+	function reorderSlidesByIds(nextIds: string[]) {
+		// Translate an id order into an index order, then reuse reorderSlides().
+		const prevIds = slideIds;
+		const idToOldIndex = new Map(prevIds.map((id, idx) => [id, idx]));
+		const newOrder = nextIds
+			.map((id) => idToOldIndex.get(id))
+			.filter((v): v is number => typeof v === 'number');
+		// If something went wrong, bail rather than corrupt arrays.
+		if (newOrder.length !== prevIds.length) return;
+		reorderSlides(newOrder);
 	}
 	const activeHeadlineStyle = $derived(headlineStyles[activeSlide] ?? {});
 	const activeSourceStyle   = $derived(sourceStyles[activeSlide] ?? {});
@@ -438,15 +457,23 @@
 		if (Array.isArray(s.slideOverlays)) slideOverlays = s.slideOverlays;
 		if (Array.isArray(s.headlineStyles)) headlineStyles = s.headlineStyles;
 		if (Array.isArray(s.sourceStyles)) sourceStyles = s.sourceStyles;
+		if (Array.isArray(s.slideIds)) slideIds = s.slideIds;
 		if (Array.isArray(s.subjectCutouts)) subjectCutouts = s.subjectCutouts;
 		if (Array.isArray(s.showCutout)) showCutout = s.showCutout;
 		if (Array.isArray(s.slideMusic)) slideMusic = s.slideMusic;
 
 		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
 		if (typeof s.circleImage === 'string') circleImage = s.circleImage;
+		if (typeof s.circleBorderColor === 'string') circleBorderColor = s.circleBorderColor;
+		if (typeof s.showCircle2 === 'boolean') showCircle2 = s.showCircle2;
+		if (typeof s.circle2Image === 'string') circle2Image = s.circle2Image;
+		if (typeof s.circle2BorderColor === 'string') circle2BorderColor = s.circle2BorderColor;
 		if (typeof s.circleX === 'number') circleX = s.circleX;
 		if (typeof s.circleY === 'number') circleY = s.circleY;
 		if (typeof s.circleSize === 'number') circleSize = s.circleSize;
+		if (typeof s.circle2X === 'number') circle2X = s.circle2X;
+		if (typeof s.circle2Y === 'number') circle2Y = s.circle2Y;
+		if (typeof s.circle2Size === 'number') circle2Size = s.circle2Size;
 		if (typeof s.bgOffsetX === 'number') bgOffsetX = s.bgOffsetX;
 		if (typeof s.bgOffsetY === 'number') bgOffsetY = s.bgOffsetY;
 		if (typeof s.bgZoom === 'number') bgZoom = s.bgZoom;
@@ -477,14 +504,22 @@
 			slideOverlays,
 			headlineStyles,
 			sourceStyles,
+			slideIds,
 			subjectCutouts,
 			showCutout,
 			slideMusic,
 			showCircle,
 			circleImage,
+			circleBorderColor,
+			showCircle2,
+			circle2Image,
+			circle2BorderColor,
 			circleX,
 			circleY,
 			circleSize,
+			circle2X,
+			circle2Y,
+			circle2Size,
 			bgOffsetX,
 			bgOffsetY,
 			bgZoom,
@@ -865,6 +900,14 @@
 		if (!file) return;
 		const reader = new FileReader();
 		reader.onload = () => { circleImage = reader.result as string; };
+		reader.readAsDataURL(file);
+	}
+
+	function handleCircle2Upload(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = () => { circle2Image = reader.result as string; showCircle2 = true; };
 		reader.readAsDataURL(file);
 	}
 
@@ -1487,6 +1530,28 @@
 							<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7 text-right">{circleSize}</span>
 						</div>
 
+						<!-- Border color -->
+						<div class="flex items-center gap-2 px-1">
+							<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-12">Border</span>
+							<div class="flex items-center gap-1.5 flex-1">
+								{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981'] as c}
+									<button
+										type="button"
+										onclick={() => circleBorderColor = c}
+										class="w-6 h-6 rounded-lg border-2 transition-all {circleBorderColor === c ? 'border-violet-400 scale-110' : 'border-white/10 hover:scale-105'}"
+										style="background: {c};"
+										title="Set border {c}"
+									></button>
+								{/each}
+							</div>
+							<input
+								type="color"
+								bind:value={circleBorderColor}
+								class="w-8 h-7 rounded-lg bg-transparent border border-white/10 cursor-pointer"
+								title="Custom border color"
+							/>
+						</div>
+
 						<!-- Action buttons -->
 						<button onclick={generateCircleImage} disabled={generatingCircle}
 							class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
@@ -1500,6 +1565,71 @@
 							<Image size={11} /> Upload custom image
 							<input type="file" accept="image/*" class="sr-only" onchange={handleCircleUpload} />
 						</label>
+
+						<!-- Second circle badge -->
+						<div class="border-t border-white/[0.05] my-1.5"></div>
+						<div class="flex items-center justify-between">
+							<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Second Circle</label>
+							<button
+								type="button"
+								onclick={() => { showCircle2 = !showCircle2; if (!showCircle2) circle2Image = ''; }}
+								class="relative w-9 h-[18px] rounded-full transition-colors duration-200 flex-shrink-0
+									{showCircle2 ? 'bg-cyan-500/40' : 'bg-white/[0.08]'}"
+							>
+								<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full shadow transition-transform duration-200
+									{showCircle2 ? 'translate-x-[18px] bg-cyan-400' : 'translate-x-0 bg-white/30'}">
+								</span>
+							</button>
+						</div>
+
+						{#if showCircle2}
+							{#if circle2Image}
+								<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+									<img src={circle2Image} alt="circle badge 2" class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-white/10" />
+									<span class="text-[11px] font-mono text-white/30 flex-1">Custom</span>
+									<button onclick={() => circle2Image = ''} title="Remove" class="text-white/20 hover:text-red-400 transition-colors">
+										✕
+									</button>
+								</div>
+							{/if}
+
+							<div class="flex items-center gap-2.5 px-1">
+								<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7">Size</span>
+								<input
+									type="range"
+									min="128" max="512" step="8"
+									bind:value={circle2Size}
+									class="flex-1 h-1 rounded-full accent-cyan-400 cursor-pointer"
+								/>
+								<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7 text-right">{circle2Size}</span>
+							</div>
+
+							<div class="flex items-center gap-2 px-1">
+								<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-12">Border</span>
+								<div class="flex items-center gap-1.5 flex-1">
+									{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981'] as c}
+										<button
+											type="button"
+											onclick={() => circle2BorderColor = c}
+											class="w-6 h-6 rounded-lg border-2 transition-all {circle2BorderColor === c ? 'border-violet-400 scale-110' : 'border-white/10 hover:scale-105'}"
+											style="background: {c};"
+											title="Set border {c}"
+										></button>
+									{/each}
+								</div>
+								<input
+									type="color"
+									bind:value={circle2BorderColor}
+									class="w-8 h-7 rounded-lg bg-transparent border border-white/10 cursor-pointer"
+									title="Custom border color"
+								/>
+							</div>
+
+							<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
+								<Image size={11} /> Upload second image
+								<input type="file" accept="image/*" class="sr-only" onchange={handleCircle2Upload} />
+							</label>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -1598,23 +1728,7 @@
 		</div>
 
 		<!-- Slide indicator + nav arrows -->
-		<div class="flex items-center gap-3">
-			<button
-				onclick={() => activeSlide = Math.max(0, activeSlide - 1)}
-				disabled={activeSlide === 0}
-				class="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/30 hover:text-white hover:border-white/30 disabled:opacity-20 disabled:cursor-not-allowed transition-all">
-				‹
-			</button>
-			<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">
-				{slideCount > 1 ? `Slide ${activeSlide + 1} / ${slideCount} — ` : ''}{CANVAS_W} × {CANVAS_H}
-			</p>
-			<button
-				onclick={() => activeSlide = Math.min(slideCount - 1, activeSlide + 1)}
-				disabled={activeSlide === slideCount - 1}
-				class="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/30 hover:text-white hover:border-white/30 disabled:opacity-20 disabled:cursor-not-allowed transition-all">
-				›
-			</button>
-		</div>
+		<!-- Slide switcher removed (filmstrip below is the navigator) -->
 
 		<!-- Main preview -->
 		<div style="width: {PREVIEW_WIDTH}px; height: {CANVAS_H * previewScale}px;" class="relative">
@@ -1636,6 +1750,11 @@
 					bind:circleX
 					bind:circleY
 					bind:circleSize
+					bind:circleBorderColor
+					bind:circle2X
+					bind:circle2Y
+					bind:circle2Size
+					bind:circle2BorderColor
 					bind:bgOffsetX
 					bind:bgOffsetY
 					bind:bgZoom
@@ -1647,6 +1766,7 @@
 					subjectCutout={activeCutout}
 					showSubjectCutout={activeShowCutout}
 					circleImage={showCircle ? circleImage : ''}
+					circle2Image={showCircle2 ? circle2Image : ''}
 					text={overlayText}
 					source={source}
 					highlightColor={highlightColor}
@@ -1661,6 +1781,9 @@
 					selectedText={selectedText}
 					onTextChange={(t) => setActiveSlideText(t)}
 					onCircleMove={(x, y) => { circleX = x; circleY = y; }}
+					onCircleImageChange={(src) => { circleImage = src; showCircle = true; }}
+					onCircle2Move={(x, y) => { circle2X = x; circle2Y = y; }}
+					onCircle2ImageChange={(src) => { circle2Image = src; showCircle2 = true; }}
 					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
@@ -1705,18 +1828,11 @@
 				/>
 			{/if}
 		</div>
-
-		{#if !backgroundImage}
-			<p class="font-body text-xs text-white/20 text-center max-w-xs">
-				Fetch a news article or upload a background image to see your post
-			</p>
-		{/if}
-
 		<!-- Slide filmstrip: drag to reorder -->
 		{#if slideCount > 1}
 			{@const dndItems = slideIds.map((id, i) => ({
 				id,
-				origIndex: i,
+				// Derive thumbnail data from the current arrays (already in slideIds order).
 				text: slides[i] ?? '',
 				img: backgroundImages[i] ?? '',
 				vid: backgroundVideos[i] ?? '',
@@ -1732,15 +1848,17 @@
 					dragDisabled: false,
 				}}
 				onconsider={(e) => {
-					// Reflect the visual reorder while dragging.
-					const order = (e.detail.items as any[]).map((it) => it.origIndex as number);
-					reorderSlides(order);
+					// Only update the visual order while dragging; don't reorder slide data yet
+					// (reordering arrays mid-drag can cause items to "vanish").
+					slideIds = (e.detail.items as any[]).map((it) => it.id as string);
 				}}
 				onfinalize={(e) => {
-					const order = (e.detail.items as any[]).map((it) => it.origIndex as number);
-					reorderSlides(order);
+					const nextIds = (e.detail.items as any[]).map((it) => it.id as string);
+					// Ensure slideIds matches what DnD produced (in case finalize differs).
+					slideIds = nextIds;
+					reorderSlidesByIds(nextIds);
 				}}
-				class="flex gap-2 overflow-x-auto max-w-full pb-1 px-1"
+				class="no-scrollbar flex gap-2 overflow-x-auto max-w-full pb-1 px-1"
 			>
 				{#each dndItems as item, i (item.id)}
 					{@const isPlaceholder = !item.text}
@@ -1900,5 +2018,14 @@
 	select option {
 		background: #1a1a1a;
 		color: #f8f8f8;
+	}
+
+	/* Hide scrollbars (keep scroll) for the bottom filmstrip */
+	.no-scrollbar {
+		scrollbar-width: none; /* Firefox */
+		-ms-overflow-style: none; /* IE/Edge legacy */
+	}
+	.no-scrollbar::-webkit-scrollbar {
+		display: none; /* Chrome/Safari */
 	}
 </style>
