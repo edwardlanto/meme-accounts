@@ -49,6 +49,10 @@
 		shadowHeight?: number;
 		/** Opacity of the bottom shadow (0–1). Default 1. */
 		shadowStrength?: number;
+		/** Optional repeating grid texture overlay (tiled). */
+		gridImage?: string;
+		gridTile?: number; // px
+		gridOpacity?: number; // 0..1
 		overlays?: Overlay[];
 		textOverlays?: TextOverlay[];
 		/** Per-element style overrides (font, size, weight, color, etc.) */
@@ -103,6 +107,9 @@
 		textPanelOffsetY = $bindable(0),
 		shadowHeight = $bindable(75),
 		shadowStrength = $bindable(1),
+		gridImage = '',
+		gridTile = 80,
+		gridOpacity = 0.25,
 		overlays   = [],
 		textOverlays = [],
 		headlineStyle = {},
@@ -894,6 +901,23 @@
 		     the text its legibility shelf even when a subject is cut out. -->
 		<div style="position: absolute; inset: 0; z-index: 30; pointer-events: none;
 			background: {shadowGradient};"></div>
+
+		<!-- ── Grid overlay (tiled texture) ───────────────────────────────── -->
+		{#if gridImage}
+			<div
+				style="
+					position: absolute; inset: 0;
+					z-index: 14;
+					pointer-events: none;
+					opacity: {Math.max(0, Math.min(1, gridOpacity))};
+					background-image: url('{gridImage}');
+					background-repeat: repeat;
+					background-size: {Math.max(8, Number(gridTile) || 80)}px {Math.max(8, Number(gridTile) || 80)}px;
+					background-position: 0 0;
+					mix-blend-mode: overlay;
+				"
+			></div>
+		{/if}
 
 		<!-- ── Image overlays (stickers / logos) ────────────────────────────── -->
 		{#each overlays as overlay (overlay.id)}

@@ -211,6 +211,11 @@
 	let highlightColor = $state('#F5A623');
 	let textColor = $state('#FFFFFF');
 
+	// ── Grid (global, applies to all slides/exports) ──────────────────────
+	let gridImage = $state<string>('');
+	let gridTile = $state<number>(80);
+	let gridOpacity = $state<number>(0.25);
+
 	// Canvas editing — circle position + size (template coordinates)
 	let circleX    = $state(772);
 	let circleY    = $state(52);
@@ -577,6 +582,9 @@
 		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
 		if (typeof s.highlightColor === 'string') highlightColor = s.highlightColor;
 		if (typeof s.textColor === 'string') textColor = s.textColor;
+		if (typeof s.gridImage === 'string') gridImage = s.gridImage;
+		if (typeof s.gridTile === 'number') gridTile = s.gridTile;
+		if (typeof s.gridOpacity === 'number') gridOpacity = s.gridOpacity;
 		// slideCount is derived from slides.length; do not restore it directly.
 	}
 
@@ -624,6 +632,9 @@
 			shadowStrength,
 			highlightColor,
 			textColor,
+			gridImage,
+			gridTile,
+			gridOpacity,
 			// Rendered PNG exports (data URLs) for scheduler publishing (FB supports data URLs; IG needs public URLs)
 			exportedSlides,
 		};
@@ -1127,6 +1138,15 @@
 		reader.readAsDataURL(file);
 	}
 
+	function handleGridUpload(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		(e.target as HTMLInputElement).value = '';
+		const reader = new FileReader();
+		reader.onload = () => { gridImage = reader.result as string; };
+		reader.readAsDataURL(file);
+	}
+
 	// ── Export to PNG ─────────────────────────────────────────────────────
 	async function exportPng() {
 		if (!exportRef) return;
@@ -1477,6 +1497,68 @@
 			<!-- Divider -->
 			<div class="border-t border-white/[0.05] my-3"></div>
 
+			<!-- Grid (global) -->
+			<div>
+				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">
+					<Layers size={9} class="inline mr-1" />Grid
+				</label>
+				<div class="flex flex-col gap-2">
+					<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
+						<Image size={11} /> Upload grid image
+						<input type="file" accept="image/*" class="sr-only" onchange={handleGridUpload} />
+					</label>
+
+					{#if gridImage}
+						<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+							<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style="background: repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 50% / 12px 12px;">
+								<img src={gridImage} alt="grid" class="w-full h-full object-cover" />
+							</div>
+							<span class="text-[11px] font-mono text-white/40 flex-1">Grid active</span>
+							<button
+								onclick={() => { gridImage = ''; }}
+								title="Remove grid"
+								class="text-white/20 hover:text-red-400 transition-colors text-xs"
+							>✕</button>
+						</div>
+
+						<!-- Tile size -->
+						<div class="flex items-center justify-between mt-1 mb-0.5">
+							<span class="text-[10px] font-mono text-white/25 uppercase tracking-wider">Tile</span>
+							<span class="text-[9px] font-mono text-white/40">{gridTile}px</span>
+						</div>
+						<input
+							type="range"
+							min="12"
+							max="240"
+							step="1"
+							bind:value={gridTile}
+							class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+						/>
+
+						<!-- Opacity -->
+						<div class="flex items-center justify-between mt-2 mb-0.5">
+							<span class="text-[10px] font-mono text-white/25 uppercase tracking-wider">Opacity</span>
+							<span class="text-[9px] font-mono text-white/40">{Math.round(gridOpacity * 100)}%</span>
+						</div>
+						<input
+							type="range"
+							min="0"
+							max="1"
+							step="0.05"
+							bind:value={gridOpacity}
+							class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+						/>
+					{:else}
+						<p class="text-[10px] font-body text-white/25 leading-relaxed">
+							Upload a small texture and it will repeat across every post you export/schedule.
+						</p>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Divider -->
+			<div class="border-t border-white/[0.05] my-3"></div>
+
 			<!-- Background image -->
 			<div>
 				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">
@@ -1745,6 +1827,9 @@
 					backgroundVideo={backgroundVideo}
 					subjectCutout={activeCutout}
 					showSubjectCutout={activeShowCutout}
+					gridImage={gridImage}
+					gridTile={gridTile}
+					gridOpacity={gridOpacity}
 					circleImage={showCircle ? activeCircleImage : ''}
 					showCircle2={activeShowCircle2}
 					circle2Image={activeShowCircle2 ? activeCircle2Image : ''}

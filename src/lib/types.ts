@@ -2,6 +2,12 @@
 export interface Overlay {
 	id: string;
 	src: string;  // data URL
+	/** Render mode. 'grid' is a repeating tiled background layer. */
+	kind?: 'image' | 'grid';
+	/** For grid overlays: tile size in template px. */
+	tile?: number;
+	/** For grid overlays: opacity 0..1. */
+	opacity?: number;
 	x: number;    // left edge in template px (0–1080)
 	y: number;    // top edge in template px (0–1350)
 	w: number;    // width in template px

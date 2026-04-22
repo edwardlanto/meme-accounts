@@ -2,7 +2,7 @@
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
-	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, Zap, Sparkles, Wand2, FlaskConical, BarChart3 } from 'lucide-svelte';
+	import { Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings, Zap, Sparkles, Wand2, FlaskConical, BarChart3, Grid3X3 } from 'lucide-svelte';
 
 	let { children } = $props();
 
@@ -10,6 +10,7 @@
 		{ href: '/dashboard',              label: 'Overview',     icon: LayoutDashboard },
 		{ href: '/dashboard/carousels',    label: 'Carousels',    icon: ImagePlus },
 		{ href: '/dashboard/composer',     label: 'Composer',     icon: Layers },
+		{ href: '/dashboard/grid',         label: 'Grid',         icon: Grid3X3 },
 		{ href: '/dashboard/brand-studio', label: 'Brand Studio', icon: Wand2 },
 		{ href: '/dashboard/discover',     label: 'Discover',     icon: Search },
 		{ href: '/dashboard/analytics',    label: 'Analytics',    icon: BarChart3 },
