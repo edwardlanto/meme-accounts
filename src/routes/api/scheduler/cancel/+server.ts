@@ -1,22 +1,23 @@
 import { json } from '@sveltejs/kit';
-import { createClient } from '@supabase/supabase-js';
-import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { scheduledPostsQueue } from '$lib/server/queue';
+import { adminClient, requireUserId } from '$lib/server/auth';
 
-type Body = { userId: string; postId: string };
+type Body = { postId: string };
 
 export const POST: RequestHandler = async ({ request }) => {
-	if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
-		return json({ ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_KEY' }, { status: 500 });
+	let userId: string;
+	try {
+		userId = await requireUserId(request);
+	} catch (e: any) {
+		return json({ ok: false, error: e?.message ?? 'Unauthorized' }, { status: e?.status ?? 401 });
 	}
 
 	const body = (await request.json()) as Body;
-	const userId = body.userId ?? '';
 	const postId = body.postId ?? '';
-	if (!userId || !postId) return json({ ok: false, error: 'Missing userId or postId' }, { status: 400 });
+	if (!postId) return json({ ok: false, error: 'Missing postId' }, { status: 400 });
 
-	const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+	const supabase = adminClient();
 
 	const { data: post, error: getErr } = await supabase
 		.from('scheduled_posts')

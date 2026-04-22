@@ -1,10 +1,19 @@
 import { redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
 
 function randomState() {
 	return crypto.randomUUID().replace(/-/g, '');
 }
+
+const cookieOpts = {
+	path: '/',
+	httpOnly: true,
+	sameSite: 'lax' as const,
+	secure: !dev,
+	maxAge: 60 * 10,
+};
 
 type Mode = 'member' | 'org' | 'both';
 
@@ -39,34 +48,10 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	}
 
 	const state = randomState();
-	cookies.set('linkedin_oauth_state', state, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: false,
-		maxAge: 60 * 10,
-	});
-	cookies.set('linkedin_oauth_uid', userId, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: false,
-		maxAge: 60 * 10,
-	});
-	cookies.set('linkedin_oauth_next', next, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: false,
-		maxAge: 60 * 10,
-	});
-	cookies.set('linkedin_oauth_mode', mode, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: false,
-		maxAge: 60 * 10,
-	});
+	cookies.set('linkedin_oauth_state', state, cookieOpts);
+	cookies.set('linkedin_oauth_uid', userId, cookieOpts);
+	cookies.set('linkedin_oauth_next', next, cookieOpts);
+	cookies.set('linkedin_oauth_mode', mode, cookieOpts);
 
 	const authUrl = new URL('https://www.linkedin.com/oauth/v2/authorization');
 	authUrl.searchParams.set('response_type', 'code');

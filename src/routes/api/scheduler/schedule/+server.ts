@@ -1,11 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { createClient } from '@supabase/supabase-js';
-import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { scheduledPostsQueue } from '$lib/server/queue';
+import { adminClient, requireUserId } from '$lib/server/auth';
 
 type Body = {
-	userId: string;
 	connectionProvider: string; // 'meta' | 'linkedin' | 'gmb' ...
 	connectionProviderAccountId: string; // 'fbpage:123' | ig_user_id | 'org:..' etc.
 	scheduledAt: string; // ISO
@@ -13,18 +11,20 @@ type Body = {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
-		return json({ ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_KEY' }, { status: 500 });
+	let userId: string;
+	try {
+		userId = await requireUserId(request);
+	} catch (e: any) {
+		return json({ ok: false, error: e?.message ?? 'Unauthorized' }, { status: e?.status ?? 401 });
 	}
 
 	const body = (await request.json()) as Body;
-	const userId = body.userId ?? '';
 	const connectionProvider = body.connectionProvider ?? '';
 	const connectionProviderAccountId = body.connectionProviderAccountId ?? '';
 	const scheduledAt = body.scheduledAt ?? '';
 	const content = body.content ?? {};
 
-	if (!userId || !connectionProvider || !connectionProviderAccountId || !scheduledAt) {
+	if (!connectionProvider || !connectionProviderAccountId || !scheduledAt) {
 		return json({ ok: false, error: 'Missing required fields' }, { status: 400 });
 	}
 
@@ -33,7 +33,18 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ ok: false, error: 'Invalid scheduledAt' }, { status: 400 });
 	}
 
-	const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+	const supabase = adminClient();
+
+	// Verify the connection belongs to the authenticated user before scheduling.
+	const { data: conn, error: connErr } = await supabase
+		.from('social_connections')
+		.select('user_id')
+		.eq('user_id', userId)
+		.eq('provider', connectionProvider)
+		.eq('provider_account_id', connectionProviderAccountId)
+		.maybeSingle();
+	if (connErr) return json({ ok: false, error: connErr.message }, { status: 500 });
+	if (!conn) return json({ ok: false, error: 'Connection not found for this user' }, { status: 403 });
 
 	const { data: row, error: insErr } = await supabase
 		.from('scheduled_posts')

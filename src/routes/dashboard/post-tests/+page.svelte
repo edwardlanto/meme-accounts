@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/supabase';
+	import { authFetch } from '$lib/authFetch';
 
 	type TestImage = { name: string; publicPath: string; dataUrl: string };
 	type TestVideo = { name: string; publicPath: string; serverPath: string; sizeBytes: number };
@@ -32,6 +33,10 @@
 	let message = $state(`Carousel test from Social Poster — ${new Date().toLocaleString()}`);
 	let imageCaptions = $state<string[]>([]);
 	let videoCaptions = $state<string[]>([]);
+	// How to publish the multi-image set:
+	//   'carousel'   = single FB post, slide captions merged into the post message
+	//   'individual' = N separate FB posts, each photo with its own caption in the feed
+	let imagesMode = $state<'carousel' | 'individual'>('carousel');
 
 	// Single-post selections
 	let singlePhotoIndex = $state(0);
@@ -101,7 +106,7 @@
 		info = 'Scheduling…';
 		try {
 			const when = new Date(Date.now() + 60_000);
-			const res = await fetch('/api/scheduler/schedule', {
+			const res = await authFetch('/api/scheduler/schedule', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -110,16 +115,21 @@
 					connectionProviderAccountId: fbConn.provider_account_id,
 					scheduledAt: when.toISOString(),
 					content: {
+						title: imagesMode === 'individual'
+							? `Carousel (individual) — ${images.length} posts · ${new Date().toLocaleTimeString()}`
+							: `Carousel (one post) — ${images.length} slides · ${new Date().toLocaleTimeString()}`,
 						message,
 						images: images.map((x) => x.dataUrl),
 						imageCaptions,
+						imagesMode,
 					},
 				}),
 			});
 			const data = await res.json().catch(() => ({ ok: false, error: `Non-JSON (${res.status})` }));
 			lastResult = { status: res.status, data };
 			if (!res.ok || !data?.ok) throw new Error(data?.error ?? `Schedule failed (${res.status})`);
-			await goto('/dashboard/post-scheduler?from=post-tests&scheduled=1');
+			const newId = String(data?.post?.id ?? '');
+			await goto(`/dashboard/post-scheduler?from=post-tests&scheduled=1${newId ? `&postId=${encodeURIComponent(newId)}` : ''}`);
 		} catch (e: any) {
 			console.error('[post-tests] schedule error', e);
 			error = e?.message ?? 'Unknown error';
@@ -143,7 +153,7 @@
 		posting = true;
 		info = `Posting ${images.length} image(s) to Facebook…`;
 		try {
-			const res = await fetch('/api/publish/facebook', {
+			const res = await authFetch('/api/publish/facebook', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -153,6 +163,7 @@
 						message,
 						images: images.map((x) => x.dataUrl),
 						imageCaptions,
+						imagesMode,
 					},
 				}),
 			});
@@ -184,7 +195,7 @@
 		postingVideos = true;
 		info = `Uploading ${videos.length} video(s) to Facebook (one post each)…`;
 		try {
-			const res = await fetch('/api/publish/facebook', {
+			const res = await authFetch('/api/publish/facebook', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -228,7 +239,7 @@
 		info = mode === 'now' ? 'Posting single photo to Facebook…' : 'Scheduling single photo…';
 		try {
 			if (mode === 'now') {
-				const res = await fetch('/api/publish/facebook', {
+				const res = await authFetch('/api/publish/facebook', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
@@ -244,7 +255,7 @@
 				info = `Posted single photo to Facebook. ${postId ? `post_id=${postId}` : ''}`;
 			} else {
 				const when = new Date(Date.now() + 60_000);
-				const res = await fetch('/api/scheduler/schedule', {
+				const res = await authFetch('/api/scheduler/schedule', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
@@ -252,14 +263,19 @@
 						connectionProvider: 'meta',
 						connectionProviderAccountId: fbConn.provider_account_id,
 						scheduledAt: when.toISOString(),
-						content: { message: singlePhotoMessage, images: [pic.dataUrl] },
-					}),
-				});
-				const data = await res.json().catch(() => ({ ok: false, error: `Non-JSON (${res.status})` }));
-				lastResult = { status: res.status, data };
-				if (!res.ok || !data?.ok) throw new Error(data?.error ?? `Schedule failed (${res.status})`);
-				await goto('/dashboard/post-scheduler?from=post-tests&scheduled=1');
-			}
+					content: {
+						title: `Single photo — ${pic.name} · ${new Date().toLocaleTimeString()}`,
+						message: singlePhotoMessage,
+						images: [pic.dataUrl],
+					},
+				}),
+			});
+			const data = await res.json().catch(() => ({ ok: false, error: `Non-JSON (${res.status})` }));
+			lastResult = { status: res.status, data };
+			if (!res.ok || !data?.ok) throw new Error(data?.error ?? `Schedule failed (${res.status})`);
+			const newId = String(data?.post?.id ?? '');
+			await goto(`/dashboard/post-scheduler?from=post-tests&scheduled=1${newId ? `&postId=${encodeURIComponent(newId)}` : ''}`);
+		}
 		} catch (e: any) {
 			console.error('[post-tests] single photo error', e);
 			error = e?.message ?? 'Unknown error';
@@ -285,7 +301,7 @@
 		info = mode === 'now' ? 'Uploading single video to Facebook…' : 'Scheduling single video…';
 		try {
 			if (mode === 'now') {
-				const res = await fetch('/api/publish/facebook', {
+				const res = await authFetch('/api/publish/facebook', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
@@ -305,7 +321,7 @@
 				// Scheduler worker reads the content payload and publishes on time.
 				// The worker needs a serverPath relative to `static/`, which we pass through.
 				const when = new Date(Date.now() + 60_000);
-				const res = await fetch('/api/scheduler/schedule', {
+				const res = await authFetch('/api/scheduler/schedule', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
@@ -314,6 +330,7 @@
 						connectionProviderAccountId: fbConn.provider_account_id,
 						scheduledAt: when.toISOString(),
 						content: {
+							title: `Single video — ${vid.name} · ${new Date().toLocaleTimeString()}`,
 							message: singleVideoMessage,
 							videos: [{ serverPath: vid.serverPath, description: singleVideoMessage }],
 						},
@@ -322,7 +339,8 @@
 				const data = await res.json().catch(() => ({ ok: false, error: `Non-JSON (${res.status})` }));
 				lastResult = { status: res.status, data };
 				if (!res.ok || !data?.ok) throw new Error(data?.error ?? `Schedule failed (${res.status})`);
-				await goto('/dashboard/post-scheduler?from=post-tests&scheduled=1');
+				const newId = String(data?.post?.id ?? '');
+				await goto(`/dashboard/post-scheduler?from=post-tests&scheduled=1${newId ? `&postId=${encodeURIComponent(newId)}` : ''}`);
 			}
 		} catch (e: any) {
 			console.error('[post-tests] single video error', e);
@@ -393,7 +411,11 @@
 				<div>
 					<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">Section 1</p>
 					<h2 class="text-lg font-display font-semibold text-white/85">Photo carousel</h2>
-					<p class="text-[11px] font-body text-white/45 mt-1">One Facebook post containing all images. FB only renders the top-level message for carousels; per-slide captions are stored for reference.</p>
+					<p class="text-[11px] font-body text-white/45 mt-1">
+						{imagesMode === 'carousel'
+							? 'One Facebook post with all images. Per-slide captions are concatenated into the post message so they show in the feed.'
+							: 'N separate Facebook posts — one per image. Each post shows its own caption in the feed.'}
+					</p>
 				</div>
 				<div class="flex items-center gap-2 shrink-0">
 					<button
@@ -413,6 +435,25 @@
 						Schedule →
 					</button>
 				</div>
+			</div>
+
+			<!-- Carousel mode toggle -->
+			<div class="mb-4 flex items-center gap-2 text-[11px] font-mono">
+				<span class="text-white/30 uppercase tracking-widest mr-2">Mode</span>
+				<button
+					type="button"
+					onclick={() => (imagesMode = 'carousel')}
+					class="px-3 py-1.5 rounded-lg border transition-colors {imagesMode === 'carousel' ? 'bg-violet-500/20 border-violet-500/40 text-violet-100' : 'bg-white/3 border-white/10 text-white/50 hover:bg-white/5'}"
+				>
+					Carousel (1 post)
+				</button>
+				<button
+					type="button"
+					onclick={() => (imagesMode = 'individual')}
+					class="px-3 py-1.5 rounded-lg border transition-colors {imagesMode === 'individual' ? 'bg-violet-500/20 border-violet-500/40 text-violet-100' : 'bg-white/3 border-white/10 text-white/50 hover:bg-white/5'}"
+				>
+					Individual ({images.length} posts)
+				</button>
 			</div>
 
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

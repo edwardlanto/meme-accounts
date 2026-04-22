@@ -85,6 +85,9 @@ function dataUrlToBlob(dataUrl) {
  */
 async function uploadFacebookPagePhoto({ pageId, pageAccessToken, url, dataUrl, caption, published }) {
 	const endpoint = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/photos`);
+	const publishedStr = published === false ? 'false' : 'true';
+	// FB uses `message` for published photos (renders as post text) and `caption` for unpublished photos.
+	const captionKey = publishedStr === 'true' ? 'message' : 'caption';
 
 	// If we have a data URL, send multipart.
 	if (dataUrl && String(dataUrl).startsWith('data:')) {
@@ -92,8 +95,8 @@ async function uploadFacebookPagePhoto({ pageId, pageAccessToken, url, dataUrl, 
 		if (!blob) throw new Error('Invalid data URL for photo');
 		const form = new FormData();
 		form.set('access_token', pageAccessToken);
-		form.set('published', published === false ? 'false' : 'true');
-		if (caption) form.set('caption', caption);
+		form.set('published', publishedStr);
+		if (caption) form.set(captionKey, caption);
 		// @ts-ignore node fetch supports Blob
 		form.set('source', new Blob([blob.buf], { type: blob.mime }), 'image');
 		const res = await fetch(endpoint.toString(), { method: 'POST', body: form });
@@ -106,9 +109,9 @@ async function uploadFacebookPagePhoto({ pageId, pageAccessToken, url, dataUrl, 
 	if (url) {
 		const body = new URLSearchParams({
 			access_token: pageAccessToken,
-			published: published === false ? 'false' : 'true',
+			published: publishedStr,
 			url: String(url),
-			...(caption ? { caption: String(caption) } : {}),
+			...(caption ? { [captionKey]: String(caption) } : {}),
 		});
 		const res = await fetch(endpoint.toString(), {
 			method: 'POST',
@@ -219,8 +222,26 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 	const images = Array.isArray(content?.images)
 		? content.images.map((/** @type {unknown} */ x) => String(x)).filter(Boolean)
 		: [];
+	const imageCaptions = Array.isArray(content?.imageCaptions)
+		? content.imageCaptions.map((/** @type {unknown} */ x) => String(x ?? ''))
+		: [];
+	const imagesMode = content?.imagesMode === 'individual' ? 'individual' : 'carousel';
 	const video = String(content?.video ?? '').trim();
 	const videos = Array.isArray(content?.videos) ? content.videos : [];
+
+	// Merge per-slide captions into the parent feed message so they're visible
+	// under the carousel post in the Facebook feed (FB's feed UI ignores per-photo
+	// captions for multi-photo posts; they only appear when clicking the image).
+	function buildCarouselMessage() {
+		const caps = imageCaptions.map((/** @type {string} */ c) => String(c ?? '').trim()).filter(Boolean);
+		if (images.length > 1 && caps.length > 0) {
+			const slideLines = caps.map((/** @type {string} */ c, /** @type {number} */ i) => `${i + 1}. ${c}`).join('\n');
+			return message ? `${message}\n\n${slideLines}` : slideLines;
+		}
+		if (images.length === 1 && !message && caps[0]) return caps[0];
+		return message;
+	}
+	const feedMessage = buildCarouselMessage();
 
 	// Multiple videos → one post each (FB has no video-carousel API)
 	if (videos.length > 0) {
@@ -256,9 +277,33 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 		return data;
 	}
 
-	// Photo / carousel post
+	// Individual photos mode: each photo → its own published feed post with its own caption.
+	// This is the only way per-slide captions appear in the FB feed.
+	if (images.length > 1 && imagesMode === 'individual') {
+		const results = [];
+		for (let i = 0; i < images.length; i++) {
+			const img = images[i];
+			const cap = (imageCaptions[i] ?? '').trim() || message;
+			const up = await uploadFacebookPagePhoto({
+				pageId,
+				pageAccessToken,
+				url: img.startsWith('http') ? img : undefined,
+				dataUrl: img.startsWith('data:') ? img : undefined,
+				caption: cap || undefined,
+				published: true,
+			});
+			results.push({ index: i, id: String(up?.post_id ?? up?.id ?? ''), caption: cap });
+		}
+		return { kind: 'photos-individual', count: results.length, results };
+	}
+
+	// Photo / carousel post (one feed post)
 	if (images.length > 0) {
 		// Upload all images as unpublished, then attach to a feed post.
+		// IMPORTANT: do NOT send per-photo captions here — FB will sometimes
+		// use the first photo's caption as the post message, hiding our main
+		// feed message. Captions are instead merged into the feed message.
+		console.log(`[worker] carousel publishing ${images.length} image(s); feedMessage length=${feedMessage.length}`);
 		const mediaFbids = [];
 		for (let i = 0; i < images.length; i++) {
 			const img = images[i];
@@ -267,7 +312,6 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 				pageAccessToken,
 				url: img.startsWith('http') ? img : undefined,
 				dataUrl: img.startsWith('data:') ? img : undefined,
-				// caption only on the first image if we end up publishing photos directly (we don't)
 				caption: undefined,
 				published: false,
 			});
@@ -279,7 +323,7 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 		// Graph expects attached_media[0]={"media_fbid":"..."} style params
 		const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/feed`);
 		const body = new URLSearchParams({ access_token: pageAccessToken });
-		if (message) body.set('message', message);
+		if (feedMessage) body.set('message', feedMessage);
 		for (let i = 0; i < mediaFbids.length; i++) {
 			body.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: mediaFbids[i] }));
 		}
@@ -449,6 +493,8 @@ const worker = new Worker(
 			return;
 		}
 		console.log(`[worker] postId=${postId} provider=${post.connection_provider} acct=${post.connection_provider_account_id} status=${post.status}`);
+		const c = post.content ?? {};
+		console.log(`[worker]   content keys=${Object.keys(c).join(',')} message="${String(c.message ?? '').slice(0, 80)}" images=${Array.isArray(c.images) ? c.images.length : 0} imageCaptions=${Array.isArray(c.imageCaptions) ? c.imageCaptions.length : 0} imagesMode=${c.imagesMode ?? '(default)'}`);
 
 		// If cancelled/published already, no-op
 		if (post.status === 'cancelled' || post.status === 'published') return;
@@ -536,11 +582,31 @@ const worker = new Worker(
 		} catch (e) {
 			const err = /** @type {any} */ (e);
 			const msg = err?.message ?? String(err);
+
+			// Detect Meta OAuth / token-expired errors and flag the connection for reauth.
+			const lower = String(msg).toLowerCase();
+			const isAuthErr =
+				/oauth/.test(lower) && /(expired|invalid|revoked|session)/.test(lower);
+			let finalMsg = msg;
+			if (isAuthErr && claimed?.user_id && claimed?.connection_provider && claimed?.connection_provider_account_id) {
+				finalMsg = `Reconnect required: ${msg}`;
+				try {
+					await supabase
+						.from('social_connections')
+						.update({ needs_reauth: true, last_auth_error: msg })
+						.eq('user_id', claimed.user_id)
+						.eq('provider', claimed.connection_provider)
+						.eq('provider_account_id', claimed.connection_provider_account_id);
+				} catch (markErr) {
+					console.error('[worker] failed to flag connection for reauth:', markErr?.message ?? markErr);
+				}
+			}
+
 			await supabase
 				.from('scheduled_posts')
 				.update({
 					status: 'failed',
-					last_error: msg,
+					last_error: finalMsg,
 					attempt_count: (claimed.attempt_count ?? 0) + 1,
 				})
 				.eq('id', postId);

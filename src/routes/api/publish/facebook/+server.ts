@@ -1,9 +1,8 @@
 import { json } from '@sveltejs/kit';
-import { createClient } from '@supabase/supabase-js';
-import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { adminClient, requireUserId } from '$lib/server/auth';
 
 const META_GRAPH_VERSION = 'v20.0';
 
@@ -16,13 +15,17 @@ type VideoItem = {
 };
 
 type Body = {
-	userId: string;
 	pageProviderAccountId: string; // e.g. "fbpage:123..."
 	content: {
+		title?: string; // optional human-readable label for the calendar UI
 		message?: string;
 		link?: string;
 		images?: string[]; // http(s) URLs or data: URLs
-		imageCaptions?: string[]; // optional, same length as images (FB only renders the top-level message for carousels)
+		imageCaptions?: string[]; // optional, same length as images
+		// How to publish multiple images:
+		//   'carousel' (default) = one feed post with attached_media; captions are merged into the post message
+		//   'individual'         = N separate feed posts, each photo with its own message (this is what surfaces per-slide captions in the feed)
+		imagesMode?: 'carousel' | 'individual';
 		video?: string; // single video (http(s) URL or data: URL)
 		videos?: VideoItem[]; // multiple videos -> one FB video post each
 	};
@@ -105,34 +108,41 @@ function dataUrlToBlob(dataUrl: string): { mime: string; buf: Buffer } | null {
 	return { mime: m[1], buf: Buffer.from(m[2], 'base64') };
 }
 
-async function uploadPhoto(pageId: string, token: string, img: string) {
+async function uploadPhoto(pageId: string, token: string, img: string, caption?: string, published = false) {
 	const endpoint = `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/photos`;
+	const cap = (caption ?? '').trim();
+	const publishedStr = published ? 'true' : 'false';
 	if (img.startsWith('data:')) {
 		const blob = dataUrlToBlob(img);
 		if (!blob) throw new Error('Invalid data URL for photo');
 		const form = new FormData();
 		form.set('access_token', token);
-		form.set('published', 'false');
+		form.set('published', publishedStr);
+		if (cap) form.set(published ? 'message' : 'caption', cap);
 		form.set('source', new Blob([blob.buf], { type: blob.mime }), 'image');
 		const res = await fetch(endpoint, { method: 'POST', body: form });
 		const out = await res.json();
 		if (!res.ok) throw new Error(out?.error?.message ?? 'Facebook photo upload failed');
-		return String(out.id);
+		return String(out.post_id ?? out.id);
 	}
-	const body = new URLSearchParams({ access_token: token, published: 'false', url: img });
+	const params: Record<string, string> = { access_token: token, published: publishedStr, url: img };
+	if (cap) params[published ? 'message' : 'caption'] = cap;
 	const res = await fetch(endpoint, {
 		method: 'POST',
 		headers: { 'content-type': 'application/x-www-form-urlencoded' },
-		body,
+		body: new URLSearchParams(params),
 	});
 	const out = await res.json();
 	if (!res.ok) throw new Error(out?.error?.message ?? 'Facebook photo upload failed');
-	return String(out.id);
+	return String(out.post_id ?? out.id);
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-	if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
-		return json({ ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_KEY' }, { status: 500 });
+	let userId: string;
+	try {
+		userId = await requireUserId(request);
+	} catch (e: any) {
+		return json({ ok: false, error: e?.message ?? 'Unauthorized' }, { status: e?.status ?? 401 });
 	}
 
 	let body: Body;
@@ -142,15 +152,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ ok: false, error: 'Invalid JSON body' }, { status: 400 });
 	}
 
-	const userId = body.userId ?? '';
 	const acct = body.pageProviderAccountId ?? '';
 	const content = body.content ?? {};
 
-	if (!userId) return json({ ok: false, error: 'Missing userId' }, { status: 400 });
 	if (!acct.startsWith('fbpage:')) return json({ ok: false, error: 'pageProviderAccountId must start with "fbpage:"' }, { status: 400 });
 
 	const pageId = acct.slice('fbpage:'.length);
-	const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+	const supabase = adminClient();
 
 	const { data: conn, error: connErr } = await supabase
 		.from('social_connections')
@@ -168,19 +176,50 @@ export const POST: RequestHandler = async ({ request }) => {
 	const message = String(content?.message ?? '').trim();
 	const link = String(content?.link ?? '').trim();
 	const images = Array.isArray(content?.images) ? content.images.map(String).filter(Boolean) : [];
+	const imageCaptions = Array.isArray(content?.imageCaptions) ? content.imageCaptions.map((c: any) => String(c ?? '')) : [];
+	const imagesMode = content?.imagesMode === 'individual' ? 'individual' : 'carousel';
+
+	// Facebook only renders the parent `message` under a multi-photo carousel in the feed.
+	// So when mode = 'carousel' and the caller provided per-slide captions, merge them
+	// into the feed `message` so they're visible under the post.
+	function buildCarouselMessage() {
+		const caps = imageCaptions.map((c) => c.trim()).filter(Boolean);
+		if (images.length > 1 && caps.length > 0) {
+			const slideLines = caps.map((c, i) => `${i + 1}. ${c}`).join('\n');
+			return message ? `${message}\n\n${slideLines}` : slideLines;
+		}
+		if (images.length === 1 && !message && caps[0]) return caps[0];
+		return message;
+	}
+	const feedMessage = buildCarouselMessage();
 	const video = String(content?.video ?? '').trim();
 	const videos: VideoItem[] = Array.isArray(content?.videos) ? content.videos : [];
 
 	try {
-		// Carousel / single photo
+		// Individual photo mode: N separate feed posts, each with its own caption.
+		// This is the only way per-slide captions show up in the Facebook feed.
+		if (images.length > 0 && imagesMode === 'individual' && images.length > 1) {
+			const results: any[] = [];
+			for (let i = 0; i < images.length; i++) {
+				const cap = (imageCaptions[i] ?? '').trim() || message;
+				const id = await uploadPhoto(pageId, token, images[i], cap, /* publish */ true);
+				results.push({ index: i, id, caption: cap });
+			}
+			return json({ ok: true, kind: 'photos-individual', count: results.length, results });
+		}
+
+		// Carousel / single photo (one feed post)
 		if (images.length > 0) {
 			const mediaIds: string[] = [];
-			for (const img of images) {
-				mediaIds.push(await uploadPhoto(pageId, token, img));
+			for (let i = 0; i < images.length; i++) {
+				// IMPORTANT: do NOT send a per-photo caption on carousel uploads —
+				// Facebook sometimes overrides the parent feed `message` with the
+				// first photo's caption, making the main caption invisible.
+				mediaIds.push(await uploadPhoto(pageId, token, images[i]));
 			}
 			const feedUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/feed`;
 			const form = new URLSearchParams({ access_token: token });
-			if (message) form.set('message', message);
+			if (feedMessage) form.set('message', feedMessage);
 			mediaIds.forEach((id, i) => form.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: id })));
 			const res = await fetch(feedUrl, {
 				method: 'POST',

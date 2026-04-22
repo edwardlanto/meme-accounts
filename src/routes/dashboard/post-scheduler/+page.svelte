@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { supabase } from '$lib/supabase';
+	import { authFetch } from '$lib/authFetch';
 	import { ArrowLeft, Calendar, Plus, X, GripVertical } from 'lucide-svelte';
 
 	type ChannelId = 'x' | 'linkedin' | 'linkedinPage' | 'reddit' | 'instagramBusiness' | 'facebookPage' | 'threads' | 'youtube' | 'gmb' | 'tiktok' | 'pinterest';
 	type Channel = { id: ChannelId; label: string; accent: string; kind?: 'business' | 'page' | 'standalone'; icon: (active: boolean) => string };
 	type IgContentType = 'post' | 'reel' | 'carousel' | 'story';
-	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; images?: string[]; video?: string };
+	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; images?: string[]; imageCaptions?: string[]; video?: string; videoCaption?: string };
 	type ScheduledPostStatus = 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
 	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; startISO: string; durationMin: number; status: ScheduledPostStatus; lastError?: string | null };
 
@@ -231,21 +232,34 @@
 
 		// If we came from the Post-tests page after scheduling, point the user at the scheduled pill on the calendar.
 		if (params.get('from') === 'post-tests' && params.get('scheduled') === '1') {
-			// Jump the calendar to the most recently scheduled post and open its day/week.
-			const mostRecent = [...posts].sort(
-				(a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime(),
-			)[0];
-			if (mostRecent) {
-				const when = new Date(mostRecent.startISO);
+			const wantId = params.get('postId') ?? '';
+			// If we know the exact post id, make sure it's in `posts` (retry reload a couple times in case of replication lag).
+			let target = wantId ? posts.find((p) => p.id === wantId) : undefined;
+			for (let i = 0; i < 3 && wantId && !target; i++) {
+				await new Promise((r) => setTimeout(r, 400));
+				await loadScheduledPosts();
+				target = posts.find((p) => p.id === wantId);
+			}
+			// Fall back to newest scheduled row (by insertion order: last in `posts` after ascending sort isn't reliable; use max scheduled_at among status=scheduled).
+			if (!target) {
+				target = [...posts]
+					.filter((p) => p.status === 'scheduled')
+					.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())[0];
+			}
+			if (target) {
+				const when = new Date(target.startISO);
 				anchor = when;
+				// Scroll the calendar to the hour of the scheduled post so the pill is visible without scrolling.
+				await tick();
+				scrollCalendarToHour(when.getHours());
 				metaBanner = {
 					kind: 'success',
-					message: `Scheduled. Look on the calendar at ${when.toLocaleString()} — scheduled posts appear as pills (not draggable drafts).`,
+					message: `Scheduled for ${when.toLocaleString()}. Look for the violet “Scheduled” pill on the calendar below.`,
 				};
 			} else {
 				metaBanner = {
-					kind: 'success',
-					message: 'Scheduled. It should appear on the calendar at its scheduled time.',
+					kind: 'error',
+					message: 'Scheduled, but the post didn’t appear yet. Try reloading in a few seconds.',
 				};
 			}
 		}
@@ -364,12 +378,21 @@
 
 	function deriveTitle(content: any, provider: string, acct: string) {
 		const c = content ?? {};
-		return (
-			String(c.title ?? '').trim() ||
-			String(c.caption ?? '').trim() ||
-			String(c.message ?? '').trim() ||
-			(provider === 'meta' && acct.startsWith('fbpage:') ? 'Facebook Page post' : 'Instagram post')
-		).slice(0, 120);
+		const explicit = String(c.title ?? '').trim();
+		if (explicit) return explicit.slice(0, 120);
+
+		const msg = String(c.caption ?? c.message ?? '').trim();
+		const imgs = Array.isArray(c.images) ? c.images.length : 0;
+		const vids = Array.isArray(c.videos) ? c.videos.length : c.video ? 1 : 0;
+
+		let kind = '';
+		if (imgs > 1) kind = `Carousel (${imgs})`;
+		else if (imgs === 1) kind = 'Photo';
+		else if (vids > 1) kind = `Videos (${vids})`;
+		else if (vids === 1) kind = 'Video';
+		else kind = provider === 'meta' && acct.startsWith('fbpage:') ? 'FB text' : 'Post';
+
+		return (msg ? `${kind} — ${msg}` : kind).slice(0, 120);
 	}
 
 	async function loadRecentPosts() {
@@ -553,10 +576,20 @@
 
 	let view = $state<'day' | 'week' | 'month'>('week');
 	let anchor = $state(new Date());
+	let calendarScrollEl: HTMLDivElement | null = $state(null);
+	function scrollCalendarToHour(hr: number) {
+		if (!calendarScrollEl) return;
+		const HOUR_HEIGHT = 80; // must match h-20 in grid rows
+		const HEADER_HEIGHT = 56; // h-14 day header
+		const target = Math.max(0, HEADER_HEIGHT + (hr - 1) * HOUR_HEIGHT);
+		calendarScrollEl.scrollTo({ top: target, behavior: 'smooth' });
+	}
 	const weekStart = $derived(startOfWeek(anchor));
 	const weekDays = $derived(Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)));
-	const START_HOUR = 6;
-	const END_HOUR = 22;
+	// Calendar rows span a full 24h so scheduled/published posts never fall
+	// outside the visible range regardless of time of day.
+	const START_HOUR = 0;
+	const END_HOUR = 23;
 	const hours = $derived(Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i));
 
 	let drafts = $state<Draft[]>([]);
@@ -675,6 +708,7 @@
 			const message = `Scheduled from Social Poster — ${new Date().toLocaleString()}`;
 			if (draft.images?.length) {
 				content = { message, images: draft.images };
+				if (draft.imageCaptions?.length) content.imageCaptions = draft.imageCaptions;
 			} else if (draft.video) {
 				content = { message, video: draft.video };
 			} else {
@@ -687,7 +721,7 @@
 		}
 
 		try {
-			const res = await fetch('/api/scheduler/schedule', {
+			const res = await authFetch('/api/scheduler/schedule', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -730,10 +764,12 @@
 			try {
 				const message = `Posted from Social Poster — ${new Date().toLocaleString()}`;
 				const content: any = { message };
-				if (draft.images?.length) content.images = draft.images;
-				else if (draft.video) content.video = draft.video;
+				if (draft.images?.length) {
+					content.images = draft.images;
+					if (draft.imageCaptions?.length) content.imageCaptions = draft.imageCaptions;
+				} else if (draft.video) content.video = draft.video;
 
-				const res = await fetch('/api/publish/facebook', {
+				const res = await authFetch('/api/publish/facebook', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
@@ -800,7 +836,7 @@
 		posts = posts.filter((p) => p.id !== postId);
 
 		try {
-			const res = await fetch('/api/scheduler/cancel', {
+			const res = await authFetch('/api/scheduler/cancel', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ userId, postId }),
@@ -1039,6 +1075,19 @@
 										<p class="text-[11px] text-red-300/70 mt-1 whitespace-pre-wrap wrap-break-word">error: {r.last_error}</p>
 									{/if}
 								</div>
+								<button
+									type="button"
+									onclick={async () => {
+										const when = new Date(r.scheduled_at);
+										anchor = when;
+										await tick();
+										scrollCalendarToHour(when.getHours());
+									}}
+									class="shrink-0 px-2 py-1 rounded-lg text-[10px] font-mono bg-sky-500/15 border border-sky-500/25 text-sky-200 hover:bg-sky-500/20 transition-colors"
+									title="Jump calendar to this time"
+								>
+									show on calendar →
+								</button>
 							</div>
 						{/each}
 					</div>
@@ -1084,7 +1133,7 @@
 			</div>
 		{/if}
 
-		<div class="h-[calc(100%-73px)] overflow-auto">
+		<div bind:this={calendarScrollEl} class="h-[calc(100%-73px)] overflow-auto">
 			<div class="min-w-[980px]">
 				{#if loadingPosts}
 					<div class="px-6 py-6 text-sm font-body text-white/40">Loading scheduled posts…</div>
