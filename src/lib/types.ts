@@ -8,6 +8,17 @@ export interface Overlay {
 	h: number;    // height in template px
 }
 
+/** Draggable text overlay placed on top of a slide */
+export interface TextOverlay {
+	id: string;
+	text: string;
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+	style?: TextStyle;
+}
+
 /**
  * Per-element text style override. When a field is undefined the template's
  * default behavior is used (e.g. undefined fontSize → auto-sizing kicks in).

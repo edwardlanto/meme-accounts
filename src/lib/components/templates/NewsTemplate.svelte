@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
-	import type { Overlay, TextStyle, TextElementKind } from '$lib/types';
+	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 
@@ -48,6 +48,7 @@
 		/** Opacity of the bottom shadow (0–1). Default 1. */
 		shadowStrength?: number;
 		overlays?: Overlay[];
+		textOverlays?: TextOverlay[];
 		/** Per-element style overrides (font, size, weight, color, etc.) */
 		headlineStyle?: TextStyle;
 		sourceStyle?: TextStyle;
@@ -59,6 +60,7 @@
 		onCircle2Move?: (x: number, y: number) => void;
 		onCircle2ImageChange?: (src: string) => void;
 		onOverlaysChange?: (overlays: Overlay[]) => void;
+		onTextOverlaysChange?: (overlays: TextOverlay[]) => void;
 		/** Fired when the user clicks a stylable text element. */
 		onTextSelect?: (kind: TextElementKind, anchor: HTMLElement) => void;
 		/** Fired when the user selects a range of PLAIN text inside the headline.
@@ -97,6 +99,7 @@
 		shadowHeight = $bindable(75),
 		shadowStrength = $bindable(1),
 		overlays   = [],
+		textOverlays = [],
 		headlineStyle = {},
 		sourceStyle = {},
 		selectedText = null,
@@ -106,9 +109,82 @@
 		onCircle2Move,
 		onCircle2ImageChange,
 		onOverlaysChange,
+		onTextOverlaysChange,
 		onTextSelect,
 		onHeadlineRangeSelect,
 	}: Props = $props();
+
+	// ── Text overlays ─────────────────────────────────────────────────────
+	let activeTextOverlayId = $state<string | null>(null);
+	let textOverlayAction = $state<'drag' | 'resize' | null>(null);
+	let toLastMx = 0;
+	let toLastMy = 0;
+	let editingTextOverlayId = $state<string | null>(null);
+
+	function textOverlayDown(e: PointerEvent, id: string) {
+		if (!interactive) return;
+		activeTextOverlayId = id;
+		textOverlayAction = 'drag';
+		toLastMx = e.clientX;
+		toLastMy = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function textOverlayResizeDown(e: PointerEvent, id: string) {
+		if (!interactive) return;
+		activeTextOverlayId = id;
+		textOverlayAction = 'resize';
+		toLastMx = e.clientX;
+		toLastMy = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function textOverlayMove(e: PointerEvent, id: string) {
+		if (activeTextOverlayId !== id) return;
+		const dx = (e.clientX - toLastMx) / scale;
+		const dy = (e.clientY - toLastMy) / scale;
+		toLastMx = e.clientX;
+		toLastMy = e.clientY;
+
+		const ov = textOverlays.find((o) => o.id === id);
+		if (!ov) return;
+
+		if (textOverlayAction === 'drag') {
+			const nx = Math.max(0, Math.min(W - ov.w, ov.x + dx));
+			const ny = Math.max(0, Math.min(H - ov.h, ov.y + dy));
+			onTextOverlaysChange?.(textOverlays.map((o) => (o.id === id ? { ...o, x: nx, y: ny } : o)));
+		} else if (textOverlayAction === 'resize') {
+			const nw = Math.max(140, Math.min(W - ov.x, ov.w + dx));
+			const nh = Math.max(60, Math.min(H - ov.y, ov.h + dy));
+			onTextOverlaysChange?.(textOverlays.map((o) => (o.id === id ? { ...o, w: nw, h: nh } : o)));
+		}
+	}
+
+	function textOverlayUp() {
+		activeTextOverlayId = null;
+		textOverlayAction = null;
+	}
+
+	function textOverlayDelete(e: MouseEvent, id: string) {
+		e.stopPropagation();
+		onTextOverlaysChange?.(textOverlays.filter((o) => o.id !== id));
+		if (editingTextOverlayId === id) editingTextOverlayId = null;
+	}
+
+	function startTextOverlayEdit(e: MouseEvent, id: string) {
+		if (!interactive) return;
+		e.stopPropagation();
+		editingTextOverlayId = id;
+	}
+
+	function finishTextOverlayEdit(id: string) {
+		if (editingTextOverlayId !== id) return;
+		editingTextOverlayId = null;
+	}
 
 	// Preload Google Fonts used by the overrides so they're ready for render + export.
 	$effect(() => {
@@ -386,11 +462,24 @@
 	let circleResizeStartMx = 0;
 	let circleResizeStartMy = 0;
 	let circleFileEl = $state<HTMLInputElement | null>(null);
+	let circleBorderPickerEl = $state<HTMLInputElement | null>(null);
 
 	function openCirclePicker(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
 		circleFileEl?.click();
+	}
+
+	function openCircleBorderPicker(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		circleBorderPickerEl?.click();
+	}
+
+	function removeCircle(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		onCircleImageChange?.('');
 	}
 
 	function onCircleFile(e: Event) {
@@ -471,11 +560,24 @@
 	let circle2ResizeStartMx = 0;
 	let circle2ResizeStartMy = 0;
 	let circle2FileEl = $state<HTMLInputElement | null>(null);
+	let circle2BorderPickerEl = $state<HTMLInputElement | null>(null);
 
 	function openCircle2Picker(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
 		circle2FileEl?.click();
+	}
+
+	function openCircle2BorderPicker(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		circle2BorderPickerEl?.click();
+	}
+
+	function removeCircle2(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		onCircle2ImageChange?.('');
 	}
 
 	function onCircle2File(e: Event) {
@@ -848,6 +950,117 @@
 			</div>
 		{/each}
 
+		<!-- ── Text overlays ──────────────────────────────────────────────── -->
+		{#each textOverlays as t (t.id)}
+			{@const isEditing = editingTextOverlayId === t.id}
+			{@const css = t.style ?? {}}
+			<div
+				style="
+					position: absolute;
+					left: {t.x}px; top: {t.y}px;
+					width: {t.w}px; height: {t.h}px;
+					z-index: 35;
+					touch-action: none;
+					cursor: {interactive ? (activeTextOverlayId === t.id && textOverlayAction === 'drag' ? 'grabbing' : 'grab') : 'default'};
+				"
+				onpointerdown={(e) => textOverlayDown(e, t.id)}
+				onpointermove={(e) => textOverlayMove(e, t.id)}
+				onpointerup={textOverlayUp}
+				onpointercancel={textOverlayUp}
+				role="presentation"
+			>
+				{#if isEditing}
+					<div
+						style="
+							position: absolute; inset: 0;
+							background: rgba(0,0,0,0.35);
+							border: 1px solid rgba(255,255,255,0.25);
+							border-radius: 10px;
+							padding: 10px;
+							box-sizing: border-box;
+						"
+						onclick={(e) => e.stopPropagation()}
+					>
+						<HighlightEditor
+							value={t.text}
+							rows={3}
+							showToolbar={true}
+							defaultColor={highlightColor}
+							ariaLabel="Text overlay editor"
+							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
+							onBlur={() => finishTextOverlayEdit(t.id)}
+						/>
+					</div>
+				{:else}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						ondblclick={(e) => startTextOverlayEdit(e, t.id)}
+						style="
+							position: absolute; inset: 0;
+							padding: 10px;
+							box-sizing: border-box;
+							border-radius: 10px;
+							background: rgba(0,0,0,0.10);
+							border: 1px dashed rgba(255,255,255,0.25);
+							color: {css.color ?? '#FFFFFF'};
+							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
+							font-size: {css.fontSize ?? 42}px;
+							font-weight: {css.fontWeight ?? 700};
+							text-align: {css.align ?? 'left'};
+							line-height: {css.lineHeight ?? 1.15};
+							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							overflow: hidden;
+							user-select: none;
+						"
+					>
+						{@html segmentText(parseHighlightMarkup(t.text, highlightColor)).map((seg) => {
+							if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+							if (seg.patternImage) {
+								const s = patternStyle(seg.patternImage).replace(/\n/g,' ');
+								return `<span style="${s}">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+							}
+							if (seg.gradientFrom && seg.gradientTo) {
+								return `<span style="background: linear-gradient(90deg, ${seg.gradientFrom}, ${seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+							}
+							return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+						}).join('')}
+					</div>
+				{/if}
+
+				{#if interactive && !isEditing}
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onclick={(e) => textOverlayDelete(e, t.id)}
+						style="
+							position: absolute; top: -12px; right: -12px;
+							width: 26px; height: 26px; border-radius: 50%;
+							background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.35);
+							color: #fff; font-size: 12px;
+							display: flex; align-items: center; justify-content: center;
+							cursor: pointer;
+						"
+						title="Remove text"
+					>✕</button>
+
+					<div
+						style="
+							position: absolute; bottom: -10px; right: -10px;
+							width: 22px; height: 22px; border-radius: 6px;
+							background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.45);
+							cursor: nwse-resize;
+							display:flex;align-items:center;justify-content:center;
+							font-size: 11px; color: rgba(255,255,255,0.8);
+						"
+						onpointerdown={(e) => textOverlayResizeDown(e, t.id)}
+						onpointermove={(e) => textOverlayMove(e, t.id)}
+						onpointerup={textOverlayUp}
+						onpointercancel={textOverlayUp}
+						role="presentation"
+					>⤡</div>
+				{/if}
+			</div>
+		{/each}
+
 		<!-- ── Draggable circle badge ──────────────────────────────────────── -->
 		{#if circleImage}
 			<input
@@ -856,6 +1069,13 @@
 				accept="image/*"
 				style="display:none"
 				onchange={onCircleFile}
+			/>
+			<input
+				bind:this={circleBorderPickerEl}
+				type="color"
+				value={circleBorderColor}
+				style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px"
+				oninput={(e) => (circleBorderColor = (e.target as HTMLInputElement).value)}
 			/>
 			<div
 				style="
@@ -889,58 +1109,105 @@
 					"
 				/>
 				<!-- Drag indicator (only in interactive mode) -->
-				{#if interactive}
-					<div style="
+			{#if interactive}
+				<!-- Drag indicator (bottom-right) -->
+				<div style="
+					position: absolute;
+					bottom: -30px; right: -30px;
+					width: 48px; height: 48px;
+					border-radius: 50%;
+					background: rgba(0,0,0,0.75);
+					border: 2px solid rgba(255,255,255,0.3);
+					display: flex; align-items: center; justify-content: center;
+					font-size: 22px; color: rgba(255,255,255,0.8);
+					pointer-events: none;
+				">⠿</div>
+
+				<!-- Compact controls cluster (top-left) -->
+				<div
+					style="
 						position: absolute;
-						bottom: -2px; right: -2px;
-						width: 48px; height: 48px;
-						border-radius: 50%;
-						background: rgba(0,0,0,0.75);
-						border: 2px solid rgba(255,255,255,0.3);
-						display: flex; align-items: center; justify-content: center;
-						font-size: 22px; color: rgba(255,255,255,0.8);
-						pointer-events: none;
-					">⠿</div>
-					<!-- Edit button -->
+						top: -18px; left: -18px;
+						display: flex;
+						gap: 6px;
+						pointer-events: auto;
+					"
+					role="presentation"
+				>
 					<!-- svelte-ignore a11y_consider_explicit_label -->
 					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+						onclick={removeCircle}
+						style="
+							width: 34px; height: 34px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 14px; color: rgba(255,255,255,0.9);
+							cursor: pointer;
+							touch-action: none;
+						"
+						title="Remove circle"
+					>✕</button>
+
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={openCirclePicker}
 						style="
-							position: absolute;
-							bottom: -2px; right: 52px;
-							width: 48px; height: 48px;
-							border-radius: 50%;
-							background: rgba(0,0,0,0.75);
-							border: 2px solid rgba(255,255,255,0.3);
+							width: 34px; height: 34px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
-							font-size: 18px; color: rgba(255,255,255,0.85);
+							font-size: 14px; color: rgba(255,255,255,0.9);
 							cursor: pointer;
-							pointer-events: auto;
 							touch-action: none;
 						"
 						title="Edit circle image"
 					>✎</button>
-					<!-- Resize handle (drag corner) -->
-					<div
+
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+						onclick={openCircleBorderPicker}
 						style="
-							position: absolute;
-							right: -10px; bottom: -10px;
-							width: 26px; height: 26px;
-							border-radius: 8px;
-							background: rgba(0,0,0,0.85);
-							border: 2px solid rgba(255,255,255,0.45);
+							width: 34px; height: 34px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
-							font-size: 12px; color: rgba(255,255,255,0.85);
-							cursor: nwse-resize;
+							cursor: pointer;
 							touch-action: none;
 						"
-						onpointerdown={circleResizeDown}
-						onpointermove={circleResizeMove}
-						onpointerup={circleResizeUp}
-						onpointercancel={circleResizeUp}
-						role="presentation"
-					>⤡</div>
-				{/if}
+						title="Change border color"
+					>
+						<span style="width:14px;height:14px;border-radius:5px;border:2px solid rgba(255,255,255,0.35);background:{circleBorderColor};display:block;"></span>
+					</button>
+				</div>
+
+				<!-- Resize handle (bottom-center) -->
+				<div
+					style="
+						position: absolute;
+						bottom: -30px; left: 50%; transform: translateX(-50%);
+						width: 26px; height: 26px;
+						border-radius: 8px;
+						background: rgba(0,0,0,0.85);
+						border: 2px solid rgba(255,255,255,0.45);
+						display: flex; align-items: center; justify-content: center;
+						font-size: 12px; color: rgba(255,255,255,0.85);
+						cursor: nwse-resize;
+						touch-action: none;
+					"
+					onpointerdown={circleResizeDown}
+					onpointermove={circleResizeMove}
+					onpointerup={circleResizeUp}
+					onpointercancel={circleResizeUp}
+					role="presentation"
+				>⤡</div>
+			{/if}
 			</div>
 		{/if}
 
@@ -952,6 +1219,13 @@
 				accept="image/*"
 				style="display:none"
 				onchange={onCircle2File}
+			/>
+			<input
+				bind:this={circle2BorderPickerEl}
+				type="color"
+				value={circle2BorderColor}
+				style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px"
+				oninput={(e) => (circle2BorderColor = (e.target as HTMLInputElement).value)}
 			/>
 			<div
 				style="
@@ -984,56 +1258,105 @@
 						pointer-events: none;
 					"
 				/>
-				{#if interactive}
-					<div style="
+			{#if interactive}
+				<!-- Drag indicator (bottom-right) -->
+				<div style="
+					position: absolute;
+					bottom: -30px; right: -30px;
+					width: 48px; height: 48px;
+					border-radius: 50%;
+					background: rgba(0,0,0,0.75);
+					border: 2px solid rgba(255,255,255,0.3);
+					display: flex; align-items: center; justify-content: center;
+					font-size: 22px; color: rgba(255,255,255,0.8);
+					pointer-events: none;
+				">⠿</div>
+
+				<!-- Compact controls cluster (top-left) -->
+				<div
+					style="
 						position: absolute;
-						bottom: -2px; right: -2px;
-						width: 48px; height: 48px;
-						border-radius: 50%;
-						background: rgba(0,0,0,0.75);
-						border: 2px solid rgba(255,255,255,0.3);
-						display: flex; align-items: center; justify-content: center;
-						font-size: 22px; color: rgba(255,255,255,0.8);
-						pointer-events: none;
-					">⠿</div>
+						top: -18px; left: -18px;
+						display: flex;
+						gap: 6px;
+						pointer-events: auto;
+					"
+					role="presentation"
+				>
 					<!-- svelte-ignore a11y_consider_explicit_label -->
 					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+						onclick={removeCircle2}
+						style="
+							width: 34px; height: 34px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
+							display: flex; align-items: center; justify-content: center;
+							font-size: 14px; color: rgba(255,255,255,0.9);
+							cursor: pointer;
+							touch-action: none;
+						"
+						title="Remove circle"
+					>✕</button>
+
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={openCircle2Picker}
 						style="
-							position: absolute;
-							bottom: -2px; right: 52px;
-							width: 48px; height: 48px;
-							border-radius: 50%;
-							background: rgba(0,0,0,0.75);
-							border: 2px solid rgba(255,255,255,0.3);
+							width: 34px; height: 34px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
-							font-size: 18px; color: rgba(255,255,255,0.85);
+							font-size: 14px; color: rgba(255,255,255,0.9);
 							cursor: pointer;
-							pointer-events: auto;
 							touch-action: none;
 						"
 						title="Edit circle image"
 					>✎</button>
-					<div
+
+					<!-- svelte-ignore a11y_consider_explicit_label -->
+					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+						onclick={openCircle2BorderPicker}
 						style="
-							position: absolute;
-							right: -10px; bottom: -10px;
-							width: 26px; height: 26px;
-							border-radius: 8px;
-							background: rgba(0,0,0,0.85);
-							border: 2px solid rgba(255,255,255,0.45);
+							width: 34px; height: 34px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.78);
+							border: 2px solid rgba(255,255,255,0.24);
 							display: flex; align-items: center; justify-content: center;
-							font-size: 12px; color: rgba(255,255,255,0.85);
-							cursor: nwse-resize;
+							cursor: pointer;
 							touch-action: none;
 						"
-						onpointerdown={circle2ResizeDown}
-						onpointermove={circle2ResizeMove}
-						onpointerup={circle2ResizeUp}
-						onpointercancel={circle2ResizeUp}
-						role="presentation"
-					>⤡</div>
-				{/if}
+						title="Change border color"
+					>
+						<span style="width:14px;height:14px;border-radius:5px;border:2px solid rgba(255,255,255,0.35);background:{circle2BorderColor};display:block;"></span>
+					</button>
+				</div>
+
+				<!-- Resize handle (bottom-center) -->
+				<div
+					style="
+						position: absolute;
+						bottom: -30px; left: 50%; transform: translateX(-50%);
+						width: 26px; height: 26px;
+						border-radius: 8px;
+						background: rgba(0,0,0,0.85);
+						border: 2px solid rgba(255,255,255,0.45);
+						display: flex; align-items: center; justify-content: center;
+						font-size: 12px; color: rgba(255,255,255,0.85);
+						cursor: nwse-resize;
+						touch-action: none;
+					"
+					onpointerdown={circle2ResizeDown}
+					onpointermove={circle2ResizeMove}
+					onpointerup={circle2ResizeUp}
+					onpointercancel={circle2ResizeUp}
+					role="presentation"
+				>⤡</div>
+			{/if}
 			</div>
 		{/if}
 
@@ -1169,7 +1492,7 @@
 				>
 					<HighlightEditor
 						value={text}
-						rows={4}
+						rows={1}
 						onChange={(v) => onTextChange?.(v)}
 						onBlur={finishEdit}
 						onSelectionChange={(has, r) => {

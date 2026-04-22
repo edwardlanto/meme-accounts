@@ -12,7 +12,7 @@
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import { dndzone } from 'svelte-dnd-action';
 	import { applyHighlight, type HighlightSpec } from '$lib/highlight';
-	import type { Overlay, TextStyle, TextElementKind } from '$lib/types';
+	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
@@ -228,6 +228,29 @@
 		slideOverlays = slideOverlays.map((o, idx) => idx === i ? next : o);
 	}
 
+	// Text overlays — per slide (News template only)
+	let slideTextOverlays = $state<TextOverlay[][]>([]);
+	const activeTextOverlays = $derived(slideTextOverlays[activeSlide] ?? []);
+
+	function setSlideTextOverlays(i: number, next: TextOverlay[]) {
+		slideTextOverlays = slideTextOverlays.map((o, idx) => idx === i ? next : o);
+	}
+
+	function addTextOverlay() {
+		const idx = activeSlide;
+		const current = slideTextOverlays[idx] ?? [];
+		const next: TextOverlay = {
+			id: crypto.randomUUID(),
+			text: 'New text',
+			x: 80,
+			y: 260,
+			w: 520,
+			h: 160,
+			style: { color: '#FFFFFF', fontSize: 42, fontWeight: 800, align: 'left', lineHeight: 1.1 },
+		};
+		setSlideTextOverlays(idx, [...current, next]);
+	}
+
 	// ── Per-slide text styles (Canva-style toolbar) ──────────────────────
 	let headlineStyles = $state<TextStyle[]>([{}]);
 	let sourceStyles   = $state<TextStyle[]>([{}]);
@@ -288,6 +311,7 @@
 		showCutout       = pickOr(showCutout, false);
 		cuttingOut       = pickOr(cuttingOut, false);
 		slideOverlays    = pickOr(slideOverlays, [] as Overlay[]);
+		slideTextOverlays = pickOr(slideTextOverlays, [] as TextOverlay[]);
 		headlineStyles   = pickOr(headlineStyles, {} as TextStyle);
 		sourceStyles     = pickOr(sourceStyles, {} as TextStyle);
 		if (exportedSlides.length) exportedSlides = pickOr(exportedSlides, '');
@@ -311,6 +335,11 @@
 		if (newOrder.length !== prevIds.length) return;
 		reorderSlides(newOrder);
 	}
+
+	// While dragging thumbnails, we keep a temporary visual order here.
+	// This prevents "vanishing" items caused by reordering ids without reordering
+	// the underlying per-slide arrays mid-drag.
+	let filmstripIds = $state<string[]>([]);
 	const activeHeadlineStyle = $derived(headlineStyles[activeSlide] ?? {});
 	const activeSourceStyle   = $derived(sourceStyles[activeSlide] ?? {});
 
@@ -455,6 +484,7 @@
 		if (Array.isArray(s.backgroundImages)) backgroundImages = s.backgroundImages;
 		if (Array.isArray(s.backgroundVideos)) backgroundVideos = s.backgroundVideos; // note: blob: URLs won't survive reload
 		if (Array.isArray(s.slideOverlays)) slideOverlays = s.slideOverlays;
+		if (Array.isArray(s.slideTextOverlays)) slideTextOverlays = s.slideTextOverlays;
 		if (Array.isArray(s.headlineStyles)) headlineStyles = s.headlineStyles;
 		if (Array.isArray(s.sourceStyles)) sourceStyles = s.sourceStyles;
 		if (Array.isArray(s.slideIds)) slideIds = s.slideIds;
@@ -502,6 +532,7 @@
 			backgroundImages,
 			backgroundVideos,
 			slideOverlays,
+			slideTextOverlays,
 			headlineStyles,
 			sourceStyles,
 			slideIds,
@@ -667,6 +698,7 @@
 			backgroundVideos = ['']; // reset video
 			generatingImages = [false];
 			slideOverlays    = [[]];
+			slideTextOverlays = [[]];
 
 			// Generate supporting slide variants first (so we know all slide texts before imaging)
 			if (slideCount > 1) {
@@ -764,6 +796,7 @@
 		backgroundVideos = new Array(slides.length).fill('');
 		generatingImages = new Array(slides.length).fill(true);
 		slideOverlays    = new Array(slides.length).fill(null).map(() => []);
+		slideTextOverlays = new Array(slides.length).fill(null).map(() => []);
 		slideTemplates   = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
 		// Slide 0: use article image directly if available, otherwise Vertex
@@ -909,6 +942,16 @@
 		const reader = new FileReader();
 		reader.onload = () => { circle2Image = reader.result as string; showCircle2 = true; };
 		reader.readAsDataURL(file);
+	}
+
+	let circle2QuickInput = $state<HTMLInputElement | null>(null);
+	function openCircle2QuickPicker() {
+		circle2QuickInput?.click();
+	}
+
+	let overlayQuickInput = $state<HTMLInputElement | null>(null);
+	function openOverlayQuickPicker() {
+		overlayQuickInput?.click();
 	}
 
 	function handleOverlayUpload(e: Event) {
@@ -1565,121 +1608,7 @@
 							<Image size={11} /> Upload custom image
 							<input type="file" accept="image/*" class="sr-only" onchange={handleCircleUpload} />
 						</label>
-
-						<!-- Second circle badge -->
-						<div class="border-t border-white/[0.05] my-1.5"></div>
-						<div class="flex items-center justify-between">
-							<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Second Circle</label>
-							<button
-								type="button"
-								onclick={() => { showCircle2 = !showCircle2; if (!showCircle2) circle2Image = ''; }}
-								class="relative w-9 h-[18px] rounded-full transition-colors duration-200 flex-shrink-0
-									{showCircle2 ? 'bg-cyan-500/40' : 'bg-white/[0.08]'}"
-							>
-								<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full shadow transition-transform duration-200
-									{showCircle2 ? 'translate-x-[18px] bg-cyan-400' : 'translate-x-0 bg-white/30'}">
-								</span>
-							</button>
-						</div>
-
-						{#if showCircle2}
-							{#if circle2Image}
-								<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-									<img src={circle2Image} alt="circle badge 2" class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-white/10" />
-									<span class="text-[11px] font-mono text-white/30 flex-1">Custom</span>
-									<button onclick={() => circle2Image = ''} title="Remove" class="text-white/20 hover:text-red-400 transition-colors">
-										✕
-									</button>
-								</div>
-							{/if}
-
-							<div class="flex items-center gap-2.5 px-1">
-								<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7">Size</span>
-								<input
-									type="range"
-									min="128" max="512" step="8"
-									bind:value={circle2Size}
-									class="flex-1 h-1 rounded-full accent-cyan-400 cursor-pointer"
-								/>
-								<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-7 text-right">{circle2Size}</span>
-							</div>
-
-							<div class="flex items-center gap-2 px-1">
-								<span class="text-[10px] font-mono text-white/30 flex-shrink-0 w-12">Border</span>
-								<div class="flex items-center gap-1.5 flex-1">
-									{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981'] as c}
-										<button
-											type="button"
-											onclick={() => circle2BorderColor = c}
-											class="w-6 h-6 rounded-lg border-2 transition-all {circle2BorderColor === c ? 'border-violet-400 scale-110' : 'border-white/10 hover:scale-105'}"
-											style="background: {c};"
-											title="Set border {c}"
-										></button>
-									{/each}
-								</div>
-								<input
-									type="color"
-									bind:value={circle2BorderColor}
-									class="w-8 h-7 rounded-lg bg-transparent border border-white/10 cursor-pointer"
-									title="Custom border color"
-								/>
-							</div>
-
-							<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
-								<Image size={11} /> Upload second image
-								<input type="file" accept="image/*" class="sr-only" onchange={handleCircle2Upload} />
-							</label>
-						{/if}
 					</div>
-				{/if}
-			</div>
-
-			<!-- Divider -->
-			<div class="border-t border-white/[0.05] my-3"></div>
-
-			<!-- ── Image Overlays ─────────────────────────────────────────── -->
-			<div>
-				<div class="flex items-center justify-between mb-2">
-					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider flex items-center gap-1.5">
-						<Layers size={9} />Image Overlays
-					</label>
-					{#if activeOverlays.length > 0}
-						<span class="text-[10px] font-mono text-white/20">{activeOverlays.length} layer{activeOverlays.length !== 1 ? 's' : ''}</span>
-					{/if}
-				</div>
-
-				<!-- Upload button -->
-				<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/50 glass glass-hover border border-white/[0.08] hover:border-white/20 transition-all cursor-pointer w-full mb-2">
-					<Image size={11} /> Add Image (PNG / JPG / GIF)
-					<input type="file" accept="image/*" class="sr-only" onchange={handleOverlayUpload} />
-				</label>
-
-				<!-- Active overlays list -->
-				{#if activeOverlays.length > 0}
-					<div class="flex flex-col gap-1.5">
-						{#each activeOverlays as ov, i (ov.id)}
-							<div class="flex items-center gap-2 p-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-								<!-- Thumbnail -->
-								<img src={ov.src} alt="overlay {i+1}" class="w-8 h-8 rounded object-contain bg-white/[0.05] flex-shrink-0" />
-								<div class="flex-1 min-w-0">
-									<p class="text-[11px] font-mono text-white/50 truncate">Layer {i + 1}</p>
-									<p class="text-[10px] font-body text-white/25">{Math.round(ov.w)} × {Math.round(ov.h)}px</p>
-								</div>
-								<button
-									onclick={() => setSlideOverlays(activeSlide, activeOverlays.filter(o => o.id !== ov.id))}
-									class="text-white/20 hover:text-red-400 transition-colors flex-shrink-0 p-1"
-									title="Remove overlay"
-								>✕</button>
-							</div>
-						{/each}
-					</div>
-					<p class="text-[10px] font-body text-white/15 mt-1.5 leading-relaxed">
-						Drag to move · corner ⤡ to resize
-					</p>
-				{:else}
-					<p class="text-[10px] font-body text-white/20 leading-relaxed">
-						Upload a PNG logo, sticker, or watermark — drag it anywhere on the canvas.
-					</p>
 				{/if}
 			</div>
 
@@ -1730,8 +1659,9 @@
 		<!-- Slide indicator + nav arrows -->
 		<!-- Slide switcher removed (filmstrip below is the navigator) -->
 
-		<!-- Main preview -->
-		<div style="width: {PREVIEW_WIDTH}px; height: {CANVAS_H * previewScale}px;" class="relative">
+		<!-- Main preview + quick actions (next to canvas) -->
+		<div class="flex items-start gap-3">
+			<div style="width: {PREVIEW_WIDTH}px; height: {CANVAS_H * previewScale}px;" class="relative">
 			{#if generatingImages[activeSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
@@ -1776,6 +1706,7 @@
 					scale={previewScale}
 					interactive={true}
 					overlays={activeOverlays}
+					textOverlays={activeTextOverlays}
 					headlineStyle={activeHeadlineStyle}
 					sourceStyle={activeSourceStyle}
 					selectedText={selectedText}
@@ -1785,6 +1716,7 @@
 					onCircle2Move={(x, y) => { circle2X = x; circle2Y = y; }}
 					onCircle2ImageChange={(src) => { circle2Image = src; showCircle2 = true; }}
 					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -1827,18 +1759,72 @@
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{/if}
+			</div>
+
+			<!-- Quick actions column (News only) -->
+			{#if activeTemplate === 'news'}
+				<div class="flex flex-col gap-2 pt-1">
+					<input
+						bind:this={circle2QuickInput}
+						type="file"
+						accept="image/*"
+						class="sr-only"
+						onchange={handleCircle2Upload}
+					/>
+					<input
+						bind:this={overlayQuickInput}
+						type="file"
+						accept="image/*"
+						class="sr-only"
+						onchange={handleOverlayUpload}
+					/>
+
+					<button
+						type="button"
+						onclick={openCircle2QuickPicker}
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+						title="Add another circle"
+					>
+						<span class="text-lg leading-none">◯</span>
+					</button>
+
+					<button
+						type="button"
+						onclick={addTextOverlay}
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+						title="Add text layer"
+					>
+						<Type size={16} />
+					</button>
+
+					<button
+						type="button"
+						onclick={openOverlayQuickPicker}
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+						title="Add image overlay"
+					>
+						<Image size={16} />
+					</button>
+				</div>
+			{/if}
 		</div>
 		<!-- Slide filmstrip: drag to reorder -->
 		{#if slideCount > 1}
-			{@const dndItems = slideIds.map((id, i) => ({
-				id,
-				// Derive thumbnail data from the current arrays (already in slideIds order).
-				text: slides[i] ?? '',
-				img: backgroundImages[i] ?? '',
-				vid: backgroundVideos[i] ?? '',
-				music: slideMusic[i] ?? null,
-				loading: !!generatingImages[i],
-			}))}
+			{@const orderIds = filmstripIds.length === slideIds.length ? filmstripIds : slideIds}
+			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
+			{@const dndItems = orderIds.map((id) => {
+				const i = idToIndex.get(id) ?? 0;
+				return {
+					id,
+					slideIndex: i,
+					// Derive thumbnail data by id→index lookup (stable during drag).
+					text: slides[i] ?? '',
+					img: backgroundImages[i] ?? '',
+					vid: backgroundVideos[i] ?? '',
+					music: slideMusic[i] ?? null,
+					loading: !!generatingImages[i],
+				};
+			})}
 			<div
 				use:dndzone={{
 					items: dndItems,
@@ -1850,13 +1836,13 @@
 				onconsider={(e) => {
 					// Only update the visual order while dragging; don't reorder slide data yet
 					// (reordering arrays mid-drag can cause items to "vanish").
-					slideIds = (e.detail.items as any[]).map((it) => it.id as string);
+					filmstripIds = (e.detail.items as any[]).map((it) => it.id as string);
 				}}
 				onfinalize={(e) => {
 					const nextIds = (e.detail.items as any[]).map((it) => it.id as string);
-					// Ensure slideIds matches what DnD produced (in case finalize differs).
-					slideIds = nextIds;
 					reorderSlidesByIds(nextIds);
+					// Clear temp visual order so we fall back to slideIds (now reordered).
+					filmstripIds = [];
 				}}
 				class="no-scrollbar flex gap-2 overflow-x-auto max-w-full pb-1 px-1"
 			>
@@ -1868,9 +1854,9 @@
 						<div class="relative">
 							<button
 								type="button"
-								onclick={() => activeSlide = i}
+								onclick={() => activeSlide = item.slideIndex}
 								class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
-									{activeSlide === i ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
+									{activeSlide === item.slideIndex ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
 								aria-label={`Focus slide ${i + 1}`}
 							>
 								{#if item.loading}
@@ -1920,7 +1906,7 @@
 								<button
 									type="button"
 									data-music-toggle
-									onclick={(e) => { e.stopPropagation(); musicPickerForSlide = musicPickerForSlide === i ? null : i; }}
+									onclick={(e) => { e.stopPropagation(); musicPickerForSlide = musicPickerForSlide === item.slideIndex ? null : item.slideIndex; }}
 									title={hasMusic ? `Change music: ${item.music?.name}` : 'Add music — publishes as video'}
 									aria-label={`Choose music for slide ${i + 1}`}
 									class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center border transition-all
@@ -1933,7 +1919,7 @@
 							{/if}
 
 							<!-- Music picker popover -->
-							{#if musicPickerForSlide === i}
+							{#if musicPickerForSlide === item.slideIndex}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<div
@@ -1958,7 +1944,7 @@
 									</p>
 
 									<button
-										onclick={() => { slideMusic = slideMusic.map((m, idx) => idx === i ? null : m); musicPickerForSlide = null; }}
+									onclick={() => { slideMusic = slideMusic.map((m, idx) => idx === item.slideIndex ? null : m); musicPickerForSlide = null; }}
 										class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors
 											{hasMusic ? 'hover:bg-white/[0.05] text-white/50' : 'bg-white/[0.05] text-white'}"
 									>
@@ -1972,7 +1958,7 @@
 										{#each MUSIC_LIBRARY as track (track.id)}
 											{@const selected = item.music?.id === track.id}
 											<button
-												onclick={() => { slideMusic = slideMusic.map((m, idx) => idx === i ? track : m); musicPickerForSlide = null; }}
+												onclick={() => { slideMusic = slideMusic.map((m, idx) => idx === item.slideIndex ? track : m); musicPickerForSlide = null; }}
 												class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors
 													{selected ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30' : 'hover:bg-white/[0.05] text-white/70 border border-transparent'}"
 											>
@@ -1986,7 +1972,7 @@
 								</div>
 							{/if}
 						</div>
-						<span class="text-[9px] font-mono flex items-center gap-1 {activeSlide === i ? 'text-violet-400' : 'text-white/20'}">
+						<span class="text-[9px] font-mono flex items-center gap-1 {activeSlide === item.slideIndex ? 'text-violet-400' : 'text-white/20'}">
 							{i === 0 ? 'Hook' : `Slide ${i + 1}`}
 							{#if isVideo}
 								<Play size={7} class="text-cyan-400/60" fill="currentColor" />

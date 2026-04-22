@@ -419,7 +419,10 @@
 			onblur={() => onBlur?.()}
 			class="hl-editor w-full outline-none whitespace-pre-wrap break-words"
 			style="
-				min-height: {rows * 1.5}em;
+				/* Use line-based min-height so large font sizes don't create huge empty gaps. */
+				min-height: {Math.max(1, rows)}lh;
+				line-height: 1.12;
+				padding: 0;
 				{fontFamily ? `font-family: ${fontFamily};` : ''}
 				{fontSize ? `font-size: ${fontSize}px;` : ''}
 				{uppercase ? 'text-transform: uppercase;' : ''}
