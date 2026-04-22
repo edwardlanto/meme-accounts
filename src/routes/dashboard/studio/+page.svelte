@@ -10,7 +10,10 @@
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
-	import { dndzone } from 'svelte-dnd-action';
+	import { DragDropProvider, DragOverlay } from '@dnd-kit-svelte/svelte';
+	import { useSortable, isSortable } from '@dnd-kit-svelte/svelte/sortable';
+	import { RestrictToHorizontalAxis } from '@dnd-kit-svelte/svelte/modifiers';
+	import { move } from '@dnd-kit/helpers';
 	import { applyHighlight, type HighlightSpec } from '$lib/highlight';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
@@ -143,13 +146,19 @@
 	const activeShowCutout = $derived(showCutout[activeSlide] ?? false);
 	const activeCutting = $derived(cuttingOut[activeSlide] ?? false);
 	let showCircle = $state(true);       // toggle — default ON
-	let circleImage = $state('');
+	// Circle images are per-slide (so each slide can have its own badge photo).
+	let circleImages = $state<string[]>([]);
 	let circleBorderColor = $state('#FFFFFF');
-	let showCircle2 = $state(false);
-	let circle2Image = $state('');
+	// Optional second circle is also per-slide.
+	let showCircle2BySlide = $state<boolean[]>([]);
+	let circle2Images = $state<string[]>([]);
 	let circle2BorderColor = $state('#FFFFFF');
 	let generatingCircle = $state(false);
 	let bgError = $state('');
+
+	const activeCircleImage = $derived(circleImages[activeSlide] ?? '');
+	const activeCircle2Image = $derived(circle2Images[activeSlide] ?? '');
+	const activeShowCircle2 = $derived(showCircle2BySlide[activeSlide] ?? false);
 
 	// Convenience: active slide's image / video
 	const backgroundImage = $derived(backgroundImages[activeSlide] ?? '');
@@ -255,7 +264,7 @@
 	let headlineStyles = $state<TextStyle[]>([{}]);
 	let sourceStyles   = $state<TextStyle[]>([{}]);
 
-	// Stable ids per slide, used by svelte-dnd-action as keys during reorder.
+	// Stable ids per slide, used as keys for filmstrip reordering.
 	let _slideUid = 0;
 	function newSlideId() { return `s_${++_slideUid}_${Date.now().toString(36)}`; }
 	let slideIds = $state<string[]>([newSlideId()]);
@@ -339,32 +348,48 @@
 		reorderSlides(newOrder);
 	}
 
-	function normalizeDragIds(rawItems: any[]): string[] {
-		// svelte-dnd-action injects transient "shadow" items while dragging.
-		// We always want to render a full, stable list of real slide ids.
-		const allowed = new Set(slideIds);
-		const seen = new Set<string>();
-		const picked: string[] = [];
-		for (const it of rawItems ?? []) {
-			const id = typeof it?.id === 'string' ? (it.id as string) : null;
-			if (!id) continue;
-			if (it?.shadow) continue;
-			if (!allowed.has(id)) continue;
-			if (seen.has(id)) continue;
-			seen.add(id);
-			picked.push(id);
-		}
-		// Append any missing ids in their original order so length is preserved.
-		for (const id of slideIds) {
-			if (!seen.has(id)) picked.push(id);
-		}
-		return picked;
+	// Filmstrip DnD (dnd-kit). Keep a temporary visual order while dragging
+	// so items animate smoothly out of the way (like the reference demo).
+	let filmstripIds = $state<string[]>([]);
+	let filmstripDraggingId = $state<string | null>(null);
+
+	function filmstripOver(e: any) {
+		// Live visual reordering while dragging.
+		const base = filmstripIds.length ? filmstripIds : slideIds;
+		const next = move(base, e);
+		// `move()` returns the same array if nothing changes.
+		if (next !== base) filmstripIds = next;
 	}
 
-	// While dragging thumbnails, we keep a temporary visual order here.
-	// This prevents "vanishing" items caused by reordering ids without reordering
-	// the underlying per-slide arrays mid-drag.
-	let filmstripIds = $state<string[]>([]);
+	function endFilmstripDrag(e: any) {
+		const canceled = !!e?.canceled;
+		if (canceled) {
+			filmstripDraggingId = null;
+			filmstripIds = [];
+			return;
+		}
+		const nextIds = move(slideIds, e);
+		reorderSlidesByIds(nextIds);
+		filmstripDraggingId = null;
+		filmstripIds = [];
+	}
+
+	// dnd-kit-svelte's useSortable currently instantiates entities with register:false.
+	// We register them when the DOM node mounts so they become draggable/droppable.
+	function registerFilmstripSortable(node: HTMLElement, api: ReturnType<typeof useSortable>) {
+		let dispose: any;
+		queueMicrotask(() => {
+			try {
+				dispose = api?.sortable?.register?.();
+			} catch {
+				// If registration isn't available (or already registered), ignore.
+			}
+		});
+		return () => {
+			try { dispose?.(); } catch {}
+			try { api?.sortable?.unregister?.(); } catch {}
+		};
+	}
 	const activeHeadlineStyle = $derived(headlineStyles[activeSlide] ?? {});
 	const activeSourceStyle   = $derived(sourceStyles[activeSlide] ?? {});
 
@@ -518,10 +543,25 @@
 		if (Array.isArray(s.slideMusic)) slideMusic = s.slideMusic;
 
 		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
-		if (typeof s.circleImage === 'string') circleImage = s.circleImage;
+		// Back-compat: older drafts stored a single circleImage; newer ones store per-slide arrays.
+		if (Array.isArray(s.circleImages)) circleImages = s.circleImages;
+		else if (typeof s.circleImage === 'string') {
+			const first = s.circleImage;
+			const n = Array.isArray(s.slides) ? s.slides.length : slides.length;
+			circleImages = Array.from({ length: n }, (_, i) => (i === 0 ? first : ''));
+		}
 		if (typeof s.circleBorderColor === 'string') circleBorderColor = s.circleBorderColor;
-		if (typeof s.showCircle2 === 'boolean') showCircle2 = s.showCircle2;
-		if (typeof s.circle2Image === 'string') circle2Image = s.circle2Image;
+		if (Array.isArray(s.circle2Images)) circle2Images = s.circle2Images;
+		else if (typeof s.circle2Image === 'string') {
+			const first = s.circle2Image;
+			const n = Array.isArray(s.slides) ? s.slides.length : slides.length;
+			circle2Images = Array.from({ length: n }, (_, i) => (i === 0 ? first : ''));
+		}
+		if (Array.isArray(s.showCircle2BySlide)) showCircle2BySlide = s.showCircle2BySlide;
+		else if (typeof s.showCircle2 === 'boolean') {
+			const n = Array.isArray(s.slides) ? s.slides.length : slides.length;
+			showCircle2BySlide = Array.from({ length: n }, (_, i) => (i === 0 ? s.showCircle2 : false));
+		}
 		if (typeof s.circle2BorderColor === 'string') circle2BorderColor = s.circle2BorderColor;
 		if (typeof s.circleX === 'number') circleX = s.circleX;
 		if (typeof s.circleY === 'number') circleY = s.circleY;
@@ -565,10 +605,10 @@
 			showCutout,
 			slideMusic,
 			showCircle,
-			circleImage,
+			circleImages,
 			circleBorderColor,
-			showCircle2,
-			circle2Image,
+			showCircle2BySlide,
+			circle2Images,
 			circle2BorderColor,
 			circleX,
 			circleY,
@@ -628,6 +668,9 @@
 		userId = user.id;
 		await loadLatestDraft();
 		draftLoaded = true;
+
+		// Ensure the primary circle badge starts AI-generated.
+		if (showCircle && !activeCircleImage) void generateCircleImage(activeSlide);
 	});
 
 	// ── Categories ────────────────────────────────────────────────────────
@@ -664,6 +707,10 @@
 		circleX    = 772;
 		circleY    = 52;
 		circleSize = 256;
+		// Reset per-slide circle images for the new story.
+		circleImages = [];
+		circle2Images = [];
+		showCircle2BySlide = [];
 		bgOffsetX  = 50;
 		bgOffsetY  = 0;
 
@@ -900,6 +947,15 @@
 		if (cuttingOut.length !== n) {
 			cuttingOut = Array.from({ length: n }, (_, i) => cuttingOut[i] ?? false);
 		}
+		if (circleImages.length !== n) {
+			circleImages = Array.from({ length: n }, (_, i) => circleImages[i] ?? '');
+		}
+		if (circle2Images.length !== n) {
+			circle2Images = Array.from({ length: n }, (_, i) => circle2Images[i] ?? '');
+		}
+		if (showCircle2BySlide.length !== n) {
+			showCircle2BySlide = Array.from({ length: n }, (_, i) => showCircle2BySlide[i] ?? false);
+		}
 	});
 
 	// Clear toolbar selection when user switches slides or template.
@@ -917,7 +973,7 @@
 	});
 
 	// ── Generate circle image via Vertex ─────────────────────────────────
-	async function generateCircleImage() {
+	async function generateCircleImage(slideIdx: number = activeSlide) {
 		generatingCircle = true;
 		try {
 			const context = articleTitle || overlayText.replace(/\[\[|\]\]/g, '');
@@ -928,7 +984,9 @@
 				body: JSON.stringify({ prompt, aspect: '1:1' }),
 			});
 			const data = await res.json();
-			if (data.dataUrl) circleImage = data.dataUrl;
+			if (data.dataUrl) {
+				circleImages = circleImages.map((v, i) => (i === slideIdx ? data.dataUrl : v));
+			}
 		} catch { /* ignore */ }
 		generatingCircle = false;
 	}
@@ -970,11 +1028,11 @@
 			const data = await res.json();
 			if (data.dataUrl) {
 				if (which === 1) {
-					circleImage = data.dataUrl;
+					circleImages = circleImages.map((v, i) => (i === activeSlide ? data.dataUrl : v));
 					showCircle = true;
 				} else {
-					circle2Image = data.dataUrl;
-					showCircle2 = true;
+					circle2Images = circle2Images.map((v, i) => (i === activeSlide ? data.dataUrl : v));
+					showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === activeSlide ? true : v));
 				}
 			}
 		} catch {
@@ -1010,7 +1068,8 @@
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		const reader = new FileReader();
-		reader.onload = () => { circleImage = reader.result as string; };
+		const idx = activeSlide;
+		reader.onload = () => { circleImages = circleImages.map((v, i) => (i === idx ? (reader.result as string) : v)); };
 		reader.readAsDataURL(file);
 	}
 
@@ -1018,7 +1077,11 @@
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		const reader = new FileReader();
-		reader.onload = () => { circle2Image = reader.result as string; showCircle2 = true; };
+		const idx = activeSlide;
+		reader.onload = () => {
+			circle2Images = circle2Images.map((v, i) => (i === idx ? (reader.result as string) : v));
+			showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === idx ? true : v));
+		};
 		reader.readAsDataURL(file);
 	}
 
@@ -1682,9 +1745,9 @@
 					backgroundVideo={backgroundVideo}
 					subjectCutout={activeCutout}
 					showSubjectCutout={activeShowCutout}
-					circleImage={showCircle ? circleImage : ''}
-					showCircle2={showCircle2}
-					circle2Image={showCircle2 ? circle2Image : ''}
+					circleImage={showCircle ? activeCircleImage : ''}
+					showCircle2={activeShowCircle2}
+					circle2Image={activeShowCircle2 ? activeCircle2Image : ''}
 					text={overlayText}
 					source={source}
 					highlightColor={highlightColor}
@@ -1700,10 +1763,13 @@
 					selectedText={selectedText}
 					onTextChange={(t) => setActiveSlideText(t)}
 					onCircleMove={(x, y) => { circleX = x; circleY = y; }}
-					onCircleImageChange={(src) => { circleImage = src; showCircle = true; }}
+					onCircleImageChange={(src) => { circleImages = circleImages.map((v, i) => (i === activeSlide ? src : v)); showCircle = true; }}
 					onCircleAIClick={() => generateCircleFromPrompt(1)}
 					onCircle2Move={(x, y) => { circle2X = x; circle2Y = y; }}
-					onCircle2ImageChange={(src) => { circle2Image = src; showCircle2 = src ? true : false; }}
+					onCircle2ImageChange={(src) => {
+						circle2Images = circle2Images.map((v, i) => (i === activeSlide ? src : v));
+						showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === activeSlide ? !!src : v));
+					}}
 					onCircle2AIClick={() => generateCircleFromPrompt(2)}
 					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
 					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
@@ -1800,7 +1866,7 @@
 		</div>
 		<!-- Slide filmstrip: drag to reorder -->
 		{#if slideCount > 1}
-			{@const orderIds = filmstripIds.length === slideIds.length ? filmstripIds : slideIds}
+			{@const orderIds = filmstripIds.length ? filmstripIds : slideIds}
 			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
 			{@const dndItems = orderIds.map((id) => {
 				const i = idToIndex.get(id) ?? 0;
@@ -1815,40 +1881,40 @@
 					loading: !!generatingImages[i],
 				};
 			})}
-			<div
-				use:dndzone={{
-					items: dndItems,
-					flipDurationMs: 220,
-					dropTargetStyle: {},
-					type: 'slides',
-					dragDisabled: false,
-				}}
-				onconsider={(e) => {
-					// Only update the visual order while dragging; don't reorder slide data yet
-					// (reordering arrays mid-drag can cause items to "vanish").
-					filmstripIds = normalizeDragIds(e.detail.items as any[]);
-				}}
-				onfinalize={(e) => {
-					const nextIds = normalizeDragIds(e.detail.items as any[]);
-					reorderSlidesByIds(nextIds);
-					// Clear temp visual order so we fall back to slideIds (now reordered).
-					filmstripIds = [];
-				}}
-				class="no-scrollbar flex gap-2 overflow-x-auto max-w-full pb-1 px-1"
+			<DragDropProvider
+				modifiers={[RestrictToHorizontalAxis]}
+				onDragStart={(e) => { filmstripDraggingId = String(e?.operation?.source?.id ?? ''); if (!filmstripDraggingId) filmstripDraggingId = null; }}
+				onDragOver={filmstripOver}
+				onDragEnd={endFilmstripDrag}
 			>
+				<div class="no-scrollbar flex gap-2 overflow-x-auto max-w-full pb-1 px-1">
 				{#each dndItems as item, i (item.id)}
 					{@const isPlaceholder = !item.text}
 					{@const hasMusic = !!item.music}
 					{@const isVideo = !!item.vid || hasMusic}
-					<div class="flex-shrink-0 flex flex-col items-center gap-1 group cursor-grab active:cursor-grabbing">
-						<div class="relative">
-							<button
-								type="button"
-								onclick={() => activeSlide = item.slideIndex}
-								class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
-									{activeSlide === item.slideIndex ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
-								aria-label={`Focus slide ${i + 1}`}
-							>
+					{@const sortable = useSortable({
+						id: item.id,
+						get index() { return i; },
+						transition: { duration: 300, easing: 'cubic-bezier(0.25, 1, 0.5, 1)', idle: true },
+					})}
+					<div
+						{@attach sortable.ref}
+						{@attach sortable.handleRef}
+						use:registerFilmstripSortable={sortable}
+						class="flex-shrink-0 flex flex-col items-center gap-1 group cursor-grab active:cursor-grabbing"
+						style="
+							opacity: {sortable.isDragging.current ? 0.65 : 1};
+							touch-action: none;
+						"
+					>
+						<button
+							type="button"
+							onclick={() => activeSlide = item.slideIndex}
+							class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
+								{activeSlide === item.slideIndex ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
+							aria-label={`Focus slide ${i + 1}`}
+							style="touch-action: none;"
+						>
 								{#if item.loading}
 									<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
 										<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
@@ -1887,7 +1953,7 @@
 										{/if}
 									</div>
 								{/if}
-							</button>
+						</button>
 
 							<!-- Flame (burn-to-video) button. Adds/changes music and
 							     marks the slide as a video on publish. Hidden until
@@ -1961,7 +2027,6 @@
 									</div>
 								</div>
 							{/if}
-						</div>
 						<span class="text-[9px] font-mono flex items-center gap-1 {activeSlide === item.slideIndex ? 'text-violet-400' : 'text-white/20'}">
 							{i === 0 ? 'Hook' : `Slide ${i + 1}`}
 							{#if isVideo}
@@ -1970,7 +2035,50 @@
 						</span>
 					</div>
 				{/each}
-			</div>
+				</div>
+
+				<!-- Drag overlay: makes the dragged item feel smooth & "attached" -->
+				<DragOverlay>
+					{#if filmstripDraggingId}
+						{@const di = dndItems.find((x) => x.id === filmstripDraggingId)}
+						{#if di}
+							<div class="flex flex-col items-center gap-1">
+								<div class="relative">
+									<div
+										class="w-14 h-[70px] rounded-lg overflow-hidden border-2 border-white/15 bg-[#111] relative"
+										style="box-shadow: 0 20px 60px rgba(0,0,0,0.55);"
+									>
+										{#if di.loading}
+											<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
+												<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
+											</div>
+										{:else if !di.text}
+											<div class="absolute inset-0 flex items-center justify-center text-white/15">
+												<span class="text-[10px] font-mono">…</span>
+											</div>
+										{:else if di.vid}
+											<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
+												<Play size={14} class="text-cyan-400 opacity-80" fill="currentColor" />
+											</div>
+										{:else if di.img}
+											<img src={di.img} alt="" class="w-full h-full object-cover opacity-80" draggable="false" />
+										{/if}
+
+										{#if di.text}
+											<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
+												<p class="text-white leading-tight line-clamp-3"
+													style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
+													{di.text.replace(/\[\[|\]\]/g, '')}
+												</p>
+											</div>
+										{/if}
+									</div>
+								</div>
+							</div>
+						{/if}
+					{/if}
+				</DragOverlay>
+			</DragDropProvider>
 			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder · Click <Flame size={9} class="inline text-orange-400/70" /> to burn music and publish as video</p>
 		{/if}
 	</div>

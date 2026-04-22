@@ -3,6 +3,7 @@
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
+	import { Trash2, MoveDiagonal2 } from 'lucide-svelte';
 
 	interface Props {
 		// Canvas size (template pixels). Default is IG portrait 4:5.
@@ -462,6 +463,7 @@
 	// ── Circle drag ────────────────────────────────────────────────────────
 	let dragging = $state(false);
 	let resizingCircle = $state(false);
+	let hoveringCircle = $state(false);
 	let lastMx = 0;
 	let lastMy = 0;
 	let circleStartSize = 0;
@@ -518,8 +520,13 @@
 		const dy = (e.clientY - lastMy) / scale;
 		lastMx = e.clientX;
 		lastMy = e.clientY;
-		const nx = Math.max(0, Math.min(W - circleSize, circleX + dx));
-		const ny = Math.max(0, Math.min(H - circleSize, circleY + dy));
+		// Allow oversize circles (circleSize may exceed W/H).
+		const minX = Math.min(0, W - circleSize);
+		const maxX = Math.max(0, W - circleSize);
+		const minY = Math.min(0, H - circleSize);
+		const maxY = Math.max(0, H - circleSize);
+		const nx = Math.max(minX, Math.min(maxX, circleX + dx));
+		const ny = Math.max(minY, Math.min(maxY, circleY + dy));
 		circleX = nx;
 		circleY = ny;
 		onCircleMove?.(nx, ny);
@@ -545,11 +552,12 @@
 		const dx = (e.clientX - circleResizeStartMx) / scale;
 		const dy = (e.clientY - circleResizeStartMy) / scale;
 		const delta = Math.max(dx, dy);
-		const nextSize = Math.round(Math.max(128, Math.min(512, circleStartSize + delta)));
-		// Keep circle in bounds as it grows/shrinks
+		// No max: allow circles as large as the user wants.
+		const nextSize = Math.round(Math.max(64, circleStartSize + delta));
 		circleSize = nextSize;
-		circleX = Math.max(0, Math.min(W - circleSize, circleX));
-		circleY = Math.max(0, Math.min(H - circleSize, circleY));
+		// Keep the circle within a sensible draggable range even when oversized.
+		circleX = Math.max(Math.min(0, W - circleSize), Math.min(Math.max(0, W - circleSize), circleX));
+		circleY = Math.max(Math.min(0, H - circleSize), Math.min(Math.max(0, H - circleSize), circleY));
 		onCircleMove?.(circleX, circleY);
 	}
 
@@ -560,6 +568,7 @@
 	// ── Second circle drag ────────────────────────────────────────────────
 	let dragging2 = $state(false);
 	let resizingCircle2 = $state(false);
+	let hoveringCircle2 = $state(false);
 	let lastMx2 = 0;
 	let lastMy2 = 0;
 	let circle2StartSize = 0;
@@ -616,8 +625,13 @@
 		const dy = (e.clientY - lastMy2) / scale;
 		lastMx2 = e.clientX;
 		lastMy2 = e.clientY;
-		const nx = Math.max(0, Math.min(W - circle2Size, circle2X + dx));
-		const ny = Math.max(0, Math.min(H - circle2Size, circle2Y + dy));
+		// Allow oversize circles (circle2Size may exceed W/H).
+		const minX = Math.min(0, W - circle2Size);
+		const maxX = Math.max(0, W - circle2Size);
+		const minY = Math.min(0, H - circle2Size);
+		const maxY = Math.max(0, H - circle2Size);
+		const nx = Math.max(minX, Math.min(maxX, circle2X + dx));
+		const ny = Math.max(minY, Math.min(maxY, circle2Y + dy));
 		circle2X = nx;
 		circle2Y = ny;
 		onCircle2Move?.(nx, ny);
@@ -643,10 +657,11 @@
 		const dx = (e.clientX - circle2ResizeStartMx) / scale;
 		const dy = (e.clientY - circle2ResizeStartMy) / scale;
 		const delta = Math.max(dx, dy);
-		const nextSize = Math.round(Math.max(128, Math.min(512, circle2StartSize + delta)));
+		// No max: allow circles as large as the user wants.
+		const nextSize = Math.round(Math.max(64, circle2StartSize + delta));
 		circle2Size = nextSize;
-		circle2X = Math.max(0, Math.min(W - circle2Size, circle2X));
-		circle2Y = Math.max(0, Math.min(H - circle2Size, circle2Y));
+		circle2X = Math.max(Math.min(0, W - circle2Size), Math.min(Math.max(0, W - circle2Size), circle2X));
+		circle2Y = Math.max(Math.min(0, H - circle2Size), Math.min(Math.max(0, H - circle2Size), circle2Y));
 		onCircle2Move?.(circle2X, circle2Y);
 	}
 
@@ -918,16 +933,19 @@
 					<!-- Delete button — top-right corner -->
 					<!-- svelte-ignore a11y_consider_explicit_label -->
 					<button
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={(e) => overlayDelete(e, overlay.id)}
 						style="
 							position: absolute; top: -14px; right: -14px;
-							width: 28px; height: 28px; border-radius: 50%;
+							width: 36px; height: 36px; border-radius: 50%;
 							background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.4);
-							color: #fff; font-size: 13px; line-height: 1;
+							color: #fff;
 							display: flex; align-items: center; justify-content: center;
 							cursor: pointer; z-index: 1; touch-action: none;
 						"
-					>✕</button>
+						title="Remove overlay"
+						aria-label="Remove overlay"
+					><Trash2 size={18} /></button>
 
 					<!-- Resize handle — bottom-right corner -->
 					<div
@@ -1104,6 +1122,8 @@
 				onpointermove={circlePointerMove}
 				onpointerup={circlePointerUp}
 				onpointercancel={circlePointerUp}
+				onmouseenter={() => hoveringCircle = true}
+				onmouseleave={() => hoveringCircle = false}
 				role="presentation"
 			>
 				{#if circleImage}
@@ -1132,120 +1152,85 @@
 				{/if}
 				<!-- Drag indicator (only in interactive mode) -->
 			{#if interactive}
-				<!-- Drag indicator (bottom-right) -->
-				<div style="
-					position: absolute;
-					bottom: -38px; right: -38px;
-					width: 60px; height: 60px;
-					border-radius: 50%;
-					background: rgba(0,0,0,0.75);
-					border: 2px solid rgba(255,255,255,0.3);
-					display: flex; align-items: center; justify-content: center;
-					font-size: 28px; color: rgba(255,255,255,0.8);
-					pointer-events: none;
-				">⠿</div>
+				{@const showCircleTools = hoveringCircle || dragging || resizingCircle}
 
-				<!-- Compact controls cluster (top-left) -->
-				<div
-					style="
-						position: absolute;
-						top: -22px; left: -22px;
-						display: flex;
-						gap: 8px;
-						pointer-events: auto;
-					"
-					role="presentation"
-				>
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={() => onCircleAIClick?.()}
+				{#if showCircleTools}
+					<!-- Hover toolbar (single place for all controls) -->
+					<div
 						style="
-							width: 42px; height: 42px;
+							position: absolute;
+							top: -64px;
+							left: 50%;
+							transform: translateX(-50%);
+							display: flex;
+							gap: 10px;
+							padding: 8px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							font-size: 14px; color: rgba(255,255,255,0.9);
-							cursor: pointer;
-							touch-action: none;
+							border: 2px solid rgba(255,255,255,0.18);
+							backdrop-filter: blur(10px);
+							pointer-events: auto;
 						"
-						title="Generate with AI"
-					>AI</button>
-
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={removeCircle}
-						style="
-							width: 42px; height: 42px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							font-size: 18px; color: rgba(255,255,255,0.9);
-							cursor: pointer;
-							touch-action: none;
-						"
-						title="Remove circle"
-					>✕</button>
-
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={openCirclePicker}
-						style="
-							width: 42px; height: 42px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							font-size: 18px; color: rgba(255,255,255,0.9);
-							cursor: pointer;
-							touch-action: none;
-						"
-						title="Edit circle image"
-					>✎</button>
-
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={openCircleBorderPicker}
-						style="
-							width: 42px; height: 42px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							cursor: pointer;
-							touch-action: none;
-						"
-						title="Change border color"
+						role="presentation"
 					>
-						<span style="width:18px;height:18px;border-radius:6px;border:2px solid rgba(255,255,255,0.35);background:{circleBorderColor};display:block;"></span>
-					</button>
-				</div>
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={() => onCircleAIClick?.()}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 16px;"
+							title="Generate with AI"
+							aria-label="Generate with AI"
+						>AI</button>
 
-				<!-- Resize handle (bottom-center) -->
-				<div
-					style="
-						position: absolute;
-						bottom: -38px; left: 50%; transform: translateX(-50%);
-						width: 34px; height: 34px;
-						border-radius: 10px;
-						background: rgba(0,0,0,0.85);
-						border: 2px solid rgba(255,255,255,0.45);
-						display: flex; align-items: center; justify-content: center;
-						font-size: 15px; color: rgba(255,255,255,0.85);
-						cursor: nwse-resize;
-						touch-action: none;
-					"
-					onpointerdown={circleResizeDown}
-					onpointermove={circleResizeMove}
-					onpointerup={circleResizeUp}
-					onpointercancel={circleResizeUp}
-					role="presentation"
-				>⤡</div>
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={openCirclePicker}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 22px;"
+							title="Edit circle image"
+							aria-label="Edit circle image"
+						>✎</button>
+
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={openCircleBorderPicker}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; cursor: pointer; touch-action: none;"
+							title="Change border color"
+							aria-label="Change border color"
+						>
+							<span style="width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,0.35);background:{circleBorderColor};display:block;"></span>
+						</button>
+
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={removeCircle}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; display:flex; align-items:center; justify-content:center;"
+							title="Remove circle"
+							aria-label="Remove circle"
+						><Trash2 size={22} /></button>
+					</div>
+				{/if}
+
+				{#if showCircleTools}
+					<!-- Resize handle (bottom-right) -->
+					<div
+						style="
+							position: absolute;
+							bottom: -26px; right: -26px;
+							width: 52px; height: 52px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.85);
+							border: 2px solid rgba(255,255,255,0.30);
+							display: flex; align-items: center; justify-content: center;
+							color: rgba(255,255,255,0.90);
+							cursor: nwse-resize;
+							touch-action: none;
+						"
+						onpointerdown={circleResizeDown}
+						onpointermove={circleResizeMove}
+						onpointerup={circleResizeUp}
+						onpointercancel={circleResizeUp}
+						role="presentation"
+					><MoveDiagonal2 size={22} /></div>
+				{/if}
 			{/if}
 			</div>
 		{/if}
@@ -1286,6 +1271,8 @@
 				onpointermove={circle2PointerMove}
 				onpointerup={circle2PointerUp}
 				onpointercancel={circle2PointerUp}
+				onmouseenter={() => hoveringCircle2 = true}
+				onmouseleave={() => hoveringCircle2 = false}
 				role="presentation"
 			>
 				{#if circle2Image}
@@ -1313,120 +1300,85 @@
 					">Circle</div>
 				{/if}
 			{#if interactive}
-				<!-- Drag indicator (bottom-right) -->
-				<div style="
-					position: absolute;
-					bottom: -38px; right: -38px;
-					width: 60px; height: 60px;
-					border-radius: 50%;
-					background: rgba(0,0,0,0.75);
-					border: 2px solid rgba(255,255,255,0.3);
-					display: flex; align-items: center; justify-content: center;
-					font-size: 28px; color: rgba(255,255,255,0.8);
-					pointer-events: none;
-				">⠿</div>
+				{@const showCircle2Tools = hoveringCircle2 || dragging2 || resizingCircle2}
 
-				<!-- Compact controls cluster (top-left) -->
-				<div
-					style="
-						position: absolute;
-						top: -22px; left: -22px;
-						display: flex;
-						gap: 8px;
-						pointer-events: auto;
-					"
-					role="presentation"
-				>
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={() => onCircle2AIClick?.()}
+				{#if showCircle2Tools}
+					<!-- Hover toolbar (single place for all controls) -->
+					<div
 						style="
-							width: 42px; height: 42px;
+							position: absolute;
+							top: -64px;
+							left: 50%;
+							transform: translateX(-50%);
+							display: flex;
+							gap: 10px;
+							padding: 8px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							font-size: 14px; color: rgba(255,255,255,0.9);
-							cursor: pointer;
-							touch-action: none;
+							border: 2px solid rgba(255,255,255,0.18);
+							backdrop-filter: blur(10px);
+							pointer-events: auto;
 						"
-						title="Generate with AI"
-					>AI</button>
-
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={removeCircle2}
-						style="
-							width: 42px; height: 42px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							font-size: 18px; color: rgba(255,255,255,0.9);
-							cursor: pointer;
-							touch-action: none;
-						"
-						title="Remove circle"
-					>✕</button>
-
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={openCircle2Picker}
-						style="
-							width: 42px; height: 42px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							font-size: 18px; color: rgba(255,255,255,0.9);
-							cursor: pointer;
-							touch-action: none;
-						"
-						title="Edit circle image"
-					>✎</button>
-
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={openCircle2BorderPicker}
-						style="
-							width: 42px; height: 42px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.24);
-							display: flex; align-items: center; justify-content: center;
-							cursor: pointer;
-							touch-action: none;
-						"
-						title="Change border color"
+						role="presentation"
 					>
-						<span style="width:18px;height:18px;border-radius:6px;border:2px solid rgba(255,255,255,0.35);background:{circle2BorderColor};display:block;"></span>
-					</button>
-				</div>
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={() => onCircle2AIClick?.()}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 16px;"
+							title="Generate with AI"
+							aria-label="Generate with AI"
+						>AI</button>
 
-				<!-- Resize handle (bottom-center) -->
-				<div
-					style="
-						position: absolute;
-						bottom: -38px; left: 50%; transform: translateX(-50%);
-						width: 34px; height: 34px;
-						border-radius: 10px;
-						background: rgba(0,0,0,0.85);
-						border: 2px solid rgba(255,255,255,0.45);
-						display: flex; align-items: center; justify-content: center;
-						font-size: 15px; color: rgba(255,255,255,0.85);
-						cursor: nwse-resize;
-						touch-action: none;
-					"
-					onpointerdown={circle2ResizeDown}
-					onpointermove={circle2ResizeMove}
-					onpointerup={circle2ResizeUp}
-					onpointercancel={circle2ResizeUp}
-					role="presentation"
-				>⤡</div>
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={openCircle2Picker}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 22px;"
+							title="Edit circle image"
+							aria-label="Edit circle image"
+						>✎</button>
+
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={openCircle2BorderPicker}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; cursor: pointer; touch-action: none;"
+							title="Change border color"
+							aria-label="Change border color"
+						>
+							<span style="width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,0.35);background:{circle2BorderColor};display:block;"></span>
+						</button>
+
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={removeCircle2}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; display:flex; align-items:center; justify-content:center;"
+							title="Remove circle"
+							aria-label="Remove circle"
+						><Trash2 size={22} /></button>
+					</div>
+				{/if}
+
+				{#if showCircle2Tools}
+					<!-- Resize handle (bottom-right) -->
+					<div
+						style="
+							position: absolute;
+							bottom: -26px; right: -26px;
+							width: 52px; height: 52px;
+							border-radius: 999px;
+							background: rgba(0,0,0,0.85);
+							border: 2px solid rgba(255,255,255,0.30);
+							display: flex; align-items: center; justify-content: center;
+							color: rgba(255,255,255,0.90);
+							cursor: nwse-resize;
+							touch-action: none;
+						"
+						onpointerdown={circle2ResizeDown}
+						onpointermove={circle2ResizeMove}
+						onpointerup={circle2ResizeUp}
+						onpointercancel={circle2ResizeUp}
+						role="presentation"
+					><MoveDiagonal2 size={22} /></div>
+				{/if}
 			{/if}
 			</div>
 		{/if}
@@ -1440,7 +1392,8 @@
 		{#if showSubjectCutout && subjectCutout}
 			<!-- Cutout must pan + zoom identically to the background (it was
 			     derived from the same pixels). Mirror the zoom/pan math above. -->
-			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 25; pointer-events: none;">
+			<!-- Above circles (z=31/32) and gradient (z=30), below text (z=40). -->
+			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 34; pointer-events: none;">
 				{#if bgIsShrunk}
 					<img
 						src={subjectCutout}
