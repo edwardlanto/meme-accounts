@@ -8,11 +8,17 @@
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
-	import { AVAILABLE_PATTERNS } from '$lib/highlight';
-	import type { Overlay } from '$lib/types';
+	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
+	import CarouselPreview from '$lib/components/CarouselPreview.svelte';
+	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
+	import { dndzone } from 'svelte-dnd-action';
+	import { AVAILABLE_PATTERNS, applyHighlight, type HighlightSpec } from '$lib/highlight';
+	import type { Overlay, TextStyle, TextElementKind } from '$lib/types';
+	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
-		Image, Palette, Type, ChevronDown, Search, FlaskConical, Wifi, Layers
+		Image, Palette, Type, ChevronDown, Search, FlaskConical, Wifi, Layers,
+		Scissors, Eye, EyeOff
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -57,6 +63,9 @@
 	let search = $state('');
 	let category = $state('business');
 	let slideCount = $state(3); // 1–10
+
+	// Preview/edit view toggle for the canvas area.
+	let viewMode = $state<'edit' | 'preview'>('edit');
 	let fetchingNews = $state(false);
 	let generatingVariants = $state(false);
 	let newsError = $state('');
@@ -102,6 +111,20 @@
 	let backgroundImages = $state<string[]>([]);
 	let backgroundVideos = $state<string[]>([]); // blob URLs — one per slide
 	let generatingImages = $state<boolean[]>([]); // per-slide loading state
+
+	// Subject cutouts — transparent PNG of the foreground subject, per slide.
+	// When set + `showCutout` true for a slide, we layer the cutout over the circle
+	// so the subject appears to be in front (like editorial news graphics).
+	let subjectCutouts = $state<string[]>([]);
+	let showCutout = $state<boolean[]>([]); // per-slide toggle, default true when cutout exists
+	let cuttingOut = $state<boolean[]>([]); // per-slide loading
+	let cutoutProgress = $state<number>(0); // 0..1 for the active slide
+	let cutoutMessage = $state<string>('');
+	let cutoutError = $state<string>('');
+
+	const activeCutout = $derived(subjectCutouts[activeSlide] ?? '');
+	const activeShowCutout = $derived(showCutout[activeSlide] ?? false);
+	const activeCutting = $derived(cuttingOut[activeSlide] ?? false);
 	let showCircle = $state(true);       // toggle — default ON
 	let circleImage = $state('');
 	let generatingCircle = $state(false);
@@ -115,6 +138,9 @@
 		backgroundImages = backgroundImages.map((img, idx) => idx === i ? url : img);
 		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? '' : v); // clear video
 		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
+		// Invalidate any existing cutout since it was computed from the old image.
+		subjectCutouts = subjectCutouts.map((v, idx) => idx === i ? '' : v);
+		showCutout    = showCutout.map((v, idx) => idx === i ? false : v);
 	}
 
 	async function toExportSafeImageUrl(url: string) {
@@ -166,6 +192,8 @@
 
 	// Text panel drag (template px)
 	let textPanelOffsetY = $state(0);
+	let shadowHeight = $state(75);   // % of canvas covered by bottom shadow
+	let shadowStrength = $state(1);  // 0–1 opacity multiplier
 
 	// Image overlays — per slide
 	let slideOverlays = $state<Overlay[][]>([]);
@@ -173,6 +201,134 @@
 
 	function setSlideOverlays(i: number, next: Overlay[]) {
 		slideOverlays = slideOverlays.map((o, idx) => idx === i ? next : o);
+	}
+
+	// ── Per-slide text styles (Canva-style toolbar) ──────────────────────
+	let headlineStyles = $state<TextStyle[]>([{}]);
+	let sourceStyles   = $state<TextStyle[]>([{}]);
+
+	// Stable ids per slide, used by svelte-dnd-action as keys during reorder.
+	let _slideUid = 0;
+	function newSlideId() { return `s_${++_slideUid}_${Date.now().toString(36)}`; }
+	let slideIds = $state<string[]>([newSlideId()]);
+	$effect(() => {
+		// Keep slideIds length in sync with slideCount (pad or trim).
+		if (slideIds.length < slideCount) {
+			const add: string[] = [];
+			for (let i = slideIds.length; i < slideCount; i++) add.push(newSlideId());
+			slideIds = [...slideIds, ...add];
+		} else if (slideIds.length > slideCount) {
+			slideIds = slideIds.slice(0, slideCount);
+		}
+	});
+
+	/**
+	 * Reorder all per-slide arrays to match a new order of indices.
+	 * `newOrder` is an array of old indices in their new positions.
+	 * e.g. if slides were [A,B,C] and you dropped C before A, newOrder = [2,0,1].
+	 */
+	function reorderSlides(newOrder: number[]) {
+		const pick = <T,>(arr: T[]): T[] => newOrder.map((oldIdx) => arr[oldIdx]);
+		const pickOr = <T,>(arr: T[], fallback: T): T[] =>
+			newOrder.map((oldIdx) => (oldIdx < arr.length ? arr[oldIdx] : fallback));
+
+		slides          = pick(slides);
+		slideTemplates  = pickOr(slideTemplates, 'news' as TemplateId);
+		backgroundImages = pickOr(backgroundImages, '');
+		backgroundVideos = pickOr(backgroundVideos, '');
+		generatingImages = pickOr(generatingImages, false);
+		subjectCutouts   = pickOr(subjectCutouts, '');
+		showCutout       = pickOr(showCutout, false);
+		cuttingOut       = pickOr(cuttingOut, false);
+		slideOverlays    = pickOr(slideOverlays, [] as Overlay[]);
+		headlineStyles   = pickOr(headlineStyles, {} as TextStyle);
+		sourceStyles     = pickOr(sourceStyles, {} as TextStyle);
+		if (exportedSlides.length) exportedSlides = pickOr(exportedSlides, '');
+		slideIds        = pickOr(slideIds, newSlideId());
+
+		// Keep the same logical slide focused after reorder.
+		const newActive = newOrder.indexOf(activeSlide);
+		if (newActive >= 0) activeSlide = newActive;
+		void saveDraftNow?.();
+	}
+	const activeHeadlineStyle = $derived(headlineStyles[activeSlide] ?? {});
+	const activeSourceStyle   = $derived(sourceStyles[activeSlide] ?? {});
+
+	// Currently selected text element + DOM anchor for the floating toolbar.
+	let selectedText = $state<TextElementKind | null>(null);
+	let toolbarAnchor = $state<DOMRect | null>(null);
+	let toolbarTarget = $state<HTMLElement | null>(null);
+
+	// Plain-text selection inside the headline (for applyHighlight).
+	// null when no active word/range selection.
+	let headlineRange = $state<{ start: number; end: number } | null>(null);
+	const hasRangeSelection = $derived(headlineRange !== null);
+
+	function onHeadlineRangeSelect(start: number, end: number) {
+		if (start < 0 || end < 0 || start === end) {
+			headlineRange = null;
+		} else {
+			headlineRange = { start, end };
+		}
+	}
+
+	function onHighlight(spec: HighlightSpec) {
+		if (!headlineRange) return;
+		const current = slides[activeSlide] ?? '';
+		const next = applyHighlight(current, headlineRange.start, headlineRange.end, spec);
+		setActiveSlideText(next);
+		// Keep the range so the user can try a different highlight without reselecting.
+		// Clear any native selection since the DOM just rerendered.
+		window.getSelection()?.removeAllRanges();
+	}
+
+	function onTextSelect(kind: TextElementKind, el: HTMLElement) {
+		selectedText = kind;
+		toolbarTarget = el;
+		toolbarAnchor = el.getBoundingClientRect();
+		// Switching to the source label drops any stale headline word-range.
+		if (kind !== 'headline') headlineRange = null;
+	}
+
+	function closeToolbar() {
+		selectedText = null;
+		toolbarAnchor = null;
+		toolbarTarget = null;
+		headlineRange = null;
+	}
+
+	// Recompute toolbar anchor on scroll / resize so it stays glued to the text.
+	$effect(() => {
+		if (!toolbarTarget) return;
+		const update = () => {
+			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
+		};
+		window.addEventListener('scroll', update, true);
+		window.addEventListener('resize', update);
+		return () => {
+			window.removeEventListener('scroll', update, true);
+			window.removeEventListener('resize', update);
+		};
+	});
+
+	function patchActiveStyle(patch: Partial<TextStyle>) {
+		if (selectedText === 'headline') {
+			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
+		} else if (selectedText === 'source') {
+			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
+		}
+		// Re-anchor on next frame so the toolbar follows size changes.
+		requestAnimationFrame(() => {
+			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
+		});
+	}
+
+	function resetActiveStyle() {
+		if (selectedText === 'headline') {
+			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? {} : s));
+		} else if (selectedText === 'source') {
+			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? {} : s));
+		}
 	}
 
 	// Export
@@ -239,6 +395,10 @@
 		if (Array.isArray(s.backgroundImages)) backgroundImages = s.backgroundImages;
 		if (Array.isArray(s.backgroundVideos)) backgroundVideos = s.backgroundVideos; // note: blob: URLs won't survive reload
 		if (Array.isArray(s.slideOverlays)) slideOverlays = s.slideOverlays;
+		if (Array.isArray(s.headlineStyles)) headlineStyles = s.headlineStyles;
+		if (Array.isArray(s.sourceStyles)) sourceStyles = s.sourceStyles;
+		if (Array.isArray(s.subjectCutouts)) subjectCutouts = s.subjectCutouts;
+		if (Array.isArray(s.showCutout)) showCutout = s.showCutout;
 
 		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
 		if (typeof s.circleImage === 'string') circleImage = s.circleImage;
@@ -248,6 +408,8 @@
 		if (typeof s.bgOffsetX === 'number') bgOffsetX = s.bgOffsetX;
 		if (typeof s.bgOffsetY === 'number') bgOffsetY = s.bgOffsetY;
 		if (typeof s.textPanelOffsetY === 'number') textPanelOffsetY = s.textPanelOffsetY;
+		if (typeof s.shadowHeight === 'number') shadowHeight = s.shadowHeight;
+		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
 		if (typeof s.highlightColor === 'string') highlightColor = s.highlightColor;
 		if (typeof s.textColor === 'string') textColor = s.textColor;
 		if (typeof s.slideCount === 'number') slideCount = s.slideCount;
@@ -270,6 +432,10 @@
 			backgroundImages,
 			backgroundVideos,
 			slideOverlays,
+			headlineStyles,
+			sourceStyles,
+			subjectCutouts,
+			showCutout,
 			showCircle,
 			circleImage,
 			circleX,
@@ -278,6 +444,8 @@
 			bgOffsetX,
 			bgOffsetY,
 			textPanelOffsetY,
+			shadowHeight,
+			shadowStrength,
 			highlightColor,
 			textColor,
 			// Rendered PNG exports (data URLs) for scheduler publishing (FB supports data URLs; IG needs public URLs)
@@ -604,12 +772,69 @@
 		await Promise.all(promises);
 	}
 
+	// ── Subject cutout (AI background removal) ────────────────────────────
+	async function cutOutSubject(slideIdx: number = activeSlide) {
+		const src = backgroundImages[slideIdx];
+		if (!src) {
+			cutoutError = 'No background image on this slide to cut out.';
+			return;
+		}
+		cutoutError = '';
+		cuttingOut = cuttingOut.map((v, i) => (i === slideIdx ? true : v));
+		cutoutProgress = 0;
+		cutoutMessage = 'Starting…';
+		try {
+			const dataUrl = await removeBackground(src, (p) => {
+				cutoutProgress = p.progress ?? cutoutProgress;
+				cutoutMessage = p.message ?? cutoutMessage;
+			});
+			subjectCutouts = subjectCutouts.map((v, i) => (i === slideIdx ? dataUrl : v));
+			// Auto-enable the toggle on first cutout so the user immediately sees the effect.
+			showCutout = showCutout.map((v, i) => (i === slideIdx ? true : v));
+		} catch (e: any) {
+			cutoutError = e?.message ?? 'Background removal failed';
+		} finally {
+			cuttingOut = cuttingOut.map((v, i) => (i === slideIdx ? false : v));
+			cutoutMessage = '';
+		}
+	}
+
+	function clearCutout(slideIdx: number = activeSlide) {
+		subjectCutouts = subjectCutouts.map((v, i) => (i === slideIdx ? '' : v));
+		showCutout    = showCutout.map((v, i) => (i === slideIdx ? false : v));
+	}
+
+	function toggleCutoutVisibility(slideIdx: number = activeSlide) {
+		showCutout = showCutout.map((v, i) => (i === slideIdx ? !v : v));
+	}
+
 	// Keep slideTemplates aligned with slide count when slide text array changes (variants, etc.)
 	$effect(() => {
 		const n = slides.length;
 		if (slideTemplates.length !== n) {
 			slideTemplates = Array.from({ length: n }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 		}
+		if (headlineStyles.length !== n) {
+			headlineStyles = Array.from({ length: n }, (_, i) => headlineStyles[i] ?? {});
+		}
+		if (sourceStyles.length !== n) {
+			sourceStyles = Array.from({ length: n }, (_, i) => sourceStyles[i] ?? {});
+		}
+		if (subjectCutouts.length !== n) {
+			subjectCutouts = Array.from({ length: n }, (_, i) => subjectCutouts[i] ?? '');
+		}
+		if (showCutout.length !== n) {
+			showCutout = Array.from({ length: n }, (_, i) => showCutout[i] ?? false);
+		}
+		if (cuttingOut.length !== n) {
+			cuttingOut = Array.from({ length: n }, (_, i) => cuttingOut[i] ?? false);
+		}
+	});
+
+	// Clear toolbar selection when user switches slides.
+	$effect(() => {
+		activeSlide;
+		closeToolbar();
 	});
 
 	// Auto-save draft (debounced). This will persist editor state across reloads.
@@ -703,13 +928,15 @@
 
 		try {
 			// Render at full canvas resolution
+			// Ensure any selected Google Fonts are fully loaded before rasterizing.
+			try { await (document as any).fonts?.ready; } catch { /* ignore */ }
 			const dataUrl = await toPng(exportRef, {
 				width: CANVAS_W,
 				height: CANVAS_H,
 				pixelRatio: 1,
 				style: { transform: 'scale(1)', transformOrigin: 'top left' },
-				// Prevent export failures on cross-origin stylesheets (e.g. Google Fonts)
-				fontEmbedCSS: '',
+				// Let html-to-image inline @font-face rules so custom fonts render in the PNG.
+				// (Previously this was set to '' which disabled font embedding.)
 			} as any);
 
 			const a = document.createElement('a');
@@ -740,14 +967,14 @@
 				const node = exportRef;
 				if (!node) throw new Error('Preview not ready for export');
 
+				try { await (document as any).fonts?.ready; } catch { /* ignore */ }
 				const dataUrl = await toPng(node, {
 					width: CANVAS_W,
 					height: CANVAS_H,
 					pixelRatio: 1,
 					style: { transform: 'scale(1)', transformOrigin: 'top left' },
 					cacheBust: true,
-					// Prevent export failures on cross-origin stylesheets (e.g. Google Fonts)
-					fontEmbedCSS: '',
+					// Let html-to-image inline @font-face rules so custom fonts render in the PNG.
 				} as any);
 				out.push(dataUrl);
 			}
@@ -954,14 +1181,20 @@
 					</div>
 				{/if}
 
-				<p class="text-[10px] font-body text-white/20 mb-1.5">Use <code class="text-violet-400 bg-violet-500/10 px-1 rounded">[[WORD]]</code> to highlight phrases</p>
-				<textarea
-					value={overlayText}
-					oninput={(e) => setActiveSlideText(e.currentTarget.value)}
-					rows={4}
+				<p class="text-[10px] font-body text-white/20 mb-1.5">Select text, then pick a color to highlight</p>
+				<div
 					data-slide-text
-					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors resize-none leading-relaxed"
-				></textarea>
+					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white focus-within:border-violet-500/50 transition-colors leading-relaxed"
+				>
+					<HighlightEditor
+						value={overlayText}
+						rows={4}
+						showToolbar={true}
+						placeholder="Type your headline, select words, then click a color…"
+						ariaLabel="Slide text editor"
+						onChange={(v) => setActiveSlideText(v)}
+					/>
+				</div>
 
 				<!-- Word count warning -->
 				{#if overlayText.split(/\s+/).filter(Boolean).length > 28}
@@ -976,6 +1209,46 @@
 				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Source Label</label>
 				<input bind:value={source} placeholder="Markets"
 					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors" />
+			</div>
+
+			<!-- Bottom shadow controls -->
+			<div>
+				<div class="flex items-center justify-between mb-2">
+					<label for="shadow-h" class="text-[10px] font-mono text-white/30 uppercase tracking-wider">
+						Bottom Shadow
+					</label>
+					<button
+						type="button"
+						onclick={() => { shadowHeight = 75; shadowStrength = 1; }}
+						class="text-[9px] font-mono text-white/30 hover:text-white/60 transition-colors"
+						title="Reset shadow"
+					>Reset</button>
+				</div>
+				<div class="flex items-center gap-2 mb-2">
+					<span class="text-[9px] font-mono text-white/40 w-10">Height</span>
+					<input
+						id="shadow-h"
+						type="range"
+						min="0"
+						max="100"
+						step="1"
+						bind:value={shadowHeight}
+						class="flex-1 accent-violet-500"
+					/>
+					<span class="text-[9px] font-mono text-white/40 w-8 text-right">{shadowHeight}%</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<span class="text-[9px] font-mono text-white/40 w-10">Darkness</span>
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.05"
+						bind:value={shadowStrength}
+						class="flex-1 accent-violet-500"
+					/>
+					<span class="text-[9px] font-mono text-white/40 w-8 text-right">{Math.round(shadowStrength * 100)}%</span>
+				</div>
 			</div>
 
 			<!-- Divider -->
@@ -1130,6 +1403,89 @@
 							<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
 						</label>
 					</div>
+
+					<!-- ── Subject cutout (AI background removal) ──────────────── -->
+					{#if backgroundImage && !backgroundVideo}
+						<div class="flex flex-col gap-1.5 pt-1 border-t border-white/[0.05] mt-1">
+							<div class="flex items-center justify-between">
+								<p class="text-[10px] font-mono text-white/25 uppercase tracking-wider">
+									<Scissors size={9} class="inline mr-1" />Subject Cutout
+								</p>
+								{#if activeCutout}
+									<button
+										onclick={() => toggleCutoutVisibility()}
+										class="flex items-center gap-1 text-[10px] font-mono transition-colors
+											{activeShowCutout ? 'text-emerald-400' : 'text-white/30 hover:text-white/60'}"
+										title="{activeShowCutout ? 'Hide cutout' : 'Show cutout'}"
+									>
+										{#if activeShowCutout}
+											<Eye size={10} /> ON
+										{:else}
+											<EyeOff size={10} /> OFF
+										{/if}
+									</button>
+								{/if}
+							</div>
+
+							{#if activeCutting}
+								<!-- Progress state -->
+								<div class="flex flex-col gap-1.5 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+									<div class="flex items-center gap-2">
+										<Loader size={11} class="animate-spin text-emerald-400 flex-shrink-0" />
+										<span class="text-[11px] font-mono text-emerald-300 flex-1 truncate">
+											{cutoutMessage || 'Cutting subject…'}
+										</span>
+									</div>
+									{#if cutoutProgress > 0}
+										<div class="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+											<div
+												class="h-full bg-emerald-400 transition-all"
+												style="width: {Math.round(cutoutProgress * 100)}%;"
+											></div>
+										</div>
+									{/if}
+								</div>
+							{:else if activeCutout}
+								<!-- Cutout exists: preview + actions -->
+								<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+									<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style="background: repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 50% / 12px 12px;">
+										<img src={activeCutout} alt="cutout" class="w-full h-full object-contain" />
+									</div>
+									<span class="text-[11px] font-mono text-emerald-300 flex-1">Subject isolated</span>
+									<button
+										onclick={() => cutOutSubject()}
+										title="Regenerate cutout"
+										class="text-white/20 hover:text-emerald-400 transition-colors"
+									>
+										<RefreshCw size={11} />
+									</button>
+									<button
+										onclick={() => clearCutout()}
+										title="Remove cutout"
+										class="text-white/20 hover:text-red-400 transition-colors text-xs"
+									>✕</button>
+								</div>
+								<p class="text-[10px] font-body text-white/25 leading-relaxed">
+									Cutout sits in <b class="text-white/50">front</b> of the circle — so the subject overlaps it like the reference image.
+								</p>
+							{:else}
+								<!-- No cutout yet: CTA -->
+								<button
+									onclick={() => cutOutSubject()}
+									class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 transition-all"
+								>
+									<Scissors size={11} /> Cut out subject
+								</button>
+								<p class="text-[10px] font-body text-white/25 leading-relaxed">
+									Removes the background so the subject sits <b class="text-white/50">in front</b> of the circle. First run downloads a ~40MB AI model.
+								</p>
+							{/if}
+
+							{#if cutoutError}
+								<p class="text-[10px] font-body text-red-400/80 leading-relaxed">{cutoutError}</p>
+							{/if}
+						</div>
+					{/if}
 
 					<!-- Active video indicator -->
 					{#if backgroundVideo}
@@ -1319,21 +1675,39 @@
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
 	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4">
 
-		<!-- Format tabs -->
-		<div class="flex items-center rounded-2xl bg-white/2 border border-white/6 overflow-hidden">
-			{#each FORMATS as f (f.id)}
-				<button
-					onclick={() => (formatId = f.id)}
-					class="px-3 py-2 text-[10px] font-mono transition-colors
-						{formatId === f.id ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
-					title={`${f.w}×${f.h}`}
-				>
-					{f.label}
-				</button>
-			{/each}
+		<!-- Format tabs + view mode -->
+		<div class="flex items-center gap-3">
+			<div class="flex items-center rounded-2xl bg-white/2 border border-white/6 overflow-hidden">
+				{#each FORMATS as f (f.id)}
+					<button
+						onclick={() => (formatId = f.id)}
+						class="px-3 py-2 text-[10px] font-mono transition-colors
+							{formatId === f.id ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
+						title={`${f.w}×${f.h}`}
+					>
+						{f.label}
+					</button>
+				{/each}
+			</div>
+
+			{#if slideCount > 1}
+				<div class="flex items-center rounded-2xl bg-white/2 border border-white/6 overflow-hidden">
+					<button
+						onclick={() => (viewMode = 'edit')}
+						class="px-3 py-2 text-[10px] font-mono transition-colors
+							{viewMode === 'edit' ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
+					>Edit</button>
+					<button
+						onclick={() => (viewMode = 'preview')}
+						class="px-3 py-2 text-[10px] font-mono transition-colors
+							{viewMode === 'preview' ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
+					>Carousel preview</button>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Slide indicator + nav arrows -->
+		{#if viewMode === 'edit'}
 		<div class="flex items-center gap-3">
 			<button
 				onclick={() => activeSlide = Math.max(0, activeSlide - 1)}
@@ -1351,7 +1725,65 @@
 				›
 			</button>
 		</div>
+		{/if}
 
+		{#if viewMode === 'preview' && slideCount > 1}
+			<!-- ── Apple-style 3-up carousel preview ───────────────────────── -->
+			<CarouselPreview
+				count={slideCount}
+				active={activeSlide}
+				canvasW={CANVAS_W}
+				canvasH={CANVAS_H}
+				centerWidth={Math.min(420, PREVIEW_WIDTH)}
+				onActiveChange={(i) => (activeSlide = i)}
+			>
+				{#snippet slide({ index })}
+					{@const tpl = slideTemplates[index] ?? 'news'}
+					{@const txt = slides[index] ?? ''}
+					{@const bgI = backgroundImages[index] ?? ''}
+					{@const bgV = backgroundVideos[index] ?? ''}
+					{@const cut = subjectCutouts[index] ?? ''}
+					{@const scut = showCutout[index] ?? false}
+					{@const hs = headlineStyles[index] ?? {}}
+					{@const ss = sourceStyles[index] ?? {}}
+					{@const ovs = slideOverlays[index] ?? []}
+					{#if tpl === 'news'}
+						<NewsTemplate
+							backgroundImage={bgI}
+							backgroundVideo={bgV}
+							subjectCutout={cut}
+							showSubjectCutout={scut}
+							circleImage={showCircle ? circleImage : ''}
+							text={txt}
+							source={source}
+							highlightColor={highlightColor}
+							textColor={textColor}
+							w={CANVAS_W}
+							h={CANVAS_H}
+							scale={1}
+							interactive={false}
+							overlays={ovs}
+							headlineStyle={hs}
+							sourceStyle={ss}
+							circleX={circleX}
+							circleY={circleY}
+							circleSize={circleSize}
+							bgOffsetX={bgOffsetX}
+							bgOffsetY={bgOffsetY}
+							textPanelOffsetY={textPanelOffsetY}
+							shadowHeight={shadowHeight}
+							shadowStrength={shadowStrength}
+						/>
+					{:else if tpl === 'article'}
+						<ArticleTemplate text={txt} image={bgI} scale={1} interactive={false} />
+					{:else if tpl === 'textCarousel'}
+						<TextCarouselTemplate text={txt} scale={1} interactive={false} />
+					{:else}
+						<ImageQuoteTemplate text={txt} image={bgI} scale={1} interactive={false} />
+					{/if}
+				{/snippet}
+			</CarouselPreview>
+		{:else}
 		<!-- Main preview -->
 		<div style="width: {PREVIEW_WIDTH}px; height: {CANVAS_H * previewScale}px;" class="relative">
 			{#if generatingImages[activeSlide]}
@@ -1375,8 +1807,12 @@
 					bind:bgOffsetX
 					bind:bgOffsetY
 					bind:textPanelOffsetY
+					bind:shadowHeight
+					bind:shadowStrength
 					backgroundImage={backgroundImage}
 					backgroundVideo={backgroundVideo}
+					subjectCutout={activeCutout}
+					showSubjectCutout={activeShowCutout}
 					circleImage={showCircle ? circleImage : ''}
 					text={overlayText}
 					source={source}
@@ -1387,9 +1823,14 @@
 					scale={previewScale}
 					interactive={true}
 					overlays={activeOverlays}
+					headlineStyle={activeHeadlineStyle}
+					sourceStyle={activeSourceStyle}
+					selectedText={selectedText}
 					onTextChange={(t) => setActiveSlideText(t)}
 					onCircleMove={(x, y) => { circleX = x; circleY = y; }}
 					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					onTextSelect={onTextSelect}
+					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{:else if activeTemplate === 'article'}
 				<ArticleTemplate
@@ -1416,6 +1857,7 @@
 				/>
 			{/if}
 		</div>
+		{/if}
 
 		{#if !backgroundImage}
 			<p class="font-body text-xs text-white/20 text-center max-w-xs">
@@ -1423,20 +1865,46 @@
 			</p>
 		{/if}
 
-		<!-- Slide filmstrip (placeholders for selected slide count) -->
+		<!-- Slide filmstrip: drag to reorder -->
 		{#if slideCount > 1}
-			<div class="flex gap-2 overflow-x-auto max-w-full pb-1 px-1">
-				{#each Array.from({ length: slideCount }, (_, i) => i) as i (i)}
-					{@const slideText = slides[i] ?? ''}
-					{@const isPlaceholder = !slides[i]}
-					<button
-						onclick={() => activeSlide = i}
-						class="flex-shrink-0 flex flex-col items-center gap-1 group"
-					>
-						<div class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
-							{activeSlide === i ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}">
-
-							{#if generatingImages[i]}
+			{@const dndItems = slideIds.map((id, i) => ({
+				id,
+				origIndex: i,
+				text: slides[i] ?? '',
+				img: backgroundImages[i] ?? '',
+				vid: backgroundVideos[i] ?? '',
+				loading: !!generatingImages[i],
+			}))}
+			<div
+				use:dndzone={{
+					items: dndItems,
+					flipDurationMs: 220,
+					dropTargetStyle: {},
+					type: 'slides',
+					dragDisabled: false,
+				}}
+				onconsider={(e) => {
+					// Reflect the visual reorder while dragging.
+					const order = (e.detail.items as any[]).map((it) => it.origIndex as number);
+					reorderSlides(order);
+				}}
+				onfinalize={(e) => {
+					const order = (e.detail.items as any[]).map((it) => it.origIndex as number);
+					reorderSlides(order);
+				}}
+				class="flex gap-2 overflow-x-auto max-w-full pb-1 px-1"
+			>
+				{#each dndItems as item, i (item.id)}
+					{@const isPlaceholder = !item.text}
+					<div class="flex-shrink-0 flex flex-col items-center gap-1 group cursor-grab active:cursor-grabbing">
+						<button
+							type="button"
+							onclick={() => activeSlide = i}
+							class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
+								{activeSlide === i ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
+							aria-label={`Focus slide ${i + 1}`}
+						>
+							{#if item.loading}
 								<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
 									<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
 								</div>
@@ -1444,33 +1912,47 @@
 								<div class="absolute inset-0 flex items-center justify-center text-white/15">
 									<span class="text-[10px] font-mono">#{i + 1}</span>
 								</div>
-							{:else if backgroundVideos[i]}
+							{:else if item.vid}
 								<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
 									<span class="text-cyan-400 opacity-80" style="font-size:14px;">▶</span>
 								</div>
-							{:else if backgroundImages[i]}
-								<img src={backgroundImages[i]} alt="" class="w-full h-full object-cover opacity-70" />
+							{:else if item.img}
+								<img src={item.img} alt="" class="w-full h-full object-cover opacity-70" draggable="false" />
 							{/if}
 
 							{#if !isPlaceholder}
 								<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
 									<p class="text-white leading-tight line-clamp-3"
 										style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
-										{slideText.replace(/\[\[|\]\]/g, '')}
+										{item.text.replace(/\[\[|\]\]/g, '')}
 									</p>
 								</div>
 							{/if}
-						</div>
+						</button>
 						<span class="text-[9px] font-mono {activeSlide === i ? 'text-violet-400' : 'text-white/20'}">
 							{i === 0 ? 'Hook' : `Slide ${i + 1}`}
 						</span>
-					</button>
+					</div>
 				{/each}
 			</div>
+			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder posting order</p>
 		{/if}
 	</div>
 
 </div>
+
+<!-- Canva-style floating toolbar for text formatting -->
+<FloatingTextToolbar
+	anchor={toolbarAnchor}
+	style={selectedText === 'headline' ? activeHeadlineStyle : activeSourceStyle}
+	autoFontSize={selectedText === 'source' ? 34 : undefined}
+	supportsHighlights={selectedText === 'headline'}
+	hasRangeSelection={hasRangeSelection}
+	onChange={patchActiveStyle}
+	onHighlight={onHighlight}
+	onReset={resetActiveStyle}
+	onClose={closeToolbar}
+/>
 
 <style>
 	select option {

@@ -7,3 +7,27 @@ export interface Overlay {
 	w: number;    // width in template px
 	h: number;    // height in template px
 }
+
+/**
+ * Per-element text style override. When a field is undefined the template's
+ * default behavior is used (e.g. undefined fontSize → auto-sizing kicks in).
+ */
+export interface TextStyle {
+	fontFamily?: string;     // Google Fonts family name, e.g. "Bebas Neue"
+	fontSize?: number;       // template px; overrides auto-sizing when set
+	fontWeight?: number;     // 400 / 500 / 700 / 900
+	italic?: boolean;
+	underline?: boolean;
+	color?: string;          // hex
+	align?: 'left' | 'center' | 'right';
+	letterSpacing?: number;  // em
+	lineHeight?: number;     // unitless multiplier
+}
+
+/** A text element that can be edited/styled via the floating toolbar. */
+export type TextElementKind = 'headline' | 'source';
+
+export interface TextSelection {
+	slideIndex: number;
+	kind: TextElementKind;
+}

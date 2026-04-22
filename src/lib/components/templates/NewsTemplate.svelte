@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
-	import type { Overlay } from '$lib/types';
+	import type { Overlay, TextStyle, TextElementKind } from '$lib/types';
+	import { loadGoogleFont } from '$lib/fonts';
+	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 
 	interface Props {
 		// Canvas size (template pixels). Default is IG portrait 4:5.
@@ -8,6 +10,11 @@
 		h?: number;
 		backgroundImage?: string;
 		backgroundVideo?: string; // blob URL or data URL for video background
+		/** Transparent PNG of the foreground subject (from bg-removal). When provided
+		 * and `showSubjectCutout` is true, renders ABOVE the circle so the subject
+		 * visually overlaps the circle edge (editorial style). */
+		subjectCutout?: string;
+		showSubjectCutout?: boolean;
 		circleImage?: string;
 		text: string;
 		source?: string;
@@ -23,10 +30,24 @@
 		bgOffsetX?: number;   // background horizontal position 0–100% (bindable)
 		bgOffsetY?: number;   // background vertical position 0–100% (bindable)
 		textPanelOffsetY?: number; // bottom text panel offset (bindable, px)
+		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 75. */
+		shadowHeight?: number;
+		/** Opacity of the bottom shadow (0–1). Default 1. */
+		shadowStrength?: number;
 		overlays?: Overlay[];
+		/** Per-element style overrides (font, size, weight, color, etc.) */
+		headlineStyle?: TextStyle;
+		sourceStyle?: TextStyle;
+		/** Which text element is currently selected (shows dashed outline). */
+		selectedText?: TextElementKind | null;
 		onTextChange?: (t: string) => void;
 		onCircleMove?: (x: number, y: number) => void;
 		onOverlaysChange?: (overlays: Overlay[]) => void;
+		/** Fired when the user clicks a stylable text element. */
+		onTextSelect?: (kind: TextElementKind, anchor: HTMLElement) => void;
+		/** Fired when the user selects a range of PLAIN text inside the headline.
+		 *  Offsets are into the visible (unmarked-up) text, suitable for applyHighlight(). */
+		onHeadlineRangeSelect?: (plainStart: number, plainEnd: number) => void;
 	}
 
 	let {
@@ -34,6 +55,8 @@
 		h = 1350,
 		backgroundImage = '',
 		backgroundVideo = '',
+		subjectCutout = '',
+		showSubjectCutout = false,
 		circleImage,
 		text,
 		source = 'Markets',
@@ -48,14 +71,88 @@
 		bgOffsetX  = $bindable(50),
 		bgOffsetY  = $bindable(50),
 		textPanelOffsetY = $bindable(0),
+		shadowHeight = $bindable(75),
+		shadowStrength = $bindable(1),
 		overlays   = [],
+		headlineStyle = {},
+		sourceStyle = {},
+		selectedText = null,
 		onTextChange,
 		onCircleMove,
 		onOverlaysChange,
+		onTextSelect,
+		onHeadlineRangeSelect,
 	}: Props = $props();
+
+	// Preload Google Fonts used by the overrides so they're ready for render + export.
+	$effect(() => {
+		if (headlineStyle.fontFamily) void loadGoogleFont(headlineStyle.fontFamily);
+		if (sourceStyle.fontFamily) void loadGoogleFont(sourceStyle.fontFamily);
+	});
+
+	// Build the effective CSS properties for each text element.
+	const headlineCss = $derived.by(() => {
+		const s = headlineStyle;
+		const lines: string[] = [];
+		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', 'Bebas Neue', Impact, sans-serif;`);
+		else lines.push(`font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;`);
+		lines.push(`font-size: ${s.fontSize ?? fontSize}px;`);
+		lines.push(`font-weight: ${s.fontWeight ?? 400};`);
+		if (s.italic) lines.push('font-style: italic;');
+		if (s.underline) lines.push('text-decoration: underline;');
+		lines.push(`color: ${s.color ?? textColor};`);
+		lines.push(`text-align: ${s.align ?? 'left'};`);
+		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
+		lines.push(`line-height: ${s.lineHeight ?? 1.06};`);
+		return lines.join(' ');
+	});
+
+	const sourceCss = $derived.by(() => {
+		const s = sourceStyle;
+		const lines: string[] = [];
+		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', Georgia, serif;`);
+		else lines.push(`font-family: Georgia, 'Times New Roman', serif;`);
+		lines.push(`font-size: ${s.fontSize ?? 34}px;`);
+		lines.push(`font-weight: ${s.fontWeight ?? 700};`);
+		lines.push(`font-style: ${s.italic === false ? 'normal' : (s.italic ?? true) ? 'italic' : 'normal'};`);
+		if (s.underline) lines.push('text-decoration: underline;');
+		lines.push(`color: ${s.color ?? highlightColor};`);
+		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
+		return lines.join(' ');
+	});
+
+	let headlineEl = $state<HTMLElement | null>(null);
+	let sourceEl = $state<HTMLElement | null>(null);
+
+	function selectHeadline(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		if (headlineEl) onTextSelect?.('headline', headlineEl);
+	}
+
+	function selectSource(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		if (sourceEl) onTextSelect?.('source', sourceEl);
+	}
 
 	// Whether there's any background media (image or video)
 	const hasBg = $derived(!!(backgroundVideo || backgroundImage));
+
+	// Bottom shadow gradient — height/strength controllable.
+	const shadowGradient = $derived.by(() => {
+		const sh = Math.max(0, Math.min(100, shadowHeight));
+		const str = Math.max(0, Math.min(1, shadowStrength));
+		const clear = Math.max(0, 100 - sh);
+		const a = (mult: number) => `rgba(0,0,0,${(mult * str).toFixed(3)})`;
+		return `linear-gradient(to bottom,
+			rgba(0,0,0,0) ${clear}%,
+			${a(0.15)} ${(clear + sh * 0.27).toFixed(2)}%,
+			${a(0.65)} ${(clear + sh * 0.5).toFixed(2)}%,
+			${a(0.88)} ${(clear + sh * 0.67).toFixed(2)}%,
+			${a(0.97)} ${(clear + sh * 0.84).toFixed(2)}%,
+			${a(1)} 100%)`;
+	});
 
 	const W = $derived(Math.max(320, Number(w) || 1080));
 	const H = $derived(Math.max(320, Number(h) || 1350));
@@ -86,12 +183,14 @@
 		if (!interactive) return;
 		e.stopPropagation();
 		editing = true;
+		// HighlightEditor focuses itself via its contenteditable when it mounts;
+		// we just need to re-enter the element on next tick for the caret.
 		setTimeout(() => {
-			if (editableEl) {
-				editableEl.focus();
-				// Place cursor at end
+			const ce = editableEl?.querySelector<HTMLElement>('[contenteditable="true"]');
+			if (ce) {
+				ce.focus();
 				const range = document.createRange();
-				range.selectNodeContents(editableEl);
+				range.selectNodeContents(ce);
 				range.collapse(false);
 				const sel = window.getSelection();
 				sel?.removeAllRanges();
@@ -103,8 +202,8 @@
 	function finishEdit() {
 		if (!editing) return;
 		editing = false;
-		const newText = editableEl?.innerText?.trim() ?? text;
-		if (newText !== text) onTextChange?.(newText);
+		// HighlightEditor has already emitted onChange(markup) through the edits,
+		// so `text` prop is already up-to-date in the parent.
 	}
 
 	function onEditKeydown(e: KeyboardEvent) {
@@ -115,6 +214,10 @@
 	function textPointerDown(e: PointerEvent) {
 		if (!interactive) return;
 		if (editing) return;
+		// Don't start a panel drag if the user is clicking directly on the headline
+		// or source — those should support text selection / element selection instead.
+		const target = e.target as HTMLElement;
+		if (target.closest('[data-text-selectable]')) return;
 		textDragging = true;
 		textMoved = false;
 		textStartY = e.clientY;
@@ -138,10 +241,91 @@
 	function textPointerUp(e: PointerEvent) {
 		if (!textDragging) return;
 		textDragging = false;
-		// If this was effectively a click (not a drag), enter edit mode.
-		if (!textMoved) {
-			startEdit(e as any);
+		// No-op when click ends without drag — selection is handled by the
+		// individual headline / source elements' own click handlers.
+	}
+
+	function onHeadlineDblClick(e: MouseEvent) {
+		if (!interactive) return;
+		startEdit(e);
+	}
+
+	/**
+	 * Translate a browser Selection inside the headline into a plain-text range
+	 * (offsets into the visible text, ignoring our [[...]] markup). Returns null
+	 * if selection is empty or outside the headline.
+	 */
+	function getPlainSelectionRange(): { start: number; end: number } | null {
+		if (!headlineEl) return null;
+		const sel = window.getSelection();
+		if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+		const range = sel.getRangeAt(0);
+
+		// Ensure the selection is actually inside our headline.
+		if (!headlineEl.contains(range.startContainer) || !headlineEl.contains(range.endContainer)) return null;
+
+		// Walk text nodes under headlineEl in document order, accumulating
+		// character offsets until we hit the selection's start / end nodes.
+		const walker = document.createTreeWalker(headlineEl, NodeFilter.SHOW_TEXT);
+		let offset = 0;
+		let start = -1;
+		let end = -1;
+
+		let node = walker.nextNode();
+		while (node) {
+			const len = node.nodeValue?.length ?? 0;
+			if (node === range.startContainer) start = offset + range.startOffset;
+			if (node === range.endContainer)   end   = offset + range.endOffset;
+			offset += len;
+			if (start !== -1 && end !== -1) break;
+			node = walker.nextNode();
 		}
+
+		if (start === -1 || end === -1) return null;
+		if (start === end) return null;
+		return start < end ? { start, end } : { start: end, end: start };
+	}
+
+	function onHeadlineMouseUp() {
+		if (!interactive) return;
+		// Defer so the browser finalises the selection first.
+		setTimeout(() => {
+			const sel = window.getSelection();
+			const hasRange =
+				sel && sel.rangeCount > 0 && !sel.isCollapsed && headlineEl?.contains(sel.anchorNode);
+
+			if (hasRange && headlineEl) {
+				// The user highlighted a range. Anchor the toolbar to the
+				// SELECTION rect (not the whole headline) so it doesn't cover
+				// the selected text and the toolbar doesn't appear to "jump"
+				// as the user refines their selection.
+				const range = sel!.getRangeAt(0);
+				const rect = range.getBoundingClientRect();
+				// Wrap the DOMRect in a synthetic anchor element-like target.
+				// We reuse onTextSelect but swap the anchor strategy: pass the
+				// headline element as the anchor target (so later scroll tracking
+				// works) but prime the toolbar position from the selection rect.
+				onTextSelect?.('headline', wrapRectAsAnchor(rect));
+				const r = getPlainSelectionRange();
+				onHeadlineRangeSelect?.(r?.start ?? -1, r?.end ?? -1);
+			} else {
+				// No selection — treat as a plain element click for font styling.
+				if (headlineEl) onTextSelect?.('headline', headlineEl);
+				onHeadlineRangeSelect?.(-1, -1);
+			}
+		}, 0);
+	}
+
+	/** Synthesize an element whose getBoundingClientRect() returns `rect`.
+	 *  Lets us anchor the floating toolbar to a DOM Range without it covering
+	 *  the selected text. */
+	function wrapRectAsAnchor(rect: DOMRect): HTMLElement {
+		const ghost = document.createElement('div');
+		(ghost as any).getBoundingClientRect = () => rect;
+		// Also needed for the parent's scroll-tracking effect; returning the
+		// selection rect directly is fine because the user's selection moves
+		// with scroll too.
+		return ghost;
 	}
 
 	// ── Circle drag ────────────────────────────────────────────────────────
@@ -460,21 +644,11 @@
 			></div>
 		{/if}
 
-		<!-- Gradient overlay -->
-		<div style="
-			position: absolute; inset: 0;
-			background: linear-gradient(
-				to bottom,
-				rgba(0,0,0,0)    0%,
-				rgba(0,0,0,0)    25%,
-				rgba(0,0,0,0.15) 45%,
-				rgba(0,0,0,0.65) 62%,
-				rgba(0,0,0,0.88) 75%,
-				rgba(0,0,0,0.97) 88%,
-				#000             100%
-			);
-			pointer-events: none;
-		"></div>
+		<!-- Gradient overlay — height/strength user-controlled. z=30 so it sits
+		     ABOVE the subject cutout (z=25) but BELOW the text (z=40), giving
+		     the text its legibility shelf even when a subject is cut out. -->
+		<div style="position: absolute; inset: 0; z-index: 30; pointer-events: none;
+			background: {shadowGradient};"></div>
 
 		<!-- ── Image overlays (stickers / logos) ────────────────────────────── -->
 		{#each overlays as overlay (overlay.id)}
@@ -622,13 +796,36 @@
 			</div>
 		{/if}
 
+		<!-- ── Subject cutout (transparent PNG) ────────────────────────────
+			Renders ABOVE the circle so the subject overlaps the circle's edge,
+			matching the "editorial" look of the reference. Uses the same
+			background-position as the full image so the cutout lines up
+			pixel-perfectly with the background behind it.
+		-->
+		{#if showSubjectCutout && subjectCutout}
+			<img
+				src={subjectCutout}
+				alt=""
+				style="
+					position: absolute; inset: 0;
+					width: 100%; height: 100%;
+					object-fit: cover;
+					object-position: {bgOffsetX}% {bgOffsetY}%;
+					z-index: 25;
+					pointer-events: none;
+				"
+			/>
+		{/if}
+
 		<!-- ── Text area ──────────────────────────────────────────────────── -->
+		<!-- z=40 keeps text in front of EVERYTHING (cutout @ 25, gradient @ 30,
+		     circle @ 20, overlays @ 15) so words are never covered. -->
 		<div
 			style="
 				position: absolute;
 				bottom: 0; left: 0; right: 0;
 				padding: 48px 64px 72px;
-				z-index: 10;
+				z-index: 40;
 				transform: translateY({textPanelOffsetY}px);
 				{interactive && !editing ? 'cursor: grab;' : ''}
 			"
@@ -657,7 +854,7 @@
 					color: rgba(255,255,255,0.4);
 					pointer-events: none;
 					letter-spacing: 0;
-				">✎ click to edit</div>
+				">✎ double-click to edit</div>
 			{/if}
 
 			<!-- Source label -->
@@ -666,19 +863,29 @@
 					display: flex; align-items: center;
 					gap: 18px; margin-bottom: 22px;
 				">
-					<div style="flex: 1; height: 2px; background: {highlightColor}; opacity: 0.9;"></div>
-					<span style="
-						color: {highlightColor};
-						font-style: italic;
-						font-family: Georgia, 'Times New Roman', serif;
-						font-size: 34px;
-						letter-spacing: 3px;
-						font-weight: bold;
-						white-space: nowrap;
-					">
-						<span style="font-style: italic;">{source.slice(0,1).toLowerCase()}</span>{source.slice(1)}
+					<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<span
+						bind:this={sourceEl}
+						data-text-selectable="source"
+						onclick={selectSource}
+						onkeydown={(e) => { if (e.key === 'Enter') selectSource(e as any); }}
+						role={interactive ? 'button' : undefined}
+						tabindex={interactive ? 0 : undefined}
+						style="
+							{sourceCss}
+							white-space: nowrap;
+							{interactive ? 'cursor: pointer;' : ''}
+							{selectedText === 'source' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 2px;' : ''}
+						"
+					>
+						{#if sourceStyle.fontFamily}
+							{source}
+						{:else}
+							<span style="font-style: italic;">{source.slice(0,1).toLowerCase()}</span>{source.slice(1)}
+						{/if}
 					</span>
-					<div style="flex: 1; height: 2px; background: {highlightColor}; opacity: 0.9;"></div>
+					<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
 				</div>
 			{/if}
 
@@ -687,18 +894,11 @@
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					bind:this={editableEl}
-					contenteditable="true"
-					onblur={finishEdit}
 					onkeydown={onEditKeydown}
 					onclick={(e) => e.stopPropagation()}
 					style="
 						margin: 0; padding: 8px;
-						color: {textColor};
-						font-size: {fontSize}px;
-						font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;
-						font-weight: 400;
-						line-height: 1.06;
-						letter-spacing: 3px;
+						{headlineCss}
 						text-transform: uppercase;
 						word-break: break-word;
 						outline: 2px solid rgba(255,255,255,0.4);
@@ -707,7 +907,14 @@
 						cursor: text;
 						white-space: pre-wrap;
 					"
-				>{text}</div>
+				>
+					<HighlightEditor
+						value={text}
+						onChange={(v) => onTextChange?.(v)}
+						onBlur={finishEdit}
+						ariaLabel="Headline editor"
+					/>
+				</div>
 				<p style="
 					font-family: 'DM Sans', sans-serif;
 					font-size: 20px;
@@ -715,21 +922,25 @@
 					margin: 12px 0 0;
 					letter-spacing: 0;
 					text-transform: none;
-				">Use [[WORD]] for highlights · Shift+Enter or Esc to finish</p>
+				">Select text and pick a color to highlight · Shift+Enter or Esc to finish</p>
 
 			{:else}
 				<!-- Rendered headline with highlights -->
-				<p style="
-					margin: 0; padding: 0;
-					color: {textColor};
-					font-size: {fontSize}px;
-					font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;
-					font-weight: 400;
-					line-height: 1.06;
-					letter-spacing: 3px;
-					text-transform: uppercase;
-					word-break: break-word;
-				">
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<p
+					bind:this={headlineEl}
+					data-text-selectable="headline"
+					ondblclick={onHeadlineDblClick}
+					onmouseup={onHeadlineMouseUp}
+					style="
+						margin: 0; padding: 0;
+						{headlineCss}
+						text-transform: uppercase;
+						word-break: break-word;
+						{selectedText === 'headline' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 4px;' : ''}
+						{interactive ? 'user-select: text; -webkit-user-select: text;' : ''}
+					"
+				>
 					{#each segments as seg}
 						{#if seg.highlighted}
 							{#if seg.patternImage}
