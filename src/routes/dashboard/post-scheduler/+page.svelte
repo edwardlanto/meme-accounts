@@ -8,7 +8,8 @@
 	type Channel = { id: ChannelId; label: string; accent: string; kind?: 'business' | 'page' | 'standalone'; icon: (active: boolean) => string };
 	type IgContentType = 'post' | 'reel' | 'carousel' | 'story';
 	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; images?: string[]; video?: string };
-	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; startISO: string; durationMin: number };
+	type ScheduledPostStatus = 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
+	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; startISO: string; durationMin: number; status: ScheduledPostStatus; lastError?: string | null };
 
 	type DbScheduledPost = {
 		id: string;
@@ -149,10 +150,46 @@
 	let connectionsError = $state('');
 	let loadingPosts = $state(false);
 	let postsError = $state('');
+	type RecentPost = {
+		id: string;
+		status: 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
+		scheduled_at: string;
+		published_at: string | null;
+		last_error: string | null;
+		title: string;
+		channel: ChannelId;
+	};
+	let recentPosts = $state<RecentPost[]>([]);
 	let metaBanner = $state<{ kind: 'error' | 'success'; message: string } | null>(null);
 	let studioDraftId = $state<string>('');
+	let dismissedDraftIds = $state<string[]>([]);
+
+	const DISMISSED_KEY = 'ssp.dismissedDraftIds.v1';
+	function loadDismissed() {
+		try {
+			const raw = localStorage.getItem(DISMISSED_KEY);
+			const arr = raw ? JSON.parse(raw) : [];
+			if (Array.isArray(arr)) dismissedDraftIds = arr.map((x) => String(x));
+		} catch {
+			dismissedDraftIds = [];
+		}
+	}
+	function dismissDraftId(id: string) {
+		const next = Array.from(new Set([...dismissedDraftIds, id]));
+		dismissedDraftIds = next;
+		try {
+			localStorage.setItem(DISMISSED_KEY, JSON.stringify(next));
+		} catch {
+			// ignore
+		}
+	}
+	function isDismissed(id: string) {
+		return dismissedDraftIds.includes(id);
+	}
 
 	onMount(async () => {
+		loadDismissed();
+
 		// Surface Meta OAuth redirect results (callback appends query params).
 		const params = new URLSearchParams(window.location.search);
 		const metaError = params.get('meta_error');
@@ -192,8 +229,29 @@
 			};
 		}
 
+		// If we came from the Post-tests page after scheduling, point the user at the scheduled pill on the calendar.
+		if (params.get('from') === 'post-tests' && params.get('scheduled') === '1') {
+			// Jump the calendar to the most recently scheduled post and open its day/week.
+			const mostRecent = [...posts].sort(
+				(a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime(),
+			)[0];
+			if (mostRecent) {
+				const when = new Date(mostRecent.startISO);
+				anchor = when;
+				metaBanner = {
+					kind: 'success',
+					message: `Scheduled. Look on the calendar at ${when.toLocaleString()} — scheduled posts appear as pills (not draggable drafts).`,
+				};
+			} else {
+				metaBanner = {
+					kind: 'success',
+					message: 'Scheduled. It should appear on the calendar at its scheduled time.',
+				};
+			}
+		}
+
 		// Clean URL so refresh doesn't keep showing banners.
-		if (metaBanner || params.get('from') === 'studio') {
+		if (metaBanner || params.get('from') === 'studio' || params.get('from') === 'post-tests') {
 			await goto('/dashboard/post-scheduler', { replaceState: true });
 		}
 	});
@@ -216,6 +274,7 @@
 			// Prepend a draft that actually contains images so Facebook carousel posting works.
 			// Use a stable id so it doesn't duplicate across reloads.
 			const id = `studio:${String(row.id ?? 'latest')}`;
+			if (isDismissed(id)) return;
 			if (drafts.some((d) => d.id === id)) return;
 			studioDraftId = id;
 
@@ -313,19 +372,44 @@
 		).slice(0, 120);
 	}
 
-	async function loadScheduledPosts() {
-		loadingPosts = true;
-		postsError = '';
+	async function loadRecentPosts() {
 		try {
 			const { data, error } = await (supabase as any)
 				.from('scheduled_posts')
-				.select('id,user_id,connection_provider,connection_provider_account_id,content,scheduled_at,status,job_id')
+				.select('id,connection_provider,connection_provider_account_id,content,scheduled_at,status,published_at,last_error')
 				.eq('user_id', userId)
-				.in('status', ['scheduled', 'publishing'])
+				.order('created_at', { ascending: false })
+				.limit(10);
+			if (error) return;
+			const rows = (data ?? []) as any[];
+			recentPosts = rows.map((r) => ({
+				id: r.id,
+				status: r.status,
+				scheduled_at: r.scheduled_at,
+				published_at: r.published_at,
+				last_error: r.last_error,
+				title: deriveTitle(r.content, r.connection_provider, r.connection_provider_account_id),
+				channel: postChannelsFromProvider(r.connection_provider, r.connection_provider_account_id, r.content?.meta)[0] ?? 'facebookPage',
+			}));
+		} catch {
+			/* no-op */
+		}
+	}
+
+	async function loadScheduledPosts() {
+		loadingPosts = true;
+		postsError = '';
+		await loadRecentPosts();
+		try {
+			const { data, error } = await (supabase as any)
+				.from('scheduled_posts')
+				.select('id,user_id,connection_provider,connection_provider_account_id,content,scheduled_at,status,job_id,last_error')
+				.eq('user_id', userId)
+				.in('status', ['scheduled', 'publishing', 'published', 'failed'])
 				.order('scheduled_at', { ascending: true });
 			if (error) throw error;
 
-			const rows = (data ?? []) as DbScheduledPost[];
+			const rows = (data ?? []) as (DbScheduledPost & { last_error?: string | null })[];
 			posts = rows.map((r) => {
 				const content = r.content ?? {};
 				const igType = (String(content.igType ?? content.ig_type ?? 'post') as IgContentType) || 'post';
@@ -334,6 +418,8 @@
 					title: deriveTitle(content, r.connection_provider, r.connection_provider_account_id),
 					channels: postChannelsFromProvider(r.connection_provider, r.connection_provider_account_id, content?.meta),
 					igType,
+					status: r.status,
+					lastError: r.last_error ?? null,
 					startISO: new Date(r.scheduled_at).toISOString(),
 					durationMin: 60,
 				} satisfies ScheduledPost;
@@ -483,10 +569,12 @@
 		if (drafts.length > 0) return;
 		const next: Draft[] = [];
 		if (connected.includes('facebookPage')) {
-			next.push({ id: crypto.randomUUID(), title: 'Facebook Page: text post', channels: ['facebookPage'], igType: 'post' });
+			const id = 'starter:facebookPage';
+			if (!isDismissed(id)) next.push({ id, title: 'Facebook Page: text post', channels: ['facebookPage'], igType: 'post' });
 		}
 		if (connected.includes('instagramBusiness')) {
-			next.push({ id: crypto.randomUUID(), title: 'Instagram: post (needs public image URL)', channels: ['instagramBusiness'], igType: 'post' });
+			const id = 'starter:instagramBusiness';
+			if (!isDismissed(id)) next.push({ id, title: 'Instagram: post (needs public image URL)', channels: ['instagramBusiness'], igType: 'post' });
 		}
 		// Avoid infinite loops: don't write drafts back to an empty array.
 		if (next.length > 0) {
@@ -496,6 +584,7 @@
 	});
 
 	function deleteDraft(draftId: string) {
+		dismissDraftId(draftId);
 		drafts = drafts.filter((d) => d.id !== draftId);
 		// If the user deletes all drafts, don't immediately regenerate starter drafts this session.
 		seededStarterDrafts = true;
@@ -618,12 +707,62 @@
 	}
 
 	async function postNow(draft: Draft) {
-		// Give the queue a tiny buffer so job delay doesn't go negative on slow clients.
-		const when = new Date(Date.now() + 2000);
-		metaBanner = { kind: 'success', message: 'Posting now… (it may appear briefly on the calendar while publishing)' };
-		await scheduleDraft(draft, when);
+		if (!userId) {
+			alert('Please sign in.');
+			return;
+		}
 
-		// Poll a few times so the UI reflects published → disappears (we only show scheduled/publishing).
+		const target = draft.channels.find((c) => c === 'facebookPage' || c === 'instagramBusiness') ?? null;
+		if (!target) {
+			alert('This draft has no supported channel yet.');
+			return;
+		}
+
+		const conn = pickMetaConnectionForChannel(target);
+		if (!conn) {
+			alert(`No connection found for ${target}. Click “Add Channel” and connect first.`);
+			return;
+		}
+
+		// Fast path: Facebook Page → direct Graph API call (no worker required).
+		if (target === 'facebookPage') {
+			metaBanner = { kind: 'success', message: 'Posting to Facebook now…' };
+			try {
+				const message = `Posted from Social Poster — ${new Date().toLocaleString()}`;
+				const content: any = { message };
+				if (draft.images?.length) content.images = draft.images;
+				else if (draft.video) content.video = draft.video;
+
+				const res = await fetch('/api/publish/facebook', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						userId,
+						pageProviderAccountId: conn.provider_account_id,
+						content,
+					}),
+				});
+				const data = await res.json().catch(() => ({ ok: false, error: `Non-JSON (${res.status})` }));
+				if (!res.ok || !data?.ok) throw new Error(data?.error ?? `Post failed (${res.status})`);
+				const postId = data?.result?.id ?? data?.result?.post_id ?? '';
+				metaBanner = {
+					kind: 'success',
+					message: `Posted to Facebook${postId ? ` (post_id=${postId})` : ''}. Check your Page.`,
+				};
+				// Optional: remove the draft from the UI so the user sees it's done.
+				dismissDraftId(draft.id);
+				drafts = drafts.filter((d) => d.id !== draft.id);
+			} catch (e: any) {
+				metaBanner = { kind: 'error', message: `Post failed: ${e?.message ?? 'unknown error'}` };
+			}
+			return;
+		}
+
+		// Instagram (and any other channel): fall back to the scheduled-queue path.
+		// This still requires the worker to be running to actually publish.
+		const when = new Date(Date.now() + 2000);
+		metaBanner = { kind: 'success', message: 'Posting now via scheduler… (worker must be running)' };
+		await scheduleDraft(draft, when);
 		for (let i = 0; i < 6; i++) {
 			await new Promise((r) => setTimeout(r, 1500));
 			await loadScheduledPosts();
@@ -870,6 +1009,50 @@
 			</div>
 		{/if}
 
+		{#if recentPosts.length > 0}
+			<div class="px-6 pt-4">
+				<details class="rounded-2xl bg-white/3 border border-white/10 p-3">
+					<summary class="cursor-pointer text-[10px] font-mono text-white/45 uppercase tracking-widest flex items-center justify-between">
+						<span>Recent activity (last 10)</span>
+						<span class="text-white/25 normal-case">click to toggle</span>
+					</summary>
+					<div class="mt-3 space-y-2">
+						{#each recentPosts as r (r.id)}
+							<div class="flex items-start justify-between gap-3 rounded-xl bg-white/3 border border-white/5 px-3 py-2 text-[12px] font-mono">
+								<div class="min-w-0 flex-1">
+									<div class="flex items-center gap-2">
+										<span class={
+											r.status === 'published' ? 'text-emerald-300/80' :
+											r.status === 'failed' ? 'text-red-300/80' :
+											r.status === 'publishing' ? 'text-amber-300/80' :
+											r.status === 'cancelled' ? 'text-white/40' :
+											'text-sky-300/80'
+										}>● {r.status}</span>
+										<span class="text-white/30">·</span>
+										<span class="text-white/70 truncate">{r.title}</span>
+									</div>
+									<p class="text-[11px] text-white/35 mt-0.5">
+										scheduled: {new Date(r.scheduled_at).toLocaleString()}
+										{#if r.published_at} · published: {new Date(r.published_at).toLocaleString()}{/if}
+									</p>
+									{#if r.last_error}
+										<p class="text-[11px] text-red-300/70 mt-1 whitespace-pre-wrap wrap-break-word">error: {r.last_error}</p>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+					<button
+						type="button"
+						onclick={() => loadRecentPosts()}
+						class="mt-3 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-mono text-white/60 hover:bg-white/8 transition-colors"
+					>
+						Refresh
+					</button>
+				</details>
+			</div>
+		{/if}
+
 		<div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
 			<div class="flex items-center gap-3">
 				<div class="w-9 h-9 rounded-xl bg-white/3 border border-white/6 flex items-center justify-center">
@@ -932,30 +1115,55 @@
 								ondrop={(e) => dropToSlot(e, d, hr)}
 							>
 								{#each postsForDay(d).filter(p => new Date(p.startISO).getHours() === hr) as p (p.id)}
+									{@const isDone = p.status === 'published'}
+									{@const isFailed = p.status === 'failed'}
+									{@const isPublishing = p.status === 'publishing'}
+									{@const pillClass =
+										isDone ? 'bg-emerald-500/12 border-emerald-500/25' :
+										isFailed ? 'bg-red-500/12 border-red-500/25' :
+										isPublishing ? 'bg-amber-500/12 border-amber-500/25' :
+										'bg-violet-500/14 border-violet-500/25'}
+									{@const statusLabel =
+										isDone ? 'Posted' :
+										isFailed ? 'Failed' :
+										isPublishing ? 'Publishing…' :
+										'Scheduled'}
+									{@const statusLabelClass =
+										isDone ? 'text-emerald-200/80 bg-emerald-500/10 border-emerald-500/25' :
+										isFailed ? 'text-red-200/80 bg-red-500/10 border-red-500/25' :
+										isPublishing ? 'text-amber-200/80 bg-amber-500/10 border-amber-500/25' :
+										'text-sky-200/70 bg-sky-500/10 border-sky-500/20'}
 									<div
 										role="button"
 										tabindex="0"
-										draggable="true"
-										ondragstart={(e) => dragStartPost(e, p.id)}
-										class="absolute left-2 right-2 top-2 rounded-2xl bg-violet-500/14 border border-violet-500/25 p-2.5 cursor-grab active:cursor-grabbing select-none shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+										draggable={!isDone && !isFailed && !isPublishing}
+										ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
+										class="absolute left-2 right-2 top-2 rounded-2xl {pillClass} p-2.5 {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} select-none shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+										title={isFailed && p.lastError ? `Failed: ${p.lastError}` : ''}
 									>
 										<div class="flex items-start justify-between gap-2 mb-2">
 											<p class="text-[11px] font-body text-white/80 leading-tight truncate">{p.title}</p>
 											<div class="flex items-center gap-1.5 shrink-0">
+												<span class="text-[9px] font-mono px-2 py-0.5 rounded-lg border {statusLabelClass}">
+													{statusLabel}
+												</span>
 												<span class="text-[9px] font-mono px-2 py-0.5 rounded-lg border {igTypePillClass(p.igType)}">
 													{igTypeLabel(p.igType)}
 												</span>
-												<button
-													onclick={(e) => {
-														e.stopPropagation();
-														if (confirm('Unschedule this post?')) unschedulePost(p.id);
-													}}
-													class="w-6 h-6 rounded-lg bg-white/3 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/35 hover:text-red-200 transition-all flex items-center justify-center"
-													aria-label="Unschedule post"
-													title="Unschedule"
-												>
-													<X size={12} />
-												</button>
+												{#if !isDone && !isPublishing}
+													<button
+														onclick={(e) => {
+															e.stopPropagation();
+															const msg = isFailed ? 'Remove this failed post from the calendar?' : 'Unschedule this post?';
+															if (confirm(msg)) unschedulePost(p.id);
+														}}
+														class="w-6 h-6 rounded-lg bg-white/3 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/35 hover:text-red-200 transition-all flex items-center justify-center"
+														aria-label={isFailed ? 'Remove failed post' : 'Unschedule post'}
+														title={isFailed ? 'Remove from calendar' : 'Unschedule'}
+													>
+														<X size={12} />
+													</button>
+												{/if}
 											</div>
 										</div>
 										<div class="flex items-center gap-1.5 flex-wrap">
@@ -967,6 +1175,9 @@
 												</span>
 											{/each}
 										</div>
+										{#if isFailed && p.lastError}
+											<p class="mt-1.5 text-[10px] font-mono text-red-300/80 leading-tight line-clamp-2">{p.lastError}</p>
+										{/if}
 									</div>
 								{/each}
 							</div>

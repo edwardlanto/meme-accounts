@@ -2,6 +2,8 @@
 import { Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { createClient } from '@supabase/supabase-js';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 const {
 	REDIS_URL,
@@ -122,17 +124,47 @@ async function uploadFacebookPagePhoto({ pageId, pageAccessToken, url, dataUrl, 
 }
 
 /**
+ * @param {string} relPath path under static/ (e.g. "post-tests/video/vid1.mp4")
+ */
+async function readStaticVideo(relPath) {
+	const root = process.cwd();
+	const base = path.join(root, 'static');
+	const abs = path.resolve(base, relPath);
+	if (!abs.startsWith(base + path.sep)) throw new Error('Invalid serverPath');
+	if (!/\.(mp4|mov|m4v|webm)$/i.test(abs)) throw new Error('Unsupported video extension');
+	const buf = await readFile(abs);
+	const ext = path.extname(abs).toLowerCase();
+	const mime = ext === '.mov' ? 'video/quicktime' : ext === '.webm' ? 'video/webm' : 'video/mp4';
+	return { mime, buf, filename: path.basename(abs) };
+}
+
+/**
  * Upload a video to a Facebook Page.
  * Supports either:
  * - public URL (args.url)
  * - data URL (args.dataUrl) (must be video/* base64)
+ * - server file path (args.serverPath) relative to static/
  *
  * Note: Facebook generally supports one video per feed post via API.
  *
- * @param {{ pageId: string; pageAccessToken: string; url?: string; dataUrl?: string; description?: string; published?: boolean }} args
+ * @param {{ pageId: string; pageAccessToken: string; url?: string; dataUrl?: string; serverPath?: string; description?: string; published?: boolean }} args
  */
-async function uploadFacebookPageVideo({ pageId, pageAccessToken, url, dataUrl, description, published }) {
+async function uploadFacebookPageVideo({ pageId, pageAccessToken, url, dataUrl, serverPath, description, published }) {
 	const endpoint = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/videos`);
+
+	if (serverPath) {
+		const { mime, buf, filename } = await readStaticVideo(serverPath);
+		const form = new FormData();
+		form.set('access_token', pageAccessToken);
+		form.set('published', published === false ? 'false' : 'true');
+		if (description) form.set('description', description);
+		// @ts-ignore node fetch supports Blob
+		form.set('source', new Blob([buf], { type: mime }), filename);
+		const res = await fetch(endpoint.toString(), { method: 'POST', body: form });
+		const out = await res.json();
+		if (!res.ok) throw new Error(out?.error?.message ?? 'Facebook video upload failed');
+		return out;
+	}
 
 	if (dataUrl && String(dataUrl).startsWith('data:')) {
 		const blob = dataUrlToBlob(dataUrl);
@@ -188,6 +220,27 @@ async function publishFacebookPage({ pageId, pageAccessToken, content }) {
 		? content.images.map((/** @type {unknown} */ x) => String(x)).filter(Boolean)
 		: [];
 	const video = String(content?.video ?? '').trim();
+	const videos = Array.isArray(content?.videos) ? content.videos : [];
+
+	// Multiple videos → one post each (FB has no video-carousel API)
+	if (videos.length > 0) {
+		const results = [];
+		for (let i = 0; i < videos.length; i++) {
+			const v = videos[i] ?? {};
+			const desc = String(v.description ?? '').trim() || (i === 0 ? message : '');
+			const out = await uploadFacebookPageVideo({
+				pageId,
+				pageAccessToken,
+				url: v.url && String(v.url).startsWith('http') ? String(v.url) : undefined,
+				dataUrl: v.dataUrl && String(v.dataUrl).startsWith('data:') ? String(v.dataUrl) : undefined,
+				serverPath: v.serverPath ? String(v.serverPath) : undefined,
+				description: desc || undefined,
+				published: true,
+			});
+			results.push(out);
+		}
+		return { kind: 'videos', count: results.length, results };
+	}
 
 	// Link post (no images)
 	if (link && images.length === 0) {
@@ -377,10 +430,11 @@ async function publishInstagram({ igUserId, accessToken, content }) {
 	throw new Error(`Unknown IG content.igType: ${String(content.igType ?? '')}`);
 }
 
-new Worker(
+const worker = new Worker(
 	QUEUE_NAME,
 	async (job) => {
 		const postId = job.data?.postId;
+		console.log(`[worker] picked up job ${job.id} postId=${postId}`);
 		if (!postId) throw new Error('Missing postId');
 
 		// Load post
@@ -390,7 +444,11 @@ new Worker(
 			.eq('id', postId)
 			.maybeSingle();
 		if (postErr) throw new Error(postErr.message);
-		if (!post) return;
+		if (!post) {
+			console.log(`[worker] postId=${postId} not found in DB; skipping`);
+			return;
+		}
+		console.log(`[worker] postId=${postId} provider=${post.connection_provider} acct=${post.connection_provider_account_id} status=${post.status}`);
 
 		// If cancelled/published already, no-op
 		if (post.status === 'cancelled' || post.status === 'published') return;
@@ -493,6 +551,16 @@ new Worker(
 		connection: redis,
 	}
 );
+
+worker.on('completed', (job) => {
+	console.log(`[worker] ✓ completed job ${job.id}`);
+});
+worker.on('failed', (job, err) => {
+	console.error(`[worker] ✗ failed job ${job?.id}:`, err?.message ?? err);
+});
+worker.on('error', (err) => {
+	console.error('[worker] error:', err?.message ?? err);
+});
 
 console.log(`[worker] listening on queue "${QUEUE_NAME}"`);
 
