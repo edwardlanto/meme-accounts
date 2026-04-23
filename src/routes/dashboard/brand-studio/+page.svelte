@@ -18,9 +18,14 @@
 
 		window.addEventListener('message', (ev) => {
 			const data = (ev as MessageEvent).data as any;
-			if (!data || data.type !== 'brand-studio:inline-edit') return;
-			if (typeof data.slideIdx !== 'number' || typeof data.html !== 'string') return;
-			applyInlineSlideHtml(data.slideIdx, data.html);
+			if (!data) return;
+			if (data.type === 'brand-studio:inline-edit') {
+				if (typeof data.slideIdx !== 'number' || typeof data.html !== 'string') return;
+				applyInlineSlideHtml(data.slideIdx, data.html);
+			} else if (data.type === 'brand-studio:replace-image') {
+				if (typeof data.slideIdx !== 'number' || typeof data.slotNum !== 'number' || typeof data.dataUrl !== 'string') return;
+				applyImageSlot(data.slideIdx, data.slotNum, data.dataUrl);
+			}
 		});
 	});
 
@@ -36,6 +41,7 @@
 	interface UploadedImage { name: string; dataUrl: string; base64: string; mediaType: string; }
 	interface SlideCard    { idx: number; srcdoc: string; label: string; w: number; h: number; }
 	interface SlideField   { key: string; label: string; value: string; multiline: boolean; }
+	interface SlideImageSlot { slot: number; label: string; currentSrc: string; }
 	interface SavedTemplate {
 		id: string; name: string; style: any; primary_color: string;
 		brand_name: string; handle: string; generated_html: string | null;
@@ -123,25 +129,27 @@
 			});
 			const data = await res.json();
 			if (!res.ok || data.error) throw new Error(data.error ?? 'Generation failed');
-			generatedHtml = data.html;
-			_fullHtml = data.html;
-			isDemo = !!data.demo;
-			extractedSlides = parseSlides(data.html);
-			selectedSlide = 0;
-			slideFields = extractedSlides.length ? getSlideFields(0) : [];
-			slideMusic = extractedSlides.map(() => ({ song: 'No music', seconds: 15 }));
+		generatedHtml = data.html;
+		_fullHtml = data.html;
+		isDemo = !!data.demo;
+		extractedSlides = parseSlides(data.html);
+		selectedSlide = 0;
+		slideFields = extractedSlides.length ? getSlideFields(0) : [];
+		slideImageSlots = getSlideImageSlots(0);
+		slideMusic = extractedSlides.map(() => ({ song: 'No music', seconds: 15 }));
 		} catch (e: any) { genError = e.message; }
 		generating = false;
 	}
 
 	// ── Slide parsing (full-HTML injection approach) ──────────────────────────
-	let extractedSlides = $state<SlideCard[]>([]);
-	let selectedSlide   = $state(0);
-	let slideFields     = $state<SlideField[]>([]);
-	let _fullHtml       = '';
-	let _slideW         = 400;
-	let _slideH         = 500;
-	let inlineEdit      = $state(false);
+	let extractedSlides  = $state<SlideCard[]>([]);
+	let selectedSlide    = $state(0);
+	let slideFields      = $state<SlideField[]>([]);
+	let slideImageSlots  = $state<SlideImageSlot[]>([]);
+	let _fullHtml        = '';
+	let _slideW          = 1080;
+	let _slideH          = 1350;
+	let inlineEdit       = $state(false);
 
 	function getSlideLabel(i: number, total: number): string {
 		if (i === 0) return 'Hero';
@@ -230,18 +238,45 @@
 				</style>
 			`;
 
-			const inlineEditScript = enableInlineEdit
-				? `
+		const inlineEditScript = enableInlineEdit
+			? `
 <script>
 (function(){
   document.body.setAttribute('data-inline-edit', '1');
   var slideIdx = ${slideIdx};
   var slide = document.querySelector('.slide');
   if(!slide) return;
-  var targets = slide.querySelectorAll('.tag, h1, h2, p, li');
+  // Target data-text-slot elements (new format) + legacy selectors as fallback
+  var targets = slide.querySelectorAll('[data-text-slot], .tag, h1, h2, p, li');
   targets.forEach(function(el){
+    // Don't make decorative/structural elements editable
+    if(el.closest('[data-img-slot]')) return;
+    if(el.closest('.progress-bar') || el.closest('.arrow') || el.closest('.arrows')) return;
     el.setAttribute('contenteditable', 'true');
     el.setAttribute('spellcheck', 'false');
+  });
+  // Click on image slots to trigger upload
+  slide.querySelectorAll('[data-img-slot]').forEach(function(imgEl){
+    imgEl.style.cursor = 'pointer';
+    imgEl.title = 'Click to replace image';
+    imgEl.addEventListener('click', function(){
+      var slotNum = parseInt(imgEl.getAttribute('data-img-slot') || '0');
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = function(){
+        var file = input.files && input.files[0];
+        if(!file) return;
+        var reader = new FileReader();
+        reader.onload = function(){
+          try {
+            parent.postMessage({ type:'brand-studio:replace-image', slideIdx: slideIdx, slotNum: slotNum, dataUrl: reader.result }, '*');
+          } catch(e){}
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    });
   });
   var t = null;
   function send(){
@@ -255,7 +290,7 @@
   slide.addEventListener('blur', send, true);
 })();
 <\/script>`
-				: '';
+			: '';
 
 			return `<!DOCTYPE html>
 <html lang="en">
@@ -291,12 +326,13 @@ ${inlineEditScript}
 			existing.replaceWith(incoming);
 			_fullHtml = '<!DOCTYPE html>' + doc.documentElement.outerHTML;
 
-			// Refresh thumbnails + editing panel to reflect inline edits.
-			extractedSlides = extractedSlides.map((s, i) => ({
-				...s,
-				srcdoc: buildSrcdocFromFull(_fullHtml, i, s.w, s.h, false),
-			}));
-			slideFields = getSlideFields(selectedSlide);
+		// Refresh thumbnails + editing panel to reflect inline edits.
+		extractedSlides = extractedSlides.map((s, i) => ({
+			...s,
+			srcdoc: buildSrcdocFromFull(_fullHtml, i, s.w, s.h, false),
+		}));
+		slideFields = getSlideFields(selectedSlide);
+		slideImageSlots = getSlideImageSlots(selectedSlide);
 		} catch {
 			// ignore
 		}
@@ -309,6 +345,25 @@ ${inlineEditScript}
 		if (!el) return [];
 
 		const out: SlideField[] = [];
+
+		// ── Primary: data-text-slot attributes (new format) ─────────────────
+		const textSlotEls = el.querySelectorAll('[data-text-slot]');
+		if (textSlotEls.length > 0) {
+			const seen = new Set<string>();
+			textSlotEls.forEach((e) => {
+				const key = (e as HTMLElement).dataset.textSlot ?? '';
+				if (!key || seen.has(key)) return;
+				seen.add(key);
+				const text = e.textContent?.trim() ?? '';
+				// Human-readable label from the slot key (e.g. "body-0" → "Body")
+				const label = key.replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+				const isMultiline = e.tagName === 'P' || key.startsWith('body') || key.startsWith('tip') || key.startsWith('li');
+				out.push({ key: `slot:${key}`, label, value: text, multiline: isMultiline });
+			});
+			return out;
+		}
+
+		// ── Fallback: legacy selectors (old template format) ─────────────────
 		const tag = el.querySelector('.tag');
 		if (tag?.textContent?.trim()) out.push({ key: 'tag', label: 'Tag', value: tag.textContent.trim(), multiline: false });
 
@@ -332,9 +387,74 @@ ${inlineEditScript}
 		return out;
 	}
 
+	// ── Image slot helpers ────────────────────────────────────────────────────
+	function getSlideImageSlots(slideIdx: number): SlideImageSlot[] {
+		if (typeof window === 'undefined' || !_fullHtml) return [];
+		const doc = new DOMParser().parseFromString(_fullHtml, 'text/html');
+		const el  = doc.querySelectorAll('.slide')[slideIdx];
+		if (!el) return [];
+
+		const slots: SlideImageSlot[] = [];
+
+		// data-img-slot elements (new format)
+		el.querySelectorAll('[data-img-slot]').forEach((node) => {
+			const el2 = node as HTMLElement;
+			const slot  = parseInt(el2.dataset.imgSlot ?? '0');
+			const label = el2.dataset.imgLabel ?? `Image ${slot + 1}`;
+			const img   = el2.querySelector('img') as HTMLImageElement | null;
+			slots.push({ slot, label, currentSrc: img?.src ?? '' });
+		});
+
+		// Also catch bare <img> tags not inside a data-img-slot wrapper
+		[...el.querySelectorAll('img')].forEach((imgEl, i) => {
+			const parent = (imgEl as HTMLElement).closest('[data-img-slot]');
+			if (!parent) {
+				const slotIdx = slots.length;
+				slots.push({ slot: slotIdx, label: `Image ${slotIdx + 1}`, currentSrc: (imgEl as HTMLImageElement).src });
+			}
+		});
+
+		return slots;
+	}
+
+	function applyImageSlot(slideIdx: number, slotNum: number, dataUrl: string) {
+		if (!_fullHtml) return;
+		const doc   = new DOMParser().parseFromString(_fullHtml, 'text/html');
+		const slide = doc.querySelectorAll('.slide')[slideIdx];
+		if (!slide) return;
+
+		// Try data-img-slot wrapper first
+		const slotEl = slide.querySelector(`[data-img-slot="${slotNum}"]`) as HTMLElement | null;
+		if (slotEl) {
+			slotEl.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" alt="" />`;
+		} else {
+			// Fallback: nth bare img tag
+			const imgs = [...slide.querySelectorAll('img')] as HTMLImageElement[];
+			const bareImgs = imgs.filter(img => !img.closest('[data-img-slot]'));
+			if (bareImgs[slotNum]) bareImgs[slotNum].src = dataUrl;
+		}
+
+		_fullHtml = '<!DOCTYPE html>' + doc.documentElement.outerHTML;
+		extractedSlides = extractedSlides.map((s, i) => ({
+			...s,
+			srcdoc: buildSrcdocFromFull(_fullHtml, i, s.w, s.h, false),
+		}));
+		slideImageSlots = getSlideImageSlots(slideIdx);
+	}
+
+	function handleImageSlotUpload(e: Event, slideIdx: number, slotNum: number) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		(e.target as HTMLInputElement).value = '';
+		const reader = new FileReader();
+		reader.onload = () => applyImageSlot(slideIdx, slotNum, reader.result as string);
+		reader.readAsDataURL(file);
+	}
+
 	function selectSlide(idx: number) {
 		selectedSlide = idx;
 		slideFields = getSlideFields(idx);
+		slideImageSlots = getSlideImageSlots(idx);
 	}
 
 	function applyEdits() {
@@ -344,7 +464,12 @@ ${inlineEditScript}
 		if (!el) return;
 
 		for (const f of slideFields) {
-			if (f.key === 'tag')  { const e = el.querySelector('.tag');      if (e) e.textContent = f.value; }
+			if (f.key.startsWith('slot:')) {
+				// New data-text-slot format
+				const slotKey = f.key.slice(5);
+				const target = el.querySelector(`[data-text-slot="${slotKey}"]`);
+				if (target) target.textContent = f.value;
+			} else if (f.key === 'tag')  { const e = el.querySelector('.tag');      if (e) e.textContent = f.value; }
 			else if (f.key === 'h1')  { const e = el.querySelector('h1');   if (e) e.textContent = f.value; }
 			else if (f.key === 'h2')  { const e = el.querySelector('h2');   if (e) e.textContent = f.value; }
 			else if (f.key === 'tip') { const e = el.querySelector('.tip-box p'); if (e) e.textContent = f.value; }
@@ -364,6 +489,8 @@ ${inlineEditScript}
 			...s,
 			srcdoc: buildSrcdocFromFull(_fullHtml, i, s.w, s.h, false),
 		}));
+		// Refresh image slots after text edits (avoids stale slot list)
+		slideImageSlots = getSlideImageSlots(selectedSlide);
 	}
 
 	// ── Drag to sort ──────────────────────────────────────────────────────────
@@ -453,6 +580,7 @@ ${inlineEditScript}
 			extractedSlides = parseSlides(t.generated_html);
 			selectedSlide = 0;
 			slideFields = extractedSlides.length ? getSlideFields(0) : [];
+			slideImageSlots = getSlideImageSlots(0);
 			slideMusic = extractedSlides.map(() => ({ song: 'No music', seconds: 15 }));
 		}
 		currentStep = 3;
@@ -933,9 +1061,58 @@ ${inlineEditScript}
 				</p>
 			</div>
 			<div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-				{#if slideFields.length === 0}
-					<p class="text-[11px] font-body text-white/20 text-center mt-4">No editable text found.</p>
-				{:else}
+
+				<!-- ── Image slots ─────────────────────────────────────────── -->
+				{#if slideImageSlots.length > 0}
+					<div>
+						<p class="text-[8px] font-mono text-white/25 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+							<Image size={9} /> Photos
+						</p>
+						<div class="flex flex-col gap-2">
+							{#each slideImageSlots as slot}
+								<label class="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-violet-500/25 hover:bg-violet-500/[0.04] cursor-pointer transition-all group">
+									<!-- Thumbnail -->
+									<div class="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-white/[0.05] border border-white/[0.08]">
+										{#if slot.currentSrc && slot.currentSrc.startsWith('data:')}
+											<img src={slot.currentSrc} alt="" class="w-full h-full object-cover" />
+										{:else}
+											<div class="w-full h-full flex flex-col items-center justify-center gap-1">
+												<Image size={14} class="text-white/20" />
+												<span class="text-[8px] font-mono text-white/15">Empty</span>
+											</div>
+										{/if}
+									</div>
+									<!-- Label + action -->
+									<div class="flex-1 min-w-0">
+										<p class="text-[10px] font-mono text-white/50 truncate leading-none">{slot.label}</p>
+										<p class="text-[9px] font-body text-violet-400 group-hover:text-violet-300 transition-colors mt-1.5 flex items-center gap-1">
+											<Upload size={9} /> {slot.currentSrc ? 'Replace photo' : 'Add photo'}
+										</p>
+									</div>
+									<input
+										type="file"
+										accept="image/*"
+										class="hidden"
+										onchange={(e) => handleImageSlotUpload(e, selectedSlide, slot.slot)}
+									/>
+								</label>
+							{/each}
+						</div>
+					</div>
+					{#if slideFields.length > 0}
+						<div class="border-t border-white/[0.05]"></div>
+					{/if}
+				{/if}
+
+				<!-- ── Text fields ─────────────────────────────────────────── -->
+				{#if slideFields.length === 0 && slideImageSlots.length === 0}
+					<p class="text-[11px] font-body text-white/20 text-center mt-4">No editable content found.</p>
+				{:else if slideFields.length > 0}
+					{#if slideImageSlots.length === 0}
+						<p class="text-[8px] font-mono text-white/25 uppercase tracking-wider mb-0 flex items-center gap-1.5">
+							<Type size={9} /> Text
+						</p>
+					{/if}
 					{#each slideFields as field, i}
 						<div>
 							<p class="text-[8px] font-mono text-white/25 uppercase tracking-wider mb-1">{field.label}</p>
