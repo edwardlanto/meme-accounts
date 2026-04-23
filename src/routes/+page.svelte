@@ -517,10 +517,9 @@
    SCROLL REVEAL  — only on child elements, never section wrappers
 ════════════════════════════════════════════════════════════ */
 .reveal {
-	opacity: 0;
-	transform: translateY(24px);
-	transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo);
-	transition-delay: var(--delay, 0s);
+	/* Never hide content by default (prevents blank page if IO/hydration misbehaves). */
+	opacity: 1;
+	transform: none;
 }
 .reveal.visible {
 	opacity: 1;
