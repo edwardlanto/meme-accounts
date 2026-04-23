@@ -184,7 +184,7 @@
 								interactive={false}
 							/>
 						{:else if tmpl.id === 'brand'}
-							<!-- Brand Studio static preview -->
+							<!-- Slideshows static preview -->
 							<div style="
 								width: 100%; height: 100%;
 								background: linear-gradient(135deg, #0f0a1e 0%, #1a0f3a 45%, #0d1a2e 100%);

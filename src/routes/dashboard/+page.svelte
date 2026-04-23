@@ -32,9 +32,9 @@
 			border: 'rgba(139,92,246,0.15)',
 		},
 		{
-			href: '/dashboard/brand-studio',
+			href: '/dashboard/slideshows',
 			icon: Wand2,
-			label: 'Brand Studio',
+			label: 'Slideshows',
 			desc: 'Upload brand images → AI extracts style → 7-slide carousel',
 			color: '#06B6D4',
 			bg: 'rgba(6,182,212,0.08)',

@@ -23,8 +23,14 @@
 		{
 			label: 'Studios',
 			items: [
-				{ href: '/dashboard/brand-studio', label: 'Brand Studio', icon: Wand2 },
+				{ href: '/dashboard/slideshows',  label: 'Slideshows',   icon: Wand2 },
 				{ href: '/dashboard/studio',       label: 'News Studio',  icon: Layers },
+			]
+		},
+		{
+			label: 'Brand',
+			items: [
+				{ href: '/dashboard/branding',   label: 'Branding',     icon: Layers },
 			]
 		},
 		{

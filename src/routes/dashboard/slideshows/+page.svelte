@@ -19,10 +19,10 @@
 		window.addEventListener('message', (ev) => {
 			const data = (ev as MessageEvent).data as any;
 			if (!data) return;
-			if (data.type === 'brand-studio:inline-edit') {
+			if (data.type === 'slideshows:inline-edit') {
 				if (typeof data.slideIdx !== 'number' || typeof data.html !== 'string') return;
 				applyInlineSlideHtml(data.slideIdx, data.html);
-			} else if (data.type === 'brand-studio:replace-image') {
+			} else if (data.type === 'slideshows:replace-image') {
 				if (typeof data.slideIdx !== 'number' || typeof data.slotNum !== 'number' || typeof data.dataUrl !== 'string') return;
 				applyImageSlot(data.slideIdx, data.slotNum, data.dataUrl);
 			}
@@ -270,7 +270,7 @@
         var reader = new FileReader();
         reader.onload = function(){
           try {
-            parent.postMessage({ type:'brand-studio:replace-image', slideIdx: slideIdx, slotNum: slotNum, dataUrl: reader.result }, '*');
+            parent.postMessage({ type:'slideshows:replace-image', slideIdx: slideIdx, slotNum: slotNum, dataUrl: reader.result }, '*');
           } catch(e){}
         };
         reader.readAsDataURL(file);
@@ -280,7 +280,7 @@
   });
   var t = null;
   function send(){
-    try{ parent.postMessage({ type:'brand-studio:inline-edit', slideIdx: slideIdx, html: slide.outerHTML }, '*'); }catch(e){}
+    try{ parent.postMessage({ type:'slideshows:inline-edit', slideIdx: slideIdx, html: slide.outerHTML }, '*'); }catch(e){}
   }
   function schedule(){
     if(t) clearTimeout(t);
@@ -599,7 +599,7 @@ ${inlineEditScript}
 	<div class="px-5 pt-5 pb-4 border-b border-white/[0.04] flex-shrink-0">
 		<div class="flex items-center gap-2 mb-5">
 			<Wand2 size={13} class="text-violet-400" />
-			<h1 class="font-display font-bold text-sm text-white">Brand Studio</h1>
+			<h1 class="font-display font-bold text-sm text-white">Slideshows</h1>
 		</div>
 
 		<div class="flex items-start">

@@ -17,7 +17,7 @@
 		{ img: '/placeholders/placeholder-horizontal.jpeg',label: 'Tweet Carousel',    num: '03' },
 		{ img: '/placeholders/placeholder-square.jpeg',   label: 'Text Carousel',      num: '04' },
 		{ img: '/placeholders/placeholder-vertical.jpeg', label: 'Article Breakdown',  num: '05' },
-		{ img: '/placeholders/placeholder-horizontal.jpeg',label: 'Brand Studio',      num: '06' },
+		{ img: '/placeholders/placeholder-horizontal.jpeg',label: 'Slideshows',        num: '06' },
 		{ img: '/placeholders/placeholder-square.jpeg',   label: 'Image Quote',        num: '07' },
 	];
 
