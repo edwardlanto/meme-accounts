@@ -2,7 +2,7 @@
 	import { supabase } from '$lib/supabase';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { Search, Plus, Zap, Trash2, RefreshCw, ExternalLink, Heart, MessageCircle, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Sparkles } from 'lucide-svelte';
+	import { Search, Plus, Zap, Trash2, RefreshCw, Heart, MessageCircle, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Sparkles, Users } from 'lucide-svelte';
 
 	let creators: any[] = $state([]);
 	let viralPosts: any[] = $state([]);
@@ -37,19 +37,13 @@
 
 	async function addCreator() {
 		if (!addHandle.trim()) return;
-		adding = true;
-		addError = '';
+		adding = true; addError = '';
 		const handle = addHandle.trim().replace('@', '');
 		const { error } = await supabase.from('creators').insert({
-			user_id: userId,
-			instagram_handle: handle,
-			niche: addNiche || null,
+			user_id: userId, instagram_handle: handle, niche: addNiche || null,
 		});
 		if (error) { addError = error.message; adding = false; return; }
-		addHandle = '';
-		addNiche = '';
-		showAddForm = false;
-		adding = false;
+		addHandle = ''; addNiche = ''; showAddForm = false; adding = false;
 		await loadData();
 	}
 
@@ -57,16 +51,13 @@
 		scrapingId = creatorId;
 		try {
 			const res = await fetch('/api/scrape', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				method: 'POST', headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ creatorId }),
 			});
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Scrape failed');
 			await loadData();
-		} catch (e: any) {
-			alert(e.message);
-		}
+		} catch (e: any) { alert(e.message); }
 		scrapingId = null;
 	}
 
@@ -81,26 +72,20 @@
 		analyzingPostId = postId;
 		try {
 			const res = await fetch('/api/analyze', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				method: 'POST', headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ postId }),
 			});
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
 			await loadData();
-		} catch (e: any) {
-			alert(e.message);
-		}
+		} catch (e: any) { alert(e.message); }
 		analyzingPostId = null;
 	}
 
 	async function remixPost(post: any) {
-		// Create a new carousel from this post's analysis
 		const title = post.hook ? `Remix: ${post.hook.slice(0, 40)}...` : `Remix of @${post.creators?.instagram_handle}`;
 		const { data, error } = await supabase.from('carousels').insert({
-			user_id: userId,
-			title,
-			status: 'draft',
+			user_id: userId, title, status: 'draft',
 			slides: JSON.stringify([
 				{ id: '1', text: post.hook ?? 'Your hook here', type: 'hook', bg: '#111111', textColor: '#ffffff' },
 				{ id: '2', text: 'Slide 2', type: 'body', bg: '#111111', textColor: '#ffffff' },
@@ -121,117 +106,148 @@
 		if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
 		return String(n);
 	}
+
+	function initials(handle: string) {
+		return handle.slice(0, 2).toUpperCase();
+	}
 </script>
 
-<div class="p-8 max-w-5xl">
+<div class="page">
 	<!-- Header -->
-	<div class="flex items-start justify-between mb-8">
-		<div>
-			<h1 class="font-display font-bold text-2xl text-white mb-1">Discover</h1>
-			<p class="font-body text-sm text-white/40">Track competitors, scrape viral posts, generate AI hooks</p>
+	<div class="page-head">
+		<div class="head-left">
+			<div class="head-icon">
+				<Search size={16} />
+			</div>
+			<div>
+				<h1 class="page-title">Discover</h1>
+				<p class="page-sub">Track competitors · Scrape viral posts · Generate AI hooks</p>
+			</div>
 		</div>
-		<button onclick={() => showAddForm = !showAddForm}
-			class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all">
+		<button onclick={() => showAddForm = !showAddForm} class="add-btn">
 			<Plus size={14} />
-			Add creator
+			Track creator
 		</button>
 	</div>
 
 	<!-- Add creator form -->
 	{#if showAddForm}
-		<div class="glass border border-violet-500/20 rounded-2xl p-6 mb-6">
-			<h3 class="font-display font-semibold text-sm text-white mb-4">Track a new creator</h3>
+		<div class="add-form-panel">
+			<div class="add-form-header">
+				<div class="add-form-title">
+					<Users size={14} />
+					Track a new creator
+				</div>
+				<button onclick={() => showAddForm = false} class="close-btn">✕</button>
+			</div>
+
 			{#if addError}
-				<div class="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 mb-4">
-					<AlertCircle size={13} class="text-red-400" />
-					<p class="text-xs font-body text-red-400">{addError}</p>
+				<div class="err-row">
+					<AlertCircle size={13} />
+					<p>{addError}</p>
 				</div>
 			{/if}
-			<form onsubmit={(e) => { e.preventDefault(); addCreator(); }} class="flex gap-3 items-end">
-				<div class="flex-1 flex flex-col gap-1.5">
-					<label class="text-xs font-mono text-white/40 uppercase tracking-wider">Instagram handle</label>
-					<div class="relative">
-						<span class="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm font-mono">@</span>
-						<input bind:value={addHandle} required placeholder="garyvee"
-							class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-7 pr-4 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors" />
+
+			<form onsubmit={(e) => { e.preventDefault(); addCreator(); }} class="add-form-body">
+				<div class="add-field">
+					<label class="add-label">Instagram handle</label>
+					<div class="at-wrap">
+						<span class="at-sign">@</span>
+						<input bind:value={addHandle} required placeholder="garyvee" class="add-input" />
 					</div>
 				</div>
-				<div class="w-40 flex flex-col gap-1.5">
-					<label class="text-xs font-mono text-white/40 uppercase tracking-wider">Niche (optional)</label>
-					<input bind:value={addNiche} placeholder="Marketing"
-						class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-4 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors" />
+				<div class="add-field add-field--sm">
+					<label class="add-label">Niche (optional)</label>
+					<input bind:value={addNiche} placeholder="Marketing" class="add-input" />
 				</div>
-				<button type="submit" disabled={adding}
-					class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-violet-600 hover:bg-violet-500 transition-colors disabled:opacity-50 shrink-0">
-					{adding ? 'Adding...' : 'Track'}
-				</button>
-				<button type="button" onclick={() => showAddForm = false}
-					class="px-4 py-2.5 rounded-xl text-sm font-body text-white/40 hover:text-white glass glass-hover transition-all shrink-0">
-					Cancel
-				</button>
+				<div class="add-actions">
+					<button type="submit" disabled={adding} class="track-btn">
+						{adding ? 'Adding…' : 'Track'}
+					</button>
+					<button type="button" onclick={() => showAddForm = false} class="cancel-btn">Cancel</button>
+				</div>
 			</form>
 		</div>
 	{/if}
 
+	<!-- Content -->
 	{#if loading}
-		<div class="flex flex-col gap-3">
+		<div class="skeleton-list">
 			{#each Array(3) as _}
-				<div class="h-20 rounded-2xl bg-white/[0.03] animate-pulse"></div>
+				<div class="skeleton-row"></div>
 			{/each}
 		</div>
+
 	{:else if creators.length === 0}
-		<div class="flex flex-col items-center justify-center py-24 text-center">
-			<div class="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/15 flex items-center justify-center mb-5">
-				<Search size={22} class="text-violet-400" />
+		<div class="empty-state">
+			<div class="empty-icon">
+				<Search size={24} />
 			</div>
-			<h3 class="font-display font-semibold text-base text-white mb-2">No creators tracked yet</h3>
-			<p class="font-body text-sm text-white/35 max-w-sm mb-6">Add an Instagram handle to start scraping their viral posts and extracting what makes them work.</p>
-			<button onclick={() => showAddForm = true}
-				class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 transition-all hover:shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-				<Plus size={14} /> Add your first creator
+			<h3 class="empty-title">No creators tracked yet</h3>
+			<p class="empty-sub">Add an Instagram handle to start scraping their viral posts and extracting what makes them go viral.</p>
+			<button onclick={() => showAddForm = true} class="add-btn">
+				<Plus size={14} />
+				Add your first creator
 			</button>
 		</div>
+
 	{:else}
-		<div class="flex flex-col gap-3">
+		<!-- Stats bar -->
+		<div class="stats-bar">
+			<div class="stat-chip">
+				<span class="stat-n">{creators.length}</span>
+				<span class="stat-l">Creators tracked</span>
+			</div>
+			<div class="stat-chip">
+				<span class="stat-n">{viralPosts.length}</span>
+				<span class="stat-l">Posts scraped</span>
+			</div>
+			<div class="stat-chip">
+				<span class="stat-n">{viralPosts.filter(p => p.ai_analysis).length}</span>
+				<span class="stat-l">AI analyzed</span>
+			</div>
+		</div>
+
+		<div class="creator-list">
 			{#each creators as creator}
 				{@const posts = postsForCreator(creator.id)}
 				{@const isExpanded = expandedCreator === creator.id}
 				{@const isScraping = scrapingId === creator.id}
 
-				<div class="rounded-2xl glass border border-white/[0.05] overflow-hidden">
+				<div class="creator-card {isExpanded ? 'creator-card--open' : ''}">
 					<!-- Creator row -->
-					<div class="flex items-center gap-4 p-4">
-						<div class="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500/25 to-cyan-500/25 border border-white/10 flex items-center justify-center font-bold font-mono text-sm text-violet-300 shrink-0">
-							{creator.instagram_handle.slice(0,2).toUpperCase()}
+					<div class="creator-row">
+						<div class="creator-av">
+							{initials(creator.instagram_handle)}
 						</div>
-						<div class="flex-1 min-w-0">
-							<div class="flex items-center gap-2">
-								<p class="font-display font-semibold text-sm text-white">@{creator.instagram_handle}</p>
+
+						<div class="creator-info">
+							<div class="creator-name-row">
+								<span class="creator-name">@{creator.instagram_handle}</span>
 								{#if creator.niche}
-									<span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/15">{creator.niche}</span>
+									<span class="niche-chip">{creator.niche}</span>
 								{/if}
 							</div>
-							<p class="font-mono text-[11px] text-white/30 mt-0.5">
+							<p class="creator-meta">
 								{posts.length} post{posts.length !== 1 ? 's' : ''} scraped
 								{#if creator.last_scraped_at} · Last scraped {new Date(creator.last_scraped_at).toLocaleDateString()}{/if}
 							</p>
 						</div>
 
-						<div class="flex items-center gap-2 shrink-0">
-							<button onclick={() => scrapeCreator(creator.id)} disabled={!!scrapingId}
-								class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold font-body text-white bg-violet-600/80 hover:bg-violet-500 transition-colors disabled:opacity-50">
-								<RefreshCw size={11} class={isScraping ? 'animate-spin' : ''} />
-								{isScraping ? 'Scraping...' : 'Scrape'}
+						<div class="creator-actions">
+							<button onclick={() => scrapeCreator(creator.id)} disabled={!!scrapingId} class="scrape-btn">
+								<RefreshCw size={11} class={isScraping ? 'spin' : ''} />
+								{isScraping ? 'Scraping…' : 'Scrape'}
 							</button>
+
 							{#if posts.length > 0}
-								<button onclick={() => expandedCreator = isExpanded ? null : creator.id}
-									class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-body text-white/50 glass glass-hover transition-all">
-									{isExpanded ? 'Hide' : 'View posts'}
+								<button onclick={() => expandedCreator = isExpanded ? null : creator.id} class="expand-btn">
+									{isExpanded ? 'Hide' : `${posts.length} posts`}
 									{#if isExpanded}<ChevronUp size={11} />{:else}<ChevronDown size={11} />{/if}
 								</button>
 							{/if}
-							<button onclick={() => deleteCreator(creator.id)}
-								class="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all">
+
+							<button onclick={() => deleteCreator(creator.id)} class="delete-btn" title="Remove creator">
 								<Trash2 size={13} />
 							</button>
 						</div>
@@ -239,55 +255,53 @@
 
 					<!-- Posts panel -->
 					{#if isExpanded && posts.length > 0}
-						<div class="border-t border-white/[0.04] p-4 pt-3">
-							<div class="grid grid-cols-1 gap-2">
+						<div class="posts-panel">
+							<div class="posts-grid">
 								{#each posts as post}
 									{@const isAnalyzing = analyzingPostId === post.id}
-									<div class="flex gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:border-white/[0.07] transition-all">
-										<!-- Stats -->
-										<div class="flex flex-col gap-1 shrink-0 w-20">
-											<div class="flex items-center gap-1 text-[11px] font-mono text-white/40">
-												<Heart size={9} class="text-pink-400" /> {fmtNum(post.likes)}
+									<div class="post-card">
+										<div class="post-stats">
+											<div class="post-stat">
+												<Heart size={9} class="stat-icon stat-icon--heart" />
+												<span>{fmtNum(post.likes)}</span>
 											</div>
-											<div class="flex items-center gap-1 text-[11px] font-mono text-white/40">
-												<MessageCircle size={9} class="text-cyan-400" /> {fmtNum(post.comments)}
+											<div class="post-stat">
+												<MessageCircle size={9} class="stat-icon stat-icon--comment" />
+												<span>{fmtNum(post.comments)}</span>
 											</div>
 											{#if post.engagement_rate}
-												<div class="flex items-center gap-1 text-[11px] font-mono text-white/40">
-													<TrendingUp size={9} class="text-violet-400" /> {post.engagement_rate.toFixed(1)}%
+												<div class="post-stat">
+													<TrendingUp size={9} class="stat-icon stat-icon--trend" />
+													<span>{post.engagement_rate.toFixed(1)}%</span>
 												</div>
 											{/if}
 										</div>
 
-										<!-- Content -->
-										<div class="flex-1 min-w-0">
+										<div class="post-content">
 											{#if post.hook}
-												<p class="font-body text-xs text-cyan-300 mb-1 font-medium">Hook: {post.hook}</p>
+												<p class="post-hook">"{post.hook}"</p>
 											{/if}
 											{#if post.caption}
-												<p class="font-body text-xs text-white/40 leading-relaxed line-clamp-2">{post.caption}</p>
+												<p class="post-caption">{post.caption}</p>
 											{/if}
 											{#if post.ai_analysis}
-												<div class="mt-2 p-2 rounded-lg bg-violet-500/5 border border-violet-500/10">
-													<p class="text-[10px] font-mono text-violet-400 mb-1">AI Analysis</p>
-													<p class="text-[11px] font-body text-white/50 leading-relaxed">
-														{typeof post.ai_analysis === 'string' ? post.ai_analysis : JSON.stringify(post.ai_analysis)?.slice(0,200)}...
+												<div class="ai-analysis">
+													<p class="ai-label"><Sparkles size={9} /> AI Analysis</p>
+													<p class="ai-text">
+														{typeof post.ai_analysis === 'string' ? post.ai_analysis : JSON.stringify(post.ai_analysis)?.slice(0,200)}…
 													</p>
 												</div>
 											{/if}
 										</div>
 
-										<!-- Actions -->
-										<div class="flex flex-col gap-1.5 shrink-0">
+										<div class="post-actions">
 											{#if !post.ai_analysis}
-												<button onclick={() => analyzePost(post.id)} disabled={!!analyzingPostId}
-													class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold font-body text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/15 transition-all disabled:opacity-40">
-													<Sparkles size={10} class={isAnalyzing ? 'animate-pulse' : ''} />
-													{isAnalyzing ? 'Analyzing...' : 'AI Analyze'}
+												<button onclick={() => analyzePost(post.id)} disabled={!!analyzingPostId} class="analyze-btn">
+													<Sparkles size={10} class={isAnalyzing ? 'pulse' : ''} />
+													{isAnalyzing ? 'Analyzing…' : 'AI Analyze'}
 												</button>
 											{/if}
-											<button onclick={() => remixPost(post)}
-												class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all">
+											<button onclick={() => remixPost(post)} class="remix-btn">
 												<Zap size={10} />
 												Remix
 											</button>
@@ -302,3 +316,305 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* ── Layout ──────────────────────────────────────────────── */
+	.page {
+		padding: 32px 40px;
+		max-width: 900px;
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+		font-family: 'DM Sans', sans-serif;
+	}
+
+	/* ── Header ──────────────────────────────────────────────── */
+	.page-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+	}
+	.head-left { display: flex; align-items: center; gap: 14px; }
+	.head-icon {
+		width: 40px; height: 40px; border-radius: 11px;
+		background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
+		display: flex; align-items: center; justify-content: center;
+		color: #a78bfa; flex-shrink: 0;
+	}
+	.page-title {
+		font-family: 'Fraunces', serif; font-size: 22px; font-weight: 900;
+		letter-spacing: -0.03em; color: #fff; margin: 0;
+	}
+	.page-sub { font-size: 12px; color: rgba(255,255,255,0.3); margin: 0; margin-top: 2px; }
+
+	.add-btn {
+		display: flex; align-items: center; gap: 7px;
+		padding: 9px 18px; border-radius: 10px; border: none;
+		background: #E8FF48; color: #0a0a0a;
+		font-size: 13px; font-weight: 700; font-family: 'DM Sans', sans-serif;
+		cursor: pointer; transition: all 0.15s; white-space: nowrap;
+	}
+	.add-btn:hover { background: #f0ff70; box-shadow: 0 6px 20px rgba(232,255,72,0.25); transform: translateY(-1px); }
+
+	/* ── Add form ────────────────────────────────────────────── */
+	.add-form-panel {
+		background: rgba(255,255,255,0.02); border: 1px solid rgba(139,92,246,0.2);
+		border-radius: 14px; padding: 20px 24px;
+		display: flex; flex-direction: column; gap: 16px;
+	}
+	.add-form-header { display: flex; align-items: center; justify-content: space-between; }
+	.add-form-title {
+		display: flex; align-items: center; gap: 8px;
+		font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7);
+		font-family: 'Space Mono', monospace;
+	}
+	.close-btn {
+		width: 28px; height: 28px; border-radius: 7px;
+		background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+		color: rgba(255,255,255,0.3); cursor: pointer; font-size: 12px;
+		display: flex; align-items: center; justify-content: center;
+		transition: all 0.15s;
+	}
+	.close-btn:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.07); }
+
+	.err-row {
+		display: flex; align-items: center; gap: 8px;
+		padding: 10px 14px; border-radius: 9px;
+		background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
+		font-size: 12px; color: #f87171;
+	}
+	.err-row p { margin: 0; }
+
+	.add-form-body { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+	.add-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
+	.add-field--sm { flex: 0 0 140px; min-width: 0; }
+	.add-label {
+		font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+		color: rgba(255,255,255,0.35); font-family: 'Space Mono', monospace;
+	}
+	.at-wrap { position: relative; }
+	.at-sign {
+		position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+		font-size: 13px; color: rgba(255,255,255,0.3); font-family: 'Space Mono', monospace;
+		pointer-events: none;
+	}
+	.add-input {
+		width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+		border-radius: 9px; padding: 9px 12px 9px 28px;
+		font-size: 13px; font-family: 'DM Sans', sans-serif; color: #fff;
+		outline: none; transition: border-color 0.15s; box-sizing: border-box;
+	}
+	.add-field:not(.add-field--sm) .add-input { /* first field has @ sign */ }
+	.add-field--sm .add-input { padding-left: 12px; }
+	.add-input::placeholder { color: rgba(255,255,255,0.2); }
+	.add-input:focus { border-color: rgba(139,92,246,0.4); }
+
+	.add-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+	.track-btn {
+		padding: 9px 20px; border-radius: 9px; border: none;
+		background: rgba(139,92,246,0.8); color: #fff;
+		font-size: 13px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		cursor: pointer; transition: all 0.15s;
+	}
+	.track-btn:hover:not(:disabled) { background: rgba(139,92,246,1); }
+	.track-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+	.cancel-btn {
+		padding: 9px 16px; border-radius: 9px;
+		background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+		font-size: 13px; font-family: 'DM Sans', sans-serif; color: rgba(255,255,255,0.4);
+		cursor: pointer; transition: all 0.15s;
+	}
+	.cancel-btn:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); }
+
+	/* ── Skeleton ─────────────────────────────────────────────── */
+	.skeleton-list { display: flex; flex-direction: column; gap: 10px; }
+	.skeleton-row {
+		height: 72px; border-radius: 14px;
+		background: rgba(255,255,255,0.03);
+		animation: pulse 1.8s ease-in-out infinite;
+	}
+	@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.7} }
+
+	/* ── Empty ───────────────────────────────────────────────── */
+	.empty-state {
+		display: flex; flex-direction: column; align-items: center; text-align: center;
+		gap: 12px; padding: 80px 0;
+	}
+	.empty-icon {
+		width: 56px; height: 56px; border-radius: 16px;
+		background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.15);
+		display: flex; align-items: center; justify-content: center; color: #a78bfa;
+		margin-bottom: 4px;
+	}
+	.empty-title {
+		font-family: 'Fraunces', serif; font-size: 18px; font-weight: 900;
+		letter-spacing: -0.02em; color: #fff; margin: 0;
+	}
+	.empty-sub {
+		font-size: 13px; color: rgba(255,255,255,0.35); max-width: 360px;
+		line-height: 1.65; margin: 0;
+	}
+
+	/* ── Stats bar ───────────────────────────────────────────── */
+	.stats-bar {
+		display: flex; gap: 12px;
+	}
+	.stat-chip {
+		display: flex; align-items: center; gap: 8px;
+		padding: 10px 16px; border-radius: 10px;
+		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+	}
+	.stat-n {
+		font-family: 'Fraunces', serif; font-size: 18px; font-weight: 900;
+		color: #E8FF48;
+	}
+	.stat-l { font-size: 12px; color: rgba(255,255,255,0.35); }
+
+	/* ── Creator list ────────────────────────────────────────── */
+	.creator-list { display: flex; flex-direction: column; gap: 10px; }
+
+	.creator-card {
+		border-radius: 14px; overflow: hidden;
+		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+		transition: border-color 0.2s;
+	}
+	.creator-card--open { border-color: rgba(139,92,246,0.2); }
+
+	.creator-row {
+		display: flex; align-items: center; gap: 14px;
+		padding: 14px 18px;
+	}
+
+	.creator-av {
+		width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+		background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.25);
+		display: flex; align-items: center; justify-content: center;
+		font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700;
+		color: #a78bfa;
+	}
+
+	.creator-info { flex: 1; min-width: 0; }
+	.creator-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+	.creator-name {
+		font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.85);
+	}
+	.niche-chip {
+		font-family: 'Space Mono', monospace; font-size: 9px;
+		padding: 3px 8px; border-radius: 100px;
+		background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
+		color: #a78bfa;
+	}
+	.creator-meta {
+		font-size: 11px; color: rgba(255,255,255,0.28);
+		font-family: 'Space Mono', monospace; margin: 3px 0 0;
+	}
+
+	.creator-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+	.scrape-btn {
+		display: flex; align-items: center; gap: 6px;
+		padding: 6px 12px; border-radius: 8px; border: none;
+		background: rgba(232,255,72,0.08); border: 1px solid rgba(232,255,72,0.2);
+		font-size: 11px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		color: #E8FF48; cursor: pointer; transition: all 0.15s;
+	}
+	.scrape-btn:hover:not(:disabled) { background: rgba(232,255,72,0.15); }
+	.scrape-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+	.expand-btn {
+		display: flex; align-items: center; gap: 5px;
+		padding: 6px 10px; border-radius: 8px;
+		background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+		font-size: 11px; font-family: 'DM Sans', sans-serif; color: rgba(255,255,255,0.45);
+		cursor: pointer; transition: all 0.15s;
+	}
+	.expand-btn:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.75); }
+
+	.delete-btn {
+		width: 30px; height: 30px; border-radius: 8px;
+		background: transparent; border: 1px solid rgba(255,255,255,0.06);
+		color: rgba(255,255,255,0.2); cursor: pointer;
+		display: flex; align-items: center; justify-content: center;
+		transition: all 0.15s;
+	}
+	.delete-btn:hover { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: #f87171; }
+
+	/* ── Posts panel ─────────────────────────────────────────── */
+	.posts-panel {
+		border-top: 1px solid rgba(255,255,255,0.05);
+		padding: 16px 18px;
+	}
+	.posts-grid { display: flex; flex-direction: column; gap: 10px; }
+
+	.post-card {
+		display: flex; gap: 14px; align-items: flex-start;
+		padding: 14px; border-radius: 11px;
+		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
+		transition: border-color 0.15s;
+	}
+	.post-card:hover { border-color: rgba(255,255,255,0.09); }
+
+	.post-stats {
+		display: flex; flex-direction: column; gap: 6px;
+		flex-shrink: 0; width: 68px;
+	}
+	.post-stat {
+		display: flex; align-items: center; gap: 5px;
+		font-family: 'Space Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.4);
+	}
+	:global(.stat-icon) { flex-shrink: 0; }
+	:global(.stat-icon--heart) { color: #f472b6; }
+	:global(.stat-icon--comment) { color: #22d3ee; }
+	:global(.stat-icon--trend) { color: #a78bfa; }
+
+	.post-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+	.post-hook {
+		font-size: 12px; font-weight: 500; color: rgba(6,182,212,0.9);
+		font-style: italic; margin: 0; line-height: 1.5;
+	}
+	.post-caption {
+		font-size: 12px; color: rgba(255,255,255,0.38); line-height: 1.6; margin: 0;
+		display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+	}
+
+	.ai-analysis {
+		padding: 10px 12px; border-radius: 8px;
+		background: rgba(139,92,246,0.05); border: 1px solid rgba(139,92,246,0.12);
+	}
+	.ai-label {
+		display: flex; align-items: center; gap: 5px;
+		font-family: 'Space Mono', monospace; font-size: 9px; text-transform: uppercase;
+		letter-spacing: 0.08em; color: #a78bfa; margin: 0 0 6px;
+	}
+	.ai-text {
+		font-size: 11px; color: rgba(255,255,255,0.45); line-height: 1.6; margin: 0;
+	}
+
+	.post-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+
+	.analyze-btn {
+		display: flex; align-items: center; gap: 5px;
+		padding: 6px 10px; border-radius: 7px;
+		background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
+		font-size: 11px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		color: #a78bfa; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+	}
+	.analyze-btn:hover:not(:disabled) { background: rgba(139,92,246,0.18); }
+	.analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+	.remix-btn {
+		display: flex; align-items: center; gap: 5px;
+		padding: 6px 10px; border-radius: 7px;
+		background: rgba(232,255,72,0.08); border: 1px solid rgba(232,255,72,0.2);
+		font-size: 11px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		color: #E8FF48; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+	}
+	.remix-btn:hover { background: rgba(232,255,72,0.15); }
+
+	:global(.spin) { animation: spin 1s linear infinite; }
+	:global(.pulse) { animation: pulse-anim 1s ease-in-out infinite; }
+	@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+	@keyframes pulse-anim { 0%,100%{opacity:0.5} 50%{opacity:1} }
+</style>

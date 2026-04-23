@@ -372,7 +372,7 @@
 				<!-- Export buttons -->
 				<div class="flex flex-col gap-2 pb-2">
 					<button onclick={exportCurrent} disabled={exporting || exportingAll}
-						class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-sky-600 to-violet-600 hover:shadow-[0_0_20px_rgba(14,165,233,0.3)] transition-all disabled:opacity-50">
+						class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
 						{#if exporting}
 							<Loader size={13} class="animate-spin" /> Exporting…
 						{:else}

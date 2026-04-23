@@ -224,7 +224,7 @@
 				</button>
 			{:else}
 				<button onclick={exportNewsPng} disabled={exporting}
-					class="flex items-center gap-1.5 text-xs font-semibold font-body px-3 py-1.5 rounded-lg text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_15px_rgba(139,92,246,0.3)] transition-all disabled:opacity-50">
+					class="flex items-center gap-1.5 text-xs font-semibold font-body px-3 py-1.5 rounded-lg text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
 					{#if exporting}<Loader size={10} class="animate-spin" />{:else}<Download size={10} />{/if}
 					Export PNG
 				</button>
@@ -413,7 +413,7 @@
 			</div>
 			<div class="p-4 border-t border-white/[0.04] mt-auto">
 				<button onclick={save} disabled={saving}
-					class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all disabled:opacity-50">
+					class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_6px_24px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
 					{#if saving}<Loader size={13} class="animate-spin" />{:else if saved}<Check size={13} /> Saved!{:else}<Save size={13} /> Save carousel{/if}
 				</button>
 			</div>

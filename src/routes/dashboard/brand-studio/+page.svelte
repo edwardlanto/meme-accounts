@@ -558,7 +558,7 @@ ${inlineEditScript}
 				class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body transition-all disabled:opacity-40
 					{style
 						? 'text-violet-300 bg-violet-500/10 border border-violet-500/20 hover:bg-violet-500/20'
-						: 'text-white bg-gradient-to-r from-violet-600 to-violet-500 hover:shadow-[0_0_16px_rgba(139,92,246,0.35)]'}">
+						: 'text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)]'}">
 				{#if extracting}
 					<Loader size={13} class="animate-spin" /> Analysing…
 				{:else if style}
@@ -677,7 +677,7 @@ ${inlineEditScript}
 		{/if}
 
 		<button onclick={generateCarousel} disabled={generating || !canGenerate}
-			class="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.35)] transition-all disabled:opacity-40">
+			class="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_6px_24px_rgba(232,255,72,0.25)] transition-all disabled:opacity-40">
 			{#if generating}
 				<Loader size={14} class="animate-spin" /> Generating…
 			{:else}

@@ -61,33 +61,58 @@
 		published: 'text-cyan-400',
 		scheduled: 'text-violet-400',
 	};
+
+	let filterTab = $state<'all' | 'draft' | 'published' | 'scheduled'>('all');
+
+	const filteredCarousels = $derived(
+		filterTab === 'all' ? carousels : carousels.filter(c => c.status === filterTab)
+	);
+
+	const counts = $derived({
+		all: carousels.length,
+		draft: carousels.filter(c => c.status === 'draft').length,
+		published: carousels.filter(c => c.status === 'published').length,
+		scheduled: carousels.filter(c => c.status === 'scheduled').length,
+	});
+
+	function timeAgo(dateStr: string): string {
+		const d = new Date(dateStr);
+		const diff = Date.now() - d.getTime();
+		const m = Math.floor(diff / 60000);
+		if (m < 1) return 'just now';
+		if (m < 60) return `${m}m ago`;
+		const h = Math.floor(m / 60);
+		if (h < 24) return `${h}h ago`;
+		return `${Math.floor(h / 24)}d ago`;
+	}
 </script>
 
-<div class="p-8 max-w-5xl">
+<div class="page-wrap">
 
 	<!-- ── Header ─────────────────────────────────────────────────────────── -->
-	<div class="flex items-start justify-between mb-10">
+	<div class="page-header">
 		<div>
-			<h1 class="font-display font-bold text-2xl text-white mb-1">Carousels</h1>
-			<p class="font-body text-sm text-white/40">Your carousel library — drafts, published, and scheduled</p>
+			<h1 class="page-title">Carousels</h1>
+			<p class="page-sub">Your carousel library — drafts, published, and scheduled</p>
 		</div>
 		<button onclick={createNew} disabled={creating}
-			class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all disabled:opacity-50">
-			{#if creating}<Loader size={13} class="animate-spin" />{:else}<Plus size={14} />{/if}
+			class="create-btn">
+			{#if creating}<Loader size={13} class="spin" />{:else}<Plus size={14} />{/if}
 			New carousel
 		</button>
 	</div>
 
 	{#if createError}
-		<div class="mb-6 flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs font-body text-red-400">
-			<span>⚠ {createError}</span>
+		<div style="margin-bottom:1rem;padding:0.75rem 1rem;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);font-size:0.8125rem;color:#f87171;">
+			⚠ {createError}
 		</div>
 	{/if}
 
 	<!-- ── Starter Templates ───────────────────────────────────────────────── -->
-	<div class="mb-10">
-		<div class="flex items-center justify-between mb-4">
-			<h2 class="font-display font-semibold text-sm text-white/60 uppercase tracking-widest">Start from a template</h2>
+	<div class="templates-section">
+		<div class="templates-header">
+			<h2 class="templates-title">Start from a template</h2>
+			<a href="/dashboard/carousels/new" class="templates-see-all">See all templates →</a>
 		</div>
 
 		<div class="flex gap-4 flex-wrap">
@@ -269,67 +294,95 @@
 	</div>
 
 	<!-- ── Divider ────────────────────────────────────────────────────────── -->
-	<div class="border-t border-white/[0.04] mb-8"></div>
+	<div class="section-divider"></div>
 
 	<!-- ── Your Carousels ─────────────────────────────────────────────────── -->
-	<div class="flex items-center justify-between mb-4">
-		<h2 class="font-display font-semibold text-sm text-white/60 uppercase tracking-widest">Your carousels</h2>
+	<div class="library-header">
+		<h2 class="library-title">Your Carousels</h2>
+
+		<!-- Filter tabs -->
+		<div class="filter-tabs">
+			{#each [
+				{id: 'all',       label: 'All',       count: counts.all},
+				{id: 'draft',     label: 'Drafts',    count: counts.draft},
+				{id: 'published', label: 'Published', count: counts.published},
+				{id: 'scheduled', label: 'Scheduled', count: counts.scheduled},
+			] as t}
+				<button
+					type="button"
+					class="filter-tab {filterTab === t.id ? 'filter-tab--on' : ''}"
+					onclick={() => filterTab = t.id as typeof filterTab}
+				>
+					{t.label}
+					{#if t.count > 0}
+						<span class="filter-count">{t.count}</span>
+					{/if}
+				</button>
+			{/each}
+		</div>
 	</div>
 
 	{#if loading}
-		<div class="grid grid-cols-3 gap-4">
+		<div class="carousel-grid">
 			{#each Array(6) as _}
-				<div class="aspect-[4/5] rounded-2xl bg-white/[0.03] animate-pulse"></div>
+				<div class="skeleton-card"></div>
 			{/each}
 		</div>
-	{:else if carousels.length === 0}
-		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<div class="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/15 flex items-center justify-center mb-5">
-				<ImagePlus size={22} class="text-violet-400" />
+	{:else if filteredCarousels.length === 0 && carousels.length === 0}
+		<div class="empty-state">
+			<div class="empty-icon">
+				<ImagePlus size={22} />
 			</div>
-			<h3 class="font-display font-semibold text-base text-white mb-1.5">No carousels yet</h3>
-			<p class="font-body text-sm text-white/35 max-w-xs mb-5">Pick a template above or create a blank carousel.</p>
+			<h3 class="empty-title">No carousels yet</h3>
+			<p class="empty-desc">Pick a template above or create a blank carousel.</p>
 			<button onclick={createNew}
-				class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold font-body text-white bg-gradient-to-r from-violet-600 to-cyan-500 transition-all hover:shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+				class="empty-cta">
 				<Plus size={14} /> Create blank carousel
 			</button>
 		</div>
+	{:else if filteredCarousels.length === 0}
+		<div class="empty-state">
+			<div class="empty-icon"><FileText size={22} /></div>
+			<h3 class="empty-title">No {filterTab} carousels</h3>
+			<p class="empty-desc">You don't have any {filterTab} carousels yet.</p>
+		</div>
 	{:else}
-		<div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-			{#each carousels as c}
+		<div class="carousel-grid">
+			{#each filteredCarousels as c}
 				{@const slides = (() => { try { return JSON.parse(typeof c.slides === 'string' ? c.slides : JSON.stringify(c.slides)); } catch { return []; } })()}
 				{@const firstSlide = slides[0]}
-				<div class="group relative rounded-2xl overflow-hidden border border-white/[0.06] hover:border-violet-500/25 transition-all cursor-pointer"
-					style="background: {firstSlide?.bg ?? '#111111'}">
+				<div class="carousel-card group"
+					style="--card-bg: {firstSlide?.bg ?? '#111111'}; --card-color: {firstSlide?.textColor ?? '#ffffff'}">
+
 					<!-- Preview -->
-					<a href="/dashboard/editor/{c.id}" class="block aspect-[4/5] flex items-center justify-center p-6">
-						<p class="font-display font-bold text-center leading-tight"
-							style="color: {firstSlide?.textColor ?? '#ffffff'}; font-size: clamp(12px, 2.5vw, 18px)">
+					<a href="/dashboard/editor/{c.id}" class="card-preview">
+						<p class="card-preview-text">
 							{firstSlide?.text || 'Untitled'}
 						</p>
 					</a>
 
 					<!-- Slide count badge -->
-					<div class="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-black/60 text-[10px] font-mono text-white/50">
+					<div class="slide-count">
 						{slides.length} slides
 					</div>
 
+					<!-- Status badge -->
+					<div class="card-status status-{c.status}">
+						<svelte:component this={statusIcon[c.status] ?? FileText} size={9} />
+						{c.status}
+					</div>
+
 					<!-- Bottom bar -->
-					<div class="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between">
-						<div class="flex-1 min-w-0">
-							<p class="text-xs font-display font-semibold text-white truncate">{c.title}</p>
-							<div class="flex items-center gap-1 mt-0.5">
-								<svelte:component this={statusIcon[c.status] ?? FileText} size={9} class={statusColor[c.status] ?? 'text-white/30'} />
-								<p class="text-[10px] font-mono {statusColor[c.status] ?? 'text-white/30'} capitalize">{c.status}</p>
-							</div>
+					<div class="card-footer">
+						<div class="card-info">
+							<p class="card-title-text">{c.title}</p>
+							<p class="card-time">{timeAgo(c.updated_at ?? c.created_at)}</p>
 						</div>
-						<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-							<a href="/dashboard/editor/{c.id}"
-								class="p-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/40 text-violet-300 transition-colors">
+						<div class="card-actions">
+							<a href="/dashboard/editor/{c.id}" class="card-action card-action--edit">
 								<Edit2 size={11} />
 							</a>
-							<button onclick={() => deleteCarousel(c.id)}
-								class="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-400 transition-colors">
+							<button onclick={() => deleteCarousel(c.id)} class="card-action card-action--delete">
 								<Trash2 size={11} />
 							</button>
 						</div>
@@ -339,12 +392,182 @@
 
 			<!-- New blank card -->
 			<button onclick={createNew} disabled={creating}
-				class="aspect-[4/5] rounded-2xl border-2 border-dashed border-white/[0.08] hover:border-violet-500/40 flex flex-col items-center justify-center gap-2 transition-all text-white/20 hover:text-violet-400 group">
-				<div class="w-10 h-10 rounded-xl border-2 border-current flex items-center justify-center group-hover:scale-110 transition-transform">
+				class="new-card-btn">
+				<div class="new-card-icon">
 					<Plus size={18} />
 				</div>
-				<span class="text-xs font-mono">New carousel</span>
+				<span class="new-card-label">New carousel</span>
 			</button>
 		</div>
 	{/if}
 </div>
+
+<style>
+	.page-wrap { padding: 2rem 2.5rem; max-width: 1100px; }
+
+	/* Header */
+	.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 2rem; }
+	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: #fff; margin: 0 0 0.25rem; }
+	.page-sub   { font-size: 0.8125rem; color: rgba(255,255,255,0.38); margin: 0; }
+	.create-btn {
+		display: flex; align-items: center; gap: 0.4rem;
+		padding: 0.6rem 1.1rem; border-radius: 10px; border: none;
+		background: #E8FF48; color: #0a0a0a;
+		font-size: 0.8125rem; font-weight: 600; cursor: pointer;
+		font-family: 'DM Sans', sans-serif; transition: transform 0.12s, box-shadow 0.12s;
+	}
+	.create-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(232,255,72,0.25); }
+	.create-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+	.spin { animation: spin 0.8s linear infinite; }
+	@keyframes spin { to { transform: rotate(360deg); } }
+
+	/* Templates section */
+	.templates-section { margin-bottom: 2rem; }
+	.templates-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+	.templates-title { font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(255,255,255,0.3); margin: 0; }
+	.templates-see-all { font-size: 0.75rem; color: rgba(255,255,255,0.3); text-decoration: none; font-family: 'Space Mono', monospace; transition: color 0.15s; }
+	.templates-see-all:hover { color: #E8FF48; }
+
+	/* Section divider */
+	.section-divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 0.5rem 0 1.5rem; }
+
+	/* Library header */
+	.library-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+	.library-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.9); margin: 0; }
+
+	/* Filter tabs */
+	.filter-tabs {
+		display: flex; gap: 0.25rem; padding: 0.3rem;
+		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+		border-radius: 10px;
+	}
+	.filter-tab {
+		display: inline-flex; align-items: center; gap: 0.4rem;
+		padding: 0.35rem 0.8rem; border-radius: 7px; border: none;
+		background: transparent; color: rgba(255,255,255,0.38);
+		font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 500;
+		cursor: pointer; transition: all 0.12s;
+	}
+	.filter-tab:hover { color: rgba(255,255,255,0.7); }
+	.filter-tab--on { color: #fff; background: rgba(255,255,255,0.08); }
+	.filter-count {
+		display: inline-flex; align-items: center; justify-content: center;
+		width: 18px; height: 18px; border-radius: 5px;
+		background: rgba(255,255,255,0.08); font-size: 0.65rem;
+		font-family: 'Space Mono', monospace; color: rgba(255,255,255,0.5);
+	}
+	.filter-tab--on .filter-count { background: rgba(232,255,72,0.15); color: #E8FF48; }
+
+	/* Carousel grid */
+	.carousel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+	.skeleton-card {
+		aspect-ratio: 4/5; border-radius: 16px;
+		background: rgba(255,255,255,0.03);
+		animation: pulse 1.5s ease-in-out infinite;
+	}
+	@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+
+	/* Carousel card */
+	.carousel-card {
+		position: relative; border-radius: 16px; overflow: hidden;
+		border: 1px solid rgba(255,255,255,0.06);
+		background: var(--card-bg, #111);
+		transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+	}
+	.carousel-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.3); }
+
+	.card-preview {
+		display: flex; align-items: center; justify-content: center;
+		padding: 1.5rem; aspect-ratio: 4/5;
+		text-decoration: none; cursor: pointer;
+	}
+	.card-preview-text {
+		font-family: 'Fraunces', serif; font-weight: 700; text-align: center;
+		line-height: 1.25; color: var(--card-color, #fff);
+		font-size: clamp(10px, 1.8vw, 16px);
+		display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+	}
+
+	.slide-count {
+		position: absolute; top: 0.5rem; right: 0.5rem;
+		padding: 2px 7px; border-radius: 5px;
+		background: rgba(0,0,0,0.65); color: rgba(255,255,255,0.45);
+		font-size: 0.6rem; font-family: 'Space Mono', monospace;
+		backdrop-filter: blur(4px);
+	}
+
+	.card-status {
+		position: absolute; top: 0.5rem; left: 0.5rem;
+		display: inline-flex; align-items: center; gap: 0.25rem;
+		padding: 2px 7px; border-radius: 5px;
+		font-size: 0.6rem; font-family: 'Space Mono', monospace; font-weight: 700;
+		text-transform: capitalize; backdrop-filter: blur(4px);
+		opacity: 0; transition: opacity 0.2s;
+	}
+	.carousel-card:hover .card-status { opacity: 1; }
+	.status-draft     { background: rgba(0,0,0,0.6); color: rgba(255,255,255,0.4); }
+	.status-published { background: rgba(6,182,212,0.2); color: #06b6d4; border: 1px solid rgba(6,182,212,0.3); }
+	.status-scheduled { background: rgba(139,92,246,0.2); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.3); }
+
+	.card-footer {
+		position: absolute; bottom: 0; left: 0; right: 0;
+		padding: 0.75rem; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+		display: flex; align-items: flex-end; justify-content: space-between; gap: 0.5rem;
+	}
+	.card-info { flex: 1; min-width: 0; }
+	.card-title-text { font-size: 0.78rem; font-weight: 600; color: #fff; margin: 0 0 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.card-time        { font-size: 0.6rem; color: rgba(255,255,255,0.35); font-family: 'Space Mono', monospace; margin: 0; }
+
+	.card-actions { display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.2s; }
+	.carousel-card:hover .card-actions { opacity: 1; }
+	.card-action {
+		display: flex; align-items: center; justify-content: center;
+		width: 26px; height: 26px; border-radius: 6px; border: none; cursor: pointer;
+		text-decoration: none; transition: background 0.15s;
+	}
+	.card-action--edit   { background: rgba(139,92,246,0.2); color: #a78bfa; }
+	.card-action--edit:hover { background: rgba(139,92,246,0.4); }
+	.card-action--delete { background: rgba(239,68,68,0.2); color: #f87171; }
+	.card-action--delete:hover { background: rgba(239,68,68,0.4); }
+
+	/* New card button */
+	.new-card-btn {
+		aspect-ratio: 4/5; border-radius: 16px;
+		border: 2px dashed rgba(255,255,255,0.08);
+		background: transparent;
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		gap: 0.6rem; cursor: pointer; transition: all 0.2s; color: rgba(255,255,255,0.2);
+	}
+	.new-card-btn:hover { border-color: rgba(232,255,72,0.3); color: #E8FF48; background: rgba(232,255,72,0.03); }
+	.new-card-icon {
+		width: 40px; height: 40px; border-radius: 11px;
+		border: 2px solid currentColor;
+		display: flex; align-items: center; justify-content: center;
+		transition: transform 0.2s;
+	}
+	.new-card-btn:hover .new-card-icon { transform: scale(1.1); }
+	.new-card-label { font-size: 0.72rem; font-family: 'Space Mono', monospace; }
+
+	/* Empty states */
+	.empty-state {
+		display: flex; flex-direction: column; align-items: center; text-align: center;
+		padding: 4rem 2rem; gap: 0.75rem;
+	}
+	.empty-icon {
+		width: 56px; height: 56px; border-radius: 16px;
+		background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.15);
+		display: flex; align-items: center; justify-content: center;
+		color: rgba(139,92,246,0.7); margin-bottom: 0.5rem;
+	}
+	.empty-title { font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 700; color: rgba(255,255,255,0.8); margin: 0; }
+	.empty-desc  { font-size: 0.8125rem; color: rgba(255,255,255,0.35); margin: 0; max-width: 280px; }
+	.empty-cta {
+		display: inline-flex; align-items: center; gap: 0.4rem;
+		padding: 0.6rem 1.2rem; border-radius: 10px; border: none;
+		background: linear-gradient(135deg, #7c3aed, #06b6d4);
+		color: #fff; font-size: 0.8125rem; font-weight: 600; cursor: pointer;
+		font-family: 'DM Sans', sans-serif; margin-top: 0.5rem;
+		transition: opacity 0.15s, transform 0.15s;
+	}
+	.empty-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+</style>

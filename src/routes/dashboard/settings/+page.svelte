@@ -2,18 +2,35 @@
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
-	import { AlertTriangle, CheckCircle2, ExternalLink, Image, KeyRound } from 'lucide-svelte';
+	import {
+		AlertTriangle, CheckCircle2, ExternalLink, KeyRound,
+		User, Link2, CreditCard, Settings,
+		Building2, Globe, Copy, Check, ChevronRight
+	} from 'lucide-svelte';
 
 	type Status = { ok: boolean; missing: string[]; present: string[] };
-	let metaStatus = $state<Status | null>(null);
+	let metaStatus     = $state<Status | null>(null);
 	let linkedinStatus = $state<Status | null>(null);
-	let gmbStatus = $state<Status | null>(null);
-	let loading = $state(true);
-	let userId = $state<string>('');
+	let gmbStatus      = $state<Status | null>(null);
+	let loading        = $state(true);
+	let userId         = $state<string>('');
+	let userEmail      = $state<string>('');
+	let userName       = $state<string>('');
+	let copied         = $state<string | null>(null);
+
+	let activeTab = $state<'profile' | 'integrations' | 'billing'>('integrations');
+
+	const tabs = [
+		{ id: 'profile',      label: 'Profile',      icon: User },
+		{ id: 'integrations', label: 'Integrations', icon: Link2 },
+		{ id: 'billing',      label: 'Billing',       icon: CreditCard },
+	];
 
 	onMount(async () => {
 		const { data } = await supabase.auth.getUser();
-		userId = data.user?.id ?? '';
+		userId    = data.user?.id ?? '';
+		userEmail = data.user?.email ?? '';
+		userName  = data.user?.user_metadata?.full_name ?? '';
 
 		try {
 			const [metaRes, liRes, gmbRes] = await Promise.all([
@@ -21,334 +38,593 @@
 				fetch('/api/integrations/linkedin/status'),
 				fetch('/api/integrations/gmb/status'),
 			]);
-			metaStatus = await metaRes.json();
+			metaStatus     = await metaRes.json();
 			linkedinStatus = await liRes.json();
-			gmbStatus = await gmbRes.json();
+			gmbStatus      = await gmbRes.json();
 		} catch {
-			metaStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
-			linkedinStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
-			gmbStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
+			metaStatus     = { ok: false, missing: ['(failed)'], present: [] };
+			linkedinStatus = { ok: false, missing: ['(failed)'], present: [] };
+			gmbStatus      = { ok: false, missing: ['(failed)'], present: [] };
 		}
 		loading = false;
 	});
 
+	async function copyText(text: string, key: string) {
+		await navigator.clipboard.writeText(text);
+		copied = key;
+		setTimeout(() => { copied = null; }, 2000);
+	}
+
 	function connectInstagram() {
-		if (!userId) {
-			alert('You must be logged in to connect Instagram.');
-			goto('/login');
-			return;
-		}
-		if (!metaStatus?.ok) {
-			alert(`Missing credentials: ${(metaStatus?.missing ?? []).join(', ')}`);
-			return;
-		}
+		if (!userId) { goto('/login'); return; }
+		if (!metaStatus?.ok) return;
 		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
-
 	function connectLinkedIn(mode: 'member' | 'org' | 'both') {
-		if (!userId) {
-			alert('You must be logged in to connect LinkedIn.');
-			goto('/login');
-			return;
-		}
-		if (!linkedinStatus?.ok) {
-			alert(`Missing credentials: ${(linkedinStatus?.missing ?? []).join(', ')}`);
-			return;
-		}
+		if (!userId) { goto('/login'); return; }
+		if (!linkedinStatus?.ok) return;
 		window.location.href = `/api/auth/linkedin/start?userId=${encodeURIComponent(userId)}&mode=${encodeURIComponent(mode)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
-
 	function connectGmb() {
-		if (!userId) {
-			alert('You must be logged in to connect Google My Business.');
-			goto('/login');
-			return;
-		}
-		if (!gmbStatus?.ok) {
-			alert(`Missing credentials: ${(gmbStatus?.missing ?? []).join(', ')}`);
-			return;
-		}
+		if (!userId) { goto('/login'); return; }
+		if (!gmbStatus?.ok) return;
 		window.location.href = `/api/auth/gmb/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
 
-	const metaEnvSnippet = $derived(
-		[
-			'## Required env vars (server-side)',
-			'META_APP_ID=',
-			'META_APP_SECRET=',
-			'META_REDIRECT_URI=',
-			'',
-			'## Already used by your server routes',
-			'SUPABASE_URL=',
-			'SUPABASE_SERVICE_KEY=',
-		].join('\n')
-	);
+	const metaEnvSnippet = `META_APP_ID=\nMETA_APP_SECRET=\nMETA_REDIRECT_URI=`;
+	const linkedinEnvSnippet = `LINKEDIN_CLIENT_ID=\nLINKEDIN_CLIENT_SECRET=\nLINKEDIN_REDIRECT_URI=`;
+	const gmbEnvSnippet = `GMB_CLIENT_ID=\nGMB_CLIENT_SECRET=\nGMB_REDIRECT_URI=`;
 
-	const linkedinEnvSnippet = $derived(
-		[
-			'## Required env vars (server-side)',
-			'LINKEDIN_CLIENT_ID=',
-			'LINKEDIN_CLIENT_SECRET=',
-			'LINKEDIN_REDIRECT_URI=',
-			'LINKEDIN_SCOPES=  # optional; defaults based on which button you click',
-			'',
-			'## Already used by your server routes',
-			'SUPABASE_URL=',
-			'SUPABASE_SERVICE_KEY=',
-		].join('\n')
-	);
+	const metaStatusDerived    = $derived(metaStatus);
+	const linkedinStatusDerived = $derived(linkedinStatus);
+	const gmbStatusDerived      = $derived(gmbStatus);
 
-	const gmbEnvSnippet = $derived(
-		[
-			'## Required env vars (server-side)',
-			'GMB_CLIENT_ID=',
-			'GMB_CLIENT_SECRET=',
-			'GMB_REDIRECT_URI=',
-			'GMB_SCOPES=  # optional; defaults include business.manage + basic identity',
-			'',
-			'## Already used by your server routes',
-			'SUPABASE_URL=',
-			'SUPABASE_SERVICE_KEY=',
-		].join('\n')
-	);
+	const integrations = $derived([
+		{
+			id: 'meta',
+			title: 'Instagram / Facebook',
+			desc: 'Publish carousels and reels to Instagram Business and Facebook Pages.',
+			color: '#E1306C',
+			bg: 'rgba(225,48,108,0.08)',
+			status: metaStatusDerived,
+			snippet: metaEnvSnippet,
+			onConnect: connectInstagram,
+			btnLabel: 'Connect Instagram',
+			btnColor: '#E1306C',
+			docs: 'https://developers.facebook.com/docs/instagram-platform',
+			docsLabel: 'Meta API docs',
+		},
+		{
+			id: 'linkedin',
+			title: 'LinkedIn',
+			desc: 'Schedule posts to your personal profile, company pages, or both.',
+			color: '#0A66C2',
+			bg: 'rgba(10,102,194,0.08)',
+			status: linkedinStatusDerived,
+			snippet: linkedinEnvSnippet,
+			onConnect: () => connectLinkedIn('member'),
+			btnLabel: 'Connect profile',
+			btnColor: '#0A66C2',
+			docs: 'https://docs.microsoft.com/en-us/linkedin/',
+			docsLabel: 'LinkedIn API docs',
+		},
+		{
+			id: 'gmb',
+			title: 'Google Business Profile',
+			desc: 'Post updates to your Google Business locations directly from Carousel Studio.',
+			color: '#4285F4',
+			bg: 'rgba(66,133,244,0.08)',
+			status: gmbStatusDerived,
+			snippet: gmbEnvSnippet,
+			onConnect: connectGmb,
+			btnLabel: 'Connect Google Business',
+			btnColor: '#4285F4',
+			docs: 'https://developers.google.com/my-business',
+			docsLabel: 'GMB API docs',
+		},
+	]);
 </script>
 
-<div class="p-8 max-w-4xl">
-	<div class="flex items-start justify-between mb-8">
+<div class="page">
+	<!-- Page header -->
+	<div class="page-head">
+		<div class="page-icon">
+			<Settings size={20} />
+		</div>
 		<div>
-			<h1 class="font-display font-bold text-2xl text-white">Settings</h1>
-			<p class="font-body text-sm text-white/40 mt-1">Integrations and credentials.</p>
+			<h1 class="page-title">Settings</h1>
+			<p class="page-sub">Manage your profile, integrations, and billing</p>
 		</div>
 	</div>
 
-	<div class="rounded-2xl bg-[#0d0d0d] border border-white/10 overflow-hidden">
-		<div id="instagram" class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<Image size={16} class="text-pink-400" />
-				<p class="text-sm font-display font-semibold text-white/85">Instagram (Business) via Meta</p>
-			</div>
-			<a
-				href="/dashboard/post-scheduler"
-				class="text-[11px] font-mono text-white/35 hover:text-white/70 transition-colors inline-flex items-center gap-1.5"
+	<!-- Tab navigation -->
+	<div class="tab-nav">
+		{#each tabs as t}
+			{@const Icon = t.icon}
+			<button
+				type="button"
+				class="tab-btn {activeTab === t.id ? 'tab-btn--on' : ''}"
+				onclick={() => activeTab = t.id as typeof activeTab}
 			>
-				Back to scheduler <ExternalLink size={12} />
-			</a>
+				<Icon size={14} />
+				{t.label}
+			</button>
+		{/each}
+	</div>
+
+	<!-- ── PROFILE TAB ─────────────────────────────────────────── -->
+	{#if activeTab === 'profile'}
+		<div class="tab-content">
+			<div class="settings-card">
+				<h2 class="card-title">Your Account</h2>
+
+				<div class="profile-row">
+					<div class="profile-avatar">
+						{(userName || userEmail || 'U')[0].toUpperCase()}
+					</div>
+					<div class="profile-info">
+						<p class="profile-name">{userName || 'Unnamed User'}</p>
+						<p class="profile-email">{userEmail}</p>
+					</div>
+					<div class="profile-plan-badge">Pro</div>
+				</div>
+
+				<div class="form-grid">
+					<div class="form-field">
+						<label class="form-label">Display Name</label>
+						<input class="form-input" type="text" value={userName} placeholder="Your name" readonly />
+					</div>
+					<div class="form-field">
+						<label class="form-label">Email Address</label>
+						<input class="form-input" type="email" value={userEmail} placeholder="you@example.com" readonly />
+					</div>
+					<div class="form-field">
+						<label class="form-label">User ID</label>
+						<div class="input-copy-wrap">
+							<input class="form-input" type="text" value={userId} readonly />
+							<button type="button" class="copy-btn" onclick={() => copyText(userId, 'userid')}>
+								{#if copied === 'userid'}<Check size={13}/>{:else}<Copy size={13}/>{/if}
+							</button>
+						</div>
+					</div>
+				</div>
+
+				<div class="card-note">
+					Profile info is managed through Supabase Auth. Contact support to update your email.
+				</div>
+			</div>
+
+			<div class="settings-card">
+				<h2 class="card-title">Preferences</h2>
+				<div class="pref-list">
+					<div class="pref-row">
+						<div>
+							<p class="pref-label">Default export format</p>
+							<p class="pref-sub">PNG 1080×1350 (Instagram-optimized)</p>
+						</div>
+						<div class="pref-value">PNG · 1080px</div>
+					</div>
+					<div class="pref-row">
+						<div>
+							<p class="pref-label">AI model</p>
+							<p class="pref-sub">Used for hook generation and content analysis</p>
+						</div>
+						<div class="pref-value">Claude 3.5 Sonnet</div>
+					</div>
+					<div class="pref-row">
+						<div>
+							<p class="pref-label">Default timezone</p>
+							<p class="pref-sub">Used for scheduling posts</p>
+						</div>
+						<div class="pref-value">UTC · System</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="settings-card settings-card--danger">
+				<h2 class="card-title card-title--danger">Danger Zone</h2>
+				<p class="card-desc">Permanently delete your account and all data. This cannot be undone.</p>
+				<button type="button" class="btn-danger">Delete Account</button>
+			</div>
 		</div>
 
-		<div class="p-5">
+	<!-- ── INTEGRATIONS TAB ────────────────────────────────────── -->
+	{:else if activeTab === 'integrations'}
+		<div class="tab-content">
+			<p class="tab-desc">Connect your social accounts to enable publishing and scheduling from Carousel Studio.</p>
+
 			{#if loading}
-				<p class="text-sm text-white/40 font-body">Checking credentials…</p>
+				<div class="loading-row">
+					<div class="spinner"></div>
+					<span>Checking platform credentials…</span>
+				</div>
 			{:else}
-				{#if metaStatus?.ok}
-					<div class="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 mb-4 flex items-start gap-3">
-						<CheckCircle2 size={16} class="text-emerald-300 mt-0.5" />
-						<div class="min-w-0">
-							<p class="text-sm font-body text-emerald-200/90">Credentials detected. You can connect Instagram.</p>
-							<p class="text-[12px] font-body text-emerald-200/50 mt-1">
-								Supports scheduling for Posts, Reels, Carousels, and Stories.
-								Auto-publish is possible for Posts/Reels/Carousels; Stories generally require manual publish (we’ll treat them as reminders).
-							</p>
-						</div>
-					</div>
-				{:else}
-					<div class="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 mb-4 flex items-start gap-3">
-						<AlertTriangle size={16} class="text-amber-300 mt-0.5" />
-						<div class="min-w-0">
-							<p class="text-sm font-body text-amber-200/90">Instagram connect is not configured yet.</p>
-							<p class="text-[12px] font-body text-amber-200/60 mt-1">
-								Missing: <span class="font-mono">{(metaStatus?.missing ?? []).join(', ')}</span>
-							</p>
-						</div>
-					</div>
+				<div class="integrations-list">
+					{#each integrations as intg}
+						{@const st = intg.status}
+						<div class="intg-card" style="--color: {intg.color}; --bg: {intg.bg}">
+							<div class="intg-header">
+								<div class="intg-icon-wrap" style="background:{intg.bg}; color:{intg.color}">
+									<Globe size={18} />
+								</div>
+								<div class="intg-info">
+									<h3 class="intg-title">{intg.title}</h3>
+									<p class="intg-desc">{intg.desc}</p>
+								</div>
+								<div class="intg-status-badge {st?.ok ? 'status-ok' : 'status-fail'}">
+									{#if st?.ok}
+										<CheckCircle2 size={12} />
+										Configured
+									{:else}
+										<AlertTriangle size={12} />
+										Not set up
+									{/if}
+								</div>
+							</div>
 
-					<div class="rounded-2xl bg-white/2 border border-white/8 p-4 mb-4">
-						<div class="flex items-center gap-2 mb-2">
-							<KeyRound size={14} class="text-white/40" />
-							<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest">What to add to your env</p>
-						</div>
-						<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">{metaEnvSnippet}</pre>
-						<p class="text-[12px] font-body text-white/35 mt-3">
-							When you set these, restart the dev server. This page will automatically turn green when it detects them.
-						</p>
-					</div>
-				{/if}
+							{#if !st?.ok && st?.missing?.length}
+								<div class="intg-env-block">
+									<div class="env-block-head">
+										<KeyRound size={12} />
+										<span>Add these to your .env file</span>
+									</div>
+									<div class="env-code-wrap">
+										<pre class="env-code">{intg.snippet}</pre>
+										<button type="button" class="env-copy" onclick={() => copyText(intg.snippet, intg.id)}>
+											{#if copied === intg.id}<Check size={12}/>{:else}<Copy size={12}/>{/if}
+										</button>
+									</div>
+									<p class="env-hint">Restart the dev server after adding — this page updates automatically.</p>
+								</div>
+							{/if}
 
-				<div class="flex items-center gap-2">
-					<button
-						onclick={connectInstagram}
-						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
-							{metaStatus?.ok ? 'bg-pink-500/90 hover:bg-pink-500 text-white' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
-						disabled={!metaStatus?.ok}
-					>
-						Connect Instagram
-					</button>
-					<a
-						href="/dashboard/docs/instagram"
-						class="text-[12px] font-body text-white/35 hover:text-white/70 transition-colors"
-					>
-						Activation guide
-					</a>
-					<a
-						href="https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/content-publishing"
-						target="_blank"
-						rel="noreferrer"
-						class="text-[12px] font-body text-white/35 hover:text-white/70 transition-colors"
-					>
-						Meta docs (publishing)
-					</a>
+							<div class="intg-actions">
+								{#if intg.id === 'linkedin'}
+									<div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+										<button
+											type="button"
+											class="btn-connect"
+											style="--c:{intg.btnColor}"
+											disabled={!st?.ok}
+											onclick={() => connectLinkedIn('member')}
+										>
+											Connect profile
+										</button>
+										<button
+											type="button"
+											class="btn-connect-outline"
+											disabled={!st?.ok}
+											onclick={() => connectLinkedIn('org')}
+										>
+											Connect pages
+										</button>
+										<button
+											type="button"
+											class="btn-connect-outline"
+											disabled={!st?.ok}
+											onclick={() => connectLinkedIn('both')}
+										>
+											Connect both
+										</button>
+									</div>
+								{:else}
+									<button
+										type="button"
+										class="btn-connect"
+										style="--c:{intg.btnColor}"
+										disabled={!st?.ok}
+										onclick={intg.onConnect}
+									>
+										{intg.btnLabel}
+									</button>
+								{/if}
+								<a href={intg.docs} target="_blank" rel="noreferrer" class="btn-docs">
+									{intg.docsLabel}
+									<ExternalLink size={11} />
+								</a>
+							</div>
+						</div>
+					{/each}
 				</div>
 			{/if}
-		</div>
-	</div>
 
-	<div class="h-6"></div>
-
-	<div class="rounded-2xl bg-[#0d0d0d] border border-white/10 overflow-hidden">
-		<div id="linkedin" class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<Image size={16} class="text-blue-400" />
-				<p class="text-sm font-display font-semibold text-white/85">LinkedIn OAuth</p>
+			<div class="settings-card settings-card--info">
+				<h2 class="card-title">TikTok</h2>
+				<p class="card-desc">TikTok OAuth is available in the Analytics page. Connect via <a href="/dashboard/analytics?channel=tiktok" class="inline-link">Analytics → TikTok</a>.</p>
+				<a href="/dashboard/analytics?channel=tiktok" class="btn-secondary-sm">
+					Go to TikTok connect
+					<ChevronRight size={13} />
+				</a>
 			</div>
-			<a
-				href="/dashboard/post-scheduler"
-				class="text-[11px] font-mono text-white/35 hover:text-white/70 transition-colors inline-flex items-center gap-1.5"
-			>
-				Back to scheduler <ExternalLink size={12} />
-			</a>
 		</div>
 
-		<div class="p-5">
-			{#if loading}
-				<p class="text-sm text-white/40 font-body">Checking credentials…</p>
-			{:else}
-				{#if linkedinStatus?.ok}
-					<div class="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 mb-4 flex items-start gap-3">
-						<CheckCircle2 size={16} class="text-emerald-300 mt-0.5" />
-						<div class="min-w-0">
-							<p class="text-sm font-body text-emerald-200/90">Credentials detected. You can connect LinkedIn.</p>
-							<p class="text-[12px] font-body text-emerald-200/50 mt-1">
-								Choose what you want to connect: your personal profile, company pages you admin, or both.
-							</p>
-						</div>
-					</div>
-				{:else}
-					<div class="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 mb-4 flex items-start gap-3">
-						<AlertTriangle size={16} class="text-amber-300 mt-0.5" />
-						<div class="min-w-0">
-							<p class="text-sm font-body text-amber-200/90">LinkedIn connect is not configured yet.</p>
-							<p class="text-[12px] font-body text-amber-200/60 mt-1">
-								Missing: <span class="font-mono">{(linkedinStatus?.missing ?? []).join(', ')}</span>
-							</p>
-						</div>
-					</div>
+	<!-- ── BILLING TAB ─────────────────────────────────────────── -->
+	{:else if activeTab === 'billing'}
+		<div class="tab-content">
+			<div class="settings-card">
+				<h2 class="card-title">Current Plan</h2>
 
-					<div class="rounded-2xl bg-white/2 border border-white/8 p-4 mb-4">
-						<div class="flex items-center gap-2 mb-2">
-							<KeyRound size={14} class="text-white/40" />
-							<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest">What to add to your env</p>
+				<div class="plan-row">
+					<div class="plan-info">
+						<div class="plan-badge">Pro</div>
+						<div>
+							<p class="plan-name">Pro Plan</p>
+							<p class="plan-price">$29 <span>/month</span></p>
 						</div>
-						<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">{linkedinEnvSnippet}</pre>
-						<p class="text-[12px] font-body text-white/35 mt-3">
-							When you set these, restart the dev server. This page will automatically turn green when it detects them.
-						</p>
 					</div>
-				{/if}
-
-				<div class="flex flex-wrap items-center gap-2">
-					<button
-						onclick={() => connectLinkedIn('member')}
-						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
-							{linkedinStatus?.ok ? 'bg-blue-500/90 hover:bg-blue-500 text-white' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
-						disabled={!linkedinStatus?.ok}
-					>
-						Connect profile
-					</button>
-					<button
-						onclick={() => connectLinkedIn('org')}
-						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
-							{linkedinStatus?.ok ? 'bg-blue-500/20 hover:bg-blue-500/30 text-white/85 border border-blue-500/30' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
-						disabled={!linkedinStatus?.ok}
-					>
-						Connect pages
-					</button>
-					<button
-						onclick={() => connectLinkedIn('both')}
-						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
-							{linkedinStatus?.ok ? 'bg-white/8 hover:bg-white/12 text-white/85 border border-white/10' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
-						disabled={!linkedinStatus?.ok}
-					>
-						Connect both
-					</button>
+					<div class="plan-features">
+						{#each ['Unlimited carousels', '25 competitor tracks', 'Claude 3.5 Sonnet AI', 'News-to-Post (Vertex AI)', 'Full canvas + export', 'Style extraction'] as f}
+							<div class="plan-feature">
+								<CheckCircle2 size={13} class="feature-check" />
+								{f}
+							</div>
+						{/each}
+					</div>
 				</div>
-			{/if}
-		</div>
-	</div>
 
-	<div class="h-6"></div>
-
-	<div class="rounded-2xl bg-[#0d0d0d] border border-white/10 overflow-hidden">
-		<div id="gmb" class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<Image size={16} class="text-emerald-300" />
-				<p class="text-sm font-display font-semibold text-white/85">Google My Business (Business Profile)</p>
+				<div class="billing-actions">
+					<button type="button" class="btn-outline-sm">Manage subscription</button>
+					<button type="button" class="btn-outline-sm">Download invoices</button>
+				</div>
 			</div>
-			<a
-				href="/dashboard/post-scheduler"
-				class="text-[11px] font-mono text-white/35 hover:text-white/70 transition-colors inline-flex items-center gap-1.5"
-			>
-				Back to scheduler <ExternalLink size={12} />
-			</a>
+
+			<div class="settings-card">
+				<h2 class="card-title">Upgrade to Agency</h2>
+				<p class="card-desc">Get unlimited accounts, team workspace, white-label export, and API access.</p>
+				<div class="upgrade-price">$99<span>/month</span></div>
+				<button type="button" class="btn-upgrade">Upgrade to Agency</button>
+			</div>
 		</div>
-
-		<div class="p-5">
-			{#if loading}
-				<p class="text-sm text-white/40 font-body">Checking credentials…</p>
-			{:else}
-				{#if gmbStatus?.ok}
-					<div class="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 mb-4 flex items-start gap-3">
-						<CheckCircle2 size={16} class="text-emerald-300 mt-0.5" />
-						<div class="min-w-0">
-							<p class="text-sm font-body text-emerald-200/90">Credentials detected. You can connect Google Business Profile.</p>
-							<p class="text-[12px] font-body text-emerald-200/50 mt-1">
-								We’ll save your Google token plus each Location we can list under your Business Profile accounts.
-							</p>
-						</div>
-					</div>
-				{:else}
-					<div class="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 mb-4 flex items-start gap-3">
-						<AlertTriangle size={16} class="text-amber-300 mt-0.5" />
-						<div class="min-w-0">
-							<p class="text-sm font-body text-amber-200/90">Google My Business connect is not configured yet.</p>
-							<p class="text-[12px] font-body text-amber-200/60 mt-1">
-								Missing: <span class="font-mono">{(gmbStatus?.missing ?? []).join(', ')}</span>
-							</p>
-						</div>
-					</div>
-
-					<div class="rounded-2xl bg-white/2 border border-white/8 p-4 mb-4">
-						<div class="flex items-center gap-2 mb-2">
-							<KeyRound size={14} class="text-white/40" />
-							<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest">What to add to your env</p>
-						</div>
-						<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">{gmbEnvSnippet}</pre>
-						<p class="text-[12px] font-body text-white/35 mt-3">
-							When you set these, restart the dev server. This page will automatically turn green when it detects them.
-						</p>
-					</div>
-				{/if}
-
-				<div class="flex flex-wrap items-center gap-2">
-					<button
-						onclick={connectGmb}
-						class="px-4 py-2.5 rounded-2xl text-sm font-semibold font-body transition-all
-							{gmbStatus?.ok ? 'bg-emerald-500/90 hover:bg-emerald-500 text-white' : 'bg-white/5 text-white/35 border border-white/10 cursor-not-allowed'}"
-						disabled={!gmbStatus?.ok}
-					>
-						Connect Google Business Profile
-					</button>
-				</div>
-			{/if}
-		</div>
-	</div>
+	{/if}
 </div>
 
+<style>
+	.page { padding: 2rem 2.5rem; max-width: 860px; display: flex; flex-direction: column; gap: 1.5rem; }
+
+	/* ── Header ────────────────────────────────────────────────── */
+	.page-head { display: flex; align-items: center; gap: 1rem; }
+	.page-icon {
+		width: 44px; height: 44px; border-radius: 12px;
+		background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+		display: flex; align-items: center; justify-content: center;
+		color: rgba(255,255,255,0.5); flex-shrink: 0;
+	}
+	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: #fff; margin: 0 0 0.2rem; }
+	.page-sub   { font-size: 0.8125rem; color: rgba(255,255,255,0.38); margin: 0; }
+
+	/* ── Tab nav ───────────────────────────────────────────────── */
+	.tab-nav {
+		display: flex; gap: 0.25rem; padding: 0.3rem;
+		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+		border-radius: 12px; width: fit-content;
+	}
+	.tab-btn {
+		display: inline-flex; align-items: center; gap: 0.4rem;
+		padding: 0.5rem 1rem; border-radius: 9px; border: none;
+		background: transparent; color: rgba(255,255,255,0.38);
+		font-family: 'DM Sans', sans-serif; font-size: 0.8125rem; font-weight: 500;
+		cursor: pointer; transition: all 0.15s; white-space: nowrap;
+	}
+	.tab-btn:hover { color: rgba(255,255,255,0.72); background: rgba(255,255,255,0.04); }
+	.tab-btn--on   { color: #fff; background: rgba(255,255,255,0.08); }
+
+	/* ── Tab content ───────────────────────────────────────────── */
+	.tab-content { display: flex; flex-direction: column; gap: 1rem; }
+	.tab-desc { font-size: 0.8125rem; color: rgba(255,255,255,0.4); margin: 0; line-height: 1.55; }
+
+	/* ── Settings card ─────────────────────────────────────────── */
+	.settings-card {
+		border-radius: 16px;
+		background: rgba(255,255,255,0.02);
+		border: 1px solid rgba(255,255,255,0.07);
+		padding: 1.5rem;
+		display: flex; flex-direction: column; gap: 1.1rem;
+	}
+	.settings-card--danger { border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.03); }
+	.settings-card--info   { border-color: rgba(232,255,72,0.1); background: rgba(232,255,72,0.02); }
+
+	.card-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.9); margin: 0; }
+	.card-title--danger { color: #f87171; }
+	.card-desc  { font-size: 0.8125rem; line-height: 1.55; color: rgba(255,255,255,0.4); margin: 0; }
+	.card-note  { font-size: 0.75rem; color: rgba(255,255,255,0.28); font-family: 'Space Mono', monospace; padding: 0.65rem 0.85rem; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); }
+
+	/* ── Profile ───────────────────────────────────────────────── */
+	.profile-row { display: flex; align-items: center; gap: 1rem; }
+	.profile-avatar {
+		width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+		background: rgba(232,255,72,0.12); border: 2px solid rgba(232,255,72,0.25);
+		display: flex; align-items: center; justify-content: center;
+		font-family: 'Space Mono', monospace; font-size: 18px; font-weight: 700; color: #E8FF48;
+	}
+	.profile-info { flex: 1; }
+	.profile-name  { font-size: 0.9375rem; font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; }
+	.profile-email { font-size: 0.8125rem; color: rgba(255,255,255,0.38); margin: 0; font-family: 'Space Mono', monospace; }
+	.profile-plan-badge {
+		padding: 3px 10px; border-radius: 6px;
+		background: rgba(232,255,72,0.12); border: 1px solid rgba(232,255,72,0.2);
+		font-size: 0.7rem; font-family: 'Space Mono', monospace; font-weight: 700; color: #E8FF48;
+		text-transform: uppercase; letter-spacing: 0.07em;
+	}
+
+	.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+	.form-field { display: flex; flex-direction: column; gap: 0.4rem; }
+	.form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(255,255,255,0.35); font-family: 'Space Mono', monospace; }
+	.form-input {
+		padding: 0.55rem 0.85rem; border-radius: 9px;
+		background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+		color: rgba(255,255,255,0.65); font-size: 0.8125rem;
+		font-family: 'DM Sans', sans-serif; outline: none; width: 100%;
+	}
+	.input-copy-wrap { position: relative; }
+	.input-copy-wrap .form-input { padding-right: 2.5rem; }
+	.copy-btn {
+		position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+		padding: 0.25rem; border: none; background: transparent;
+		color: rgba(255,255,255,0.3); cursor: pointer; transition: color 0.15s; border-radius: 4px;
+	}
+	.copy-btn:hover { color: rgba(255,255,255,0.7); }
+
+	.pref-list { display: flex; flex-direction: column; gap: 0; }
+	.pref-row {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 0.85rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); gap: 1rem;
+	}
+	.pref-row:last-child { border-bottom: none; }
+	.pref-label { font-size: 0.875rem; color: rgba(255,255,255,0.75); font-weight: 500; margin: 0 0 0.2rem; }
+	.pref-sub   { font-size: 0.75rem; color: rgba(255,255,255,0.3); margin: 0; }
+	.pref-value { font-size: 0.75rem; font-family: 'Space Mono', monospace; color: rgba(255,255,255,0.4); white-space: nowrap; }
+
+	.btn-danger {
+		display: inline-flex; align-items: center; gap: 0.4rem;
+		padding: 0.55rem 1rem; border-radius: 9px; border: 1px solid rgba(239,68,68,0.3);
+		background: rgba(239,68,68,0.08); color: #f87171;
+		font-size: 0.8125rem; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif;
+		transition: all 0.15s;
+	}
+	.btn-danger:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.5); }
+
+	/* ── Integrations ──────────────────────────────────────────── */
+	.loading-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.8125rem; color: rgba(255,255,255,0.35); }
+	.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); border-top-color: #E8FF48; animation: spin 0.8s linear infinite; }
+	@keyframes spin { to { transform: rotate(360deg); } }
+
+	.integrations-list { display: flex; flex-direction: column; gap: 1rem; }
+
+	.intg-card {
+		border-radius: 16px;
+		background: rgba(255,255,255,0.02);
+		border: 1px solid rgba(255,255,255,0.07);
+		padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;
+		transition: border-color 0.2s;
+	}
+	.intg-card:hover { border-color: rgba(255,255,255,0.1); }
+
+	.intg-header { display: flex; align-items: flex-start; gap: 1rem; }
+	.intg-icon-wrap {
+		width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
+		display: flex; align-items: center; justify-content: center;
+	}
+	.intg-info { flex: 1; min-width: 0; }
+	.intg-title { font-size: 0.9375rem; font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.25rem; }
+	.intg-desc  { font-size: 0.78rem; color: rgba(255,255,255,0.38); margin: 0; line-height: 1.5; }
+
+	.intg-status-badge {
+		display: inline-flex; align-items: center; gap: 0.3rem;
+		padding: 4px 10px; border-radius: 6px;
+		font-size: 0.65rem; font-family: 'Space Mono', monospace; font-weight: 700;
+		text-transform: uppercase; letter-spacing: 0.06em;
+		white-space: nowrap; flex-shrink: 0;
+	}
+	.status-ok   { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+	.status-fail { background: rgba(245,158,11,0.1);  color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+
+	.intg-env-block {
+		border-radius: 10px; background: rgba(0,0,0,0.2);
+		border: 1px solid rgba(255,255,255,0.06); padding: 0.85rem;
+	}
+	.env-block-head {
+		display: flex; align-items: center; gap: 0.4rem;
+		font-size: 0.65rem; font-family: 'Space Mono', monospace;
+		text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.3);
+		margin-bottom: 0.6rem;
+	}
+	.env-code-wrap { position: relative; }
+	.env-code {
+		font-family: 'Space Mono', monospace; font-size: 0.7rem;
+		color: rgba(255,255,255,0.5); line-height: 1.7;
+		background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.07);
+		border-radius: 8px; padding: 0.75rem 2.5rem 0.75rem 0.85rem;
+		overflow-x: auto; margin: 0;
+	}
+	.env-copy {
+		position: absolute; top: 0.5rem; right: 0.5rem;
+		padding: 0.25rem; border: none; background: rgba(255,255,255,0.07);
+		color: rgba(255,255,255,0.4); cursor: pointer; border-radius: 5px; transition: all 0.15s;
+	}
+	.env-copy:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
+	.env-hint { font-size: 0.7rem; color: rgba(255,255,255,0.28); margin: 0.5rem 0 0; font-family: 'Space Mono', monospace; }
+
+	.intg-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+	.btn-connect {
+		padding: 0.55rem 1.1rem; border-radius: 9px; border: none;
+		font-size: 0.8125rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		cursor: pointer; background: var(--c, #E8FF48); color: white;
+		transition: opacity 0.12s, transform 0.12s;
+	}
+	.btn-connect:hover:not(:disabled) { transform: translateY(-1px); opacity: 0.92; }
+	.btn-connect:disabled { opacity: 0.3; cursor: not-allowed; }
+
+	.btn-connect-outline {
+		padding: 0.55rem 1rem; border-radius: 9px;
+		font-size: 0.8125rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		cursor: pointer; background: rgba(255,255,255,0.06);
+		color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.1);
+		transition: background 0.12s;
+	}
+	.btn-connect-outline:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+	.btn-connect-outline:disabled { opacity: 0.3; cursor: not-allowed; }
+
+	.btn-docs {
+		display: inline-flex; align-items: center; gap: 0.3rem;
+		font-size: 0.75rem; color: rgba(255,255,255,0.3); text-decoration: none;
+		transition: color 0.15s;
+	}
+	.btn-docs:hover { color: rgba(255,255,255,0.7); }
+
+	.inline-link { color: #E8FF48; text-decoration: none; }
+	.inline-link:hover { text-decoration: underline; }
+
+	.btn-secondary-sm {
+		display: inline-flex; align-items: center; gap: 0.3rem;
+		padding: 0.45rem 0.85rem; border-radius: 8px;
+		background: rgba(232,255,72,0.08); border: 1px solid rgba(232,255,72,0.18);
+		color: #E8FF48; font-size: 0.78rem; font-weight: 600; text-decoration: none;
+		transition: all 0.15s;
+	}
+	.btn-secondary-sm:hover { background: rgba(232,255,72,0.12); }
+
+	/* ── Billing ───────────────────────────────────────────────── */
+	.plan-row {
+		display: grid; grid-template-columns: auto 1fr; gap: 1.5rem; align-items: flex-start;
+	}
+	.plan-info { display: flex; align-items: center; gap: 1rem; }
+	.plan-badge {
+		width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+		background: rgba(232,255,72,0.12); border: 1px solid rgba(232,255,72,0.25);
+		display: flex; align-items: center; justify-content: center;
+		font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700;
+		color: #E8FF48; text-transform: uppercase; letter-spacing: 0.08em;
+	}
+	.plan-name  { font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; font-size: 0.9375rem; }
+	.plan-price { font-family: 'Fraunces', serif; font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
+	.plan-price span { font-size: 0.875rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; }
+
+	.plan-features { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+	.plan-feature  { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: rgba(255,255,255,0.6); }
+	:global(.feature-check) { color: #34d399; flex-shrink: 0; }
+
+	.billing-actions { display: flex; gap: 0.65rem; }
+	.btn-outline-sm {
+		padding: 0.5rem 1rem; border-radius: 9px;
+		border: 1px solid rgba(255,255,255,0.1);
+		background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.65);
+		font-size: 0.8125rem; font-weight: 500; cursor: pointer;
+		font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+	}
+	.btn-outline-sm:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+
+	.upgrade-price {
+		font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 900;
+		color: #fff; letter-spacing: -0.03em;
+	}
+	.upgrade-price span { font-size: 1rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; font-weight: 400; }
+	.btn-upgrade {
+		display: inline-flex; align-items: center; gap: 0.4rem;
+		padding: 0.65rem 1.25rem; border-radius: 10px; border: none;
+		background: #E8FF48; color: #0a0a0a;
+		font-size: 0.875rem; font-weight: 600; cursor: pointer;
+		font-family: 'DM Sans', sans-serif; transition: all 0.15s; width: fit-content;
+	}
+	.btn-upgrade:hover { background: #f0ff70; transform: translateY(-1px); }
+</style>
