@@ -242,12 +242,16 @@
 
 	function selectHeadline(e: MouseEvent) {
 		if (!interactive) return;
+		// If the user was dragging the panel, don't treat this as a "select text element" click.
+		if (textMoved) return;
 		e.stopPropagation();
 		if (headlineEl) onTextSelect?.('headline', headlineEl);
 	}
 
 	function selectSource(e: MouseEvent) {
 		if (!interactive) return;
+		// If the user was dragging the panel, don't treat this as a "select text element" click.
+		if (textMoved) return;
 		e.stopPropagation();
 		if (sourceEl) onTextSelect?.('source', sourceEl);
 	}
@@ -309,6 +313,9 @@
 	// ── Text panel drag (HTML) ─────────────────────────────────────────────
 	const TEXT_PANEL_H = 520; // must match visual design; used for clamp range
 	let textDragging = $state(false);
+	let textArmed = $state(false);
+	let textPointerId = 0;
+	let textCaptureEl: HTMLElement | null = null;
 	let textStartY = 0;
 	let textStartOffset = 0;
 	let textMoved = false;
@@ -353,22 +360,41 @@
 	function textPointerDown(e: PointerEvent) {
 		if (!interactive) return;
 		if (editing) return;
-		// Don't start a panel drag if the user is clicking directly on the headline
-		// or source — those should support text selection / element selection instead.
 		const target = e.target as HTMLElement;
-		if (target.closest('[data-text-selectable]')) return;
-		textDragging = true;
+		const startedOnSelectable = !!target.closest('[data-text-selectable]');
+		textArmed = true;
+		textDragging = !startedOnSelectable; // if on text, only start drag after threshold move
 		textMoved = false;
 		textStartY = e.clientY;
 		textStartOffset = textPanelOffsetY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-		e.stopPropagation();
+		textPointerId = e.pointerId;
+		textCaptureEl = e.currentTarget as HTMLElement;
+		// Pointer-capturing immediately can interfere with dblclick on the headline/source.
+		// Only capture right away when we *know* we're dragging (i.e. started off-text).
+		if (!startedOnSelectable) textCaptureEl.setPointerCapture(e.pointerId);
+		// If the gesture started on text, allow click handlers to run unless we
+		// later detect an actual drag (then we suppress the click via textMoved).
+		if (!startedOnSelectable) e.stopPropagation();
 	}
 
 	function textPointerMove(e: PointerEvent) {
-		if (!textDragging) return;
+		if (!textArmed) return;
 		const dy = (e.clientY - textStartY) / scale;
-		if (Math.abs(dy) > 4) textMoved = true;
+		if (!textDragging) {
+			// Arm drag when the user actually moves, so clicks on headline/source
+			// still work to select those elements.
+			if (Math.abs(dy) <= 4) return;
+			textDragging = true;
+			textMoved = true;
+			// Capture once we commit to dragging (safe for dblclick).
+			try { textCaptureEl?.setPointerCapture(textPointerId); } catch { /* ignore */ }
+			// Once we start dragging, prevent text selection and cancel downstream clicks.
+			e.preventDefault();
+			e.stopPropagation();
+			window.getSelection()?.removeAllRanges();
+		} else if (Math.abs(dy) > 4) {
+			textMoved = true;
+		}
 
 		// Allow dragging panel from its base position (0) all the way up to top
 		const baseTop = H - TEXT_PANEL_H; // y where panel starts (in template px)
@@ -378,8 +404,11 @@
 	}
 
 	function textPointerUp(e: PointerEvent) {
-		if (!textDragging) return;
+		if (!textArmed) return;
+		textArmed = false;
 		textDragging = false;
+		textPointerId = 0;
+		textCaptureEl = null;
 		// No-op when click ends without drag — selection is handled by the
 		// individual headline / source elements' own click handlers.
 	}
