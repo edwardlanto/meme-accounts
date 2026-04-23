@@ -53,13 +53,13 @@
 
 	// Hero rainbow arc — all cards share one pivot; rotate: 2D Z rotation
 	const hwFanPositions = [
-		{ rotate: -54, scale: 0.76, zIndex: 4 },
-		{ rotate: -36, scale: 0.86, zIndex: 5 },
-		{ rotate: -18, scale: 0.94, zIndex: 6 },
+		{ rotate: -70, scale: 0.76, zIndex: 4 },
+		{ rotate: -46, scale: 0.86, zIndex: 5 },
+		{ rotate: -22, scale: 0.94, zIndex: 6 },
 		{ rotate:   0, scale: 1.00, zIndex: 7 },
-		{ rotate:  18, scale: 0.94, zIndex: 6 },
-		{ rotate:  36, scale: 0.86, zIndex: 5 },
-		{ rotate:  54, scale: 0.76, zIndex: 4 },
+		{ rotate:  22, scale: 0.94, zIndex: 6 },
+		{ rotate:  46, scale: 0.86, zIndex: 5 },
+		{ rotate:  70, scale: 0.76, zIndex: 4 },
 	];
 
 	onMount(() => {
@@ -131,87 +131,34 @@
 	     ACT 1 — HERO  (Rocket.com-style)
 	═══════════════════════════════════════════════════════ -->
 	<section class="hero-white">
-		<div class="hero-wrap">
-			<div class="hero-grid">
-				<div class="hero-left">
-					<div class="hero-kicker reveal visible">
-						<span class="hero-kicker-dot"></span>
-						Brand-consistent carousels in minutes
-					</div>
-
-					<h1 class="hero-title reveal visible">
-						Create <span class="hero-title-em">branded</span> Instagram carousels that look like a design team made them.
-					</h1>
-
-					<p class="hero-sub reveal visible">
-						Upload a style reference, type a topic, and generate a visually consistent slideshow—ready to post.
-					</p>
-
-					<div class="hero-actions reveal visible">
-						<a href="/signup" class="hero-primary">
-							Get started free
-							<ArrowRight size={16} />
-						</a>
-						<a href="/dashboard" class="hero-secondary">Explore the app</a>
-					</div>
-
-					<div class="hero-form reveal visible" aria-label="Build your guide (demo)">
-						<p class="hero-form-title">Build your custom guide</p>
-						<div class="hero-form-row">
-							<span class="hero-form-label">I’m</span>
-							<select class="hero-select" aria-label="Persona">
-								<option>creating content</option>
-								<option>running an agency</option>
-								<option>building a brand</option>
-							</select>
-							<span class="hero-form-label">and I need help with</span>
-							<select class="hero-select" aria-label="Goal">
-								<option>designing carousels</option>
-								<option>writing hooks</option>
-								<option>publishing & scheduling</option>
-							</select>
+		<div class="rocket-hero">
+			<!-- Floating card arc -->
+			<div class="rocket-arc" aria-hidden="true">
+				<div class="rocket-arc-pivot" style="transform: translateY({fanAngle * 1.0}px)">
+					{#each galleryCards as card, i}
+						{@const pos = hwFanPositions[i]}
+						<div
+							class="rocket-arc-card"
+							style="
+								transform: rotate({pos.rotate + carouselOffset * 0.55}deg) translateY(-330px) scale({pos.scale});
+								z-index: {pos.zIndex};
+							"
+						>
+							<img src={card.img} alt={card.label} />
 						</div>
-						<div class="hero-form-actions">
-							<button type="button" class="hero-form-btn">
-								Review my guide
-							</button>
-							<a href="#features" class="hero-form-link">Not ready? Browse features</a>
-						</div>
-					</div>
+					{/each}
 				</div>
+			</div>
 
-				<div class="hero-right reveal visible" aria-label="Preview (placeholders)">
-					<div class="hero-preview">
-						<div class="hero-preview-top">
-							<div class="hero-preview-pill">Instagram Preview</div>
-							<div class="hero-preview-meta">1080×1350 · Placeholder</div>
-						</div>
-						<div class="hero-preview-canvas">
-							<div class="hero-preview-stack" style="transform: translateY({fanAngle * 0.8}px)">
-								{#each galleryCards.slice(0, 3) as card, i (card.num)}
-									<div class="hero-preview-card" style="--i:{i}">
-										<img src={card.img} alt={card.label} />
-									</div>
-								{/each}
-							</div>
-							<div class="hero-preview-shadow"></div>
-						</div>
-						<div class="hero-preview-bottom">
-							<div class="hero-stat">
-								<span class="hero-stat-num">10 mins</span>
-								<span class="hero-stat-label">to first draft</span>
-							</div>
-							<div class="hero-stat">
-								<span class="hero-stat-num">3 presets</span>
-								<span class="hero-stat-label">image sizes</span>
-							</div>
-							<div class="hero-stat">
-								<span class="hero-stat-num">Drag</span>
-								<span class="hero-stat-label">reorder slides</span>
-							</div>
-						</div>
-					</div>
-				</div>
+			<!-- Centered copy -->
+			<div class="rocket-copy">
+				<p class="rocket-eyebrow">Carousel Studio helps you</p>
+				<h1 class="rocket-title">create a carousel</h1>
+				<a href="/signup" class="rocket-cta">
+					Get started free
+					<ArrowRight size={16} />
+				</a>
+				<p class="rocket-sub">Use placeholder images now. Swap your brand later.</p>
 			</div>
 		</div>
 	</section>
@@ -649,75 +596,79 @@
 	mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 100%);
 }
 
-/* ── Rocket-style hero layout ───────────────────────────── */
-.hero-wrap {
+/* ── Rocket.com hero (arc + centered copy) ───────────────── */
+.rocket-hero {
 	position: relative;
-	z-index: 1;
-	max-width: 1120px;
+	max-width: 1400px;
 	margin: 0 auto;
-	padding: 56px 28px 56px;
-}
-.hero-grid {
-	display: grid;
-	grid-template-columns: 1.15fr 0.85fr;
-	gap: 42px;
-	align-items: start;
+	padding: 64px 28px 74px;
+	min-height: 680px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
-.hero-kicker {
-	display: inline-flex;
-	align-items: center;
-	gap: 10px;
-	padding: 6px 12px;
-	border-radius: 999px;
+.rocket-arc {
+	position: absolute;
+	top: 0;
+	left: 50%;
+	width: 100vw;      /* let the arc breathe edge-to-edge */
+	height: 520px;     /* arc lives in the top half */
+	transform: translateX(-50%);
+	pointer-events: none;
+}
+.rocket-arc-pivot {
+	position: absolute;
+	left: 50%;
+	top: 230px;
+	width: 0;
+	height: 0;
+}
+.rocket-arc-card {
+	position: absolute;
+	left: -78px;
+	top: -120px;
+	width: 156px;
+	height: 156px;
+	border-radius: 18px;
+	overflow: hidden;
 	border: 1px solid rgba(10,10,10,0.10);
-	background: rgba(255,255,255,0.72);
-	font-family: var(--font-mono);
-	font-size: 11px;
-	letter-spacing: 0.06em;
+	background: #f4f4f4;
+	box-shadow: 0 12px 40px rgba(10,10,10,0.12);
+	transform-origin: center 340px; /* bigger radius = more arc */
+}
+.rocket-arc-card img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+	filter: saturate(0.98) contrast(0.98);
+}
+
+.rocket-copy {
+	position: relative;
+	z-index: 2;
+	text-align: center;
+	margin-top: 140px; /* puts text in the arc opening */
+}
+.rocket-eyebrow {
+	margin: 0 0 10px;
+	font-family: var(--font-body);
+	font-size: 14px;
 	color: rgba(10,10,10,0.55);
 }
-.hero-kicker-dot {
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	background: #22c55e;
-	box-shadow: 0 0 0 3px rgba(34,197,94,0.12);
-}
-
-.hero-title {
-	margin: 16px 0 0;
+.rocket-title {
+	margin: 0;
 	font-family: var(--font-display);
 	font-weight: 900;
 	letter-spacing: -0.04em;
-	line-height: 1.02;
+	line-height: 1;
+	font-size: clamp(48px, 6.2vw, 72px);
 	color: #0a0a0a;
-	font-size: clamp(44px, 5.4vw, 68px);
+	text-transform: none;
 }
-.hero-title-em {
-	font-style: italic;
-	text-decoration: underline;
-	text-decoration-thickness: 6px;
-	text-underline-offset: 6px;
-	text-decoration-color: rgba(232,255,72,0.55);
-}
-.hero-sub {
-	margin: 14px 0 0;
-	font-family: var(--font-body);
-	font-size: 16px;
-	line-height: 1.65;
-	color: rgba(10,10,10,0.55);
-	max-width: 56ch;
-}
-
-.hero-actions {
-	margin-top: 20px;
-	display: flex;
-	gap: 12px;
-	align-items: center;
-	flex-wrap: wrap;
-}
-.hero-primary {
+.rocket-cta {
+	margin: 18px auto 0;
 	display: inline-flex;
 	align-items: center;
 	gap: 10px;
@@ -730,178 +681,24 @@
 	text-decoration: none;
 	transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
-.hero-primary:hover {
+.rocket-cta:hover {
 	transform: translateY(-1px);
 	background: #161616;
-	box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+	box-shadow: 0 12px 30px rgba(0,0,0,0.18);
 }
-.hero-secondary {
-	display: inline-flex;
-	align-items: center;
-	padding: 14px 18px;
-	border-radius: 999px;
-	border: 1px solid rgba(10,10,10,0.12);
-	background: rgba(255,255,255,0.6);
-	color: rgba(10,10,10,0.7);
+.rocket-sub {
+	margin: 14px 0 0;
 	font-family: var(--font-body);
-	font-weight: 600;
-	text-decoration: none;
-	transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
-}
-.hero-secondary:hover {
-	background: rgba(255,255,255,0.9);
-	border-color: rgba(10,10,10,0.18);
-	color: rgba(10,10,10,0.9);
-}
-
-.hero-form {
-	margin-top: 22px;
-	border-radius: 20px;
-	border: 1px solid rgba(10,10,10,0.12);
-	background: rgba(255,255,255,0.75);
-	box-shadow: 0 10px 30px rgba(10,10,10,0.08);
-	padding: 16px;
-}
-.hero-form-title {
-	margin: 0 0 10px;
-	font-family: var(--font-body);
-	font-weight: 700;
-	color: rgba(10,10,10,0.75);
-	font-size: 13px;
-}
-.hero-form-row {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	align-items: center;
-	color: rgba(10,10,10,0.6);
-	font-family: var(--font-body);
-	font-size: 13px;
-}
-.hero-form-label { white-space: nowrap; }
-.hero-select {
-	appearance: none;
-	padding: 10px 12px;
-	border-radius: 999px;
-	border: 1px solid rgba(10,10,10,0.12);
-	background: #fff;
-	font-family: var(--font-body);
-	font-weight: 600;
-	color: rgba(10,10,10,0.75);
-}
-.hero-form-actions {
-	margin-top: 12px;
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	flex-wrap: wrap;
-}
-.hero-form-btn {
-	padding: 12px 16px;
-	border-radius: 999px;
-	border: 0;
-	background: #0a0a0a;
-	color: #fff;
-	font-family: var(--font-body);
-	font-weight: 700;
-	cursor: pointer;
-	transition: transform 0.18s ease, background 0.18s ease;
-}
-.hero-form-btn:hover { transform: translateY(-1px); background: #161616; }
-.hero-form-link {
-	font-family: var(--font-body);
-	font-size: 13px;
-	color: rgba(10,10,10,0.55);
-	text-decoration: none;
-}
-.hero-form-link:hover { color: rgba(10,10,10,0.85); text-decoration: underline; }
-
-.hero-preview {
-	border-radius: 26px;
-	border: 1px solid rgba(10,10,10,0.10);
-	background: #fff;
-	box-shadow: 0 18px 60px rgba(10,10,10,0.12);
-	overflow: hidden;
-}
-.hero-preview-top {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 14px 16px;
-	border-bottom: 1px solid rgba(10,10,10,0.06);
-	background: rgba(255,255,255,0.8);
-}
-.hero-preview-pill {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: rgba(10,10,10,0.55);
-}
-.hero-preview-meta {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	color: rgba(10,10,10,0.35);
-}
-.hero-preview-canvas {
-	position: relative;
-	height: 420px;
-	background: linear-gradient(180deg, rgba(0,0,0,0.03), rgba(0,0,0,0.00));
-}
-.hero-preview-stack {
-	position: absolute;
-	inset: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-.hero-preview-card {
-	position: absolute;
-	width: 240px;
-	height: 300px;
-	border-radius: 22px;
-	overflow: hidden;
-	border: 1px solid rgba(10,10,10,0.10);
-	box-shadow: 0 18px 50px rgba(10,10,10,0.14);
-	transform: translateX(calc((var(--i) - 1) * 86px)) rotate(calc((var(--i) - 1) * 5deg));
-	background: #f4f4f4;
-}
-.hero-preview-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.hero-preview-shadow {
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	height: 120px;
-	background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1));
-	pointer-events: none;
-}
-.hero-preview-bottom {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: 10px;
-	padding: 14px 16px 16px;
-	border-top: 1px solid rgba(10,10,10,0.06);
-}
-.hero-stat-num {
-	display: block;
-	font-family: var(--font-display);
-	font-weight: 900;
-	letter-spacing: -0.02em;
-	color: rgba(10,10,10,0.82);
-	font-size: 18px;
-}
-.hero-stat-label {
-	display: block;
-	margin-top: 2px;
-	font-family: var(--font-body);
-	color: rgba(10,10,10,0.45);
 	font-size: 12px;
+	color: rgba(10,10,10,0.42);
 }
 
-@media (max-width: 920px) {
-	.hero-grid { grid-template-columns: 1fr; }
-	.hero-preview-canvas { height: 360px; }
+@media (max-width: 820px) {
+	.rocket-hero { min-height: 580px; padding: 52px 18px 62px; }
+	.rocket-arc { height: 460px; }
+	.rocket-arc-pivot { top: 200px; }
+	.rocket-arc-card { width: 132px; height: 132px; left: -66px; transform-origin: center 300px; }
+	.rocket-copy { margin-top: 130px; }
 }
 
 /* ════════════════════════════════════════════════════════════
