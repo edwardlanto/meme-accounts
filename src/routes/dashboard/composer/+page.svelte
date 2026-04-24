@@ -804,5 +804,5 @@
 </div>
 
 <style>
-	select option { background: #1a1a1a; color: #f8f8f8; }
+	select option { background: var(--app-surface-2); color: var(--app-text); }
 </style>

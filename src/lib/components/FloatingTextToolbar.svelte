@@ -139,7 +139,7 @@
 {#if pos.show}
 	<div
 		data-floating-toolbar
-		class="fixed z-50 flex items-center gap-1 px-1.5 py-1.5 rounded-xl bg-[#1a1a1a]/95 backdrop-blur-md border border-white/10 shadow-2xl"
+		class="fixed z-50 flex items-center gap-1 px-1.5 py-1.5 rounded-xl backdrop-blur-md shadow-2xl ftb-shell"
 		style="top: {pos.top}px; left: {pos.left}px; width: {TOOLBAR_W}px; height: {TOOLBAR_H}px;"
 		role="toolbar"
 		aria-label="Text formatting"
@@ -148,45 +148,45 @@
 		<div class="relative">
 			<button
 				onclick={() => (fontPickerOpen = !fontPickerOpen)}
-				class="flex items-center gap-1.5 px-2.5 h-9 rounded-lg hover:bg-white/5 transition-colors min-w-[160px]"
+				class="flex items-center gap-1.5 px-2.5 h-9 rounded-lg transition-colors min-w-[160px] ftb-btn"
 				title="Font"
 			>
-				<Type size={13} class="text-white/50" />
+				<Type size={13} class="ftb-muted" />
 				<span
-					class="text-xs text-white/90 truncate flex-1 text-left"
+					class="text-xs truncate flex-1 text-left ftb-strong"
 					style="font-family: '{style.fontFamily ?? 'Inter'}', sans-serif;"
 				>
 					{style.fontFamily ?? 'Default'}
 				</span>
-				<ChevronDown size={12} class="text-white/40" />
+				<ChevronDown size={12} class="ftb-muted" />
 			</button>
 
 			{#if fontPickerOpen}
-				<div class="absolute top-full left-0 mt-1 w-80 max-h-96 overflow-hidden rounded-xl bg-[#141414] border border-white/10 shadow-2xl flex flex-col">
-					<div class="p-2 border-b border-white/[0.06]">
+				<div class="absolute top-full left-0 mt-1 w-80 max-h-96 overflow-hidden rounded-xl shadow-2xl flex flex-col ftb-pop">
+					<div class="p-2 ftb-pop-head">
 						<input
 							bind:value={fontSearch}
 							placeholder="Search fonts…"
-							class="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg py-1.5 px-2.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-violet-500/40"
+							class="w-full rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-violet-500/40 ftb-input"
 						/>
 					</div>
 					<div class="overflow-y-auto flex-1">
 						{#each (['sans', 'serif', 'display', 'handwriting', 'mono']) as cat}
 							{#if groupedFonts[cat as FontCategory].length}
-								<div class="px-3 pt-2 pb-1 text-[9px] font-mono text-white/30 uppercase tracking-widest sticky top-0 bg-[#141414]">
+								<div class="px-3 pt-2 pb-1 text-[9px] font-mono uppercase tracking-widest sticky top-0 ftb-pop-sticky">
 									{CATEGORY_LABELS[cat as FontCategory]}
 								</div>
 								{#each groupedFonts[cat as FontCategory] as f (f.family)}
 									<button
 										onmouseenter={() => void loadGoogleFont(f.family)}
 										onclick={() => pickFont(f.family)}
-										class="w-full px-3 py-2 text-left text-sm hover:bg-white/[0.04] transition-colors flex items-center justify-between
-											{style.fontFamily === f.family ? 'text-violet-300 bg-violet-500/10' : 'text-white/80'}"
+										class="w-full px-3 py-2 text-left text-sm transition-colors flex items-center justify-between ftb-row
+											{style.fontFamily === f.family ? 'ftb-row-on' : ''}"
 										style="font-family: '{f.family}', sans-serif;"
 									>
 										<span>{f.family}</span>
 										{#if style.fontFamily === f.family}
-											<span class="text-violet-400 text-[10px]">✓</span>
+											<span class="text-violet-500 text-[10px]">✓</span>
 										{/if}
 									</button>
 								{/each}
@@ -197,13 +197,13 @@
 			{/if}
 		</div>
 
-		<div class="w-px h-6 bg-white/10"></div>
+		<div class="w-px h-6 ftb-div"></div>
 
 		<!-- Font size -->
 		<div class="flex items-center gap-0.5">
 			<button
 				onclick={() => bumpSize(-4)}
-				class="w-7 h-9 rounded-lg hover:bg-white/5 text-white/60 flex items-center justify-center transition-colors"
+				class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
 				title="Decrease size"
 			>
 				<Minus size={13} />
@@ -212,26 +212,26 @@
 				type="number"
 				value={effectiveSize}
 				oninput={(e) => setSize(parseInt((e.target as HTMLInputElement).value, 10))}
-				class="w-12 h-9 bg-white/[0.04] border border-white/[0.08] rounded-lg text-center text-xs text-white focus:outline-none focus:border-violet-500/40
-					{isSizeOverridden ? 'text-violet-300' : ''}"
+				class="w-12 h-9 rounded-lg text-center text-xs focus:outline-none focus:border-violet-500/40 ftb-input
+					{isSizeOverridden ? 'text-violet-500' : ''}"
 				title={isSizeOverridden ? 'Manual size (click reset to re-enable auto-sizing)' : 'Auto-sized'}
 			/>
 			<button
 				onclick={() => bumpSize(4)}
-				class="w-7 h-9 rounded-lg hover:bg-white/5 text-white/60 flex items-center justify-center transition-colors"
+				class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
 				title="Increase size"
 			>
 				<Plus size={13} />
 			</button>
 		</div>
 
-		<div class="w-px h-6 bg-white/10"></div>
+		<div class="w-px h-6 ftb-div"></div>
 
 		<!-- Weight toggle (Bold) -->
 		<button
 			onclick={() => onChange({ fontWeight: (style.fontWeight ?? 400) >= 700 ? 400 : 700 })}
-			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center
-				{(style.fontWeight ?? 400) >= 700 ? 'bg-violet-500/20 text-violet-300' : 'text-white/60 hover:bg-white/5'}"
+			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn
+				{(style.fontWeight ?? 400) >= 700 ? 'ftb-on' : 'ftb-muted'}"
 			title="Bold"
 		>
 			<Bold size={14} />
@@ -240,8 +240,8 @@
 		<!-- Italic -->
 		<button
 			onclick={() => onChange({ italic: !style.italic })}
-			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center
-				{style.italic ? 'bg-violet-500/20 text-violet-300' : 'text-white/60 hover:bg-white/5'}"
+			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn
+				{style.italic ? 'ftb-on' : 'ftb-muted'}"
 			title="Italic"
 		>
 			<Italic size={14} />
@@ -250,88 +250,88 @@
 		<!-- Underline -->
 		<button
 			onclick={() => onChange({ underline: !style.underline })}
-			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center
-				{style.underline ? 'bg-violet-500/20 text-violet-300' : 'text-white/60 hover:bg-white/5'}"
+			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn
+				{style.underline ? 'ftb-on' : 'ftb-muted'}"
 			title="Underline"
 		>
 			<Underline size={14} />
 		</button>
 
-		<div class="w-px h-6 bg-white/10"></div>
+		<div class="w-px h-6 ftb-div"></div>
 
 		<!-- Align -->
 		{#each [{ v: 'left', Icon: AlignLeft }, { v: 'center', Icon: AlignCenter }, { v: 'right', Icon: AlignRight }] as opt}
 			<button
 				onclick={() => onChange({ align: opt.v as any })}
-				class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center
-					{(style.align ?? 'left') === opt.v ? 'bg-violet-500/20 text-violet-300' : 'text-white/60 hover:bg-white/5'}"
+				class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn
+					{(style.align ?? 'left') === opt.v ? 'ftb-on' : 'ftb-muted'}"
 				title="Align {opt.v}"
 			>
 				<opt.Icon size={14} />
 			</button>
 		{/each}
 
-		<div class="w-px h-6 bg-white/10"></div>
+		<div class="w-px h-6 ftb-div"></div>
 
 		<!-- Color -->
 		<div class="relative">
 			<button
 				onclick={() => (colorPickerOpen = !colorPickerOpen)}
-				class="flex items-center gap-1.5 h-9 px-2 rounded-lg hover:bg-white/5 transition-colors"
+				class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn"
 				title="Text color"
 			>
 				<span
-					class="w-5 h-5 rounded border border-white/20"
+					class="w-5 h-5 rounded border ftb-chip"
 					style="background: {style.color ?? '#FFFFFF'};"
 				></span>
-				<ChevronDown size={11} class="text-white/40" />
+				<ChevronDown size={11} class="ftb-muted" />
 			</button>
 
 			{#if colorPickerOpen}
-				<div class="absolute top-full right-0 mt-1 p-3 rounded-xl bg-[#141414] border border-white/10 shadow-2xl w-52">
-					<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-2">Presets</p>
+				<div class="absolute top-full right-0 mt-1 p-3 rounded-xl shadow-2xl w-52 ftb-pop">
+					<p class="text-[9px] font-mono uppercase tracking-widest mb-2 ftb-muted">Presets</p>
 					<div class="grid grid-cols-6 gap-1.5 mb-3">
 						{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#FFB347', '#B0A8B9'] as c}
 							<button
 								onclick={() => { onChange({ color: c }); colorPickerOpen = false; }}
 								class="w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110
-									{style.color === c ? 'border-white' : 'border-white/10'}"
+									{style.color === c ? 'border-black/40' : 'border-black/10'}"
 								style="background: {c};"
 								aria-label="Set color {c}"
 							></button>
 						{/each}
 					</div>
-					<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-2">Custom</p>
+					<p class="text-[9px] font-mono uppercase tracking-widest mb-2 ftb-muted">Custom</p>
 					<input
 						type="color"
 						value={style.color ?? '#FFFFFF'}
 						oninput={(e) => onChange({ color: (e.target as HTMLInputElement).value })}
-						class="w-full h-8 rounded-lg cursor-pointer bg-transparent border border-white/10"
+						class="w-full h-8 rounded-lg cursor-pointer bg-transparent border border-black/10"
 					/>
 				</div>
 			{/if}
 		</div>
 
 		{#if supportsHighlights}
-			<div class="w-px h-6 bg-white/10"></div>
+			<div class="w-px h-6 ftb-div"></div>
 
 			<!-- Highlight (word-level color / gradient / pattern via [[...]] markup) -->
 			<div class="relative">
 				<button
 					onclick={() => (highlightPickerOpen = !highlightPickerOpen)}
 					disabled={!hasRangeSelection}
-					class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors
-						{hasRangeSelection ? 'hover:bg-white/5 text-white/80' : 'opacity-40 cursor-not-allowed text-white/50'}"
+					class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn
+						{hasRangeSelection ? 'ftb-strong' : 'opacity-40 cursor-not-allowed ftb-muted'}"
 					title={hasRangeSelection ? 'Highlight selected text' : 'Select text first, then highlight'}
 				>
 					<Highlighter size={14} />
-					<ChevronDown size={11} class="text-white/40" />
+					<ChevronDown size={11} class="ftb-muted" />
 				</button>
 
 				{#if highlightPickerOpen && hasRangeSelection}
-					<div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 p-3 rounded-xl bg-[#141414] border border-white/10 shadow-2xl w-64 z-10">
+					<div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 p-3 rounded-xl shadow-2xl w-64 z-10 ftb-pop">
 						<!-- Solid colors -->
-						<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-2">Solid Color</p>
+						<p class="text-[9px] font-mono uppercase tracking-widest mb-2 ftb-muted">Solid Color</p>
 						<div class="grid grid-cols-4 gap-1.5 mb-3">
 							{#each HIGHLIGHT_PRESETS as c}
 								<button
@@ -344,7 +344,7 @@
 						</div>
 
 						<!-- Gradients -->
-						<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-2">Gradient</p>
+						<p class="text-[9px] font-mono uppercase tracking-widest mb-2 ftb-muted">Gradient</p>
 						<div class="grid grid-cols-4 gap-1.5 mb-3">
 							{#each GRADIENT_PRESETS as [from, to]}
 								<button
@@ -357,7 +357,7 @@
 						</div>
 
 						<!-- Patterns -->
-						<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-2">Pattern</p>
+						<p class="text-[9px] font-mono uppercase tracking-widest mb-2 ftb-muted">Pattern</p>
 						<div class="grid grid-cols-2 gap-1.5 mb-3">
 							{#each AVAILABLE_PATTERNS as pat}
 								<button
@@ -385,7 +385,7 @@
 						<!-- Clear highlight -->
 						<button
 							onclick={() => applyHighlight({ kind: 'clear' })}
-							class="w-full py-2 rounded-lg text-[11px] font-mono text-white/60 hover:text-white border border-white/[0.08] hover:border-white/20 transition-colors"
+							class="w-full py-2 rounded-lg text-[11px] font-mono border transition-colors ftb-muted ftb-btn"
 						>
 							Clear highlight
 						</button>
@@ -399,10 +399,76 @@
 		<!-- Reset -->
 		<button
 			onclick={onReset}
-			class="w-9 h-9 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center"
+			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted"
 			title="Reset to template defaults"
 		>
 			<RotateCcw size={13} />
 		</button>
 	</div>
 {/if}
+
+<style>
+	.ftb-shell {
+		background: var(--app-surface-2);
+		border: 1px solid var(--app-border);
+	}
+	:root[data-theme="dark"] .ftb-shell {
+		background: rgba(26,26,26,0.95);
+		border-color: rgba(255,255,255,0.10);
+	}
+	.ftb-div { background: color-mix(in oklab, var(--app-text) 12%, transparent); }
+	:root[data-theme="dark"] .ftb-div { background: rgba(255,255,255,0.10); }
+
+	.ftb-btn:hover { background: color-mix(in oklab, var(--app-text) 6%, transparent); }
+	:root[data-theme="dark"] .ftb-btn:hover { background: rgba(255,255,255,0.05); }
+
+	.ftb-strong { color: var(--app-text); }
+	.ftb-muted { color: var(--app-text-2); }
+	:root[data-theme="dark"] .ftb-strong { color: rgba(255,255,255,0.92); }
+	:root[data-theme="dark"] .ftb-muted { color: rgba(255,255,255,0.55); }
+
+	.ftb-on {
+		background: color-mix(in oklab, var(--color-violet) 18%, transparent);
+		color: var(--color-violet);
+	}
+	:root[data-theme="dark"] .ftb-on {
+		background: rgba(139,92,246,0.20);
+		color: rgba(167,139,250,1);
+	}
+
+	.ftb-input {
+		background: color-mix(in oklab, var(--app-text) 4%, transparent);
+		border: 1px solid var(--app-border);
+		color: var(--app-text);
+	}
+	.ftb-input::placeholder { color: var(--app-text-3); }
+	:root[data-theme="dark"] .ftb-input {
+		background: rgba(255,255,255,0.04);
+		border-color: rgba(255,255,255,0.08);
+		color: #fff;
+	}
+	:root[data-theme="dark"] .ftb-input::placeholder { color: rgba(255,255,255,0.30); }
+
+	.ftb-pop {
+		background: var(--app-surface-2);
+		border: 1px solid var(--app-border);
+	}
+	:root[data-theme="dark"] .ftb-pop {
+		background: #141414;
+		border-color: rgba(255,255,255,0.10);
+	}
+	.ftb-pop-head { border-bottom: 1px solid var(--app-border); }
+	:root[data-theme="dark"] .ftb-pop-head { border-bottom-color: rgba(255,255,255,0.06); }
+	.ftb-pop-sticky { background: var(--app-surface-2); color: var(--app-text-3); }
+	:root[data-theme="dark"] .ftb-pop-sticky { background: #141414; color: rgba(255,255,255,0.30); }
+
+	.ftb-row { color: var(--app-text); }
+	.ftb-row:hover { background: color-mix(in oklab, var(--app-text) 4%, transparent); }
+	:root[data-theme="dark"] .ftb-row { color: rgba(255,255,255,0.80); }
+	:root[data-theme="dark"] .ftb-row:hover { background: rgba(255,255,255,0.04); }
+	.ftb-row-on { background: color-mix(in oklab, var(--color-violet) 12%, transparent); color: var(--color-violet); }
+	:root[data-theme="dark"] .ftb-row-on { background: rgba(139,92,246,0.10); color: rgba(196,181,253,1); }
+
+	.ftb-chip { border-color: color-mix(in oklab, var(--app-text) 20%, transparent); }
+	:root[data-theme="dark"] .ftb-chip { border-color: rgba(255,255,255,0.20); }
+</style>

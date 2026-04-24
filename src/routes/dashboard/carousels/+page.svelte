@@ -17,8 +17,39 @@
 	let userId = $state('');
 
 	// Preview scale for template cards — fixed 220px preview width
-	const TEMPLATE_CARD_W = 220;
-	const templateScale = TEMPLATE_CARD_W / 1080;
+	let templatesWrapEl = $state<HTMLDivElement | null>(null);
+	let templateCols = $state(5);
+	let templateCardW = $state(220);
+	const templateScale = $derived(templateCardW / 1080);
+
+	onMount(() => {
+		const el = templatesWrapEl;
+		if (!el) return;
+		const GAP = 16; // px
+		const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+		const compute = (w: number) => {
+			const cols =
+				w >= 1560 ? 6 :
+				w >= 1240 ? 5 :
+				w >= 980  ? 4 :
+				w >= 720  ? 3 :
+				2;
+			templateCols = cols;
+			const card = (w - GAP * (cols - 1)) / cols;
+			templateCardW = Math.round(clamp(card, 180, 260));
+		};
+
+		const ro = new ResizeObserver((entries) => {
+			const cr = entries[0]?.contentRect;
+			if (!cr) return;
+			compute(cr.width);
+		});
+		ro.observe(el);
+		// Initial pass
+		compute(el.getBoundingClientRect().width);
+		return () => ro.disconnect();
+	});
 
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
@@ -63,6 +94,15 @@
 	};
 
 	let filterTab = $state<'all' | 'draft' | 'published' | 'scheduled'>('all');
+	let uiTheme = $state<'light' | 'dark'>('light');
+
+	onMount(() => {
+		const readTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light') as const;
+		uiTheme = readTheme();
+		const obs = new MutationObserver(() => { uiTheme = readTheme(); });
+		obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+		return () => obs.disconnect();
+	});
 
 	const filteredCarousels = $derived(
 		filterTab === 'all' ? carousels : carousels.filter(c => c.status === filterTab)
@@ -115,7 +155,11 @@
 			<a href="/dashboard/carousels/new" class="templates-see-all">See all templates →</a>
 		</div>
 
-		<div class="flex gap-4 flex-wrap">
+		<div
+			bind:this={templatesWrapEl}
+			class="templates-grid"
+			style="--cols:{templateCols}; --cardw:{templateCardW}px;"
+		>
 			{#each STARTER_TEMPLATES as tmpl}
 				{@const hoverClass =
 						tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
@@ -132,22 +176,24 @@
 				<a
 					href={tmpl.href}
 					class="group flex flex-col rounded-2xl overflow-hidden border border-white/[0.08] transition-all duration-200 flex-shrink-0 {hoverClass}"
-					style="width: {TEMPLATE_CARD_W}px;"
+					style="width: 100%;"
 				>
 					<!-- Preview area -->
-					<div style="width: {TEMPLATE_CARD_W}px; height: {Math.round(TEMPLATE_CARD_W * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative;">
+					<div style="width: 100%; height: {Math.round(templateCardW * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative;">
 						{#if tmpl.id === 'news'}
 							<NewsTemplate
+								templateTheme={uiTheme}
 								backgroundImage={tmpl.previewBg}
 								text={tmpl.previewText}
 								source={tmpl.previewSource}
 								highlightColor="#F5A623"
-								textColor="#FFFFFF"
+								textColor={uiTheme === 'dark' ? '#FFFFFF' : '#0a0a0a'}
 								scale={templateScale}
 								interactive={false}
 							/>
 						{:else if tmpl.id === 'tweet'}
 							<TweetTemplate
+								templateTheme={uiTheme}
 								topName="Chef 👨‍🍳"
 								topHandle="@chefsevenn"
 								topVerified={true}
@@ -160,6 +206,7 @@
 							/>
 						{:else if tmpl.id === 'image-quote'}
 							<ImageQuoteTemplate
+								templateTheme={uiTheme}
 								image={tmpl.previewBg}
 								text={"YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT AND PUNCHY."}
 								footerLeft="$"
@@ -169,6 +216,7 @@
 							/>
 						{:else if tmpl.id === 'text'}
 							<TextCarouselTemplate
+								templateTheme={uiTheme}
 								name="Captains of industry"
 								handle="@captainsofindustryy"
 								text={"When your home is titled in your name, it becomes a legal target.\n\nCourts, creditors, and attorneys see it as your asset…"}
@@ -178,6 +226,7 @@
 							/>
 						{:else if tmpl.id === 'article'}
 							<ArticleTemplate
+								templateTheme={uiTheme}
 								text={"Here's the trillion-dollar problem everyone avoids.\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate."}
 								showSwipe={true}
 								scale={templateScale}
@@ -286,7 +335,7 @@
 
 			<!-- "More coming" placeholder -->
 			<div class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/[0.05] text-white/15 flex-shrink-0"
-				style="width: {TEMPLATE_CARD_W}px; height: {Math.round(TEMPLATE_CARD_W * 1350/1080) + 46}px;">
+				style="width: 100%; height: {Math.round(templateCardW * 1350/1080) + 46}px;">
 				<Plus size={18} class="mb-2 opacity-40" />
 				<span class="text-[10px] font-mono">More templates soon</span>
 			</div>
@@ -403,12 +452,31 @@
 </div>
 
 <style>
-	.page-wrap { padding: 2rem 2.5rem; max-width: 1100px; }
+	:root:not([data-theme="dark"]) {
+		--panel-bg: color-mix(in oklab, var(--app-text) 3%, transparent);
+		--panel-bg-2: color-mix(in oklab, var(--app-text) 5%, transparent);
+		--panel-border: var(--app-border);
+		--panel-border-hover: var(--app-border-hover);
+		--t-strong: var(--app-text);
+		--t: var(--app-text-2);
+		--t-muted: var(--app-text-3);
+	}
+	:root[data-theme="dark"] {
+		--panel-bg: rgba(255,255,255,0.02);
+		--panel-bg-2: rgba(255,255,255,0.04);
+		--panel-border: rgba(255,255,255,0.06);
+		--panel-border-hover: rgba(255,255,255,0.15);
+		--t-strong: rgba(255,255,255,0.92);
+		--t: rgba(255,255,255,0.55);
+		--t-muted: rgba(255,255,255,0.38);
+	}
+
+	.page-wrap { padding: 2rem 2.5rem; max-width: 1560px; }
 
 	/* Header */
 	.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 2rem; }
-	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: #fff; margin: 0 0 0.25rem; }
-	.page-sub   { font-size: 0.8125rem; color: rgba(255,255,255,0.38); margin: 0; }
+	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.25rem; }
+	.page-sub   { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
 	.create-btn {
 		display: flex; align-items: center; gap: 0.4rem;
 		padding: 0.6rem 1.1rem; border-radius: 10px; border: none;
@@ -424,37 +492,44 @@
 	/* Templates section */
 	.templates-section { margin-bottom: 2rem; }
 	.templates-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-	.templates-title { font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(255,255,255,0.3); margin: 0; }
-	.templates-see-all { font-size: 0.75rem; color: rgba(255,255,255,0.3); text-decoration: none; font-family: 'Space Mono', monospace; transition: color 0.15s; }
+	.templates-title { font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--t-muted); margin: 0; }
+	.templates-see-all { font-size: 0.75rem; color: var(--t-muted); text-decoration: none; font-family: 'Space Mono', monospace; transition: color 0.15s; }
 	.templates-see-all:hover { color: #E8FF48; }
 
+	.templates-grid {
+		display: grid;
+		grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
+		gap: 16px;
+		align-items: start;
+	}
+
 	/* Section divider */
-	.section-divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 0.5rem 0 1.5rem; }
+	.section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 0.5rem 0 1.5rem; }
 
 	/* Library header */
 	.library-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-	.library-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.9); margin: 0; }
+	.library-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
 
 	/* Filter tabs */
 	.filter-tabs {
 		display: flex; gap: 0.25rem; padding: 0.3rem;
-		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+		background: var(--panel-bg); border: 1px solid var(--panel-border);
 		border-radius: 10px;
 	}
 	.filter-tab {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.35rem 0.8rem; border-radius: 7px; border: none;
-		background: transparent; color: rgba(255,255,255,0.38);
+		background: transparent; color: var(--t-muted);
 		font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 500;
 		cursor: pointer; transition: all 0.12s;
 	}
-	.filter-tab:hover { color: rgba(255,255,255,0.7); }
-	.filter-tab--on { color: #fff; background: rgba(255,255,255,0.08); }
+	.filter-tab:hover { color: var(--t-strong); }
+	.filter-tab--on { color: var(--t-strong); background: var(--panel-bg-2); }
 	.filter-count {
 		display: inline-flex; align-items: center; justify-content: center;
 		width: 18px; height: 18px; border-radius: 5px;
-		background: rgba(255,255,255,0.08); font-size: 0.65rem;
-		font-family: 'Space Mono', monospace; color: rgba(255,255,255,0.5);
+		background: var(--panel-bg-2); font-size: 0.65rem;
+		font-family: 'Space Mono', monospace; color: var(--t);
 	}
 	.filter-tab--on .filter-count { background: rgba(232,255,72,0.15); color: #E8FF48; }
 
@@ -462,7 +537,7 @@
 	.carousel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
 	.skeleton-card {
 		aspect-ratio: 4/5; border-radius: 16px;
-		background: rgba(255,255,255,0.03);
+		background: var(--panel-bg);
 		animation: pulse 1.5s ease-in-out infinite;
 	}
 	@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
@@ -470,11 +545,11 @@
 	/* Carousel card */
 	.carousel-card {
 		position: relative; border-radius: 16px; overflow: hidden;
-		border: 1px solid rgba(255,255,255,0.06);
+		border: 1px solid var(--panel-border);
 		background: var(--card-bg, #111);
 		transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 	}
-	.carousel-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.3); }
+	.carousel-card:hover { border-color: var(--panel-border-hover); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
 
 	.card-preview {
 		display: flex; align-items: center; justify-content: center;
@@ -505,7 +580,7 @@
 		opacity: 0; transition: opacity 0.2s;
 	}
 	.carousel-card:hover .card-status { opacity: 1; }
-	.status-draft     { background: rgba(0,0,0,0.6); color: rgba(255,255,255,0.4); }
+	.status-draft     { background: color-mix(in oklab, var(--app-text) 8%, transparent); color: var(--t); }
 	.status-published { background: rgba(6,182,212,0.2); color: #06b6d4; border: 1px solid rgba(6,182,212,0.3); }
 	.status-scheduled { background: rgba(139,92,246,0.2); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.3); }
 
@@ -515,8 +590,8 @@
 		display: flex; align-items: flex-end; justify-content: space-between; gap: 0.5rem;
 	}
 	.card-info { flex: 1; min-width: 0; }
-	.card-title-text { font-size: 0.78rem; font-weight: 600; color: #fff; margin: 0 0 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.card-time        { font-size: 0.6rem; color: rgba(255,255,255,0.35); font-family: 'Space Mono', monospace; margin: 0; }
+	.card-title-text { font-size: 0.78rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.card-time        { font-size: 0.6rem; color: var(--t-muted); font-family: 'Space Mono', monospace; margin: 0; }
 
 	.card-actions { display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.2s; }
 	.carousel-card:hover .card-actions { opacity: 1; }
@@ -533,10 +608,10 @@
 	/* New card button */
 	.new-card-btn {
 		aspect-ratio: 4/5; border-radius: 16px;
-		border: 2px dashed rgba(255,255,255,0.08);
+		border: 2px dashed var(--panel-border);
 		background: transparent;
 		display: flex; flex-direction: column; align-items: center; justify-content: center;
-		gap: 0.6rem; cursor: pointer; transition: all 0.2s; color: rgba(255,255,255,0.2);
+		gap: 0.6rem; cursor: pointer; transition: all 0.2s; color: var(--t-muted);
 	}
 	.new-card-btn:hover { border-color: rgba(232,255,72,0.3); color: #E8FF48; background: rgba(232,255,72,0.03); }
 	.new-card-icon {
@@ -559,8 +634,8 @@
 		display: flex; align-items: center; justify-content: center;
 		color: rgba(139,92,246,0.7); margin-bottom: 0.5rem;
 	}
-	.empty-title { font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 700; color: rgba(255,255,255,0.8); margin: 0; }
-	.empty-desc  { font-size: 0.8125rem; color: rgba(255,255,255,0.35); margin: 0; max-width: 280px; }
+	.empty-title { font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
+	.empty-desc  { font-size: 0.8125rem; color: var(--t-muted); margin: 0; max-width: 280px; }
 	.empty-cta {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.6rem 1.2rem; border-radius: 10px; border: none;
@@ -569,5 +644,6 @@
 		font-family: 'DM Sans', sans-serif; margin-top: 0.5rem;
 		transition: opacity 0.15s, transform 0.15s;
 	}
+	:root:not([data-theme="dark"]) .empty-cta { color: #ffffff; }
 	.empty-cta:hover { opacity: 0.9; transform: translateY(-1px); }
 </style>

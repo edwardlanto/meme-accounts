@@ -563,54 +563,74 @@
 {/if}
 
 <style>
+	:root:not([data-theme="dark"]) {
+		--panel-bg: color-mix(in oklab, var(--app-text) 3%, transparent);
+		--panel-bg-2: color-mix(in oklab, var(--app-text) 4%, transparent);
+		--panel-border: var(--app-border);
+		--panel-border-hover: var(--app-border-hover);
+		--t-strong: var(--app-text);
+		--t: var(--app-text-2);
+		--t-muted: var(--app-text-3);
+	}
+	:root[data-theme="dark"] {
+		--panel-bg: rgba(255,255,255,0.02);
+		--panel-bg-2: rgba(255,255,255,0.05);
+		--panel-border: rgba(255,255,255,0.06);
+		--panel-border-hover: rgba(255,255,255,0.10);
+		--t-strong: rgba(255,255,255,0.92);
+		--t: rgba(255,255,255,0.55);
+		--t-muted: rgba(255,255,255,0.38);
+	}
+
+	.page { color: var(--app-text); }
 	.page { padding: 2rem 2.5rem; max-width: 860px; display: flex; flex-direction: column; gap: 1.5rem; }
 
 	/* ── Header ────────────────────────────────────────────────── */
 	.page-head { display: flex; align-items: center; gap: 1rem; }
 	.page-icon {
 		width: 44px; height: 44px; border-radius: 12px;
-		background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
 		display: flex; align-items: center; justify-content: center;
-		color: rgba(255,255,255,0.5); flex-shrink: 0;
+		color: var(--t); flex-shrink: 0;
 	}
-	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: #fff; margin: 0 0 0.2rem; }
-	.page-sub   { font-size: 0.8125rem; color: rgba(255,255,255,0.38); margin: 0; }
+	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.2rem; }
+	.page-sub   { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
 
 	/* ── Tab nav ───────────────────────────────────────────────── */
 	.tab-nav {
 		display: flex; gap: 0.25rem; padding: 0.3rem;
-		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+		background: var(--panel-bg); border: 1px solid var(--panel-border);
 		border-radius: 12px; width: fit-content;
 	}
 	.tab-btn {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.5rem 1rem; border-radius: 9px; border: none;
-		background: transparent; color: rgba(255,255,255,0.38);
+		background: transparent; color: var(--t-muted);
 		font-family: 'DM Sans', sans-serif; font-size: 0.8125rem; font-weight: 500;
 		cursor: pointer; transition: all 0.15s; white-space: nowrap;
 	}
-	.tab-btn:hover { color: rgba(255,255,255,0.72); background: rgba(255,255,255,0.04); }
-	.tab-btn--on   { color: #fff; background: rgba(255,255,255,0.08); }
+	.tab-btn:hover { color: var(--t-strong); background: var(--panel-bg-2); }
+	.tab-btn--on   { color: var(--t-strong); background: var(--panel-bg-2); }
 
 	/* ── Tab content ───────────────────────────────────────────── */
 	.tab-content { display: flex; flex-direction: column; gap: 1rem; }
-	.tab-desc { font-size: 0.8125rem; color: rgba(255,255,255,0.4); margin: 0; line-height: 1.55; }
+	.tab-desc { font-size: 0.8125rem; color: var(--t); margin: 0; line-height: 1.55; }
 
 	/* ── Settings card ─────────────────────────────────────────── */
 	.settings-card {
 		border-radius: 16px;
-		background: rgba(255,255,255,0.02);
-		border: 1px solid rgba(255,255,255,0.07);
+		background: var(--panel-bg);
+		border: 1px solid var(--panel-border);
 		padding: 1.5rem;
 		display: flex; flex-direction: column; gap: 1.1rem;
 	}
 	.settings-card--danger { border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.03); }
 	.settings-card--info   { border-color: rgba(232,255,72,0.1); background: rgba(232,255,72,0.02); }
 
-	.card-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.9); margin: 0; }
+	.card-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
 	.card-title--danger { color: #f87171; }
-	.card-desc  { font-size: 0.8125rem; line-height: 1.55; color: rgba(255,255,255,0.4); margin: 0; }
-	.card-note  { font-size: 0.75rem; color: rgba(255,255,255,0.28); font-family: 'Space Mono', monospace; padding: 0.65rem 0.85rem; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); }
+	.card-desc  { font-size: 0.8125rem; line-height: 1.55; color: var(--t); margin: 0; }
+	.card-note  { font-size: 0.75rem; color: var(--t-muted); font-family: 'Space Mono', monospace; padding: 0.65rem 0.85rem; border-radius: 8px; background: var(--panel-bg); border: 1px solid var(--panel-border); }
 
 	/* ── Profile ───────────────────────────────────────────────── */
 	.profile-row { display: flex; align-items: center; gap: 1rem; }
@@ -621,8 +641,8 @@
 		font-family: 'Space Mono', monospace; font-size: 18px; font-weight: 700; color: #E8FF48;
 	}
 	.profile-info { flex: 1; }
-	.profile-name  { font-size: 0.9375rem; font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; }
-	.profile-email { font-size: 0.8125rem; color: rgba(255,255,255,0.38); margin: 0; font-family: 'Space Mono', monospace; }
+	.profile-name  { font-size: 0.9375rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.2rem; }
+	.profile-email { font-size: 0.8125rem; color: var(--t-muted); margin: 0; font-family: 'Space Mono', monospace; }
 	.profile-plan-badge {
 		padding: 3px 10px; border-radius: 6px;
 		background: rgba(232,255,72,0.12); border: 1px solid rgba(232,255,72,0.2);
@@ -632,11 +652,11 @@
 
 	.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
 	.form-field { display: flex; flex-direction: column; gap: 0.4rem; }
-	.form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(255,255,255,0.35); font-family: 'Space Mono', monospace; }
+	.form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--t-muted); font-family: 'Space Mono', monospace; }
 	.form-input {
 		padding: 0.55rem 0.85rem; border-radius: 9px;
-		background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-		color: rgba(255,255,255,0.65); font-size: 0.8125rem;
+		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
+		color: var(--t-strong); font-size: 0.8125rem;
 		font-family: 'DM Sans', sans-serif; outline: none; width: 100%;
 	}
 	.input-copy-wrap { position: relative; }
@@ -644,19 +664,19 @@
 	.copy-btn {
 		position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
 		padding: 0.25rem; border: none; background: transparent;
-		color: rgba(255,255,255,0.3); cursor: pointer; transition: color 0.15s; border-radius: 4px;
+		color: var(--t-muted); cursor: pointer; transition: color 0.15s; border-radius: 4px;
 	}
-	.copy-btn:hover { color: rgba(255,255,255,0.7); }
+	.copy-btn:hover { color: var(--t-strong); }
 
 	.pref-list { display: flex; flex-direction: column; gap: 0; }
 	.pref-row {
 		display: flex; align-items: center; justify-content: space-between;
-		padding: 0.85rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); gap: 1rem;
+		padding: 0.85rem 0; border-bottom: 1px solid var(--panel-border); gap: 1rem;
 	}
 	.pref-row:last-child { border-bottom: none; }
-	.pref-label { font-size: 0.875rem; color: rgba(255,255,255,0.75); font-weight: 500; margin: 0 0 0.2rem; }
-	.pref-sub   { font-size: 0.75rem; color: rgba(255,255,255,0.3); margin: 0; }
-	.pref-value { font-size: 0.75rem; font-family: 'Space Mono', monospace; color: rgba(255,255,255,0.4); white-space: nowrap; }
+	.pref-label { font-size: 0.875rem; color: var(--t-strong); font-weight: 500; margin: 0 0 0.2rem; }
+	.pref-sub   { font-size: 0.75rem; color: var(--t-muted); margin: 0; }
+	.pref-value { font-size: 0.75rem; font-family: 'Space Mono', monospace; color: var(--t); white-space: nowrap; }
 
 	.btn-danger {
 		display: inline-flex; align-items: center; gap: 0.4rem;
@@ -668,7 +688,7 @@
 	.btn-danger:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.5); }
 
 	/* ── Integrations ──────────────────────────────────────────── */
-	.loading-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.8125rem; color: rgba(255,255,255,0.35); }
+	.loading-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.8125rem; color: var(--t-muted); }
 	.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); border-top-color: #E8FF48; animation: spin 0.8s linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 

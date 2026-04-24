@@ -5,7 +5,7 @@
 	import {
 		Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings,
 		Sparkles, Wand2, FlaskConical, BarChart3, Grid3X3,
-		CalendarDays, PenSquare, ChevronRight, ArrowUpRight
+		CalendarDays, PenSquare, ChevronRight, ArrowUpRight, Sun, Moon
 	} from 'lucide-svelte';
 
 	let { children } = $props();
@@ -50,6 +50,19 @@
 	}
 
 	let currentPath = $derived($page.url.pathname);
+
+	type ThemeMode = 'light' | 'dark';
+	let theme = $state<ThemeMode>('light');
+	function applyTheme(next: ThemeMode) {
+		theme = next;
+		document.documentElement.dataset.theme = next;
+		try { localStorage.setItem('theme', next); } catch { /* ignore */ }
+	}
+	// Initialize from already-applied theme (app.html sets it before paint)
+	if (typeof window !== 'undefined') {
+		const t = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+		theme = t;
+	}
 </script>
 
 <div class="shell">
@@ -101,6 +114,21 @@
 
 		<!-- Bottom -->
 		<div class="bottom-links">
+			<button
+				type="button"
+				onclick={() => applyTheme(theme === 'dark' ? 'light' : 'dark')}
+				class="bottom-item"
+				title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+				aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+			>
+				{#if theme === 'dark'}
+					<Sun size={20} />
+					<span>Light</span>
+				{:else}
+					<Moon size={20} />
+					<span>Dark</span>
+				{/if}
+			</button>
 			<a href="/dashboard/settings" class="bottom-item {currentPath === '/dashboard/settings' ? 'active' : ''}">
 				<Settings size={20} />
 				<span>Settings</span>
@@ -120,8 +148,8 @@
 
 <style>
 	:global(body) {
-		background: #0b0b0b;
-		color: #fff;
+		background: var(--app-bg);
+		color: var(--app-text);
 		font-family: 'DM Sans', sans-serif;
 		margin: 0;
 	}
@@ -129,7 +157,7 @@
 	.shell {
 		display: flex;
 		height: 100vh;
-		background: #0b0b0b;
+		background: var(--app-bg);
 		overflow: hidden;
 	}
 
@@ -137,8 +165,8 @@
 	.sidebar {
 		width: 92px;
 		flex-shrink: 0;
-		border-right: 1px solid rgba(255,255,255,0.06);
-		background: #0a0a0a;
+		border-right: 1px solid var(--app-border);
+		background: var(--app-surface-2);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -147,7 +175,7 @@
 	/* Logo */
 	.logo-row {
 		padding: 16px 10px 12px;
-		border-bottom: 1px solid rgba(255,255,255,0.06);
+		border-bottom: 1px solid var(--app-border);
 		flex-shrink: 0;
 	}
 	.logo-link {
@@ -155,8 +183,8 @@
 	}
 	.logo-mark {
 		width: 30px; height: 30px; border-radius: 10px;
-		background: rgba(255,255,255,0.06);
-		border: 1px solid rgba(255,255,255,0.10);
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+		border: 1px solid var(--app-border);
 		display: flex; align-items: center; justify-content: center;
 		flex-shrink: 0;
 	}
@@ -165,13 +193,13 @@
 		font-size: 11px;
 		font-weight: 800;
 		letter-spacing: 0.06em;
-		color: rgba(255,255,255,0.75);
+		color: var(--app-text-2);
 	}
 	.logo-text {
 		font-family: 'Fraunces', serif; font-size: 14px;
 		font-weight: 900; letter-spacing: -0.02em;
 	}
-	.logo-word  { color: rgba(255,255,255,0.75); }
+	.logo-word  { color: var(--app-text-2); }
 	.logo-accent{ color: #E8FF48; }
 
 	/* Nav groups */
@@ -188,7 +216,7 @@
 	.nav-group-label {
 		font-family: 'Space Mono', monospace; font-size: 8.5px;
 		text-transform: uppercase; letter-spacing: 0.12em;
-		color: rgba(255,255,255,0.20); padding: 10px 10px 6px;
+		color: var(--app-text-3); padding: 10px 10px 6px;
 		margin: 0;
 	}
 
@@ -204,15 +232,19 @@
 		font-family: 'DM Sans', sans-serif;
 		font-size: 11px;
 		font-weight: 500;
-		color: rgba(255,255,255,0.40); text-decoration: none;
+		color: var(--app-text-2); text-decoration: none;
 		transition: transform 0.15s, background 0.15s, color 0.15s;
 		overflow: hidden;
 		margin-bottom: 4px;
 	}
-	.nav-item:hover { color: rgba(255,255,255,0.86); background: rgba(255,255,255,0.06); transform: translateY(-1px); }
+	.nav-item:hover {
+		color: var(--app-text);
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+		transform: translateY(-1px);
+	}
 	.nav-item.active {
-		color: rgba(255,255,255,0.92);
-		background: rgba(255,255,255,0.08);
+		color: var(--app-text);
+		background: color-mix(in oklab, var(--app-text) 8%, transparent);
 		font-weight: 500;
 	}
 
@@ -222,7 +254,7 @@
 		right: 18%;
 		bottom: 6px;
 		height: 2px;
-		background: rgba(255,255,255,0.72);
+		background: color-mix(in oklab, var(--app-text) 70%, transparent);
 		border-radius: 999px;
 	}
 
@@ -239,8 +271,8 @@
 		margin: 8px 10px 10px;
 		padding: 10px;
 		border-radius: 14px;
-		background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-		border: 1px solid rgba(255,255,255,0.08);
+		background: linear-gradient(180deg, color-mix(in oklab, var(--app-text) 6%, transparent), color-mix(in oklab, var(--app-text) 3%, transparent));
+		border: 1px solid var(--app-border);
 		flex-shrink: 0;
 	}
 	.upgrade-kicker {
@@ -283,7 +315,7 @@
 
 	/* Bottom */
 	.bottom-links {
-		border-top: 1px solid rgba(255,255,255,0.04);
+		border-top: 1px solid var(--app-border);
 		padding: 8px 10px 14px;
 		display: flex; flex-direction: column; gap: 1px;
 		flex-shrink: 0;
@@ -299,19 +331,19 @@
 		font-family: 'DM Sans', sans-serif;
 		font-size: 11px;
 		font-weight: 500;
-		color: rgba(255,255,255,0.25); text-decoration: none;
+		color: var(--app-text-2); text-decoration: none;
 		background: transparent; border: none; cursor: pointer; width: 100%; text-align: left;
 		transition: all 0.15s;
 	}
-	.bottom-item:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); transform: translateY(-1px); }
-	.bottom-item.active { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06); }
+	.bottom-item:hover { color: var(--app-text); background: color-mix(in oklab, var(--app-text) 6%, transparent); transform: translateY(-1px); }
+	.bottom-item.active { color: var(--app-text); background: color-mix(in oklab, var(--app-text) 6%, transparent); }
 	.bottom-item.signout:hover { color: #f87171; background: rgba(239,68,68,0.06); }
 
 	/* ── Main ────────────────────────────────────────────────────── */
 	.main-area {
 		flex: 1; overflow-y: auto;
 		scrollbar-width: thin;
-		scrollbar-color: rgba(255,255,255,0.07) transparent;
-		background: #0b0b0b;
+		scrollbar-color: var(--app-scroll-thumb) transparent;
+		background: var(--app-bg);
 	}
 </style>

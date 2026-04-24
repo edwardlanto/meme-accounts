@@ -12,6 +12,7 @@
 		// Style
 		accentColor?: string;
 		bgColor?: string;
+		templateTheme?: 'light' | 'dark';
 		// Bottom bar
 		logoSrc?: string;
 		logoRingColor?: string;
@@ -34,7 +35,8 @@
 		text         = "Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
 		image        = '',
 		accentColor  = '#3ecf8e',
-		bgColor      = '#000000',
+		bgColor      = '',
+		templateTheme = 'dark',
 		logoSrc      = '',
 		logoRingColor = '#c9b97a',
 		showSwipe    = true,
@@ -49,6 +51,10 @@
 		headlineStyle = {},
 		showToolbar = false,
 	}: Props = $props();
+
+	const isLight = $derived(templateTheme === 'light');
+	const baseBg = $derived((bgColor || (isLight ? '#ffffff' : '#000000')).trim());
+	const baseText = $derived(isLight ? '#0a0a0a' : '#ffffff');
 
 	const bodyTypeCss = $derived.by(() => {
 		const s = headlineStyle;
@@ -96,7 +102,7 @@
 			width: {W}px;
 			height: {H}px;
 			position: relative;
-			background: {bgColor};
+			background: {baseBg};
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
@@ -141,7 +147,7 @@
 									font-weight: 400;
 									line-height: 1.42;
 									letter-spacing: -0.3px;
-									color: #ffffff;
+									color: {baseText};
 									word-break: break-word;
 									{bodyTypeCss}
 								">
@@ -209,7 +215,7 @@
 					width: 100%;
 					height: 100%;
 					border-radius: 50%;
-					background: {bgColor};
+					background: {baseBg};
 					display: flex;
 					align-items: center;
 					justify-content: center;
@@ -238,10 +244,10 @@
 						gap: 8px;
 						padding: 18px 36px;
 						border-radius: 100px;
-						border: 2.5px solid rgba(255,255,255,0.85);
+						border: 2.5px solid {isLight ? 'rgba(10,10,10,0.75)' : 'rgba(255,255,255,0.85)'};
 						font-size: 28px;
 						font-weight: 600;
-						color: #ffffff;
+						color: {baseText};
 						letter-spacing: -0.2px;
 						white-space: nowrap;
 					">{swipeText}</div>

@@ -12,6 +12,7 @@
 		topRatio?: number; // portion of height reserved for image (0..1)
 		bgColor?: string;
 		textColor?: string;
+		templateTheme?: 'light' | 'dark';
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
@@ -29,8 +30,9 @@
 		footerLeft = '$',
 		footerRight = 'BRAND',
 		topRatio = 0.56,
-		bgColor = '#000000',
-		textColor = '#FFFFFF',
+		bgColor = '',
+		textColor = '',
+		templateTheme = 'dark',
 		scale = 1,
 		interactive = true,
 		exportRef = $bindable(null),
@@ -41,6 +43,10 @@
 		headlineStyle = {},
 		showToolbar = false,
 	}: Props = $props();
+
+	const isLight = $derived(templateTheme === 'light');
+	const baseBg = $derived((bgColor || (isLight ? '#ffffff' : '#000000')).trim());
+	const baseText = $derived((textColor || (isLight ? '#0a0a0a' : '#ffffff')).trim());
 
 	const quoteTypeCss = $derived.by(() => {
 		const s = headlineStyle;
@@ -84,7 +90,7 @@
 			height: {H}px;
 			transform: scale({scale});
 			transform-origin: top left;
-			background: {bgColor};
+			background: {baseBg};
 			display: flex;
 			flex-direction: column;
 			font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -92,7 +98,7 @@
 		"
 	>
 		<!-- Top image -->
-		<div style="height: {topH}px; width: 100%; position: relative; overflow: hidden; background: #111;">
+		<div style="height: {topH}px; width: 100%; position: relative; overflow: hidden; background: {isLight ? '#f1f2f6' : '#111'};">
 			{#if image}
 				<img
 					src={image}
@@ -115,7 +121,7 @@
 			style="
 				height: {bottomH}px;
 				width: 100%;
-				background: {bgColor};
+				background: {baseBg};
 				display: flex;
 				flex-direction: column;
 				justify-content: center;
@@ -144,7 +150,7 @@
 							<HighlightedText
 								as="div"
 								text={line}
-								style="color: {textColor}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,0.4); font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif; {quoteTypeCss}"
+								style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,{isLight ? 0.10 : 0.4}); font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif; {quoteTypeCss}"
 							/>
 						{/each}
 					</div>
@@ -162,10 +168,10 @@
 					opacity: 0.95;
 				"
 			>
-				<span style="font-size: 44px; font-weight: 900; color: {textColor}; font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif;">
+				<span style="font-size: 44px; font-weight: 900; color: {baseText}; font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif;">
 					{footerLeft}
 				</span>
-				<span style="font-size: 26px; font-weight: 800; color: {textColor}; letter-spacing: 0.08em; font-family: 'Inter', system-ui, sans-serif;">
+				<span style="font-size: 26px; font-weight: 800; color: {baseText}; letter-spacing: 0.08em; font-family: 'Inter', system-ui, sans-serif;">
 					{footerRight}
 				</span>
 			</div>

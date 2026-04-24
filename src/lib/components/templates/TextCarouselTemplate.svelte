@@ -9,6 +9,7 @@
 		avatar?: string;
 		ringColor?: string;
 		bgColor?: string;
+		templateTheme?: 'light' | 'dark';
 		text?: string;
 		showSwipe?: boolean;
 		scale?: number;
@@ -27,7 +28,8 @@
 		handle    = '@captainsofindustryy',
 		avatar    = '',
 		ringColor = '#c9b97a',
-		bgColor   = '#0a0a0a',
+		bgColor   = '',
+		templateTheme = 'dark',
 		text      = 'When your home is titled in your name, it becomes a legal target.',
 		showSwipe = true,
 		scale     = 1,
@@ -40,6 +42,11 @@
 		headlineStyle = {},
 		showToolbar = false,
 	}: Props = $props();
+
+	const isLight = $derived(templateTheme === 'light');
+	const baseBg = $derived((bgColor || (isLight ? '#ffffff' : '#0a0a0a')).trim());
+	const baseText = $derived(isLight ? '#0a0a0a' : '#ffffff');
+	const baseMuted = $derived(isLight ? 'rgba(10,10,10,0.50)' : '#888888');
 
 	const bodyTypeCss = $derived.by(() => {
 		const s = headlineStyle;
@@ -80,7 +87,7 @@
 			width: {W}px;
 			height: {H}px;
 			position: relative;
-			background: {bgColor};
+			background: {baseBg};
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
@@ -103,7 +110,7 @@
 			">
 				<div style="
 					width: 100%; height: 100%; border-radius: 50%; overflow: hidden;
-					background: {bgColor};
+					background: {baseBg};
 					display: flex; align-items: center; justify-content: center;
 					box-sizing: border-box;
 				">
@@ -111,7 +118,7 @@
 						<img src={avatar} alt="" style="width: 100%; height: 100%; object-fit: cover;" />
 					{:else}
 						<span style="
-							color: #fff;
+							color: {baseText};
 							font-size: 36px;
 							font-weight: 800;
 							letter-spacing: -1px;
@@ -127,7 +134,7 @@
 					margin: 0 0 8px;
 					font-size: 46px;
 					font-weight: 800;
-					color: #ffffff;
+					color: {baseText};
 					line-height: 1.1;
 					letter-spacing: -0.5px;
 				">{name}</p>
@@ -136,7 +143,7 @@
 					font-size: 36px;
 					font-weight: 400;
 					font-style: italic;
-					color: #888888;
+					color: {baseMuted};
 					letter-spacing: -0.2px;
 				">{handle}</p>
 			</div>
@@ -163,7 +170,7 @@
 							<HighlightedText
 								as="p"
 								text={para}
-								style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: #ffffff; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss}"
+								style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: {baseText}; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss}"
 							/>
 						{/each}
 					</div>
@@ -185,21 +192,21 @@
 				<!-- Arrow + hand SVG -->
 				<svg width="96" height="72" viewBox="0 0 96 72" fill="none" xmlns="http://www.w3.org/2000/svg">
 					<!-- Arrow pointing left -->
-					<path d="M28 36 L8 36 M8 36 L18 26 M8 36 L18 46" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+					<path d="M28 36 L8 36 M8 36 L18 26 M8 36 L18 46" stroke="{baseText}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 					<!-- Hand / finger pointing right (simplified) -->
 					<g transform="translate(36, 4)">
 						<!-- Palm -->
-						<rect x="12" y="30" width="32" height="28" rx="6" fill="white"/>
+						<rect x="12" y="30" width="32" height="28" rx="6" fill="{baseText}"/>
 						<!-- Index finger -->
-						<rect x="20" y="10" width="10" height="28" rx="5" fill="white"/>
+						<rect x="20" y="10" width="10" height="28" rx="5" fill="{baseText}"/>
 						<!-- Middle finger -->
-						<rect x="32" y="16" width="9" height="22" rx="4.5" fill="white"/>
+						<rect x="32" y="16" width="9" height="22" rx="4.5" fill="{baseText}"/>
 						<!-- Ring finger -->
-						<rect x="42" y="20" width="8" height="18" rx="4" fill="white"/>
+						<rect x="42" y="20" width="8" height="18" rx="4" fill="{baseText}"/>
 						<!-- Pinky -->
-						<rect x="51" y="23" width="7" height="15" rx="3.5" fill="white"/>
+						<rect x="51" y="23" width="7" height="15" rx="3.5" fill="{baseText}"/>
 						<!-- Thumb -->
-						<rect x="4" y="32" width="12" height="8" rx="4" fill="white"/>
+						<rect x="4" y="32" width="12" height="8" rx="4" fill="{baseText}"/>
 					</g>
 				</svg>
 			</div>

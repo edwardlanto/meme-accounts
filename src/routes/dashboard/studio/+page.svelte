@@ -244,6 +244,30 @@
 	// Style
 	let highlightColor = $state('#F5A623');
 	let textColor = $state('#FFFFFF');
+	let textColorTouched = $state(false);
+	let uiTheme = $state<'light' | 'dark'>('light');
+
+	onMount(() => {
+		// Track global theme changes (dashboard toggle updates <html data-theme="...">).
+		const readTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light') as const;
+		uiTheme = readTheme();
+
+		// If user hasn't manually set text color, keep it sensible per theme.
+		if (!textColorTouched) {
+			textColor = uiTheme === 'dark' ? '#FFFFFF' : '#0a0a0a';
+		}
+
+		const obs = new MutationObserver(() => {
+			const next = readTheme();
+			if (next === uiTheme) return;
+			uiTheme = next;
+			if (!textColorTouched) {
+				textColor = uiTheme === 'dark' ? '#FFFFFF' : '#0a0a0a';
+			}
+		});
+		obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+		return () => obs.disconnect();
+	});
 
 	// ── Grid (global, applies to all slides/exports) ──────────────────────
 	// Grid overlay removed from UI (kept out of the product for now).
@@ -1408,7 +1432,7 @@
 <div class="flex h-full overflow-hidden">
 
 	<!-- ── Left panel: controls ──────────────────────────────────────────── -->
-	<div class="w-80 flex-shrink-0 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-y-auto">
+	<div class="w-80 flex-shrink-0 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-y-auto studio-left">
 		<div class="px-5 py-4 border-b border-white/[0.04]">
 			<h1 class="font-display font-bold text-base text-white">News Studio</h1>
 			<p class="font-body text-xs text-white/40 mt-0.5">AI-powered Instagram news posts</p>
@@ -1710,7 +1734,7 @@
 				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Text Color</label>
 				<div class="flex items-center gap-2">
 					{#each ['#FFFFFF', '#F5A623', '#08EBFF', '#000000'] as color}
-						<button onclick={() => textColor = color}
+						<button onclick={() => { textColor = color; textColorTouched = true; }}
 							class="w-7 h-7 rounded-lg border-2 transition-all {textColor === color ? 'border-violet-400 scale-110' : 'border-white/10 hover:scale-105'}"
 							style="background: {color};">
 						</button>
@@ -1933,7 +1957,7 @@
 	</div>
 
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
-	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4">
+	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4 studio-right">
 
 		<!-- Format tabs + view mode -->
 		<div class="flex items-center gap-3">
@@ -1973,6 +1997,7 @@
 			{/if}
 			{#if activeTemplate === 'news'}
 				<NewsTemplate
+					templateTheme={uiTheme}
 					bind:exportRef
 					bind:circleX
 					bind:circleY
@@ -2040,6 +2065,7 @@
 				/>
 			{:else if activeTemplate === 'article'}
 				<ArticleTemplate
+					templateTheme={uiTheme}
 					bind:exportRef
 					text={overlayText}
 					image={backgroundImage}
@@ -2053,6 +2079,7 @@
 				/>
 			{:else if activeTemplate === 'textCarousel'}
 				<TextCarouselTemplate
+					templateTheme={uiTheme}
 					bind:exportRef
 					text={overlayText}
 					scale={previewScale}
@@ -2065,6 +2092,7 @@
 				/>
 			{:else}
 				<ImageQuoteTemplate
+					templateTheme={uiTheme}
 					bind:exportRef
 					text={overlayText}
 					image={backgroundImage}
@@ -2598,9 +2626,22 @@
 />
 
 <style>
+	:root:not([data-theme="dark"]) .studio-left {
+		background: var(--app-surface-2) !important;
+		border-right-color: var(--app-border) !important;
+	}
+	:root:not([data-theme="dark"]) .studio-right {
+		background: var(--app-bg) !important;
+	}
+	:root:not([data-theme="dark"]) .studio-left :global(input),
+	:root:not([data-theme="dark"]) .studio-left :global(select),
+	:root:not([data-theme="dark"]) .studio-left :global(textarea) {
+		color: var(--app-text) !important;
+	}
+
 	select option {
-		background: #1a1a1a;
-		color: #f8f8f8;
+		background: var(--app-surface-2);
+		color: var(--app-text);
 	}
 
 	/* Hide scrollbars (keep scroll) for the bottom filmstrip */

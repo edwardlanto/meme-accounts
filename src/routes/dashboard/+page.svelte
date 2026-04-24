@@ -71,8 +71,8 @@
 		position: relative;
 		border-radius: 16px;
 		overflow: hidden;
-		border: 1px solid rgba(255,255,255,0.10);
-		background: rgba(255,255,255,0.03);
+		border: 1px solid var(--app-border);
+		background: color-mix(in oklab, var(--app-text) 3%, transparent);
 		height: 240px;
 		display: flex;
 		align-items: center;
@@ -83,7 +83,7 @@
 		background:
 			radial-gradient(1200px 600px at 20% 30%, rgba(96,165,250,0.45), transparent 60%),
 			radial-gradient(900px 520px at 70% 60%, rgba(59,130,246,0.35), transparent 55%),
-			linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+			linear-gradient(180deg, color-mix(in oklab, var(--app-text) 6%, transparent), color-mix(in oklab, var(--app-text) 2%, transparent));
 		filter: saturate(1.05);
 	}
 	.hero-inner {
@@ -96,12 +96,12 @@
 		font-weight: 800;
 		letter-spacing: -0.02em;
 		font-size: 34px;
-		color: rgba(255,255,255,0.92);
+		color: var(--app-text);
 	}
 	.hero-sub {
 		margin: 8px 0 0;
 		font-size: 13px;
-		color: rgba(255,255,255,0.55);
+		color: var(--app-text-2);
 		max-width: 62ch;
 	}
 	.hero-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
@@ -109,26 +109,29 @@
 		display: inline-flex; align-items: center; gap: 8px;
 		padding: 10px 14px;
 		border-radius: 999px;
-		background: rgba(0,0,0,0.65);
-		border: 1px solid rgba(255,255,255,0.14);
-		color: rgba(255,255,255,0.88);
+		background: color-mix(in oklab, var(--app-text) 86%, transparent);
+		border: 1px solid color-mix(in oklab, var(--app-bg) 40%, transparent);
+		color: color-mix(in oklab, var(--app-bg) 92%, transparent);
 		text-decoration: none;
 		font-weight: 700;
 		font-size: 13px;
 	}
-	.hero-btn:hover { background: rgba(0,0,0,0.80); }
+	.hero-btn:hover { background: color-mix(in oklab, var(--app-text) 92%, transparent); }
 	.hero-btn-secondary {
 		display: inline-flex; align-items: center; gap: 8px;
 		padding: 10px 14px;
 		border-radius: 999px;
-		background: rgba(255,255,255,0.06);
-		border: 1px solid rgba(255,255,255,0.12);
-		color: rgba(255,255,255,0.70);
+		background: color-mix(in oklab, var(--app-text) 4%, transparent);
+		border: 1px solid var(--app-border);
+		color: var(--app-text-2);
 		text-decoration: none;
 		font-weight: 700;
 		font-size: 13px;
 	}
-	.hero-btn-secondary:hover { background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.85); }
+	.hero-btn-secondary:hover {
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+		color: var(--app-text);
+	}
 
 	.row {
 		margin-top: 16px;
@@ -142,32 +145,32 @@
 		gap: 12px;
 		padding: 12px 12px;
 		border-radius: 14px;
-		background: rgba(255,255,255,0.03);
-		border: 1px solid rgba(255,255,255,0.08);
+		background: color-mix(in oklab, var(--app-text) 3%, transparent);
+		border: 1px solid var(--app-border);
 		text-decoration: none;
-		color: rgba(255,255,255,0.8);
+		color: var(--app-text);
 		transition: transform 0.15s, background 0.15s, border-color 0.15s;
 	}
 	.card:hover {
 		transform: translateY(-1px);
-		background: rgba(255,255,255,0.05);
-		border-color: rgba(255,255,255,0.14);
+		background: color-mix(in oklab, var(--app-text) 5%, transparent);
+		border-color: var(--app-border-hover);
 	}
 	.card-icon {
 		width: 34px; height: 34px;
 		border-radius: 12px;
-		background: rgba(255,255,255,0.06);
-		border: 1px solid rgba(255,255,255,0.10);
+		background: color-mix(in oklab, var(--app-text) 4%, transparent);
+		border: 1px solid var(--app-border);
 		display: flex; align-items: center; justify-content: center;
 		color: color-mix(in srgb, var(--accent) 80%, white);
 	}
-	.card-title { margin: 0; font-weight: 800; font-size: 13px; color: rgba(255,255,255,0.88); }
-	.card-sub { margin: 2px 0 0; font-size: 11px; color: rgba(255,255,255,0.45); }
+	.card-title { margin: 0; font-weight: 800; font-size: 13px; color: var(--app-text); }
+	.card-sub { margin: 2px 0 0; font-size: 11px; color: var(--app-text-2); }
 	.card-body { flex: 1; min-width: 0; }
-	.card-go { color: rgba(255,255,255,0.30); }
-	.card:hover .card-go { color: rgba(255,255,255,0.55); }
+	.card-go { color: var(--app-text-3); }
+	.card:hover .card-go { color: var(--app-text-2); }
 
-	.loading { margin-top: 14px; font-size: 12px; color: rgba(255,255,255,0.35); font-family: 'Space Mono', monospace; }
+	.loading { margin-top: 14px; font-size: 12px; color: var(--app-text-3); font-family: 'Space Mono', monospace; }
 
 	@media (max-width: 980px) {
 		.row { grid-template-columns: repeat(2, 1fr); }

@@ -11,6 +11,8 @@
 		h?: number;
 		backgroundImage?: string;
 		backgroundVideo?: string; // blob URL or data URL for video background
+		/** Light/dark look for the template canvas itself. */
+		templateTheme?: 'light' | 'dark';
 		/** Optional trim range (seconds) for backgroundVideo preview. */
 		videoTrimStartSec?: number;
 		videoTrimEndSec?: number;
@@ -91,6 +93,7 @@
 		h = 1350,
 		backgroundImage = '',
 		backgroundVideo = '',
+		templateTheme = 'dark',
 		videoTrimStartSec = 0,
 		videoTrimEndSec = 0,
 		videoSeekSec = NaN,
@@ -143,6 +146,8 @@
 		onTextSelect,
 		onHeadlineRangeSelect,
 	}: Props = $props();
+
+	const isLight = $derived(templateTheme === 'light');
 
 	// ── Background video preview trim/seek ────────────────────────────────
 	let bgVideoEl = $state<HTMLVideoElement | null>(null);
@@ -890,7 +895,7 @@
 			height: {H}px;
 			position: relative;
 			overflow: hidden;
-			background: #000;
+			background: {isLight ? '#ffffff' : '#000000'};
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;
@@ -1130,7 +1135,7 @@
 						<HighlightEditor
 							value={t.text}
 							rows={3}
-							showToolbar={true}
+							showToolbar={false}
 							defaultColor={highlightColor}
 							ariaLabel="Text overlay editor"
 							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
@@ -1639,7 +1644,7 @@
 					<HighlightEditor
 						value={text}
 						rows={1}
-						showToolbar={true}
+						showToolbar={false}
 						defaultColor={highlightColor}
 						onChange={(v) => onTextChange?.(v)}
 						onBlur={finishEdit}
@@ -1650,14 +1655,6 @@
 						ariaLabel="Headline editor"
 					/>
 				</div>
-				<p style="
-					font-family: 'DM Sans', sans-serif;
-					font-size: 20px;
-					color: rgba(255,255,255,0.3);
-					margin: 12px 0 0;
-					letter-spacing: 0;
-					text-transform: none;
-				">Select text and pick a color to highlight · Shift+Enter or Esc to finish</p>
 
 			{:else}
 				<!-- Rendered headline with highlights -->
