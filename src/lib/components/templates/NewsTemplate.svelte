@@ -11,6 +11,16 @@
 		h?: number;
 		backgroundImage?: string;
 		backgroundVideo?: string; // blob URL or data URL for video background
+		/** Optional trim range (seconds) for backgroundVideo preview. */
+		videoTrimStartSec?: number;
+		videoTrimEndSec?: number;
+		/** Seek the background video to this time (seconds). */
+		videoSeekSec?: number;
+		/** Background video audio controls (preview only). */
+		videoMuted?: boolean;
+		videoVolume?: number; // 0..1
+		/** Emits background video duration (seconds) when known. */
+		onVideoDuration?: (durationSec: number) => void;
 		/** Transparent PNG of the foreground subject (from bg-removal). When provided
 		 * and `showSubjectCutout` is true, renders ABOVE the circle so the subject
 		 * visually overlaps the circle edge (editorial style). */
@@ -81,6 +91,12 @@
 		h = 1350,
 		backgroundImage = '',
 		backgroundVideo = '',
+		videoTrimStartSec = 0,
+		videoTrimEndSec = 0,
+		videoSeekSec = NaN,
+		videoMuted = true,
+		videoVolume = 0.8,
+		onVideoDuration,
 		subjectCutout = '',
 		showSubjectCutout = false,
 		circleImage,
@@ -127,6 +143,53 @@
 		onTextSelect,
 		onHeadlineRangeSelect,
 	}: Props = $props();
+
+	// ── Background video preview trim/seek ────────────────────────────────
+	let bgVideoEl = $state<HTMLVideoElement | null>(null);
+	let lastDuration = 0;
+
+	function onBgVideoMeta(e: Event) {
+		const el = e.currentTarget as HTMLVideoElement;
+		bgVideoEl = el;
+		const d = Number(el.duration || 0);
+		if (Number.isFinite(d) && d > 0 && Math.abs(d - lastDuration) > 0.001) {
+			lastDuration = d;
+			onVideoDuration?.(d);
+		}
+	}
+
+	function onBgVideoTimeUpdate(e: Event) {
+		const el = e.currentTarget as HTMLVideoElement;
+		bgVideoEl = el;
+		const start = Number(videoTrimStartSec || 0);
+		const end = Number(videoTrimEndSec || 0);
+		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start + 0.02)) return;
+		if (el.currentTime < start || el.currentTime >= end) {
+			try { el.currentTime = start; } catch { /* ignore */ }
+		}
+	}
+
+	$effect(() => {
+		const el = bgVideoEl;
+		const t = Number(videoSeekSec);
+		if (!el) return;
+		if (!Number.isFinite(t)) return;
+		// Only seek when user explicitly scrubs (avoid fighting autoplay loop).
+		try { el.currentTime = Math.max(0, t); } catch { /* ignore */ }
+	});
+
+	$effect(() => {
+		const el = bgVideoEl;
+		if (!el) return;
+		const muted = !!videoMuted;
+		const vol = Math.max(0, Math.min(1, Number(videoVolume)));
+		el.muted = muted;
+		el.volume = Number.isFinite(vol) ? vol : 0.8;
+		// If user unmutes, attempt to resume playback (requires user gesture; safe to ignore errors).
+		if (!muted) {
+			try { void el.play(); } catch { /* ignore */ }
+		}
+	});
 
 	// ── Text overlays ─────────────────────────────────────────────────────
 	let activeTextOverlayId = $state<string | null>(null);
@@ -850,7 +913,10 @@
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
 						src={backgroundVideo}
-						autoplay loop muted playsinline
+						autoplay loop playsinline
+						muted={videoMuted}
+						onloadedmetadata={onBgVideoMeta}
+						ontimeupdate={onBgVideoTimeUpdate}
 						style="
 							position: absolute;
 							top: {bgShrunkTopPct}%; left: {bgShrunkLeftPct}%;
@@ -862,7 +928,10 @@
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
 						src={backgroundVideo}
-						autoplay loop muted playsinline
+						autoplay loop playsinline
+						muted={videoMuted}
+						onloadedmetadata={onBgVideoMeta}
+						ontimeupdate={onBgVideoTimeUpdate}
 						style="
 							position: absolute;
 							top: 0; left: 0;

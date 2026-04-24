@@ -20,7 +20,7 @@
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, ChevronDown, Search, FlaskConical, Wifi, Layers,
-		Scissors, Eye, EyeOff, Flame, Music, Play, X
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -117,6 +117,22 @@
 	let backgroundVideos = $state<string[]>([]); // blob URLs — one per slide
 	let generatingImages = $state<boolean[]>([]); // per-slide loading state
 
+	// Video trim (per slide, seconds) — used for preview and later export.
+	let videoTrimStartSecBySlide = $state<number[]>([]);
+	let videoTrimEndSecBySlide = $state<number[]>([]);
+	let videoDurationBySlide = $state<number[]>([]);
+	// Video audio (per slide) — preview only.
+	let videoMutedBySlide = $state<boolean[]>([]);
+	let videoVolumeBySlide = $state<number[]>([]);
+	let showVideoTrim = $state(false);
+	let videoSeekSec = $state<number>(NaN);
+
+	const activeVideoTrimStartSec = $derived(videoTrimStartSecBySlide[activeSlide] ?? 0);
+	const activeVideoTrimEndSec = $derived(videoTrimEndSecBySlide[activeSlide] ?? 0);
+	const activeVideoDurationSec = $derived(videoDurationBySlide[activeSlide] ?? 0);
+	const activeVideoMuted = $derived(videoMutedBySlide[activeSlide] ?? true);
+	const activeVideoVolume = $derived(videoVolumeBySlide[activeSlide] ?? 0.8);
+
 	// Per-slide music. Picking any track other than "No music" marks the slide
 	// as a video (we burn the selected track onto the still image at publish
 	// time). Users get a visual flame/▶ badge so they know this slide will be
@@ -201,6 +217,14 @@
 		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? url : v);
 		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img); // clear image
 		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
+		// Reset trim to "full" until duration is known.
+		videoTrimStartSecBySlide = videoTrimStartSecBySlide.map((v, idx) => idx === i ? 0 : v);
+		videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((v, idx) => idx === i ? 0 : v);
+		videoDurationBySlide = videoDurationBySlide.map((v, idx) => idx === i ? 0 : v);
+		// Default audio to muted (autoplay-safe). User can unmute via the speaker button.
+		videoMutedBySlide = videoMutedBySlide.map((v, idx) => idx === i ? true : v);
+		videoVolumeBySlide = videoVolumeBySlide.map((v, idx) => idx === i ? (Number.isFinite(v) ? v : 0.8) : v);
+		videoSeekSec = NaN;
 	}
 
 	function clearSlideBackground(i: number) {
@@ -209,6 +233,12 @@
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
 		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? '' : v);
 		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img);
+		videoTrimStartSecBySlide = videoTrimStartSecBySlide.map((v, idx) => idx === i ? 0 : v);
+		videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((v, idx) => idx === i ? 0 : v);
+		videoDurationBySlide = videoDurationBySlide.map((v, idx) => idx === i ? 0 : v);
+		videoMutedBySlide = videoMutedBySlide.map((v, idx) => idx === i ? true : v);
+		videoVolumeBySlide = videoVolumeBySlide.map((v, idx) => idx === i ? 0.8 : v);
+		if (i === activeSlide) { showVideoTrim = false; videoSeekSec = NaN; }
 	}
 
 	// Style
@@ -552,6 +582,11 @@
 		if (Array.isArray(s.subjectCutouts)) subjectCutouts = s.subjectCutouts;
 		if (Array.isArray(s.showCutout)) showCutout = s.showCutout;
 		if (Array.isArray(s.slideMusic)) slideMusic = s.slideMusic;
+		if (Array.isArray(s.videoTrimStartSecBySlide)) videoTrimStartSecBySlide = s.videoTrimStartSecBySlide;
+		if (Array.isArray(s.videoTrimEndSecBySlide)) videoTrimEndSecBySlide = s.videoTrimEndSecBySlide;
+		if (Array.isArray(s.videoDurationBySlide)) videoDurationBySlide = s.videoDurationBySlide;
+		if (Array.isArray(s.videoMutedBySlide)) videoMutedBySlide = s.videoMutedBySlide;
+		if (Array.isArray(s.videoVolumeBySlide)) videoVolumeBySlide = s.videoVolumeBySlide;
 
 		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
 		// Back-compat: older drafts stored a single circleImage; newer ones store per-slide arrays.
@@ -609,6 +644,11 @@
 			slideTemplates,
 			backgroundImages,
 			backgroundVideos,
+			videoTrimStartSecBySlide,
+			videoTrimEndSecBySlide,
+			videoDurationBySlide,
+			videoMutedBySlide,
+			videoVolumeBySlide,
 			slideOverlays,
 			slideTextOverlays,
 			headlineStyles,
@@ -1000,6 +1040,11 @@
 		// Reset image arrays to match current slide count
 		backgroundImages = new Array(slides.length).fill('');
 		backgroundVideos = new Array(slides.length).fill('');
+		videoTrimStartSecBySlide = new Array(slides.length).fill(0);
+		videoTrimEndSecBySlide = new Array(slides.length).fill(0);
+		videoDurationBySlide = new Array(slides.length).fill(0);
+		videoMutedBySlide = new Array(slides.length).fill(true);
+		videoVolumeBySlide = new Array(slides.length).fill(0.8);
 		generatingImages = new Array(slides.length).fill(true);
 		slideOverlays    = new Array(slides.length).fill(null).map(() => []);
 		slideTextOverlays = new Array(slides.length).fill(null).map(() => []);
@@ -1804,12 +1849,14 @@
 						</div>
 					{/if}
 
+					<!-- Video trim UI is rendered under the preview (YouTube-style) -->
+
 					{#if bgError}
 						<p class="text-[10px] font-body text-amber-400/70 leading-relaxed">{bgError}</p>
 					{/if}
 
-					<!-- Position sliders (shown when a background is loaded) -->
-					{#if backgroundImage}
+					<!-- Position + zoom sliders (shown when a background is loaded) -->
+					{#if backgroundImage || backgroundVideo}
 						<div class="flex flex-col gap-1.5 pt-1">
 							<p class="text-[10px] font-mono text-white/25 uppercase tracking-wider mb-0.5">
 								Position <span class="normal-case text-white/15 font-body">(or drag in preview)</span>
@@ -1910,7 +1957,8 @@
 
 		<!-- Main preview + quick actions (next to canvas) -->
 		<div class="flex items-start gap-3">
-			<div style="width: {PREVIEW_WIDTH}px; height: {CANVAS_H * previewScale}px;" class="relative">
+			<div style="width: {PREVIEW_WIDTH}px;" class="relative">
+				<div style="height: {CANVAS_H * previewScale}px;" class="relative">
 			{#if generatingImages[activeSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
@@ -1942,6 +1990,21 @@
 					bind:shadowStrength
 					backgroundImage={backgroundImage}
 					backgroundVideo={backgroundVideo}
+					videoTrimStartSec={activeVideoTrimStartSec}
+					videoTrimEndSec={activeVideoTrimEndSec || activeVideoDurationSec || 0}
+					videoSeekSec={videoSeekSec}
+					videoMuted={activeVideoMuted}
+					videoVolume={activeVideoVolume}
+					onVideoDuration={(d) => {
+							const dur = Number(d);
+							if (!Number.isFinite(dur) || dur <= 0) return;
+							videoDurationBySlide = videoDurationBySlide.map((x, i) => (i === activeSlide ? dur : x));
+							// If end is unset, default it to full duration.
+							const curEnd = videoTrimEndSecBySlide[activeSlide] ?? 0;
+							if (!curEnd) {
+								videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((x, i) => (i === activeSlide ? dur : x));
+							}
+						}}
 					subjectCutout={activeCutout}
 					showSubjectCutout={activeShowCutout}
 					circleImage={showCircle ? activeCircleImage : ''}
@@ -2014,6 +2077,7 @@
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{/if}
+				</div>
 			</div>
 
 			<!-- Quick actions column (News only) -->
@@ -2033,6 +2097,40 @@
 						class="sr-only"
 						onchange={handleOverlayUpload}
 					/>
+
+					<button
+						type="button"
+						onclick={() => { showVideoTrim = !showVideoTrim; if (!showVideoTrim) videoSeekSec = NaN; }}
+						disabled={!backgroundVideo}
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+						title={backgroundVideo ? 'Trim video' : 'Trim (add a video background first)'}
+					>
+						<Scissors size={16} />
+					</button>
+
+					<button
+						type="button"
+						onclick={() => {
+							if (!backgroundVideo) return;
+							const next = !activeVideoMuted;
+							videoMutedBySlide = videoMutedBySlide.map((v, i) => (i === activeSlide ? next : v));
+							// When unmuting, ensure there is a sane volume.
+							if (!next) {
+								const cur = videoVolumeBySlide[activeSlide];
+								const vol = Number.isFinite(cur) ? cur : 0.8;
+								videoVolumeBySlide = videoVolumeBySlide.map((v, i) => (i === activeSlide ? Math.max(0, Math.min(1, vol)) : v));
+							}
+						}}
+						disabled={!backgroundVideo}
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+						title={backgroundVideo ? (activeVideoMuted ? 'Unmute video' : 'Mute video') : 'Volume (add a video background first)'}
+					>
+						{#if activeVideoMuted}
+							<VolumeX size={16} />
+						{:else}
+							<Volume2 size={16} />
+						{/if}
+					</button>
 
 					<button
 						type="button"
@@ -2271,7 +2369,145 @@
 												</p>
 											</div>
 										{/if}
-									</div>
+				</div>
+
+				<!-- ── Video trimmer (YouTube-style bottom timeline) ───────────── -->
+				{#if activeTemplate === 'news' && backgroundVideo && showVideoTrim}
+					<div class="mt-3 w-full">
+						<div class="rounded-2xl bg-white/[0.03] border border-white/[0.08] px-3 py-2.5">
+							<div class="flex items-center justify-between gap-2 mb-2">
+								<div class="flex items-center gap-2">
+									<Scissors size={14} class="text-cyan-300" />
+									<span class="text-[10px] font-mono text-white/35 uppercase tracking-wider">Trim clip</span>
+									{#if activeVideoDurationSec > 0}
+										<span class="text-[10px] font-mono text-white/25">
+											{activeVideoTrimStartSec.toFixed(2)}s – {(activeVideoTrimEndSec || activeVideoDurationSec).toFixed(2)}s
+										</span>
+									{/if}
+								</div>
+								<button
+									type="button"
+									onclick={() => { showVideoTrim = false; videoSeekSec = NaN; }}
+									class="w-7 h-7 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-white/50 hover:text-white flex items-center justify-center transition-colors"
+									title="Close"
+								>✕</button>
+							</div>
+
+							{#if activeVideoDurationSec > 0}
+								<!-- Selected region track -->
+								{@const endVal = activeVideoTrimEndSec || activeVideoDurationSec}
+								{@const startPct = Math.max(0, Math.min(100, (activeVideoTrimStartSec / activeVideoDurationSec) * 100))}
+								{@const endPct = Math.max(0, Math.min(100, (endVal / activeVideoDurationSec) * 100))}
+								<div class="relative h-10">
+									<div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-black/35 border border-white/10"></div>
+									<div
+										class="absolute top-1/2 -translate-y-1/2 h-2 rounded-full bg-cyan-400/35 border border-cyan-400/30"
+										style="left:{startPct}%; width:{Math.max(0, endPct - startPct)}%;"
+									></div>
+
+									<!-- Start handle -->
+									<div
+										class="absolute top-1/2 -translate-y-1/2 w-3 h-6 rounded-md bg-white/80 border border-white/20 shadow"
+										style="left: calc({startPct}% - 6px);"
+									></div>
+									<!-- End handle -->
+									<div
+										class="absolute top-1/2 -translate-y-1/2 w-3 h-6 rounded-md bg-white/80 border border-white/20 shadow"
+										style="left: calc({endPct}% - 6px);"
+									></div>
+
+									<!-- Two hidden range inputs drive the handles -->
+									<input
+										class="video-range video-range-start"
+										type="range"
+										min="0"
+										max={Math.max(0, activeVideoDurationSec - 0.05)}
+										step="0.05"
+										value={activeVideoTrimStartSec}
+										oninput={(e) => {
+											const v = Number((e.target as HTMLInputElement).value);
+											videoTrimStartSecBySlide = videoTrimStartSecBySlide.map((x, i) => (i === activeSlide ? v : x));
+											const end = videoTrimEndSecBySlide[activeSlide] ?? 0;
+											if (end && end < v + 0.05) {
+												videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((x, i) => (i === activeSlide ? Math.min(activeVideoDurationSec, v + 0.5) : x));
+											}
+											videoSeekSec = v;
+										}}
+										aria-label="Trim start"
+									/>
+									<input
+										class="video-range video-range-end"
+										type="range"
+										min="0"
+										max={activeVideoDurationSec}
+										step="0.05"
+										value={endVal}
+										oninput={(e) => {
+											const v = Number((e.target as HTMLInputElement).value);
+											const start = videoTrimStartSecBySlide[activeSlide] ?? 0;
+											const next = Math.max(start + 0.05, v);
+											videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((x, i) => (i === activeSlide ? Math.min(activeVideoDurationSec, next) : x));
+											videoSeekSec = Math.min(activeVideoDurationSec, next);
+										}}
+										aria-label="Trim end"
+									/>
+								</div>
+
+								<!-- Scrub bar -->
+								<div class="flex items-center gap-2 mt-2">
+									<span class="text-[10px] font-mono text-white/35 w-10">Scrub</span>
+									<input
+										type="range"
+										min={activeVideoTrimStartSec}
+										max={endVal}
+										step="0.05"
+										value={Number.isFinite(videoSeekSec) ? videoSeekSec : activeVideoTrimStartSec}
+										oninput={(e) => { videoSeekSec = Number((e.target as HTMLInputElement).value); }}
+										class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+										aria-label="Scrub preview"
+									/>
+									<span class="text-[10px] font-mono text-white/35 w-12 text-right">
+										{(Number.isFinite(videoSeekSec) ? videoSeekSec : activeVideoTrimStartSec).toFixed(2)}s
+									</span>
+								</div>
+
+								<!-- Volume -->
+								<div class="flex items-center gap-2 mt-2">
+									<span class="text-[10px] font-mono text-white/35 w-10">Vol</span>
+									<button
+										type="button"
+										onclick={() => { videoMutedBySlide = videoMutedBySlide.map((v, i) => (i === activeSlide ? !activeVideoMuted : v)); }}
+										class="w-7 h-7 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-white/60 hover:text-white flex items-center justify-center transition-colors"
+										title={activeVideoMuted ? 'Unmute' : 'Mute'}
+									>
+										{#if activeVideoMuted}
+											<VolumeX size={14} />
+										{:else}
+											<Volume2 size={14} />
+										{/if}
+									</button>
+									<input
+										type="range"
+										min="0"
+										max="1"
+										step="0.01"
+										value={activeVideoVolume}
+										disabled={activeVideoMuted}
+										oninput={(e) => {
+											const v = Number((e.target as HTMLInputElement).value);
+											videoVolumeBySlide = videoVolumeBySlide.map((x, i) => (i === activeSlide ? Math.max(0, Math.min(1, v)) : x));
+										}}
+										class="flex-1 h-1 rounded-full accent-cyan-400 cursor-pointer disabled:opacity-40"
+										aria-label="Volume"
+									/>
+									<span class="text-[10px] font-mono text-white/35 w-12 text-right">{Math.round(activeVideoVolume * 100)}%</span>
+								</div>
+							{:else}
+								<p class="text-[10px] font-body text-white/25">Loading video…</p>
+							{/if}
+						</div>
+					</div>
+				{/if}
 								</div>
 							</div>
 						{/if}
@@ -2374,5 +2610,27 @@
 	}
 	.no-scrollbar::-webkit-scrollbar {
 		display: none; /* Chrome/Safari */
+	}
+
+	/* Video trimmer ranges (bottom timeline) */
+	.video-range {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		width: 100%;
+		height: 100%;
+		opacity: 0;
+		cursor: ew-resize;
+		-webkit-appearance: none;
+		appearance: none;
+		background: transparent;
+	}
+	.video-range-start {
+		z-index: 2;
+	}
+	.video-range-end {
+		z-index: 3;
 	}
 </style>
