@@ -12,11 +12,21 @@
 	let metaStatus     = $state<Status | null>(null);
 	let linkedinStatus = $state<Status | null>(null);
 	let gmbStatus      = $state<Status | null>(null);
+	let blueskyStatus  = $state<Status | null>(null);
+	let snapchatStatus = $state<Status | null>(null);
+	let redditStatus   = $state<Status | null>(null);
+	let youtubeStatus  = $state<Status | null>(null);
 	let loading        = $state(true);
 	let userId         = $state<string>('');
 	let userEmail      = $state<string>('');
 	let userName       = $state<string>('');
 	let copied         = $state<string | null>(null);
+
+	let showBlueskyModal = $state(false);
+	let bskyHandle = $state('');
+	let bskyAppPassword = $state('');
+	let bskyConnecting = $state(false);
+	let bskyError = $state<string | null>(null);
 
 	let activeTab = $state<'profile' | 'integrations' | 'billing'>('integrations');
 
@@ -33,18 +43,30 @@
 		userName  = data.user?.user_metadata?.full_name ?? '';
 
 		try {
-			const [metaRes, liRes, gmbRes] = await Promise.all([
+			const [metaRes, liRes, gmbRes, bskyRes, snapRes, redditRes, ytRes] = await Promise.all([
 				fetch('/api/integrations/meta/status'),
 				fetch('/api/integrations/linkedin/status'),
 				fetch('/api/integrations/gmb/status'),
+				fetch('/api/integrations/bluesky/status'),
+				fetch('/api/integrations/snapchat/status'),
+				fetch('/api/integrations/reddit/status'),
+				fetch('/api/integrations/youtube/status'),
 			]);
 			metaStatus     = await metaRes.json();
 			linkedinStatus = await liRes.json();
 			gmbStatus      = await gmbRes.json();
+			blueskyStatus  = await bskyRes.json();
+			snapchatStatus = await snapRes.json();
+			redditStatus   = await redditRes.json();
+			youtubeStatus  = await ytRes.json();
 		} catch {
 			metaStatus     = { ok: false, missing: ['(failed)'], present: [] };
 			linkedinStatus = { ok: false, missing: ['(failed)'], present: [] };
 			gmbStatus      = { ok: false, missing: ['(failed)'], present: [] };
+			blueskyStatus  = { ok: false, missing: ['(failed)'], present: [] };
+			snapchatStatus = { ok: false, missing: ['(failed)'], present: [] };
+			redditStatus   = { ok: false, missing: ['(failed)'], present: [] };
+			youtubeStatus  = { ok: false, missing: ['(failed)'], present: [] };
 		}
 		loading = false;
 	});
@@ -70,14 +92,67 @@
 		if (!gmbStatus?.ok) return;
 		window.location.href = `/api/auth/gmb/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
+	function connectSnapchat() {
+		if (!userId) { goto('/login'); return; }
+		if (!snapchatStatus?.ok) return;
+		window.location.href = `/api/auth/snapchat/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+	function connectReddit() {
+		if (!userId) { goto('/login'); return; }
+		if (!redditStatus?.ok) return;
+		window.location.href = `/api/auth/reddit/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+	function connectYouTube() {
+		if (!userId) { goto('/login'); return; }
+		if (!youtubeStatus?.ok) return;
+		window.location.href = `/api/auth/youtube/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+	function openBlueskyModal() {
+		if (!userId) { goto('/login'); return; }
+		if (!blueskyStatus?.ok) return;
+		bskyError = null;
+		showBlueskyModal = true;
+	}
+	async function connectBluesky() {
+		if (!userId) { goto('/login'); return; }
+		if (!blueskyStatus?.ok) return;
+		if (!bskyHandle.trim() || !bskyAppPassword.trim()) {
+			bskyError = 'Enter your handle and an app password.';
+			return;
+		}
+		bskyConnecting = true;
+		bskyError = null;
+		try {
+			const res = await fetch('/api/integrations/bluesky/connect', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ userId, handle: bskyHandle.trim(), appPassword: bskyAppPassword.trim() }),
+			});
+			const out = await res.json();
+			if (!res.ok || !out?.ok) throw new Error(out?.error ?? 'Bluesky connect failed');
+			showBlueskyModal = false;
+			bskyAppPassword = '';
+		} catch (e: any) {
+			bskyError = e?.message ?? 'Bluesky connect failed';
+		} finally {
+			bskyConnecting = false;
+		}
+	}
 
 	const metaEnvSnippet = `META_APP_ID=\nMETA_APP_SECRET=\nMETA_REDIRECT_URI=`;
 	const linkedinEnvSnippet = `LINKEDIN_CLIENT_ID=\nLINKEDIN_CLIENT_SECRET=\nLINKEDIN_REDIRECT_URI=`;
 	const gmbEnvSnippet = `GMB_CLIENT_ID=\nGMB_CLIENT_SECRET=\nGMB_REDIRECT_URI=`;
+	const snapchatEnvSnippet = `SNAPCHAT_CLIENT_ID=\nSNAPCHAT_CLIENT_SECRET=\nSNAPCHAT_REDIRECT_URI=\nSNAPCHAT_SCOPES=snapchat-profile-api`;
+	const redditEnvSnippet = `REDDIT_CLIENT_ID=\nREDDIT_CLIENT_SECRET=\nREDDIT_REDIRECT_URI=\nREDDIT_SCOPES=identity submit\nREDDIT_USER_AGENT=yourappname/1.0 (by u/yourusername)`;
+	const youtubeEnvSnippet = `YOUTUBE_CLIENT_ID=\nYOUTUBE_CLIENT_SECRET=\nYOUTUBE_REDIRECT_URI=\nYOUTUBE_SCOPES=https://www.googleapis.com/auth/youtube.upload openid email profile`;
 
 	const metaStatusDerived    = $derived(metaStatus);
 	const linkedinStatusDerived = $derived(linkedinStatus);
 	const gmbStatusDerived      = $derived(gmbStatus);
+	const blueskyStatusDerived  = $derived(blueskyStatus);
+	const snapchatStatusDerived = $derived(snapchatStatus);
+	const redditStatusDerived   = $derived(redditStatus);
+	const youtubeStatusDerived  = $derived(youtubeStatus);
 
 	const integrations = $derived([
 		{
@@ -121,6 +196,62 @@
 			btnColor: '#4285F4',
 			docs: 'https://developers.google.com/my-business',
 			docsLabel: 'GMB API docs',
+		},
+		{
+			id: 'bluesky',
+			title: 'Bluesky',
+			desc: 'Connect your Bluesky account for posting via the AT Protocol.',
+			color: '#0085FF',
+			bg: 'rgba(0,133,255,0.10)',
+			status: blueskyStatusDerived,
+			snippet: `SUPABASE_URL=\nSUPABASE_SERVICE_KEY=`,
+			onConnect: openBlueskyModal,
+			btnLabel: 'Connect Bluesky',
+			btnColor: '#0085FF',
+			docs: 'https://docs.bsky.app/',
+			docsLabel: 'Bluesky docs',
+		},
+		{
+			id: 'snapchat',
+			title: 'Snapchat (Public Profile API)',
+			desc: 'OAuth connect for Snap Public Profile API (allowlist required).',
+			color: '#FFFC00',
+			bg: 'rgba(255,252,0,0.10)',
+			status: snapchatStatusDerived,
+			snippet: snapchatEnvSnippet,
+			onConnect: connectSnapchat,
+			btnLabel: 'Connect Snapchat',
+			btnColor: '#FFFC00',
+			docs: 'https://developers.snap.com/api/marketing-api/Public-Profile-API/GetStarted',
+			docsLabel: 'Snap docs',
+		},
+		{
+			id: 'reddit',
+			title: 'Reddit',
+			desc: 'OAuth connect to post to Reddit (requires a User Agent).',
+			color: '#FF4500',
+			bg: 'rgba(255,69,0,0.10)',
+			status: redditStatusDerived,
+			snippet: redditEnvSnippet,
+			onConnect: connectReddit,
+			btnLabel: 'Connect Reddit',
+			btnColor: '#FF4500',
+			docs: 'https://github.com/reddit-archive/reddit/wiki/OAuth2',
+			docsLabel: 'Reddit OAuth docs',
+		},
+		{
+			id: 'youtube',
+			title: 'YouTube',
+			desc: 'Connect your YouTube channel to enable uploads and scheduling.',
+			color: '#FF0000',
+			bg: 'rgba(255,0,0,0.10)',
+			status: youtubeStatusDerived,
+			snippet: youtubeEnvSnippet,
+			onConnect: connectYouTube,
+			btnLabel: 'Connect YouTube',
+			btnColor: '#FF0000',
+			docs: 'https://developers.google.com/youtube/v3/guides/authentication',
+			docsLabel: 'YouTube OAuth docs',
 		},
 	]);
 </script>
@@ -378,6 +509,59 @@
 	{/if}
 </div>
 
+{#if showBlueskyModal}
+	<div class="modal-backdrop" role="presentation" onclick={() => showBlueskyModal = false}>
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Connect Bluesky" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-head">
+				<h3 class="modal-title">Connect Bluesky</h3>
+				<button type="button" class="modal-close" onclick={() => showBlueskyModal = false}>✕</button>
+			</div>
+			<p class="modal-sub">
+				Use a Bluesky <span class="mono">App Password</span>. Your password is never stored — only session tokens.
+			</p>
+
+			<div class="modal-grid">
+				<div class="form-field">
+					<label class="form-label" for="bsky-handle">Handle</label>
+					<input
+						id="bsky-handle"
+						class="form-input"
+						type="text"
+						placeholder="you.bsky.social"
+						bind:value={bskyHandle}
+					/>
+				</div>
+				<div class="form-field">
+					<label class="form-label" for="bsky-pass">App Password</label>
+					<input
+						id="bsky-pass"
+						class="form-input"
+						type="password"
+						placeholder="xxxx-xxxx-xxxx-xxxx"
+						bind:value={bskyAppPassword}
+					/>
+				</div>
+			</div>
+
+			{#if bskyError}
+				<div class="modal-error" role="alert">
+					<AlertTriangle size={14} />
+					<span>{bskyError}</span>
+				</div>
+			{/if}
+
+			<div class="modal-actions">
+				<button type="button" class="btn-connect-outline" onclick={() => showBlueskyModal = false} disabled={bskyConnecting}>
+					Cancel
+				</button>
+				<button type="button" class="btn-connect" style="--c:#0085FF" onclick={connectBluesky} disabled={bskyConnecting}>
+					{bskyConnecting ? 'Connecting…' : 'Connect'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.page { padding: 2rem 2.5rem; max-width: 860px; display: flex; flex-direction: column; gap: 1.5rem; }
 
@@ -564,6 +748,69 @@
 	}
 	.btn-connect-outline:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
 	.btn-connect-outline:disabled { opacity: 0.3; cursor: not-allowed; }
+
+	/* ── Modal ─────────────────────────────────────────────────── */
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0,0,0,0.62);
+		backdrop-filter: blur(10px);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1.25rem;
+		z-index: 60;
+	}
+	.modal {
+		width: 100%;
+		max-width: 520px;
+		border-radius: 16px;
+		background: rgba(20,20,20,0.92);
+		border: 1px solid rgba(255,255,255,0.10);
+		box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+		padding: 1.25rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+	.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+	.modal-title {
+		margin: 0;
+		font-family: 'Fraunces', serif;
+		font-weight: 800;
+		font-size: 1.05rem;
+		letter-spacing: -0.02em;
+		color: #fff;
+	}
+	.modal-close {
+		border: 1px solid rgba(255,255,255,0.10);
+		background: rgba(255,255,255,0.04);
+		color: rgba(255,255,255,0.7);
+		border-radius: 10px;
+		width: 36px;
+		height: 36px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+	}
+	.modal-close:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+	.modal-sub { margin: 0; font-size: 0.8125rem; line-height: 1.5; color: rgba(255,255,255,0.45); }
+	.mono { font-family: 'Space Mono', monospace; }
+	.modal-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+	@media (min-width: 640px) { .modal-grid { grid-template-columns: 1fr 1fr; } }
+	.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.25rem; }
+	.modal-error {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.65rem 0.8rem;
+		border-radius: 12px;
+		border: 1px solid rgba(248,113,113,0.22);
+		background: rgba(248,113,113,0.08);
+		color: rgba(255,255,255,0.85);
+		font-size: 0.8125rem;
+	}
 
 	.btn-docs {
 		display: inline-flex; align-items: center; gap: 0.3rem;

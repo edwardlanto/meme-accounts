@@ -4,8 +4,8 @@
 	import { goto } from '$app/navigation';
 	import {
 		Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings,
-		Zap, Sparkles, Wand2, FlaskConical, BarChart3, Grid3X3,
-		CalendarDays, PenSquare, ChevronRight
+		Sparkles, Wand2, FlaskConical, BarChart3, Grid3X3,
+		CalendarDays, PenSquare, ChevronRight, ArrowUpRight
 	} from 'lucide-svelte';
 
 	let { children } = $props();
@@ -57,21 +57,13 @@
 	<aside class="sidebar">
 		<!-- Logo -->
 		<div class="logo-row">
-			<a href="/" class="logo-link">
+			<a href="/" class="logo-link" title="Carousel Studio">
 				<div class="logo-mark">
-					<Layers size={12} color="#0a0a0a" />
+					<span class="logo-initials">CS</span>
 				</div>
 				<div class="logo-text">
 					<span class="logo-word">Carousel</span><span class="logo-accent">Studio</span>
 				</div>
-			</a>
-		</div>
-
-		<!-- Create CTA -->
-		<div class="create-wrap">
-			<a href="/dashboard/carousels/new" class="create-btn">
-				<Sparkles size={12} />
-				<span>New Carousel</span>
 			</a>
 		</div>
 
@@ -88,7 +80,7 @@
 							class="nav-item {active ? 'active' : ''}"
 						>
 							{#if active}<div class="active-bar"></div>{/if}
-							<span class="nav-icon"><Icon size={14} /></span>
+							<span class="nav-icon"><Icon size={20} /></span>
 							<span class="nav-label">{item.label}</span>
 							{#if active}<ChevronRight size={12} class="nav-chevron" />{/if}
 						</a>
@@ -97,36 +89,24 @@
 			{/each}
 		</nav>
 
-		<!-- Credits -->
-		<div class="credits-block">
-			<div class="credits-head">
-				<div class="credits-icon">
-					<Zap size={10} />
-				</div>
-				<div class="credits-info">
-					<span class="credits-label">AI Credits</span>
-					<span class="credits-count">67 / 100</span>
-				</div>
-			</div>
-			<div class="credits-bar">
-				<div class="credits-fill" style="width: 67%">
-					<div class="credits-fill-shine"></div>
-				</div>
-			</div>
-			<a href="/dashboard/settings" class="upgrade-link">
-				<Sparkles size={10} />
-				Upgrade for unlimited
+		<!-- Upgrade block -->
+		<div class="upgrade-block">
+			<p class="upgrade-kicker">Earn 3,000 credits</p>
+			<a href="/dashboard/settings" class="upgrade-btn">
+				<span class="upgrade-btn-label">Upgrade</span>
+				<ArrowUpRight size={14} />
 			</a>
+			<a href="/signup" class="upgrade-link">Sign in</a>
 		</div>
 
 		<!-- Bottom -->
 		<div class="bottom-links">
 			<a href="/dashboard/settings" class="bottom-item {currentPath === '/dashboard/settings' ? 'active' : ''}">
-				<Settings size={14} />
+				<Settings size={20} />
 				<span>Settings</span>
 			</a>
 			<button onclick={signOut} class="bottom-item signout">
-				<LogOut size={14} />
+				<LogOut size={20} />
 				<span>Sign out</span>
 			</button>
 		</div>
@@ -140,7 +120,7 @@
 
 <style>
 	:global(body) {
-		background: #080808;
+		background: #0b0b0b;
 		color: #fff;
 		font-family: 'DM Sans', sans-serif;
 		margin: 0;
@@ -149,15 +129,15 @@
 	.shell {
 		display: flex;
 		height: 100vh;
-		background: #080808;
+		background: #0b0b0b;
 		overflow: hidden;
 	}
 
 	/* ── Sidebar ──────────────────────────────────────────────────── */
 	.sidebar {
-		width: 230px;
+		width: 92px;
 		flex-shrink: 0;
-		border-right: 1px solid rgba(255,255,255,0.05);
+		border-right: 1px solid rgba(255,255,255,0.06);
 		background: #0a0a0a;
 		display: flex;
 		flex-direction: column;
@@ -166,18 +146,26 @@
 
 	/* Logo */
 	.logo-row {
-		padding: 18px 16px 14px;
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		padding: 16px 10px 12px;
+		border-bottom: 1px solid rgba(255,255,255,0.06);
 		flex-shrink: 0;
 	}
 	.logo-link {
-		display: flex; align-items: center; gap: 10px; text-decoration: none;
+		display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none;
 	}
 	.logo-mark {
-		width: 28px; height: 28px; border-radius: 8px;
-		background: #E8FF48;
+		width: 30px; height: 30px; border-radius: 10px;
+		background: rgba(255,255,255,0.06);
+		border: 1px solid rgba(255,255,255,0.10);
 		display: flex; align-items: center; justify-content: center;
 		flex-shrink: 0;
+	}
+	.logo-initials {
+		font-family: 'Space Mono', monospace;
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		color: rgba(255,255,255,0.75);
 	}
 	.logo-text {
 		font-family: 'Fraunces', serif; font-size: 14px;
@@ -186,20 +174,9 @@
 	.logo-word  { color: rgba(255,255,255,0.75); }
 	.logo-accent{ color: #E8FF48; }
 
-	/* Create CTA */
-	.create-wrap { padding: 12px 12px 6px; flex-shrink: 0; }
-	.create-btn {
-		display: flex; align-items: center; justify-content: center; gap: 7px;
-		width: 100%; padding: 9px 0;
-		border-radius: 10px; background: #E8FF48; color: #0a0a0a;
-		font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
-		text-decoration: none; transition: all 0.15s;
-	}
-	.create-btn:hover { background: #f0ff6e; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(232,255,72,0.2); }
-
 	/* Nav groups */
 	.nav-list {
-		flex: 1; padding: 8px 10px;
+		flex: 1; padding: 10px 10px;
 		display: flex; flex-direction: column; gap: 0;
 		overflow-y: auto;
 		scrollbar-width: none;
@@ -211,83 +188,98 @@
 	.nav-group-label {
 		font-family: 'Space Mono', monospace; font-size: 8.5px;
 		text-transform: uppercase; letter-spacing: 0.12em;
-		color: rgba(255,255,255,0.18); padding: 8px 10px 4px;
+		color: rgba(255,255,255,0.20); padding: 10px 10px 6px;
 		margin: 0;
 	}
 
 	.nav-item {
 		position: relative;
-		display: flex; align-items: center; gap: 9px;
-		padding: 8px 10px 8px 12px;
-		border-radius: 9px;
-		font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 400;
-		color: rgba(255,255,255,0.32); text-decoration: none;
-		transition: all 0.15s; overflow: hidden; margin-bottom: 1px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 10px 8px;
+		border-radius: 12px;
+		font-family: 'DM Sans', sans-serif;
+		font-size: 11px;
+		font-weight: 500;
+		color: rgba(255,255,255,0.40); text-decoration: none;
+		transition: transform 0.15s, background 0.15s, color 0.15s;
+		overflow: hidden;
+		margin-bottom: 4px;
 	}
-	.nav-item:hover { color: rgba(255,255,255,0.72); background: rgba(255,255,255,0.04); }
+	.nav-item:hover { color: rgba(255,255,255,0.86); background: rgba(255,255,255,0.06); transform: translateY(-1px); }
 	.nav-item.active {
-		color: #E8FF48;
-		background: rgba(232,255,72,0.07);
+		color: rgba(255,255,255,0.92);
+		background: rgba(255,255,255,0.08);
 		font-weight: 500;
 	}
 
 	.active-bar {
-		position: absolute; left: 0; top: 28%; bottom: 28%;
-		width: 2.5px; background: #E8FF48; border-radius: 0 2px 2px 0;
+		position: absolute;
+		left: 18%;
+		right: 18%;
+		bottom: 6px;
+		height: 2px;
+		background: rgba(255,255,255,0.72);
+		border-radius: 999px;
 	}
 
 	.nav-icon { display: flex; align-items: center; flex-shrink: 0; }
-	.nav-label { flex: 1; }
-	:global(.nav-chevron) { opacity: 0.4; }
+	.nav-label { text-align: center; line-height: 1.05; }
+	:global(.nav-chevron) { display: none; }
 
-	/* Credits */
-	.credits-block {
-		margin: 6px 10px 10px;
-		padding: 12px 14px;
+	/* Collapsed rail tweaks */
+	.logo-text { display: none; }
+	.nav-group-label { display: none; }
+
+	/* Upgrade */
+	.upgrade-block {
+		margin: 8px 10px 10px;
+		padding: 10px;
+		border-radius: 14px;
+		background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+		border: 1px solid rgba(255,255,255,0.08);
+		flex-shrink: 0;
+	}
+	.upgrade-kicker {
+		display: none;
+		margin: 0 0 10px;
+		font-family: 'Space Mono', monospace;
+		font-size: 10px;
+		letter-spacing: 0.08em;
+		color: rgba(255,255,255,0.35);
+	}
+	.upgrade-btn {
+		width: 100%;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 10px 10px;
 		border-radius: 12px;
-		background: rgba(255,255,255,0.02);
-		border: 1px solid rgba(255,255,255,0.06);
-		flex-shrink: 0;
+		background: linear-gradient(180deg, rgba(99,102,241,0.85), rgba(59,130,246,0.85));
+		border: 1px solid rgba(255,255,255,0.12);
+		color: #fff;
+		font-weight: 700;
+		font-size: 13px;
+		text-decoration: none;
+		transition: transform 0.15s, filter 0.15s;
 	}
-	.credits-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-	.credits-icon {
-		width: 22px; height: 22px; border-radius: 6px;
-		background: rgba(232,255,72,0.12); color: #E8FF48;
-		display: flex; align-items: center; justify-content: center;
-		flex-shrink: 0;
-	}
-	.credits-info { flex: 1; display: flex; flex-direction: column; gap: 1px; }
-	.credits-label {
-		font-family: 'Space Mono', monospace; font-size: 9px;
-		text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.35);
-	}
-	.credits-count {
-		font-family: 'Space Mono', monospace; font-size: 11px;
-		font-weight: 700; color: rgba(255,255,255,0.65);
-	}
-	.credits-bar {
-		width: 100%; height: 4px; background: rgba(255,255,255,0.06);
-		border-radius: 100px; margin-bottom: 8px; overflow: hidden;
-	}
-	.credits-fill {
-		height: 100%; background: linear-gradient(90deg, #E8FF48, #f0ff70);
-		border-radius: 100px; position: relative; overflow: hidden;
-	}
-	.credits-fill-shine {
-		position: absolute; top: 0; left: -100%;
-		width: 60%; height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-		animation: shine 2.5s ease-in-out infinite;
-	}
-	@keyframes shine { 0%{left:-100%} 100%{left:200%} }
-
+	.upgrade-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+	.upgrade-btn-label { display: none; }
 	.upgrade-link {
-		display: inline-flex; align-items: center; gap: 5px;
-		font-family: 'Space Mono', monospace; font-size: 9px;
-		color: rgba(255,255,255,0.25); text-decoration: none;
-		transition: color 0.15s;
+		display: block;
+		margin-top: 8px;
+		text-align: center;
+		font-family: 'Space Mono', monospace;
+		font-size: 10px;
+		color: rgba(255,255,255,0.28);
+		text-decoration: none;
 	}
-	.upgrade-link:hover { color: #E8FF48; }
+	.upgrade-link:hover { color: rgba(255,255,255,0.55); }
+	.upgrade-link { display: none; }
 
 	/* Bottom */
 	.bottom-links {
@@ -297,15 +289,22 @@
 		flex-shrink: 0;
 	}
 	.bottom-item {
-		display: flex; align-items: center; gap: 9px;
-		padding: 8px 10px; border-radius: 8px;
-		font-family: 'DM Sans', sans-serif; font-size: 13px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 10px 8px;
+		border-radius: 12px;
+		font-family: 'DM Sans', sans-serif;
+		font-size: 11px;
+		font-weight: 500;
 		color: rgba(255,255,255,0.25); text-decoration: none;
 		background: transparent; border: none; cursor: pointer; width: 100%; text-align: left;
 		transition: all 0.15s;
 	}
-	.bottom-item:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.04); }
-	.bottom-item.active { color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); }
+	.bottom-item:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); transform: translateY(-1px); }
+	.bottom-item.active { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06); }
 	.bottom-item.signout:hover { color: #f87171; background: rgba(239,68,68,0.06); }
 
 	/* ── Main ────────────────────────────────────────────────────── */
@@ -313,6 +312,6 @@
 		flex: 1; overflow-y: auto;
 		scrollbar-width: thin;
 		scrollbar-color: rgba(255,255,255,0.07) transparent;
-		background: #080808;
+		background: #0b0b0b;
 	}
 </style>

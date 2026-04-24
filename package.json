@@ -26,6 +26,7 @@
 		"vite": "^8.0.7"
 	},
 	"dependencies": {
+		"@atproto/api": "^0.19.11",
 		"@dnd-kit-svelte/svelte": "^0.1.6",
 		"@dnd-kit/helpers": "^0.4.0",
 		"@fal-ai/client": "^1.9.6",
@@ -38,6 +39,7 @@
 		"html-to-image": "^1.11.13",
 		"ioredis": "^5.10.1",
 		"jszip": "^3.10.1",
+		"simple-icons": "^16.17.0",
 		"svelte-dnd-action": "^0.9.69",
 		"three": "^0.184.0"
 	}
