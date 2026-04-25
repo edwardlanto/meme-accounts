@@ -186,7 +186,7 @@
 <style>
 	.auth-root {
 		min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr;
-		background: #080808; font-family: 'DM Sans', sans-serif;
+		background: var(--app-bg); color: var(--app-text); font-family: 'DM Sans', sans-serif;
 		position: relative; overflow: hidden;
 	}
 
@@ -208,7 +208,7 @@
 
 	/* Brand panel */
 	.auth-brand {
-		background: #0a0a0a; border-right: 1px solid rgba(255,255,255,0.05);
+		background: var(--app-surface); border-right: 1px solid var(--app-border);
 		display: flex; align-items: center; justify-content: center;
 		padding: 60px 64px; position: relative;
 	}
@@ -223,7 +223,7 @@
 	}
 	.logo-text {
 		font-family: 'Fraunces', serif; font-size: 18px; font-weight: 900;
-		color: #fff; letter-spacing: -0.02em;
+		color: var(--app-text); letter-spacing: -0.02em;
 	}
 	.logo-text em { font-style: italic; color: #E8FF48; }
 
@@ -241,9 +241,9 @@
 	.brand-headline {
 		font-family: 'Fraunces', serif; font-size: clamp(28px, 3vw, 42px);
 		font-weight: 900; line-height: 1.05; letter-spacing: -0.03em;
-		color: #fff; margin: 0;
+		color: var(--app-text); margin: 0;
 	}
-	.brand-sub { font-size: 15px; line-height: 1.65; color: rgba(255,255,255,0.4); margin: 0; }
+	.brand-sub { font-size: 15px; line-height: 1.65; color: var(--app-text-2); margin: 0; }
 
 	.perk-list { display: flex; flex-direction: column; gap: 12px; }
 	.perk-item { display: flex; align-items: center; gap: 12px; }
@@ -253,12 +253,12 @@
 		display: flex; align-items: center; justify-content: center;
 		font-size: 9px; color: #E8FF48;
 	}
-	.perk-text { font-size: 14px; color: rgba(255,255,255,0.65); }
+	.perk-text { font-size: 14px; color: var(--app-text-2); }
 
 	.brand-social-proof {
 		display: flex; align-items: center; gap: 14px;
 		padding: 18px; border-radius: 14px;
-		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+		background: color-mix(in oklab, var(--app-text) 2%, transparent); border: 1px solid var(--app-border);
 	}
 	.avatars { display: flex; }
 	.av {
@@ -271,11 +271,11 @@
 	.av--1 { background: rgba(139,92,246,0.3); color: #a78bfa; }
 	.av--2 { background: rgba(6,182,212,0.3); color: #22d3ee; }
 	.av--3 { background: rgba(232,255,72,0.2); color: #E8FF48; }
-	.av--4 { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.4); font-size: 11px; }
+	.av--4 { background: color-mix(in oklab, var(--app-text) 6%, transparent); color: var(--app-text-2); font-size: 11px; }
 
 	.proof-text { display: flex; flex-direction: column; gap: 2px; }
-	.proof-count { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 900; color: #fff; margin: 0; }
-	.proof-sub { font-size: 12px; color: rgba(255,255,255,0.35); margin: 0; }
+	.proof-count { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 900; color: var(--app-text); margin: 0; }
+	.proof-sub { font-size: 12px; color: var(--app-text-2); margin: 0; }
 
 	/* Form panel */
 	.auth-form-panel {
@@ -296,25 +296,25 @@
 	}
 	.success-title {
 		font-family: 'Fraunces', serif; font-size: 26px; font-weight: 900;
-		letter-spacing: -0.03em; color: #fff; margin: 0;
+		letter-spacing: -0.03em; color: var(--app-text); margin: 0;
 	}
-	.success-body { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.65; margin: 0; }
-	.success-body strong { color: rgba(255,255,255,0.7); }
+	.success-body { font-size: 14px; color: var(--app-text-2); line-height: 1.65; margin: 0; }
+	.success-body strong { color: var(--app-text); }
 	.success-btn {
 		margin-top: 8px; padding: 11px 24px; border-radius: 10px;
-		background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+		background: color-mix(in oklab, var(--app-text) 4%, transparent); border: 1px solid var(--app-border);
 		font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif;
-		color: rgba(255,255,255,0.7); text-decoration: none; transition: all 0.15s;
+		color: var(--app-text-2); text-decoration: none; transition: all 0.15s;
 	}
-	.success-btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
+	.success-btn:hover { background: color-mix(in oklab, var(--app-text) 6%, transparent); color: var(--app-text); }
 
 	/* Form header */
 	.form-header { display: flex; flex-direction: column; gap: 8px; }
 	.form-title {
 		font-family: 'Fraunces', serif; font-size: 28px; font-weight: 900;
-		letter-spacing: -0.03em; color: #fff; margin: 0;
+		letter-spacing: -0.03em; color: var(--app-text); margin: 0;
 	}
-	.form-sub { font-size: 14px; color: rgba(255,255,255,0.38); margin: 0; }
+	.form-sub { font-size: 14px; color: var(--app-text-2); margin: 0; }
 
 	.error-banner {
 		display: flex; align-items: center; gap: 8px;
@@ -329,24 +329,24 @@
 	.field { display: flex; flex-direction: column; gap: 6px; }
 	.field-label {
 		font-size: 12px; font-weight: 600; text-transform: uppercase;
-		letter-spacing: 0.07em; color: rgba(255,255,255,0.4);
+		letter-spacing: 0.07em; color: var(--app-text-2);
 		font-family: 'Space Mono', monospace;
 	}
-	.field-hint { font-size: 11px; color: rgba(255,255,255,0.2); margin: 0; }
+	.field-hint { font-size: 11px; color: var(--app-text-3); margin: 0; }
 
 	.input-wrap { position: relative; }
 	:global(.input-icon) {
 		position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-		color: rgba(255,255,255,0.25); pointer-events: none;
+		color: var(--app-text-3); pointer-events: none;
 	}
 	.input {
-		width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+		width: 100%; background: color-mix(in oklab, var(--app-text) 3%, transparent); border: 1px solid var(--app-border);
 		border-radius: 10px; padding: 11px 12px 11px 38px;
-		font-size: 14px; font-family: 'DM Sans', sans-serif; color: #fff;
+		font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--app-text);
 		outline: none; transition: border-color 0.15s; box-sizing: border-box;
 	}
-	.input::placeholder { color: rgba(255,255,255,0.2); }
-	.input:focus { border-color: rgba(232,255,72,0.35); background: rgba(255,255,255,0.04); }
+	.input::placeholder { color: var(--app-text-3); }
+	.input:focus { border-color: rgba(232,255,72,0.35); background: color-mix(in oklab, var(--app-text) 4%, transparent); }
 
 	.submit-btn {
 		display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -359,26 +359,26 @@
 	.submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 	.terms-note {
-		text-align: center; font-size: 11px; color: rgba(255,255,255,0.2); margin: 0;
+		text-align: center; font-size: 11px; color: var(--app-text-3); margin: 0;
 	}
-	.terms-note a { color: rgba(255,255,255,0.35); text-decoration: none; }
-	.terms-note a:hover { color: rgba(255,255,255,0.6); }
+	.terms-note a { color: var(--app-text-2); text-decoration: none; }
+	.terms-note a:hover { color: var(--app-text); }
 
 	.divider { display: flex; align-items: center; gap: 12px; }
-	.divider-line { flex: 1; height: 1px; background: rgba(255,255,255,0.06); }
-	.divider-text { font-size: 12px; color: rgba(255,255,255,0.2); font-family: 'Space Mono', monospace; }
+	.divider-line { flex: 1; height: 1px; background: var(--app-border); }
+	.divider-text { font-size: 12px; color: var(--app-text-3); font-family: 'Space Mono', monospace; }
 
 	.google-btn {
 		display: flex; align-items: center; justify-content: center; gap: 10px;
 		width: 100%; padding: 11px; border-radius: 11px;
-		background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-		font-size: 14px; font-family: 'DM Sans', sans-serif; color: rgba(255,255,255,0.65);
+		background: color-mix(in oklab, var(--app-text) 3%, transparent); border: 1px solid var(--app-border);
+		font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--app-text-2);
 		cursor: pointer; transition: all 0.15s;
 	}
-	.google-btn:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.9); }
+	.google-btn:hover { background: color-mix(in oklab, var(--app-text) 5%, transparent); border-color: var(--app-border-hover); color: var(--app-text); }
 
 	.form-footer {
-		text-align: center; font-size: 14px; color: rgba(255,255,255,0.3);
+		text-align: center; font-size: 14px; color: var(--app-text-2);
 	}
 	.form-link { color: #E8FF48; text-decoration: none; font-weight: 600; transition: opacity 0.15s; }
 	.form-link:hover { opacity: 0.8; }

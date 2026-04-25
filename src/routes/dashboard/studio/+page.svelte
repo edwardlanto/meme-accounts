@@ -126,12 +126,70 @@
 	let videoVolumeBySlide = $state<number[]>([]);
 	let showVideoTrim = $state(false);
 	let videoSeekSec = $state<number>(NaN);
+	let trimDrag = $state<null | { start: number; end: number; startX: number; w: number }>(null);
 
 	const activeVideoTrimStartSec = $derived(videoTrimStartSecBySlide[activeSlide] ?? 0);
 	const activeVideoTrimEndSec = $derived(videoTrimEndSecBySlide[activeSlide] ?? 0);
 	const activeVideoDurationSec = $derived(videoDurationBySlide[activeSlide] ?? 0);
 	const activeVideoMuted = $derived(videoMutedBySlide[activeSlide] ?? true);
 	const activeVideoVolume = $derived(videoVolumeBySlide[activeSlide] ?? 0.8);
+
+	function fmtTime(sec: number) {
+		const s = Math.max(0, Number(sec) || 0);
+		const m = Math.floor(s / 60);
+		const r = Math.floor(s % 60);
+		const mm = String(m).padStart(2, '0');
+		const rr = String(r).padStart(2, '0');
+		return `${mm}:${rr}`;
+	}
+
+	function setActiveTrimWindow(start: number, end: number) {
+		const dur = Math.max(0, activeVideoDurationSec || 0);
+		const len = Math.max(0.05, end - start);
+		const s = Math.max(0, Math.min(dur - len, start));
+		const e = Math.max(s + 0.05, Math.min(dur, s + len));
+		videoTrimStartSecBySlide = Array.from(
+			{ length: slides.length },
+			(_, i) => (i === activeSlide ? s : (Number.isFinite(videoTrimStartSecBySlide[i]) ? Math.max(0, videoTrimStartSecBySlide[i]) : 0))
+		);
+		videoTrimEndSecBySlide = Array.from(
+			{ length: slides.length },
+			(_, i) => (i === activeSlide ? e : (Number.isFinite(videoTrimEndSecBySlide[i]) ? Math.max(0, videoTrimEndSecBySlide[i]) : 0))
+		);
+	}
+
+	// Keep per-slide video audio state arrays sized correctly.
+	// (Important: many updates use `.map`, which is a no-op if the array is empty.)
+	$effect(() => {
+		const n = slides.length;
+		if (videoTrimStartSecBySlide.length !== n) {
+			videoTrimStartSecBySlide = Array.from({ length: n }, (_, i) => {
+				const v = videoTrimStartSecBySlide[i];
+				return Number.isFinite(v) ? Math.max(0, v) : 0;
+			});
+		}
+		if (videoTrimEndSecBySlide.length !== n) {
+			videoTrimEndSecBySlide = Array.from({ length: n }, (_, i) => {
+				const v = videoTrimEndSecBySlide[i];
+				return Number.isFinite(v) ? Math.max(0, v) : 0;
+			});
+		}
+		if (videoDurationBySlide.length !== n) {
+			videoDurationBySlide = Array.from({ length: n }, (_, i) => {
+				const v = videoDurationBySlide[i];
+				return Number.isFinite(v) ? Math.max(0, v) : 0;
+			});
+		}
+		if (videoMutedBySlide.length !== n) {
+			videoMutedBySlide = Array.from({ length: n }, (_, i) => videoMutedBySlide[i] ?? true);
+		}
+		if (videoVolumeBySlide.length !== n) {
+			videoVolumeBySlide = Array.from({ length: n }, (_, i) => {
+				const v = videoVolumeBySlide[i];
+				return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+			});
+		}
+	});
 
 	// Per-slide music. Picking any track other than "No music" marks the slide
 	// as a video (we burn the selected track onto the still image at publish
@@ -218,12 +276,16 @@
 		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img); // clear image
 		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
 		// Reset trim to "full" until duration is known.
-		videoTrimStartSecBySlide = videoTrimStartSecBySlide.map((v, idx) => idx === i ? 0 : v);
-		videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((v, idx) => idx === i ? 0 : v);
-		videoDurationBySlide = videoDurationBySlide.map((v, idx) => idx === i ? 0 : v);
+		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
+		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
+		videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0)));
 		// Default audio to muted (autoplay-safe). User can unmute via the speaker button.
-		videoMutedBySlide = videoMutedBySlide.map((v, idx) => idx === i ? true : v);
-		videoVolumeBySlide = videoVolumeBySlide.map((v, idx) => idx === i ? (Number.isFinite(v) ? v : 0.8) : v);
+		videoMutedBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? true : (videoMutedBySlide[idx] ?? true)));
+		videoVolumeBySlide = Array.from({ length: slides.length }, (_, idx) => {
+			if (idx !== i) return Number.isFinite(videoVolumeBySlide[idx]) ? Math.max(0, Math.min(1, videoVolumeBySlide[idx])) : 0.8;
+			const cur = videoVolumeBySlide[idx];
+			return Number.isFinite(cur) ? Math.max(0, Math.min(1, cur)) : 0.8;
+		});
 		videoSeekSec = NaN;
 	}
 
@@ -233,11 +295,11 @@
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
 		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? '' : v);
 		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img);
-		videoTrimStartSecBySlide = videoTrimStartSecBySlide.map((v, idx) => idx === i ? 0 : v);
-		videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((v, idx) => idx === i ? 0 : v);
-		videoDurationBySlide = videoDurationBySlide.map((v, idx) => idx === i ? 0 : v);
-		videoMutedBySlide = videoMutedBySlide.map((v, idx) => idx === i ? true : v);
-		videoVolumeBySlide = videoVolumeBySlide.map((v, idx) => idx === i ? 0.8 : v);
+		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
+		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
+		videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0)));
+		videoMutedBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? true : (videoMutedBySlide[idx] ?? true)));
+		videoVolumeBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0.8 : (Number.isFinite(videoVolumeBySlide[idx]) ? Math.max(0, Math.min(1, videoVolumeBySlide[idx])) : 0.8)));
 		if (i === activeSlide) { showVideoTrim = false; videoSeekSec = NaN; }
 	}
 
@@ -1980,9 +2042,10 @@
 		<!-- Slide switcher removed (filmstrip below is the navigator) -->
 
 		<!-- Main preview + quick actions (next to canvas) -->
-		<div class="flex items-start gap-3">
-			<div style="width: {PREVIEW_WIDTH}px;" class="relative">
-				<div style="height: {CANVAS_H * previewScale}px;" class="relative">
+		<div class="flex items-start gap-3 relative">
+			<div style="width: {PREVIEW_WIDTH}px;" class="relative z-10">
+				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
+				<div style="height: {CANVAS_H * previewScale}px;" class="relative overflow-hidden rounded-2xl">
 			{#if generatingImages[activeSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
@@ -2023,11 +2086,17 @@
 					onVideoDuration={(d) => {
 							const dur = Number(d);
 							if (!Number.isFinite(dur) || dur <= 0) return;
-							videoDurationBySlide = videoDurationBySlide.map((x, i) => (i === activeSlide ? dur : x));
+							videoDurationBySlide = Array.from(
+								{ length: slides.length },
+								(_, i) => (i === activeSlide ? dur : (Number.isFinite(videoDurationBySlide[i]) ? Math.max(0, videoDurationBySlide[i]) : 0))
+							);
 							// If end is unset, default it to full duration.
 							const curEnd = videoTrimEndSecBySlide[activeSlide] ?? 0;
 							if (!curEnd) {
-								videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((x, i) => (i === activeSlide ? dur : x));
+								videoTrimEndSecBySlide = Array.from(
+									{ length: slides.length },
+									(_, i) => (i === activeSlide ? dur : (Number.isFinite(videoTrimEndSecBySlide[i]) ? Math.max(0, videoTrimEndSecBySlide[i]) : 0))
+								);
 							}
 						}}
 					subjectCutout={activeCutout}
@@ -2110,7 +2179,7 @@
 
 			<!-- Quick actions column (News only) -->
 			{#if activeTemplate === 'news'}
-				<div class="flex flex-col gap-2 pt-1">
+				<div class="flex flex-col gap-2 pt-1 relative z-50 pointer-events-auto">
 					<input
 						bind:this={circle2QuickInput}
 						type="file"
@@ -2141,12 +2210,22 @@
 						onclick={() => {
 							if (!backgroundVideo) return;
 							const next = !activeVideoMuted;
-							videoMutedBySlide = videoMutedBySlide.map((v, i) => (i === activeSlide ? next : v));
+							videoMutedBySlide = Array.from(
+								{ length: slides.length },
+								(_, i) => (i === activeSlide ? next : (videoMutedBySlide[i] ?? true))
+							);
 							// When unmuting, ensure there is a sane volume.
 							if (!next) {
 								const cur = videoVolumeBySlide[activeSlide];
 								const vol = Number.isFinite(cur) ? cur : 0.8;
-								videoVolumeBySlide = videoVolumeBySlide.map((v, i) => (i === activeSlide ? Math.max(0, Math.min(1, vol)) : v));
+								videoVolumeBySlide = Array.from(
+									{ length: slides.length },
+									(_, i) => {
+										if (i === activeSlide) return Math.max(0, Math.min(1, vol));
+										const v = videoVolumeBySlide[i];
+										return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+									}
+								);
 							}
 						}}
 						disabled={!backgroundVideo}
@@ -2397,11 +2476,26 @@
 												</p>
 											</div>
 										{/if}
-				</div>
+									</div>
+								</div>
+							</div>
+						{/if}
+					{/if}
+				</DragOverlay>
 
 				<!-- ── Video trimmer (YouTube-style bottom timeline) ───────────── -->
 				{#if activeTemplate === 'news' && backgroundVideo && showVideoTrim}
-					<div class="mt-3 w-full">
+					<!-- Click-off backdrop: closes the trimmer -->
+					<div
+						class="fixed inset-0 z-40"
+						onpointerdown={() => { showVideoTrim = false; videoSeekSec = NaN; }}
+						aria-hidden="true"
+					></div>
+
+					<div
+						class="mt-3 w-full relative z-50 pointer-events-auto"
+						onpointerdown={(e) => e.stopPropagation()}
+					>
 						<div class="rounded-2xl bg-white/[0.03] border border-white/[0.08] px-3 py-2.5">
 							<div class="flex items-center justify-between gap-2 mb-2">
 								<div class="flex items-center gap-2">
@@ -2409,7 +2503,7 @@
 									<span class="text-[10px] font-mono text-white/35 uppercase tracking-wider">Trim clip</span>
 									{#if activeVideoDurationSec > 0}
 										<span class="text-[10px] font-mono text-white/25">
-											{activeVideoTrimStartSec.toFixed(2)}s – {(activeVideoTrimEndSec || activeVideoDurationSec).toFixed(2)}s
+											{fmtTime(activeVideoTrimStartSec)} – {fmtTime(activeVideoTrimEndSec || activeVideoDurationSec)}
 										</span>
 									{/if}
 								</div>
@@ -2431,6 +2525,34 @@
 									<div
 										class="absolute top-1/2 -translate-y-1/2 h-2 rounded-full bg-cyan-400/35 border border-cyan-400/30"
 										style="left:{startPct}%; width:{Math.max(0, endPct - startPct)}%;"
+										onpointerdown={(e) => {
+											const el = e.currentTarget as HTMLElement;
+											const r = el.parentElement?.getBoundingClientRect();
+											if (!r) return;
+											const start = activeVideoTrimStartSec;
+											const end = endVal;
+											trimDrag = { start, end, startX: e.clientX, w: Math.max(1, r.width) };
+											el.setPointerCapture(e.pointerId);
+											e.preventDefault();
+											e.stopPropagation();
+										}}
+										onpointermove={(e) => {
+											if (!trimDrag) return;
+											const dx = e.clientX - trimDrag.startX;
+											const dur = Math.max(0, activeVideoDurationSec || 0);
+											if (!dur) return;
+											const deltaSec = (dx / trimDrag.w) * dur;
+											setActiveTrimWindow(trimDrag.start + deltaSec, trimDrag.end + deltaSec);
+											// keep preview synced to the new start while dragging
+											videoSeekSec = trimDrag.start + deltaSec;
+											e.preventDefault();
+										}}
+										onpointerup={(e) => {
+											if (!trimDrag) return;
+											trimDrag = null;
+											(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+										}}
+										onpointercancel={() => { trimDrag = null; }}
 									></div>
 
 									<!-- Start handle -->
@@ -2444,6 +2566,20 @@
 										style="left: calc({endPct}% - 6px);"
 									></div>
 
+									<!-- Timecode labels near handles -->
+									<div
+										class="absolute -top-1 translate-y-[-100%] px-2 py-0.5 rounded-md bg-black/70 border border-white/10 text-[10px] font-mono text-white/80"
+										style="left: calc({startPct}% - 16px);"
+									>
+										{fmtTime(activeVideoTrimStartSec)}
+									</div>
+									<div
+										class="absolute -top-1 translate-y-[-100%] px-2 py-0.5 rounded-md bg-black/70 border border-white/10 text-[10px] font-mono text-white/80"
+										style="left: calc({endPct}% - 16px);"
+									>
+										{fmtTime(endVal)}
+									</div>
+
 									<!-- Two hidden range inputs drive the handles -->
 									<input
 										class="video-range video-range-start"
@@ -2454,10 +2590,16 @@
 										value={activeVideoTrimStartSec}
 										oninput={(e) => {
 											const v = Number((e.target as HTMLInputElement).value);
-											videoTrimStartSecBySlide = videoTrimStartSecBySlide.map((x, i) => (i === activeSlide ? v : x));
+											videoTrimStartSecBySlide = Array.from(
+												{ length: slides.length },
+												(_, i) => (i === activeSlide ? v : (Number.isFinite(videoTrimStartSecBySlide[i]) ? Math.max(0, videoTrimStartSecBySlide[i]) : 0))
+											);
 											const end = videoTrimEndSecBySlide[activeSlide] ?? 0;
 											if (end && end < v + 0.05) {
-												videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((x, i) => (i === activeSlide ? Math.min(activeVideoDurationSec, v + 0.5) : x));
+												videoTrimEndSecBySlide = Array.from(
+													{ length: slides.length },
+													(_, i) => (i === activeSlide ? Math.min(activeVideoDurationSec, v + 0.5) : (Number.isFinite(videoTrimEndSecBySlide[i]) ? Math.max(0, videoTrimEndSecBySlide[i]) : 0))
+												);
 											}
 											videoSeekSec = v;
 										}}
@@ -2474,11 +2616,22 @@
 											const v = Number((e.target as HTMLInputElement).value);
 											const start = videoTrimStartSecBySlide[activeSlide] ?? 0;
 											const next = Math.max(start + 0.05, v);
-											videoTrimEndSecBySlide = videoTrimEndSecBySlide.map((x, i) => (i === activeSlide ? Math.min(activeVideoDurationSec, next) : x));
+											videoTrimEndSecBySlide = Array.from(
+												{ length: slides.length },
+												(_, i) => (i === activeSlide ? Math.min(activeVideoDurationSec, next) : (Number.isFinite(videoTrimEndSecBySlide[i]) ? Math.max(0, videoTrimEndSecBySlide[i]) : 0))
+											);
 											videoSeekSec = Math.min(activeVideoDurationSec, next);
 										}}
 										aria-label="Trim end"
 									/>
+								</div>
+
+								<!-- Ruler -->
+								{@const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * activeVideoDurationSec)}
+								<div class="mt-1 flex items-center justify-between text-[10px] font-mono text-white/25">
+									{#each ticks as t (t)}
+										<span>{fmtTime(t)}</span>
+									{/each}
 								</div>
 
 								<!-- Scrub bar -->
@@ -2504,7 +2657,24 @@
 									<span class="text-[10px] font-mono text-white/35 w-10">Vol</span>
 									<button
 										type="button"
-										onclick={() => { videoMutedBySlide = videoMutedBySlide.map((v, i) => (i === activeSlide ? !activeVideoMuted : v)); }}
+										onclick={() => {
+											videoMutedBySlide = Array.from(
+												{ length: slides.length },
+												(_, i) => (i === activeSlide ? !activeVideoMuted : (videoMutedBySlide[i] ?? true))
+											);
+											if (activeVideoMuted) {
+												const cur = videoVolumeBySlide[activeSlide];
+												const vol = Number.isFinite(cur) ? cur : 0.8;
+												videoVolumeBySlide = Array.from(
+													{ length: slides.length },
+													(_, i) => {
+														if (i === activeSlide) return Math.max(0, Math.min(1, vol));
+														const v = videoVolumeBySlide[i];
+														return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+													}
+												);
+											}
+										}}
 										class="w-7 h-7 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-white/60 hover:text-white flex items-center justify-center transition-colors"
 										title={activeVideoMuted ? 'Unmute' : 'Mute'}
 									>
@@ -2523,7 +2693,10 @@
 										disabled={activeVideoMuted}
 										oninput={(e) => {
 											const v = Number((e.target as HTMLInputElement).value);
-											videoVolumeBySlide = videoVolumeBySlide.map((x, i) => (i === activeSlide ? Math.max(0, Math.min(1, v)) : x));
+											videoVolumeBySlide = Array.from(
+												{ length: slides.length },
+												(_, i) => (i === activeSlide ? Math.max(0, Math.min(1, v)) : (Number.isFinite(videoVolumeBySlide[i]) ? Math.max(0, Math.min(1, videoVolumeBySlide[i])) : 0.8))
+											);
 										}}
 										class="flex-1 h-1 rounded-full accent-cyan-400 cursor-pointer disabled:opacity-40"
 										aria-label="Volume"
@@ -2536,11 +2709,6 @@
 						</div>
 					</div>
 				{/if}
-								</div>
-							</div>
-						{/if}
-					{/if}
-				</DragOverlay>
 			</DragDropProvider>
 			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder · Click <Flame size={9} class="inline text-orange-400/70" /> to burn music and publish as video</p>
 		{/if}
@@ -2663,11 +2831,17 @@
 		width: 100%;
 		height: 100%;
 		opacity: 0;
+		/* Critical: don't let the invisible track steal clicks. We'll re-enable
+		   pointer events on the thumb only so each handle is draggable. */
+		pointer-events: none;
 		cursor: ew-resize;
 		-webkit-appearance: none;
 		appearance: none;
 		background: transparent;
 	}
+	.video-range::-webkit-slider-thumb { pointer-events: auto; }
+	.video-range::-moz-range-thumb { pointer-events: auto; }
+	.video-range::-ms-thumb { pointer-events: auto; }
 	.video-range-start {
 		z-index: 2;
 	}

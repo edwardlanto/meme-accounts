@@ -244,3 +244,12 @@ body {
 :root:not([data-theme="dark"]) [class*="bg-black/["] {
   background-color: color-mix(in oklab, var(--app-text) 4%, transparent) !important;
 }
+
+/* Additional remaps for arbitrary hex “dark surfaces” used in some pages */
+:root:not([data-theme="dark"]) [class*="bg-\\[#0"] { background-color: var(--app-bg) !important; }
+:root:not([data-theme="dark"]) [class*="bg-\\[#111"] { background-color: var(--app-surface-2) !important; }
+:root:not([data-theme="dark"]) [class*="bg-\\[#1a1a1a"] { background-color: var(--app-surface-2) !important; }
+:root:not([data-theme="dark"]) [class*="bg-\\[#1e1e1e"] { background-color: var(--app-surface-2) !important; }
+:root:not([data-theme="dark"]) [class*="bg-\\[#0d0d0d"] { background-color: var(--app-surface) !important; }
+
+:root:not([data-theme="dark"]) [class*="placeholder-white/"] { color: var(--app-text-3) !important; }

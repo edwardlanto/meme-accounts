@@ -135,7 +135,8 @@
 	/* ── Root ─────────────────────────────────────────────── */
 	.root {
 		min-height: 100vh;
-		background: #000;
+		background: var(--app-bg);
+		color: var(--app-text);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -193,8 +194,8 @@
 		width: 100%; max-width: 400px;
 		margin: 24px;
 		padding: 40px;
-		background: rgba(255,255,255,0.03);
-		border: 1px solid rgba(255,255,255,0.09);
+		background: color-mix(in oklab, var(--app-text) 3%, transparent);
+		border: 1px solid var(--app-border);
 		border-radius: 24px;
 		backdrop-filter: blur(32px);
 		-webkit-backdrop-filter: blur(32px);
@@ -202,8 +203,8 @@
 		flex-direction: column;
 		gap: 24px;
 		box-shadow:
-			0 0 0 1px rgba(255,255,255,0.04) inset,
-			0 32px 80px rgba(0,0,0,0.5);
+			0 0 0 1px color-mix(in oklab, var(--app-text) 4%, transparent) inset,
+			0 32px 80px color-mix(in oklab, var(--app-text) 14%, transparent);
 	}
 
 	/* ── Logo ─────────────────────────────────────────────── */
@@ -220,7 +221,7 @@
 	}
 	.logo-text {
 		font-family: var(--font-display); font-size: 16px; font-weight: 900;
-		color: rgba(255,255,255,0.85); letter-spacing: -0.02em;
+		color: var(--app-text); letter-spacing: -0.02em;
 	}
 	.logo-text em { font-style: italic; color: var(--lime); }
 
@@ -228,26 +229,26 @@
 	.card-header { display: flex; flex-direction: column; gap: 6px; }
 	.card-title {
 		font-family: var(--font-display); font-size: 26px; font-weight: 900;
-		letter-spacing: -0.03em; color: #fff; margin: 0;
+		letter-spacing: -0.03em; color: var(--app-text); margin: 0;
 	}
-	.card-sub { font-size: 14px; color: rgba(255,255,255,0.36); margin: 0; }
+	.card-sub { font-size: 14px; color: var(--app-text-2); margin: 0; }
 
 	/* ── Google button ────────────────────────────────────── */
 	.google-btn {
 		display: flex; align-items: center; justify-content: center; gap: 10px;
 		width: 100%; padding: 12px 20px;
-		background: rgba(255,255,255,0.07);
-		border: 1px solid rgba(255,255,255,0.12);
+		background: color-mix(in oklab, var(--app-text) 4%, transparent);
+		border: 1px solid var(--app-border);
 		border-radius: 12px;
 		font-size: 14px; font-weight: 500;
 		font-family: var(--font-body);
-		color: rgba(255,255,255,0.82);
+		color: var(--app-text);
 		cursor: pointer;
 		transition: background 0.15s, border-color 0.15s, transform 0.15s;
 	}
 	.google-btn:hover {
-		background: rgba(255,255,255,0.11);
-		border-color: rgba(255,255,255,0.2);
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+		border-color: var(--app-border-hover);
 		transform: translateY(-1px);
 	}
 
@@ -257,10 +258,10 @@
 	}
 	.divider-line {
 		flex: 1; height: 1px;
-		background: rgba(255,255,255,0.07);
+		background: var(--app-border);
 	}
 	.divider-text {
-		font-size: 11px; color: rgba(255,255,255,0.22);
+		font-size: 11px; color: var(--app-text-3);
 		font-family: var(--font-mono); letter-spacing: 0.06em;
 	}
 
@@ -280,32 +281,32 @@
 	.field-row { display: flex; justify-content: space-between; align-items: center; }
 	.field-label {
 		font-size: 12px; font-weight: 500;
-		color: rgba(255,255,255,0.45);
+		color: var(--app-text-2);
 		letter-spacing: 0.02em;
 	}
 	.forgot {
-		font-size: 12px; color: rgba(255,255,255,0.28);
+		font-size: 12px; color: var(--app-text-3);
 		text-decoration: none; transition: color 0.15s;
 	}
-	.forgot:hover { color: rgba(255,255,255,0.65); }
+	.forgot:hover { color: var(--app-text-2); }
 
 	.input {
 		width: 100%;
-		background: rgba(255,255,255,0.04);
-		border: 1px solid rgba(255,255,255,0.08);
+		background: color-mix(in oklab, var(--app-text) 4%, transparent);
+		border: 1px solid var(--app-border);
 		border-radius: 10px;
 		padding: 11px 14px;
 		font-size: 14px;
 		font-family: var(--font-body);
-		color: #fff;
+		color: var(--app-text);
 		outline: none;
 		transition: border-color 0.15s, background 0.15s;
 		box-sizing: border-box;
 	}
-	.input::placeholder { color: rgba(255,255,255,0.18); }
+	.input::placeholder { color: var(--app-text-3); }
 	.input:focus {
 		border-color: rgba(232,255,72,0.4);
-		background: rgba(255,255,255,0.06);
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
 	}
 
 	/* ── Submit ───────────────────────────────────────────── */
@@ -339,10 +340,10 @@
 	/* ── Footer ───────────────────────────────────────────── */
 	.footer-text {
 		text-align: center; font-size: 13px;
-		color: rgba(255,255,255,0.28); margin: 0;
+		color: var(--app-text-3); margin: 0;
 	}
 	.footer-link {
-		color: rgba(255,255,255,0.65); text-decoration: none;
+		color: var(--app-text-2); text-decoration: none;
 		font-weight: 500; transition: color 0.15s;
 	}
 	.footer-link:hover { color: var(--lime); }

@@ -50,6 +50,9 @@
 	}
 
 	let currentPath = $derived($page.url.pathname);
+	let sidebarCollapsed = $derived(
+		currentPath === '/dashboard/studio' || currentPath.startsWith('/dashboard/editor/')
+	);
 
 	type ThemeMode = 'light' | 'dark';
 	let theme = $state<ThemeMode>('light');
@@ -67,7 +70,7 @@
 
 <div class="shell">
 	<!-- Sidebar -->
-	<aside class="sidebar">
+	<aside class="sidebar" class:collapsed={sidebarCollapsed}>
 		<!-- Logo -->
 		<div class="logo-row">
 			<a href="/" class="logo-link" title="Carousel Studio">
@@ -163,7 +166,7 @@
 
 	/* ── Sidebar ──────────────────────────────────────────────────── */
 	.sidebar {
-		width: 92px;
+		width: 260px;
 		flex-shrink: 0;
 		border-right: 1px solid var(--app-border);
 		background: var(--app-surface-2);
@@ -171,6 +174,7 @@
 		flex-direction: column;
 		overflow: hidden;
 	}
+	.sidebar.collapsed { width: 92px; }
 
 	/* Logo */
 	.logo-row {
@@ -179,7 +183,8 @@
 		flex-shrink: 0;
 	}
 	.logo-link {
-		display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none;
+		display: flex; align-items: center; justify-content: flex-start; gap: 10px; text-decoration: none;
+		padding: 0 8px;
 	}
 	.logo-mark {
 		width: 30px; height: 30px; border-radius: 10px;
@@ -223,11 +228,11 @@
 	.nav-item {
 		position: relative;
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		padding: 10px 8px;
+		justify-content: flex-start;
+		gap: 10px;
+		padding: 10px 12px;
 		border-radius: 12px;
 		font-family: 'DM Sans', sans-serif;
 		font-size: 11px;
@@ -250,21 +255,37 @@
 
 	.active-bar {
 		position: absolute;
-		left: 18%;
-		right: 18%;
-		bottom: 6px;
-		height: 2px;
+		left: 6px;
+		top: 10px;
+		bottom: 10px;
+		width: 3px;
 		background: color-mix(in oklab, var(--app-text) 70%, transparent);
 		border-radius: 999px;
 	}
 
 	.nav-icon { display: flex; align-items: center; flex-shrink: 0; }
-	.nav-label { text-align: center; line-height: 1.05; }
+	.nav-label { text-align: left; line-height: 1.05; }
 	:global(.nav-chevron) { display: none; }
 
 	/* Collapsed rail tweaks */
-	.logo-text { display: none; }
-	.nav-group-label { display: none; }
+	.sidebar.collapsed .logo-link { justify-content: center; padding: 0; }
+	.sidebar.collapsed .logo-text { display: none; }
+	.sidebar.collapsed .nav-group-label { display: none; }
+	.sidebar.collapsed .nav-item {
+		flex-direction: column;
+		justify-content: center;
+		gap: 6px;
+		padding: 10px 8px;
+	}
+	.sidebar.collapsed .nav-label { text-align: center; }
+	.sidebar.collapsed .active-bar {
+		left: 18%;
+		right: 18%;
+		top: auto;
+		bottom: 6px;
+		width: auto;
+		height: 2px;
+	}
 
 	/* Upgrade */
 	.upgrade-block {
@@ -276,12 +297,12 @@
 		flex-shrink: 0;
 	}
 	.upgrade-kicker {
-		display: none;
+		display: block;
 		margin: 0 0 10px;
 		font-family: 'Space Mono', monospace;
 		font-size: 10px;
 		letter-spacing: 0.08em;
-		color: rgba(255,255,255,0.35);
+		color: var(--app-text-3);
 	}
 	.upgrade-btn {
 		width: 100%;
@@ -301,6 +322,7 @@
 	}
 	.upgrade-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
 	.upgrade-btn-label { display: none; }
+	.sidebar:not(.collapsed) .upgrade-btn-label { display: inline; }
 	.upgrade-link {
 		display: block;
 		margin-top: 8px;
@@ -311,7 +333,7 @@
 		text-decoration: none;
 	}
 	.upgrade-link:hover { color: rgba(255,255,255,0.55); }
-	.upgrade-link { display: none; }
+	.sidebar:not(.collapsed) .upgrade-link { display: block; }
 
 	/* Bottom */
 	.bottom-links {
@@ -322,11 +344,11 @@
 	}
 	.bottom-item {
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		padding: 10px 8px;
+		justify-content: flex-start;
+		gap: 10px;
+		padding: 10px 12px;
 		border-radius: 12px;
 		font-family: 'DM Sans', sans-serif;
 		font-size: 11px;
@@ -334,6 +356,12 @@
 		color: var(--app-text-2); text-decoration: none;
 		background: transparent; border: none; cursor: pointer; width: 100%; text-align: left;
 		transition: all 0.15s;
+	}
+	.sidebar.collapsed .bottom-item {
+		flex-direction: column;
+		justify-content: center;
+		gap: 6px;
+		padding: 10px 8px;
 	}
 	.bottom-item:hover { color: var(--app-text); background: color-mix(in oklab, var(--app-text) 6%, transparent); transform: translateY(-1px); }
 	.bottom-item.active { color: var(--app-text); background: color-mix(in oklab, var(--app-text) 6%, transparent); }

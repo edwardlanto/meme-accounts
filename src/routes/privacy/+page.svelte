@@ -78,8 +78,8 @@
 <style>
 	.wrap {
 		min-height: 100vh;
-		background: #0a0a0a;
-		color: #e6e6e6;
+		background: var(--app-bg);
+		color: var(--app-text);
 		font-family: 'DM Sans', system-ui, sans-serif;
 		padding: 48px 24px 96px;
 	}
@@ -92,11 +92,11 @@
 		display: inline-block;
 		margin-bottom: 32px;
 		font-size: 13px;
-		color: rgba(255, 255, 255, 0.5);
+		color: var(--app-text-2);
 		text-decoration: none;
 		font-family: 'Space Mono', monospace;
 	}
-	.back:hover { color: #fff; }
+	.back:hover { color: var(--app-text); }
 	h1 {
 		font-family: 'Fraunces', Georgia, serif;
 		font-size: clamp(32px, 5vw, 44px);
@@ -106,7 +106,7 @@
 	}
 	.meta {
 		font-size: 13px;
-		color: rgba(255, 255, 255, 0.4);
+		color: var(--app-text-3);
 		font-family: 'Space Mono', monospace;
 		margin: 0 0 48px;
 	}
@@ -115,11 +115,11 @@
 		font-size: 20px;
 		font-weight: 700;
 		margin: 36px 0 10px;
-		color: #fff;
+		color: var(--app-text);
 	}
 	p {
 		font-size: 15px;
-		color: rgba(255, 255, 255, 0.72);
+		color: var(--app-text-2);
 		margin: 0 0 12px;
 	}
 	ul {
@@ -128,7 +128,7 @@
 	}
 	li {
 		font-size: 15px;
-		color: rgba(255, 255, 255, 0.72);
+		color: var(--app-text-2);
 		margin-bottom: 6px;
 	}
 	a {

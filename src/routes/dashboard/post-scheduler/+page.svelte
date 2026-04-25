@@ -1016,7 +1016,7 @@
 									const v = (e.target as HTMLSelectElement).value as IgContentType;
 									drafts = drafts.map((x) => (x.id === d.id ? { ...x, igType: v } : x));
 								}}
-								class="bg-white/3 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-mono text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors scheme-dark cursor-pointer"
+								class="bg-white/3 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-mono text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors cursor-pointer"
 							>
 								<option value="post">Post</option>
 								<option value="reel">Reel</option>
