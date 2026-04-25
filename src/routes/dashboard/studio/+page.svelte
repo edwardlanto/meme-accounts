@@ -11,6 +11,8 @@
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import { DragDropProvider, DragOverlay } from '@dnd-kit-svelte/svelte';
+	import { PointerSensor } from '@dnd-kit-svelte/svelte';
+	import { PointerActivationConstraints } from '@dnd-kit/dom';
 	import { useSortable, isSortable } from '@dnd-kit-svelte/svelte/sortable';
 	import { RestrictToHorizontalAxis } from '@dnd-kit-svelte/svelte/modifiers';
 	import { move } from '@dnd-kit/helpers';
@@ -311,7 +313,7 @@
 
 	onMount(() => {
 		// Track global theme changes (dashboard toggle updates <html data-theme="...">).
-		const readTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light') as const;
+		const readTheme = (): 'light' | 'dark' => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 		uiTheme = readTheme();
 
 		// If user hasn't manually set text color, keep it sensible per theme.
@@ -366,6 +368,20 @@
 
 	function setSlideTextOverlays(i: number, next: TextOverlay[]) {
 		slideTextOverlays = slideTextOverlays.map((o, idx) => idx === i ? next : o);
+	}
+
+	function addSlide() {
+		if (slides.length >= 10) return;
+		slides = [...slides, ''];
+		slideCount = slides.length;
+		activeSlide = slides.length - 1;
+		backgroundImages = [...backgroundImages, ''];
+		backgroundVideos = [...backgroundVideos, ''];
+		generatingImages = [...generatingImages, false];
+		slideOverlays = [...slideOverlays, []];
+		slideTextOverlays = [...slideTextOverlays, []];
+		slideIds = [...slideIds, newSlideId()];
+		slideMusic = [...slideMusic, null];
 	}
 
 	function addTextOverlay() {
@@ -508,9 +524,11 @@
 				// If registration isn't available (or already registered), ignore.
 			}
 		});
-		return () => {
-			try { dispose?.(); } catch {}
-			try { api?.sortable?.unregister?.(); } catch {}
+		return {
+			destroy() {
+				try { dispose?.(); } catch {}
+				try { api?.sortable?.unregister?.(); } catch {}
+			}
 		};
 	}
 	const activeHeadlineStyle = $derived(headlineStyles[activeSlide] ?? {});
@@ -518,6 +536,7 @@
 
 	// Currently selected text element + DOM anchor for the floating toolbar.
 	let selectedText = $state<TextElementKind | null>(null);
+	let selectedTextOverlayId = $state<string | null>(null);
 	let toolbarAnchor = $state<DOMRect | null>(null);
 	let toolbarTarget = $state<HTMLElement | null>(null);
 
@@ -546,6 +565,7 @@
 
 	function onTextSelect(kind: TextElementKind, el: HTMLElement) {
 		selectedText = kind;
+		selectedTextOverlayId = kind === 'textOverlay' ? (el.dataset.textOverlayId ?? null) : null;
 		toolbarTarget = el;
 		toolbarAnchor = el.getBoundingClientRect();
 		// Switching to the source label drops any stale headline word-range.
@@ -554,6 +574,7 @@
 
 	function closeToolbar() {
 		selectedText = null;
+		selectedTextOverlayId = null;
 		toolbarAnchor = null;
 		toolbarTarget = null;
 		headlineRange = null;
@@ -578,6 +599,12 @@
 			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
 		} else if (selectedText === 'source') {
 			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
+		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
+			const current = slideTextOverlays[activeSlide] ?? [];
+			setSlideTextOverlays(
+				activeSlide,
+				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, style: { ...(o.style ?? {}), ...patch } } : o)),
+			);
 		}
 		// Re-anchor on next frame so the toolbar follows size changes.
 		requestAnimationFrame(() => {
@@ -590,6 +617,12 @@
 			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? {} : s));
 		} else if (selectedText === 'source') {
 			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? {} : s));
+		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
+			const current = slideTextOverlays[activeSlide] ?? [];
+			setSlideTextOverlays(
+				activeSlide,
+				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, style: {} } : o)),
+			);
 		}
 	}
 
@@ -2287,6 +2320,11 @@
 			})}
 			<DragDropProvider
 				modifiers={[RestrictToHorizontalAxis]}
+				sensors={[
+					PointerSensor.configure({
+						activationConstraints: [new PointerActivationConstraints.Delay({ value: 180, tolerance: { x: 6, y: 6 } })],
+					}),
+				]}
 				onDragStart={(e) => { filmstripDraggingId = String(e?.operation?.source?.id ?? ''); if (!filmstripDraggingId) filmstripDraggingId = null; }}
 				onDragOver={filmstripOver}
 				onDragEnd={endFilmstripDrag}
@@ -2439,6 +2477,17 @@
 						</span>
 					</div>
 				{/each}
+
+				<!-- Add slide -->
+				<button
+					type="button"
+					onclick={addSlide}
+					class="flex-shrink-0 w-14 h-[70px] rounded-lg border-2 border-dashed border-white/[0.10] hover:border-violet-500/50 bg-white/[0.02] hover:bg-white/[0.04] transition-all flex items-center justify-center text-white/35 hover:text-white"
+					aria-label="Add slide"
+					title="Add slide"
+				>
+					<span class="text-2xl leading-none">+</span>
+				</button>
 				</div>
 
 				<!-- Drag overlay: makes the dragged item feel smooth & "attached" -->
@@ -2783,9 +2832,13 @@
 <!-- Canva-style floating toolbar for text formatting -->
 <FloatingTextToolbar
 	anchor={toolbarAnchor}
-	style={selectedText === 'headline' ? activeHeadlineStyle : activeSourceStyle}
-	autoFontSize={selectedText === 'source' ? 34 : undefined}
-	supportsHighlights={selectedText === 'headline'}
+	style={selectedText === 'headline'
+		? activeHeadlineStyle
+		: selectedText === 'textOverlay'
+			? (activeTextOverlays.find((o) => o.id === selectedTextOverlayId)?.style ?? {})
+			: activeSourceStyle}
+	autoFontSize={selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined}
+	supportsHighlights={selectedText === 'headline' || selectedText === 'textOverlay'}
 	hasRangeSelection={hasRangeSelection}
 	onChange={patchActiveStyle}
 	onHighlight={onHighlight}

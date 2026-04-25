@@ -111,6 +111,22 @@ body {
   line-height: 1.5;
 }
 
+/* ─── Cursors (make buttons feel clickable) ───────────────── */
+button:not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+button:disabled,
+input[type="button"]:disabled,
+input[type="submit"]:disabled,
+input[type="reset"]:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* ─── Scrollbar ───────────────────────────────────────────── */
 ::-webkit-scrollbar          { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track    { background: transparent; }
@@ -127,7 +143,9 @@ body {
 /* ─── Selection ───────────────────────────────────────────── */
 ::selection {
   background: var(--app-selection-bg);
-  color: var(--app-selection-fg);
+  /* Don't force a selection foreground color globally.
+     For dark-on-dark templates in light mode, forcing a dark fg can make text appear “black”. */
+  color: inherit;
 }
 
 /* ─── Focus visible ───────────────────────────────────────── */

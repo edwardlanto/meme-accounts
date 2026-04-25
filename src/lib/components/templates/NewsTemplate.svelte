@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
@@ -198,26 +199,30 @@
 
 	// ── Text overlays ─────────────────────────────────────────────────────
 	let activeTextOverlayId = $state<string | null>(null);
-	let textOverlayAction = $state<'drag' | 'resize' | null>(null);
+	let textOverlayAction = $state<'drag' | null>(null);
 	let toLastMx = 0;
 	let toLastMy = 0;
 	let editingTextOverlayId = $state<string | null>(null);
+	let snapGuide = $state<null | { x?: number; y?: number }>(null);
+
+	// When entering edit mode, focus the contenteditable immediately.
+	$effect(() => {
+		const id = editingTextOverlayId;
+		if (!id) return;
+		// Let DOM update, then focus.
+		void tick().then(() => {
+			const el = document.querySelector<HTMLElement>(`[data-text-overlay-id="${CSS.escape(id)}"] [contenteditable="true"]`);
+			try { el?.focus(); } catch {}
+		});
+	});
 
 	function textOverlayDown(e: PointerEvent, id: string) {
 		if (!interactive) return;
+		// Selecting a text overlay should show the floating toolbar in the studio.
+		try { (e.currentTarget as HTMLElement).dataset.textOverlayId = id; } catch {}
+		onTextSelect?.('textOverlay', e.currentTarget as HTMLElement);
 		activeTextOverlayId = id;
 		textOverlayAction = 'drag';
-		toLastMx = e.clientX;
-		toLastMy = e.clientY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-		e.stopPropagation();
-		e.preventDefault();
-	}
-
-	function textOverlayResizeDown(e: PointerEvent, id: string) {
-		if (!interactive) return;
-		activeTextOverlayId = id;
-		textOverlayAction = 'resize';
 		toLastMx = e.clientX;
 		toLastMy = e.clientY;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -236,19 +241,35 @@
 		if (!ov) return;
 
 		if (textOverlayAction === 'drag') {
-			const nx = Math.max(0, Math.min(W - ov.w, ov.x + dx));
-			const ny = Math.max(0, Math.min(H - ov.h, ov.y + dy));
+			const el = e.currentTarget as HTMLElement;
+			const r = el.getBoundingClientRect();
+			const curW = Math.max(1, r.width / scale);
+			const curH = Math.max(1, r.height / scale);
+			let nx = Math.max(0, Math.min(W - curW, ov.x + dx));
+			let ny = Math.max(0, Math.min(H - curH, ov.y + dy));
+			snapGuide = null;
+			// Canva-style snapping to centers when close.
+			const SNAP_PX = 10;
+			const cx = nx + curW / 2;
+			const cy = ny + curH / 2;
+			const midX = W / 2;
+			const midY = H / 2;
+			if (Math.abs(cx - midX) <= SNAP_PX) {
+				nx = Math.max(0, Math.min(W - curW, midX - curW / 2));
+				snapGuide = { ...(snapGuide ?? {}), x: midX };
+			}
+			if (Math.abs(cy - midY) <= SNAP_PX) {
+				ny = Math.max(0, Math.min(H - curH, midY - curH / 2));
+				snapGuide = { ...(snapGuide ?? {}), y: midY };
+			}
 			onTextOverlaysChange?.(textOverlays.map((o) => (o.id === id ? { ...o, x: nx, y: ny } : o)));
-		} else if (textOverlayAction === 'resize') {
-			const nw = Math.max(140, Math.min(W - ov.x, ov.w + dx));
-			const nh = Math.max(60, Math.min(H - ov.y, ov.h + dy));
-			onTextOverlaysChange?.(textOverlays.map((o) => (o.id === id ? { ...o, w: nw, h: nh } : o)));
 		}
 	}
 
 	function textOverlayUp() {
 		activeTextOverlayId = null;
 		textOverlayAction = null;
+		snapGuide = null;
 	}
 
 	function textOverlayDelete(e: MouseEvent, id: string) {
@@ -285,6 +306,12 @@
 		if (s.italic) lines.push('font-style: italic;');
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? textColor};`);
+		if (s.bgColor) {
+			lines.push(`background: ${s.bgColor};`);
+			lines.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
+			lines.push('padding: 0.06em 0.16em;');
+			lines.push('border-radius: 0.12em;');
+		}
 		lines.push(`text-align: ${s.align ?? 'left'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
 		lines.push(`line-height: ${s.lineHeight ?? 1.06};`);
@@ -301,6 +328,12 @@
 		lines.push(`font-style: ${s.italic === false ? 'normal' : (s.italic ?? true) ? 'italic' : 'normal'};`);
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? highlightColor};`);
+		if (s.bgColor) {
+			lines.push(`background: ${s.bgColor};`);
+			lines.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
+			lines.push('padding: 0.08em 0.22em;');
+			lines.push('border-radius: 0.18em;');
+		}
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
 		return lines.join(' ');
 	});
@@ -336,8 +369,11 @@
 	const bgZoomPct = $derived(Math.max(30, Math.min(300, Number(bgZoom) || 100)));
 	const bgRenderSize = $derived(Math.max(bgZoomPct, 115));
 	const bgRenderOverflowPct = $derived(bgRenderSize - 100); // total overflow
-	const bgTranslateX = $derived((-bgOffsetX * bgRenderOverflowPct) / bgRenderSize);
-	const bgTranslateY = $derived((-bgOffsetY * bgRenderOverflowPct) / bgRenderSize);
+	// Natural panning: slide an oversized layer inside the frame.
+	//  - bgOffsetX/Y = 0  → show left/top edge
+	//  - bgOffsetX/Y = 100→ show right/bottom edge
+	const bgPanLeftPct = $derived(-(bgRenderOverflowPct * (bgOffsetX / 100)));
+	const bgPanTopPct  = $derived(-(bgRenderOverflowPct * (bgOffsetY / 100)));
 	// When shrinking below 100%, the image no longer covers the frame. In that
 	// case we center it and the X/Y sliders instead pan the shrunk image within
 	// the frame (so 0→100% shifts the image from one edge to the other).
@@ -873,6 +909,9 @@
 			-webkit-background-clip: text;
 			-webkit-text-fill-color: transparent;
 			background-clip: text;
+			mix-blend-mode: screen;
+			filter: contrast(1.25) saturate(1.15);
+			opacity: 0.98;
 			display: inline;
 		`;
 	}
@@ -939,11 +978,10 @@
 						ontimeupdate={onBgVideoTimeUpdate}
 						style="
 							position: absolute;
-							top: 0; left: 0;
+							top: {bgPanTopPct}%; left: {bgPanLeftPct}%;
 							width: {bgRenderSize}%; height: {bgRenderSize}%;
 							object-fit: cover;
-							object-position: {bgOffsetX}% {bgOffsetY}%;
-							transform: translate({bgTranslateX}%, {bgTranslateY}%);
+							object-position: center;
 						"
 					></video>
 				{/if}
@@ -967,11 +1005,10 @@
 						alt=""
 						style="
 							position: absolute;
-							top: 0; left: 0;
+							top: {bgPanTopPct}%; left: {bgPanLeftPct}%;
 							width: {bgRenderSize}%; height: {bgRenderSize}%;
 							object-fit: cover;
-							object-position: {bgOffsetX}% {bgOffsetY}%;
-							transform: translate({bgTranslateX}%, {bgTranslateY}%);
+							object-position: center;
 						"
 					/>
 				{/if}
@@ -1101,6 +1138,37 @@
 			</div>
 		{/each}
 
+		{#if snapGuide?.x != null}
+			<div
+				style="
+					position: absolute;
+					left: {snapGuide.x}px;
+					top: 0;
+					bottom: 0;
+					width: 1px;
+					background: rgba(34,211,238,0.65);
+					box-shadow: 0 0 0 1px rgba(34,211,238,0.15);
+					z-index: 34;
+					pointer-events: none;
+				"
+			></div>
+		{/if}
+		{#if snapGuide?.y != null}
+			<div
+				style="
+					position: absolute;
+					top: {snapGuide.y}px;
+					left: 0;
+					right: 0;
+					height: 1px;
+					background: rgba(34,211,238,0.65);
+					box-shadow: 0 0 0 1px rgba(34,211,238,0.15);
+					z-index: 34;
+					pointer-events: none;
+				"
+			></div>
+		{/if}
+
 		<!-- ── Text overlays ──────────────────────────────────────────────── -->
 		{#each textOverlays as t (t.id)}
 			{@const isEditing = editingTextOverlayId === t.id}
@@ -1109,11 +1177,15 @@
 				style="
 					position: absolute;
 					left: {t.x}px; top: {t.y}px;
-					width: {t.w}px; height: {t.h}px;
+					width: fit-content;
+					height: fit-content;
+					max-width: 820px;
 					z-index: 35;
 					touch-action: none;
 					cursor: {interactive ? (activeTextOverlayId === t.id && textOverlayAction === 'drag' ? 'grabbing' : 'grab') : 'default'};
 				"
+				data-text-selectable="textOverlay"
+				data-text-overlay-id={t.id}
 				onpointerdown={(e) => textOverlayDown(e, t.id)}
 				onpointermove={(e) => textOverlayMove(e, t.id)}
 				onpointerup={textOverlayUp}
@@ -1124,13 +1196,14 @@
 					<div
 						style="
 							position: absolute; inset: 0;
-							background: rgba(0,0,0,0.35);
-							border: 1px solid rgba(255,255,255,0.25);
-							border-radius: 10px;
-							padding: 10px;
+							padding: 8px;
 							box-sizing: border-box;
+							border-radius: 10px;
+							background: rgba(0,0,0,0.14);
+							border: 1px solid rgba(255,255,255,0.25);
 						"
 						onclick={(e) => e.stopPropagation()}
+						role="presentation"
 					>
 						<HighlightEditor
 							value={t.text}
@@ -1148,7 +1221,7 @@
 						ondblclick={(e) => startTextOverlayEdit(e, t.id)}
 						style="
 							position: absolute; inset: 0;
-							padding: 10px;
+							padding: 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
 							background: rgba(0,0,0,0.10);
@@ -1181,6 +1254,8 @@
 				{#if interactive && !isEditing}
 					<!-- svelte-ignore a11y_consider_explicit_label -->
 					<button
+						type="button"
+						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 						onclick={(e) => textOverlayDelete(e, t.id)}
 						style="
 							position: absolute; top: -12px; right: -12px;
@@ -1191,23 +1266,10 @@
 							cursor: pointer;
 						"
 						title="Remove text"
+						aria-label="Remove text overlay"
 					>✕</button>
 
-					<div
-						style="
-							position: absolute; bottom: -10px; right: -10px;
-							width: 22px; height: 22px; border-radius: 6px;
-							background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.45);
-							cursor: nwse-resize;
-							display:flex;align-items:center;justify-content:center;
-							font-size: 11px; color: rgba(255,255,255,0.8);
-						"
-						onpointerdown={(e) => textOverlayResizeDown(e, t.id)}
-						onpointermove={(e) => textOverlayMove(e, t.id)}
-						onpointerup={textOverlayUp}
-						onpointercancel={textOverlayUp}
-						role="presentation"
-					>⤡</div>
+					<!-- Text overlays are draggable-only (no resize handle) -->
 				{/if}
 			</div>
 		{/each}
@@ -1538,11 +1600,10 @@
 						alt=""
 						style="
 							position: absolute;
-							top: 0; left: 0;
+							top: {bgPanTopPct}%; left: {bgPanLeftPct}%;
 							width: {bgRenderSize}%; height: {bgRenderSize}%;
 							object-fit: cover;
-							object-position: {bgOffsetX}% {bgOffsetY}%;
-							transform: translate({bgTranslateX}%, {bgTranslateY}%);
+							object-position: center;
 						"
 					/>
 				{/if}

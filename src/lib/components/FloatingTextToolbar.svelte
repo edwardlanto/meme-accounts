@@ -49,6 +49,8 @@
 	let fontSearch = $state('');
 	let colorPickerOpen = $state(false);
 	let highlightPickerOpen = $state(false);
+	let bgPickerOpen = $state(false);
+	let lineHeightOpen = $state(false);
 
 	// Position the toolbar above the anchored element, clamped to the viewport.
 	const TOOLBAR_W = 740;
@@ -227,6 +229,54 @@
 
 		<div class="w-px h-6 ftb-div"></div>
 
+		<!-- Line height -->
+		<div class="relative">
+			<button
+				onpointerdown={(e) => e.preventDefault()}
+				onmousedown={(e) => e.preventDefault()}
+				onclick={() => (lineHeightOpen = !lineHeightOpen)}
+				class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn"
+				title="Line height"
+			>
+				<span class="text-[10px] font-mono ftb-muted">LH</span>
+				<span class="text-xs ftb-strong tabular-nums min-w-[34px] text-center">
+					{(style.lineHeight ?? 1.12).toFixed(2)}
+				</span>
+				<ChevronDown size={11} class="ftb-muted" />
+			</button>
+
+			{#if lineHeightOpen}
+				<div class="absolute top-full left-0 mt-1 p-2 rounded-xl shadow-2xl w-44 ftb-pop">
+					<div class="grid grid-cols-4 gap-1.5">
+						{#each [0.9, 1.0, 1.06, 1.12, 1.2, 1.3, 1.4, 1.6] as lh}
+							<button
+								onpointerdown={(e) => e.preventDefault()}
+								onmousedown={(e) => e.preventDefault()}
+								onclick={() => { onChange({ lineHeight: lh }); lineHeightOpen = false; }}
+								class="h-8 rounded-lg border text-[11px] font-mono transition-colors ftb-btn
+									{Math.abs((style.lineHeight ?? 1.12) - lh) < 0.001 ? 'ftb-on' : 'ftb-muted'}"
+								title={`Line height ${lh}`}
+							>
+								{lh}
+							</button>
+						{/each}
+					</div>
+
+					<button
+						onpointerdown={(e) => e.preventDefault()}
+						onmousedown={(e) => e.preventDefault()}
+						onclick={() => { onChange({ lineHeight: undefined }); lineHeightOpen = false; }}
+						class="w-full mt-2 py-2 rounded-lg text-[11px] font-mono border transition-colors ftb-muted ftb-btn"
+						title="Reset line height"
+					>
+						Reset
+					</button>
+				</div>
+			{/if}
+		</div>
+
+		<div class="w-px h-6 ftb-div"></div>
+
 		<!-- Weight toggle (Bold) -->
 		<button
 			onclick={() => onChange({ fontWeight: (style.fontWeight ?? 400) >= 700 ? 400 : 700 })}
@@ -312,12 +362,68 @@
 			{/if}
 		</div>
 
+		<!-- Background -->
+		<div class="relative">
+			<button
+				onclick={() => (bgPickerOpen = !bgPickerOpen)}
+				class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn"
+				title="Background"
+			>
+				<span
+					class="w-5 h-5 rounded border ftb-chip"
+					style="background: {style.bgColor ?? 'transparent'};"
+				></span>
+				<span class="text-[10px] font-mono ftb-muted">BG</span>
+				<ChevronDown size={11} class="ftb-muted" />
+			</button>
+
+			{#if bgPickerOpen}
+				<div class="absolute top-full right-0 mt-1 p-3 rounded-xl shadow-2xl w-52 ftb-pop">
+					<p class="text-[9px] font-mono uppercase tracking-widest mb-2 ftb-muted">Presets</p>
+					<div class="grid grid-cols-6 gap-1.5 mb-3">
+						{#each ['transparent', '#000000', '#FFFFFF', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#111827'] as c}
+							<button
+								onpointerdown={(e) => e.preventDefault()}
+								onmousedown={(e) => e.preventDefault()}
+								onclick={() => { onChange({ bgColor: c === 'transparent' ? undefined : c }); bgPickerOpen = false; }}
+								class="w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110
+									{style.bgColor === c ? 'border-black/40' : 'border-black/10'}"
+									style="background: {c === 'transparent'
+										? 'linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), linear-gradient(135deg, rgba(0,0,0,0.10), rgba(0,0,0,0.02))'
+										: c};"
+									aria-label="Set background {c === 'transparent' ? 'none' : c}"
+								title={c === 'transparent' ? 'Transparent' : c}
+							></button>
+						{/each}
+					</div>
+					<p class="text-[9px] font-mono uppercase tracking-widest mb-2 ftb-muted">Custom</p>
+					<input
+						type="color"
+						value={style.bgColor ?? '#000000'}
+						oninput={(e) => onChange({ bgColor: (e.target as HTMLInputElement).value })}
+						class="w-full h-8 rounded-lg cursor-pointer bg-transparent border border-black/10"
+					/>
+					<button
+						onpointerdown={(e) => e.preventDefault()}
+						onmousedown={(e) => e.preventDefault()}
+						onclick={() => { onChange({ bgColor: undefined }); bgPickerOpen = false; }}
+						class="w-full mt-2 py-2 rounded-lg text-[11px] font-mono border transition-colors ftb-muted ftb-btn"
+						title="Clear background"
+					>
+						Clear background
+					</button>
+				</div>
+			{/if}
+		</div>
+
 		{#if supportsHighlights}
 			<div class="w-px h-6 ftb-div"></div>
 
 			<!-- Highlight (word-level color / gradient / pattern via [[...]] markup) -->
 			<div class="relative">
 				<button
+					onpointerdown={(e) => e.preventDefault()}
+					onmousedown={(e) => e.preventDefault()}
 					onclick={() => (highlightPickerOpen = !highlightPickerOpen)}
 					disabled={!hasRangeSelection}
 					class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn
@@ -335,6 +441,8 @@
 						<div class="grid grid-cols-4 gap-1.5 mb-3">
 							{#each HIGHLIGHT_PRESETS as c}
 								<button
+									onpointerdown={(e) => e.preventDefault()}
+									onmousedown={(e) => e.preventDefault()}
 									onclick={() => applyHighlight({ kind: 'color', color: c })}
 									class="h-7 rounded-lg border-2 border-white/10 hover:scale-105 transition-transform"
 									style="background: {c};"
@@ -348,6 +456,8 @@
 						<div class="grid grid-cols-4 gap-1.5 mb-3">
 							{#each GRADIENT_PRESETS as [from, to]}
 								<button
+									onpointerdown={(e) => e.preventDefault()}
+									onmousedown={(e) => e.preventDefault()}
 									onclick={() => applyHighlight({ kind: 'gradient', from, to })}
 									class="h-7 rounded-lg border-2 border-white/10 hover:scale-105 transition-transform"
 									style="background: linear-gradient(90deg, {from}, {to});"
@@ -361,6 +471,8 @@
 						<div class="grid grid-cols-2 gap-1.5 mb-3">
 							{#each AVAILABLE_PATTERNS as pat}
 								<button
+									onpointerdown={(e) => e.preventDefault()}
+									onmousedown={(e) => e.preventDefault()}
 									onclick={() => applyHighlight({ kind: 'pattern', name: pat.name })}
 									class="h-10 rounded-lg border border-white/10 hover:border-white/40 overflow-hidden relative group transition-all"
 									title={pat.label}
@@ -384,6 +496,8 @@
 
 						<!-- Clear highlight -->
 						<button
+							onpointerdown={(e) => e.preventDefault()}
+							onmousedown={(e) => e.preventDefault()}
 							onclick={() => applyHighlight({ kind: 'clear' })}
 							class="w-full py-2 rounded-lg text-[11px] font-mono border transition-colors ftb-muted ftb-btn"
 						>

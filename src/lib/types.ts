@@ -36,13 +36,14 @@ export interface TextStyle {
 	italic?: boolean;
 	underline?: boolean;
 	color?: string;          // hex
+	bgColor?: string;        // hex (behind text)
 	align?: 'left' | 'center' | 'right';
 	letterSpacing?: number;  // em
 	lineHeight?: number;     // unitless multiplier
 }
 
 /** A text element that can be edited/styled via the floating toolbar. */
-export type TextElementKind = 'headline' | 'source';
+export type TextElementKind = 'headline' | 'source' | 'textOverlay';
 
 export interface TextSelection {
 	slideIndex: number;
