@@ -124,6 +124,9 @@
 			tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, idx) => (idx === i ? '@MoMohler' : x));
 			tweetTopTextBySlide = tweetTopTextBySlide.map((x, idx) => (idx === i ? 'Ketchup or mayo or mustard?' : x));
 			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, idx) => (idx === i ? '4.2K' : x));
+			tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, idx) => (idx === i ? '12.8K' : x));
+			tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, idx) => (idx === i ? '89.4K' : x));
 			tweetStylesBySlide = tweetStylesBySlide.map((s, idx) => (idx === i ? {} : s));
 		} else if (activeTemplate === 'article') {
 			articleTextBySlide = articleTextBySlide.map((x, idx) =>
@@ -184,10 +187,28 @@
 	let articleUrl = $state('');
 	let articleTitle = $state('');
 
-	// Images — one background per slide
-	let backgroundImages = $state<string[]>([]);
-	let backgroundVideos = $state<string[]>([]); // blob URLs — one per slide
-	let generatingImages = $state<boolean[]>([]); // per-slide loading state
+	// Background media — per template, per slide (keep EVERYTHING independent).
+	let bgImagesByTemplate = $state<Record<TemplateId, string[]>>({
+		news: [],
+		tweet: [],
+		article: [],
+		textCarousel: [],
+		imageQuote: [],
+	});
+	let bgVideosByTemplate = $state<Record<TemplateId, string[]>>({
+		news: [],
+		tweet: [],
+		article: [],
+		textCarousel: [],
+		imageQuote: [],
+	}); // blob URLs — per template, per slide
+	let generatingImagesByTemplate = $state<Record<TemplateId, boolean[]>>({
+		news: [],
+		tweet: [],
+		article: [],
+		textCarousel: [],
+		imageQuote: [],
+	}); // per template, per slide
 
 	// Video trim (per slide, seconds) — used for preview and later export.
 	let videoTrimStartSecBySlide = $state<number[]>([]);
@@ -316,17 +337,32 @@
 	const activeCircle2Image = $derived(circle2Images[activeSlide] ?? '');
 	const activeShowCircle2 = $derived(showCircle2BySlide[activeSlide] ?? false);
 
-	// Convenience: active slide's image / video
-	const backgroundImage = $derived(backgroundImages[activeSlide] ?? '');
-	const backgroundVideo = $derived(backgroundVideos[activeSlide] ?? '');
+	// Convenience: active template's image / video (News uses these; other templates can too)
+	const backgroundImage = $derived((bgImagesByTemplate[activeTemplate] ?? [])[activeSlide] ?? '');
+	const backgroundVideo = $derived((bgVideosByTemplate[activeTemplate] ?? [])[activeSlide] ?? '');
 
-	function setSlideImage(i: number, url: string) {
-		backgroundImages = backgroundImages.map((img, idx) => idx === i ? url : img);
-		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? '' : v); // clear video
-		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
+	function setSlideImage(i: number, url: string, template: TemplateId = 'news') {
+		// If we’re replacing a blob URL, revoke it to keep memory stable.
+		const prev = (bgImagesByTemplate[template] ?? [])[i];
+		if (prev?.startsWith('blob:') && prev !== url) URL.revokeObjectURL(prev);
+
+		bgImagesByTemplate = {
+			...bgImagesByTemplate,
+			[template]: (bgImagesByTemplate[template] ?? []).map((img, idx) => idx === i ? url : img),
+		};
+		bgVideosByTemplate = {
+			...bgVideosByTemplate,
+			[template]: (bgVideosByTemplate[template] ?? []).map((v, idx) => idx === i ? '' : v),
+		};
+		generatingImagesByTemplate = {
+			...generatingImagesByTemplate,
+			[template]: (generatingImagesByTemplate[template] ?? []).map((v, idx) => idx === i ? false : v),
+		};
 		// Invalidate any existing cutout since it was computed from the old image.
-		subjectCutouts = subjectCutouts.map((v, idx) => idx === i ? '' : v);
-		showCutout    = showCutout.map((v, idx) => idx === i ? false : v);
+		if (template === 'news') {
+			subjectCutouts = subjectCutouts.map((v, idx) => idx === i ? '' : v);
+			showCutout    = showCutout.map((v, idx) => idx === i ? false : v);
+		}
 	}
 
 	async function toExportSafeImageUrl(url: string) {
@@ -349,10 +385,19 @@
 		return src;
 	}
 
-	function setSlideVideo(i: number, url: string) {
-		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? url : v);
-		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img); // clear image
-		generatingImages = generatingImages.map((v, idx) => idx === i ? false : v);
+	function setSlideVideo(i: number, url: string, template: TemplateId = 'news') {
+		bgVideosByTemplate = {
+			...bgVideosByTemplate,
+			[template]: (bgVideosByTemplate[template] ?? []).map((v, idx) => idx === i ? url : v),
+		};
+		bgImagesByTemplate = {
+			...bgImagesByTemplate,
+			[template]: (bgImagesByTemplate[template] ?? []).map((img, idx) => idx === i ? '' : img),
+		};
+		generatingImagesByTemplate = {
+			...generatingImagesByTemplate,
+			[template]: (generatingImagesByTemplate[template] ?? []).map((v, idx) => idx === i ? false : v),
+		};
 		// Reset trim to "full" until duration is known.
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
 		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
@@ -369,10 +414,10 @@
 
 	function clearSlideBackground(i: number) {
 		// Revoke old blob URL to free memory
-		const old = backgroundVideos[i];
+		const old = (bgVideosByTemplate[activeTemplate] ?? [])[i];
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
-		backgroundVideos = backgroundVideos.map((v, idx) => idx === i ? '' : v);
-		backgroundImages = backgroundImages.map((img, idx) => idx === i ? '' : img);
+		bgVideosByTemplate = { ...bgVideosByTemplate, [activeTemplate]: (bgVideosByTemplate[activeTemplate] ?? []).map((v, idx) => idx === i ? '' : v) };
+		bgImagesByTemplate = { ...bgImagesByTemplate, [activeTemplate]: (bgImagesByTemplate[activeTemplate] ?? []).map((img, idx) => idx === i ? '' : img) };
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
 		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
 		videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0)));
@@ -489,9 +534,28 @@
 		slides = [...slides, ''];
 		slideCount = slides.length;
 		activeSlide = slides.length - 1;
-		backgroundImages = [...backgroundImages, ''];
-		backgroundVideos = [...backgroundVideos, ''];
-		generatingImages = [...generatingImages, false];
+		// Keep background media per-template, per-slide.
+		bgImagesByTemplate = {
+			news: [...(bgImagesByTemplate.news ?? []), ''],
+			tweet: [...(bgImagesByTemplate.tweet ?? []), ''],
+			article: [...(bgImagesByTemplate.article ?? []), ''],
+			textCarousel: [...(bgImagesByTemplate.textCarousel ?? []), ''],
+			imageQuote: [...(bgImagesByTemplate.imageQuote ?? []), ''],
+		};
+		bgVideosByTemplate = {
+			news: [...(bgVideosByTemplate.news ?? []), ''],
+			tweet: [...(bgVideosByTemplate.tweet ?? []), ''],
+			article: [...(bgVideosByTemplate.article ?? []), ''],
+			textCarousel: [...(bgVideosByTemplate.textCarousel ?? []), ''],
+			imageQuote: [...(bgVideosByTemplate.imageQuote ?? []), ''],
+		};
+		generatingImagesByTemplate = {
+			news: [...(generatingImagesByTemplate.news ?? []), false],
+			tweet: [...(generatingImagesByTemplate.tweet ?? []), false],
+			article: [...(generatingImagesByTemplate.article ?? []), false],
+			textCarousel: [...(generatingImagesByTemplate.textCarousel ?? []), false],
+			imageQuote: [...(generatingImagesByTemplate.imageQuote ?? []), false],
+		};
 		// Keep overlays strictly template-scoped (avoid any accidental shared references).
 		slideOverlaysByTemplate = {
 			news: [...(slideOverlaysByTemplate.news ?? []), []],
@@ -513,6 +577,9 @@
 		tweetBottomHandleBySlide = [...tweetBottomHandleBySlide, tweetBottomHandleBySlide[tweetBottomHandleBySlide.length - 1] ?? '@MoMohler'];
 		tweetTopTextBySlide = [...tweetTopTextBySlide, tweetTopTextBySlide[tweetTopTextBySlide.length - 1] ?? 'Ketchup or mayo or mustard?'];
 		tweetBottomTextBySlide = [...tweetBottomTextBySlide, ''];
+		tweetReplyCountBySlide = [...tweetReplyCountBySlide, tweetReplyCountBySlide[tweetReplyCountBySlide.length - 1] ?? '4.2K'];
+		tweetRepostCountBySlide = [...tweetRepostCountBySlide, tweetRepostCountBySlide[tweetRepostCountBySlide.length - 1] ?? '12.8K'];
+		tweetLikeCountBySlide = [...tweetLikeCountBySlide, tweetLikeCountBySlide[tweetLikeCountBySlide.length - 1] ?? '89.4K'];
 		articleTextBySlide = [...articleTextBySlide, articleTextBySlide[articleTextBySlide.length - 1] ?? ''];
 		textCarouselTextBySlide = [...textCarouselTextBySlide, textCarouselTextBySlide[textCarouselTextBySlide.length - 1] ?? ''];
 		imageQuoteTextBySlide = [...imageQuoteTextBySlide, imageQuoteTextBySlide[imageQuoteTextBySlide.length - 1] ?? ''];
@@ -569,6 +636,9 @@
 	let tweetBottomHandleBySlide = $state<string[]>(['@MoMohler']);
 	let tweetTopTextBySlide = $state<string[]>(['Ketchup or mayo or mustard?']);
 	let tweetBottomTextBySlide = $state<string[]>(['']);
+	let tweetReplyCountBySlide = $state<string[]>(['4.2K']);
+	let tweetRepostCountBySlide = $state<string[]>(['12.8K']);
+	let tweetLikeCountBySlide = $state<string[]>(['89.4K']);
 	let articleTextBySlide = $state<string[]>([
 		"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
 	]);
@@ -633,9 +703,15 @@
 
 		slides          = pick(slides);
 		slideTemplates  = pickOr(slideTemplates, 'news' as TemplateId);
-		backgroundImages = pickOr(backgroundImages, '');
-		backgroundVideos = pickOr(backgroundVideos, '');
-		generatingImages = pickOr(generatingImages, false);
+		bgImagesByTemplate = (Object.fromEntries(
+			(Object.entries(bgImagesByTemplate) as [TemplateId, string[]][]).map(([k, arr]) => [k, pickOr(arr, '')]),
+		) as unknown) as Record<TemplateId, string[]>;
+		bgVideosByTemplate = (Object.fromEntries(
+			(Object.entries(bgVideosByTemplate) as [TemplateId, string[]][]).map(([k, arr]) => [k, pickOr(arr, '')]),
+		) as unknown) as Record<TemplateId, string[]>;
+		generatingImagesByTemplate = (Object.fromEntries(
+			(Object.entries(generatingImagesByTemplate) as [TemplateId, boolean[]][]).map(([k, arr]) => [k, pickOr(arr, false)]),
+		) as unknown) as Record<TemplateId, boolean[]>;
 		subjectCutouts   = pickOr(subjectCutouts, '');
 		showCutout       = pickOr(showCutout, false);
 		cuttingOut       = pickOr(cuttingOut, false);
@@ -996,8 +1072,21 @@
 		if (Array.isArray(s.slideTemplates)) slideTemplates = s.slideTemplates;
 		// If user came from a starter-template deep link, override any saved draft template.
 		if (forcedTemplateFromQuery) applyTemplateToAll(forcedTemplateFromQuery);
-		if (Array.isArray(s.backgroundImages)) backgroundImages = s.backgroundImages;
-		if (Array.isArray(s.backgroundVideos)) backgroundVideos = s.backgroundVideos; // note: blob: URLs won't survive reload
+		// Back-compat: old drafts stored background media per slide (treat as News background).
+		if (Array.isArray((s as any).backgroundImages)) {
+			const imgs = (s as any).backgroundImages as string[];
+			bgImagesByTemplate = { ...bgImagesByTemplate, news: imgs.map((x) => String(x ?? '')) };
+		}
+		if (Array.isArray((s as any).backgroundVideos)) {
+			const vids = (s as any).backgroundVideos as string[];
+			bgVideosByTemplate = { ...bgVideosByTemplate, news: vids.map((x) => String(x ?? '')) };
+		}
+		if ((s as any).bgImagesByTemplate && typeof (s as any).bgImagesByTemplate === 'object') {
+			bgImagesByTemplate = (s as any).bgImagesByTemplate;
+		}
+		if ((s as any).bgVideosByTemplate && typeof (s as any).bgVideosByTemplate === 'object') {
+			bgVideosByTemplate = (s as any).bgVideosByTemplate;
+		}
 		if (s.slideOverlaysByTemplate && typeof s.slideOverlaysByTemplate === 'object') {
 			// Deep-clone to avoid any accidental shared references across templates/slides.
 			const raw = s.slideOverlaysByTemplate as Record<TemplateId, Overlay[][]>;
@@ -1125,6 +1214,25 @@
 	}
 
 	function buildDraftState() {
+		// Avoid saving huge/persistent-less URLs that can freeze restore.
+		const pruneMediaUrl = (u: unknown) => {
+			if (typeof u !== 'string') return '';
+			const s = u.trim();
+			if (!s) return '';
+			// blob: URLs don’t survive reload and can get large in drafts.
+			if (s.startsWith('blob:')) return '';
+			// Very large data URLs make draft JSON huge and slow to restore.
+			if (s.startsWith('data:') && s.length > 220_000) return '';
+			return s;
+		};
+		const pruneMediaMap = (m: Record<string, unknown>) =>
+			(Object.fromEntries(
+				Object.entries(m ?? {}).map(([k, arr]) => [
+					k,
+					Array.isArray(arr) ? (arr as unknown[]).map(pruneMediaUrl) : [],
+				]),
+			) as unknown) as Record<TemplateId, string[]>;
+
 		return {
 			formatId,
 			lastTemplateUsed,
@@ -1140,8 +1248,9 @@
 			activeSlide,
 			slides,
 			slideTemplates,
-			backgroundImages,
-			backgroundVideos,
+			bgImagesByTemplate: pruneMediaMap(bgImagesByTemplate as any),
+			bgVideosByTemplate: pruneMediaMap(bgVideosByTemplate as any),
+			generatingImagesByTemplate,
 			videoTrimStartSecBySlide,
 			videoTrimEndSecBySlide,
 			videoDurationBySlide,
@@ -1466,9 +1575,9 @@
 			lastTemplateUsed = 'news';
 			// Force ALL slides to News right away (and keep it stable as slides expand).
 			slideTemplates = Array.from({ length: Math.max(1, slideCount) }, () => 'news');
-			backgroundImages = [articleImageUrl]; // slide 0 gets article image right away
-			backgroundVideos = ['']; // reset video
-			generatingImages = [false];
+			bgImagesByTemplate = { ...bgImagesByTemplate, news: [articleImageUrl] }; // slide 0 gets article image right away
+			bgVideosByTemplate = { ...bgVideosByTemplate, news: [''] }; // reset video
+			generatingImagesByTemplate = { ...generatingImagesByTemplate, news: [false] };
 			slideOverlaysByTemplate = { ...slideOverlaysByTemplate, news: [[]] };
 			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: [[]] };
 
@@ -1533,7 +1642,10 @@
 	// ── Generate background image for a single slide ─────────────────────
 	async function generateBackground(slideIdx: number, promptOverride?: string) {
 		// Mark this slide as generating
-		generatingImages = generatingImages.map((v, i) => i === slideIdx ? true : v);
+		generatingImagesByTemplate = {
+			...generatingImagesByTemplate,
+			news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? true : v),
+		};
 		bgError = '';
 
 		try {
@@ -1550,28 +1662,37 @@
 				setSlideImage(slideIdx, data.dataUrl);
 			} else if (data.demo) {
 				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
-				generatingImages = generatingImages.map((v, i) => i === slideIdx ? false : v);
+				generatingImagesByTemplate = {
+					...generatingImagesByTemplate,
+					news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? false : v),
+				};
 			} else {
 				bgError = data.error ?? 'Image generation failed';
-				generatingImages = generatingImages.map((v, i) => i === slideIdx ? false : v);
+				generatingImagesByTemplate = {
+					...generatingImagesByTemplate,
+					news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? false : v),
+				};
 			}
 		} catch (e: any) {
 			bgError = e.message;
-			generatingImages = generatingImages.map((v, i) => i === slideIdx ? false : v);
+			generatingImagesByTemplate = {
+				...generatingImagesByTemplate,
+				news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? false : v),
+			};
 		}
 	}
 
 	// ── Generate unique images for all slides in parallel ─────────────────
 	async function generateAllSlideImages(articleImageUrl?: string) {
 		// Reset image arrays to match current slide count
-		backgroundImages = new Array(slides.length).fill('');
-		backgroundVideos = new Array(slides.length).fill('');
+		bgImagesByTemplate = { ...bgImagesByTemplate, news: new Array(slides.length).fill('') };
+		bgVideosByTemplate = { ...bgVideosByTemplate, news: new Array(slides.length).fill('') };
 		videoTrimStartSecBySlide = new Array(slides.length).fill(0);
 		videoTrimEndSecBySlide = new Array(slides.length).fill(0);
 		videoDurationBySlide = new Array(slides.length).fill(0);
 		videoMutedBySlide = new Array(slides.length).fill(true);
 		videoVolumeBySlide = new Array(slides.length).fill(0.8);
-		generatingImages = new Array(slides.length).fill(true);
+		generatingImagesByTemplate = { ...generatingImagesByTemplate, news: new Array(slides.length).fill(true) };
 		slideOverlaysByTemplate = (Object.fromEntries(
 			(Object.entries(slideOverlaysByTemplate) as [TemplateId, Overlay[][]][]).map(([k]) => [
 				k,
@@ -1607,7 +1728,7 @@
 
 	// ── Subject cutout (AI background removal) ────────────────────────────
 	async function cutOutSubject(slideIdx: number = activeSlide) {
-		const src = backgroundImages[slideIdx];
+		const src = (bgImagesByTemplate.news ?? [])[slideIdx];
 		if (!src) {
 			cutoutError = 'No background image on this slide to cut out.';
 			return;
@@ -1826,7 +1947,7 @@
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		// Revoke existing blob if any
-		const old = backgroundVideos[activeSlide];
+		const old = (bgVideosByTemplate.news ?? [])[activeSlide];
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
 		const url = URL.createObjectURL(file);
 		setSlideVideo(activeSlide, url);
@@ -2327,18 +2448,18 @@
 				</label>
 				<div class="flex flex-col gap-2">
 					<button onclick={() => generateBackground(activeSlide)}
-						disabled={generatingImages[activeSlide]}
+						disabled={(generatingImagesByTemplate.news ?? [])[activeSlide]}
 						class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/15 transition-all disabled:opacity-50">
-						{#if generatingImages[activeSlide]}
+						{#if (generatingImagesByTemplate.news ?? [])[activeSlide]}
 							<Loader size={11} class="animate-spin" /> Generating...
 						{:else}
 							<Sparkles size={11} /> Regenerate with AI
 						{/if}
 					</button>
 					<button onclick={() => generateAllSlideImages()}
-						disabled={generatingImages.some(Boolean)}
+						disabled={(generatingImagesByTemplate.news ?? []).some(Boolean)}
 						class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
-						{#if generatingImages.some(Boolean)}
+						{#if (generatingImagesByTemplate.news ?? []).some(Boolean)}
 							<Loader size={11} class="animate-spin" /> Generating all…
 						{:else}
 							<Sparkles size={11} /> Regenerate all slides
@@ -2602,7 +2723,7 @@
 			>
 				T:{activeTemplate} S:{activeSlide} overlays:{activeTextOverlays.length}
 			</div>
-			{#if generatingImages[activeSlide]}
+			{#if (generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
 					<Loader size={20} class="animate-spin text-violet-400" />
@@ -2765,7 +2886,14 @@
 					onBottomHandleChange={(v) => tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
 					bottomText={tweetBottomTextBySlide[activeSlide] ?? ''}
 					onBottomTextChange={(v) => tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? v : x)}
-					topImage={backgroundImage || '/templates/tweet/demo-bg.jpg'}
+					replyCount={tweetReplyCountBySlide[activeSlide] ?? '4.2K'}
+					repostCount={tweetRepostCountBySlide[activeSlide] ?? '12.8K'}
+					likeCount={tweetLikeCountBySlide[activeSlide] ?? '89.4K'}
+					onReplyCountChange={(v) => tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onRepostCountChange={(v) => tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onLikeCountChange={(v) => tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === activeSlide ? v : x)}
+					topImage={(bgImagesByTemplate.tweet ?? [])[activeSlide] || '/templates/tweet/demo-bg.jpg'}
+					onTopImageChange={(v) => setSlideImage(activeSlide, v, 'tweet')}
 					scale={previewScale}
 					interactive={true}
 					tweetStyles={activeTweetStyles}
@@ -2800,6 +2928,7 @@
 					onHandleChange={(v) => textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
 					scale={previewScale}
 					interactive={true}
+					showToolbar={false}
 					headlineStyle={activeStyleMap.textCarouselBody ?? activeHeadlineStyle}
 					textCarouselStyles={{
 						textCarouselName: activeStyleMap.textCarouselName ?? {},
@@ -2946,6 +3075,16 @@
 					>
 						<Image size={16} />
 					</button>
+
+					<button
+						type="button"
+						onclick={resetActiveTemplateContent}
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all mt-2"
+						title="Reset this template"
+						aria-label="Reset this template"
+					>
+						<RefreshCw size={16} />
+					</button>
 				</div>
 		</div>
 		<!-- Slide filmstrip: drag to reorder -->
@@ -2959,10 +3098,10 @@
 					slideIndex: i,
 					// Derive thumbnail data by id→index lookup (stable during drag).
 					text: slides[i] ?? '',
-					img: backgroundImages[i] ?? '',
-					vid: backgroundVideos[i] ?? '',
+					img: (bgImagesByTemplate[slideTemplates[i] ?? 'news'] ?? [])[i] ?? '',
+					vid: (bgVideosByTemplate[slideTemplates[i] ?? 'news'] ?? [])[i] ?? '',
 					music: slideMusic[i] ?? null,
-					loading: !!generatingImages[i],
+					loading: !!((generatingImagesByTemplate[slideTemplates[i] ?? 'news'] ?? [])[i]),
 				};
 			})}
 			<DragDropProvider

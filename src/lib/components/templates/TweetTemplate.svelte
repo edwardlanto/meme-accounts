@@ -2,6 +2,7 @@
 import HighlightedText from '$lib/components/HighlightedText.svelte';
 import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
+import { Image as ImageIcon, Trash2 } from 'lucide-svelte';
 
 interface TweetProps {
 	// Top tweet
@@ -11,12 +12,17 @@ interface TweetProps {
 	topVerified?: boolean;
 	topText?: string;
 	topImage?: string;
+	onTopImageChange?: (v: string) => void;
 	// Bottom reply
 	bottomName?: string;
 	bottomHandle?: string;
 	bottomAvatar?: string;
 	bottomVerified?: boolean;
 	bottomText?: string;
+	// Engagement
+	replyCount?: string;
+	repostCount?: string;
+	likeCount?: string;
 	// Style
 	templateTheme?: 'light' | 'dark';
 	scale?: number;
@@ -33,7 +39,10 @@ interface TweetProps {
 		| 'tweetTopText'
 		| 'tweetBottomName'
 		| 'tweetBottomHandle'
-		| 'tweetBottomText',
+		| 'tweetBottomText'
+		| 'tweetReplyCount'
+		| 'tweetRepostCount'
+		| 'tweetLikeCount',
 		TextStyle
 	>>;
 	showToolbar?: boolean;
@@ -44,6 +53,9 @@ interface TweetProps {
 	onTopHandleChange?: (v: string) => void;
 	onBottomNameChange?: (v: string) => void;
 	onBottomHandleChange?: (v: string) => void;
+	onReplyCountChange?: (v: string) => void;
+	onRepostCountChange?: (v: string) => void;
+	onLikeCountChange?: (v: string) => void;
 }
 
 let {
@@ -58,6 +70,9 @@ let {
 	bottomAvatar = '',
 	bottomVerified = true,
 	bottomText   = '3 straight misses chef. These appear to be French fries.',
+	replyCount = '4.2K',
+	repostCount = '12.8K',
+	likeCount = '89.4K',
 	templateTheme = 'light',
 	scale        = 1,
 	interactive  = true,
@@ -74,6 +89,10 @@ let {
 	onTopHandleChange,
 	onBottomNameChange,
 	onBottomHandleChange,
+	onReplyCountChange,
+	onRepostCountChange,
+	onLikeCountChange,
+	onTopImageChange,
 }: TweetProps = $props();
 
 	const topEditable = $derived(!!interactive && typeof onTopTextChange === 'function');
@@ -82,6 +101,83 @@ let {
 	const topHandleEditable = $derived(!!interactive && typeof onTopHandleChange === 'function');
 	const bottomNameEditable = $derived(!!interactive && typeof onBottomNameChange === 'function');
 	const bottomHandleEditable = $derived(!!interactive && typeof onBottomHandleChange === 'function');
+	const replyCountEditable = $derived(!!interactive && typeof onReplyCountChange === 'function');
+	const repostCountEditable = $derived(!!interactive && typeof onRepostCountChange === 'function');
+	const likeCountEditable = $derived(!!interactive && typeof onLikeCountChange === 'function');
+	const topImageEditable = $derived(!!interactive && typeof onTopImageChange === 'function');
+
+	let topImageHovering = $state(false);
+	let topImageFileEl = $state<HTMLInputElement | null>(null);
+
+	// Keep these small for fast editing/preview; export can still upscale if needed.
+	const MAX_IMAGE_DIM = 1600; // px
+	const IMAGE_QUALITY = 0.82;
+
+	async function compressImageToBlob(file: File): Promise<Blob> {
+		// decode() is significantly faster than drawing raw <img> in many cases
+		const bmp = await createImageBitmap(file);
+		const srcW = bmp.width;
+		const srcH = bmp.height;
+		const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(srcW, srcH));
+		const w = Math.max(1, Math.round(srcW * scale));
+		const h = Math.max(1, Math.round(srcH * scale));
+
+		const canvas = document.createElement('canvas');
+		canvas.width = w;
+		canvas.height = h;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) {
+			bmp.close();
+			return file;
+		}
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = 'high';
+		ctx.drawImage(bmp, 0, 0, w, h);
+		bmp.close();
+
+		const type = file.type === 'image/png' ? 'image/webp' : 'image/webp';
+		const blob: Blob = await new Promise((resolve) =>
+			canvas.toBlob((b) => resolve(b ?? file), type, IMAGE_QUALITY),
+		);
+		return blob;
+	}
+
+	function openTopImagePicker(e: MouseEvent) {
+		e.stopPropagation();
+		if (!topImageEditable) return;
+		topImageFileEl?.click();
+	}
+
+	function removeTopImage(e: MouseEvent) {
+		e.stopPropagation();
+		if (!topImageEditable) return;
+		onTopImageChange?.('');
+	}
+
+	function onTopImageFile(e: Event) {
+		if (!topImageEditable) return;
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		(e.target as HTMLInputElement).value = '';
+
+		// 1) Instant preview (no base64).
+		const quickUrl = URL.createObjectURL(file);
+		onTopImageChange?.(quickUrl);
+
+		// 2) Compress in background, then swap in a smaller blob URL.
+		(async () => {
+			try {
+				const blob = await compressImageToBlob(file);
+				const smallUrl = URL.createObjectURL(blob);
+				onTopImageChange?.(smallUrl);
+				// Studio revokes the previous blob when it replaces it, but revoke here too
+				// in case this template is used outside Studio.
+				if (quickUrl.startsWith('blob:')) URL.revokeObjectURL(quickUrl);
+			} catch {
+				// Keep quick preview on failure.
+			}
+		})();
+	}
 	const tweetHighlightDefault = '#1D9BF0';
 	const isLight = $derived(templateTheme === 'light');
 	const surface = $derived(isLight ? '#F7F9FA' : '#0b0b0b');
@@ -111,6 +207,9 @@ let {
 	const bottomNameCss = $derived(styleCss(tweetStyles.tweetBottomName ?? {}));
 	const bottomHandleCss = $derived(styleCss(tweetStyles.tweetBottomHandle ?? {}));
 	const bottomTextCss = $derived(styleCss(tweetStyles.tweetBottomText ?? {}));
+	const replyCountCss = $derived(styleCss(tweetStyles.tweetReplyCount ?? {}));
+	const repostCountCss = $derived(styleCss(tweetStyles.tweetRepostCount ?? {}));
+	const likeCountCss = $derived(styleCss(tweetStyles.tweetLikeCount ?? {}));
 
 	const W = 1080;
 	const H = 1350;
@@ -261,9 +360,51 @@ let {
 			</div>
 
 			<!-- Attached image -->
-			{#if topImage}
-				<div style="border-radius:24px;overflow:hidden;margin-bottom:44px;border:2px solid {divider};flex-shrink:0;">
-					<img src={topImage} alt="" style="width:100%;display:block;max-height:560px;object-fit:cover;" />
+			{#if topImage || topImageEditable}
+				<input
+					bind:this={topImageFileEl}
+					type="file"
+					accept="image/*"
+					style="display:none"
+					onchange={onTopImageFile}
+				/>
+				<div
+					style="border-radius:24px;overflow:hidden;margin-bottom:44px;border:2px solid {divider};flex-shrink:0;position:relative;"
+					onmouseenter={() => (topImageHovering = true)}
+					onmouseleave={() => (topImageHovering = false)}
+					role="presentation"
+				>
+					{#if topImage}
+						<img src={topImage} alt="" style="width:100%;display:block;max-height:560px;object-fit:cover;" />
+					{:else}
+						<div style="width:100%;height:320px;background:{card2};display:flex;align-items:center;justify-content:center;color:{textSecondary};font-size:28px;">
+							Add image
+						</div>
+					{/if}
+
+					{#if topImageEditable && topImageHovering}
+						<div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(0,0,0,0.0), rgba(0,0,0,0.25));pointer-events:none;"></div>
+						<div style="position:absolute;top:14px;right:14px;display:flex;gap:10px;pointer-events:auto;">
+							<button
+								type="button"
+								onclick={openTopImagePicker}
+								onmousedown={(e) => e.preventDefault()}
+								style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
+								title="Upload image"
+								aria-label="Upload image"
+							><ImageIcon size={18} /></button>
+							{#if topImage}
+								<button
+									type="button"
+									onclick={removeTopImage}
+									onmousedown={(e) => e.preventDefault()}
+									style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
+									title="Remove image"
+									aria-label="Remove image"
+								><Trash2 size={18} /></button>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -272,15 +413,81 @@ let {
 
 			<!-- Engagement row (static decorative) -->
 			<div style="
-				display:flex;gap:56px;align-items:center;
+				display:flex;gap:56px;align-items:center;flex-wrap:nowrap;
 				padding-top:36px;
 				border-top:2px solid {divider};
 				color:{textSecondary};font-size:32px;
 				flex-shrink: 0;
 			">
-				<span>💬 <span style="font-weight:500;">4.2K</span></span>
-				<span>🔁 <span style="font-weight:500;">12.8K</span></span>
-				<span>❤️ <span style="font-weight:500;">89.4K</span></span>
+				<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap;min-width:0;">
+					<span style="display:inline-flex;align-items:center;line-height:1;">💬</span>
+					<CanvasMarkupTextBlock
+						value={replyCount}
+						interactive={replyCountEditable}
+						defaultColor={tweetHighlightDefault}
+						toolbarKind="tweetReplyCount"
+						selected={selectedText === 'tweetReplyCount'}
+						onTextSelect={onTextSelect}
+						onHeadlineRangeSelect={onHeadlineRangeSelect}
+						rows={1}
+						minHeight="0px"
+						{showToolbar}
+						ariaLabel="Reply count"
+						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+						fontSize={32}
+						onTextChange={onReplyCountChange}
+					>
+						{#snippet display()}
+							<span style="font-weight:500; {replyCountCss}">{replyCount}</span>
+						{/snippet}
+					</CanvasMarkupTextBlock>
+				</span>
+				<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap;min-width:0;">
+					<span style="display:inline-flex;align-items:center;line-height:1;">🔁</span>
+					<CanvasMarkupTextBlock
+						value={repostCount}
+						interactive={repostCountEditable}
+						defaultColor={tweetHighlightDefault}
+						toolbarKind="tweetRepostCount"
+						selected={selectedText === 'tweetRepostCount'}
+						onTextSelect={onTextSelect}
+						onHeadlineRangeSelect={onHeadlineRangeSelect}
+						rows={1}
+						minHeight="0px"
+						{showToolbar}
+						ariaLabel="Repost count"
+						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+						fontSize={32}
+						onTextChange={onRepostCountChange}
+					>
+						{#snippet display()}
+							<span style="font-weight:500; {repostCountCss}">{repostCount}</span>
+						{/snippet}
+					</CanvasMarkupTextBlock>
+				</span>
+				<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap;min-width:0;">
+					<span style="display:inline-flex;align-items:center;line-height:1;">❤️</span>
+					<CanvasMarkupTextBlock
+						value={likeCount}
+						interactive={likeCountEditable}
+						defaultColor={tweetHighlightDefault}
+						toolbarKind="tweetLikeCount"
+						selected={selectedText === 'tweetLikeCount'}
+						onTextSelect={onTextSelect}
+						onHeadlineRangeSelect={onHeadlineRangeSelect}
+						rows={1}
+						minHeight="0px"
+						{showToolbar}
+						ariaLabel="Like count"
+						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+						fontSize={32}
+						onTextChange={onLikeCountChange}
+					>
+						{#snippet display()}
+							<span style="font-weight:500; {likeCountCss}">{likeCount}</span>
+						{/snippet}
+					</CanvasMarkupTextBlock>
+				</span>
 			</div>
 		</div>
 

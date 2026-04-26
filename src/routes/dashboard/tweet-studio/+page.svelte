@@ -411,6 +411,10 @@
 				topVerified={s.topVerified}
 				topText={s.topText}
 				topImage={s.topImage}
+				onTopImageChange={(v) => {
+					const i = activeIdx;
+					slides = slides.map((sl, j) => (j === i ? { ...sl, topImage: v } : sl));
+				}}
 				bottomName={s.bottomName}
 				bottomHandle={s.bottomHandle}
 				bottomAvatar={s.bottomAvatar}

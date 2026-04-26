@@ -32,6 +32,10 @@
 		showToolbar?: boolean;
 	}
 
+	const DEFAULT_NAME_SIZE = 46;
+	const DEFAULT_HANDLE_SIZE = 36;
+	const DEFAULT_BODY_SIZE = 72;
+
 	let {
 		name      = 'Captains of industry',
 		handle    = '@captainsofindustryy',
@@ -106,7 +110,7 @@
 	}
 
 	/** Split text into paragraphs on double-newline */
-	const paragraphs = $derived(text.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
+	const paragraphs = $derived((text ?? '').split(/\n\n+/).map(p => p.trim()).filter(Boolean));
 </script>
 
 <div style="
@@ -168,15 +172,17 @@
 			<div style="flex: 1; min-width: 0;">
 				<CanvasMarkupTextBlock
 					value={name}
-					{interactive}
+					interactive={!!interactive && typeof onNameChange === 'function'}
 					rows={1}
 					{showToolbar}
 					toolbarKind="textCarouselName"
+					selected={selectedText === 'textCarouselName'}
 					ariaLabel="Name"
 					fontFamily={textCarouselStyles.textCarouselName?.fontFamily ?? headlineStyle.fontFamily}
-					fontSize={textCarouselStyles.textCarouselName?.fontSize ?? 46}
+					fontSize={textCarouselStyles.textCarouselName?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_NAME_SIZE}
 					onTextChange={onNameChange}
 					onTextSelect={onTextSelect}
+					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				>
 					{#snippet display()}
 						<p style="
@@ -193,15 +199,17 @@
 
 				<CanvasMarkupTextBlock
 					value={handle}
-					{interactive}
+					interactive={!!interactive && typeof onHandleChange === 'function'}
 					rows={1}
 					{showToolbar}
 					toolbarKind="textCarouselHandle"
+					selected={selectedText === 'textCarouselHandle'}
 					ariaLabel="Handle"
 					fontFamily={textCarouselStyles.textCarouselHandle?.fontFamily ?? headlineStyle.fontFamily}
-					fontSize={textCarouselStyles.textCarouselHandle?.fontSize ?? 36}
+					fontSize={textCarouselStyles.textCarouselHandle?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_HANDLE_SIZE}
 					onTextChange={onHandleChange}
 					onTextSelect={onTextSelect}
+					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				>
 					{#snippet display()}
 						<p style="
@@ -222,13 +230,13 @@
 		<div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
 			<CanvasMarkupTextBlock
 				value={text}
-				{interactive}
+				interactive={!!interactive && typeof onTextChange === 'function'}
 				selected={selectedText === 'textCarouselBody'}
 				toolbarKind="textCarouselBody"
 				rows={10}
 				ariaLabel="Carousel text"
 				fontFamily={textCarouselStyles.textCarouselBody?.fontFamily ?? headlineStyle.fontFamily}
-				fontSize={textCarouselStyles.textCarouselBody?.fontSize ?? headlineStyle.fontSize}
+				fontSize={textCarouselStyles.textCarouselBody?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_BODY_SIZE}
 				{showToolbar}
 				onTextChange={onTextChange}
 				onTextSelect={onTextSelect}
