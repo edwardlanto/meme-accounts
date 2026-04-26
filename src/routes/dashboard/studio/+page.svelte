@@ -388,9 +388,15 @@
 	let shadowHeight = $state(75);   // % of canvas covered by bottom shadow
 	let shadowStrength = $state(1);  // 0–1 opacity multiplier
 
-	// Image overlays — per slide
-	let slideOverlays = $state<Overlay[][]>([]);
-	const activeOverlays = $derived(slideOverlays[activeSlide] ?? []);
+	// Image overlays — per slide, per template (so templates are independent)
+	let slideOverlaysByTemplate = $state<Record<TemplateId, Overlay[][]>>({
+		news: [[]],
+		tweet: [[]],
+		article: [[]],
+		textCarousel: [[]],
+		imageQuote: [[]],
+	});
+	const activeOverlays = $derived((slideOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? []);
 
 	// Per-slide draggable offsets for template text elements (template px).
 	type TextOffset = { x: number; y: number };
@@ -409,16 +415,28 @@
 		});
 	}
 
-	function setSlideOverlays(i: number, next: Overlay[]) {
-		slideOverlays = slideOverlays.map((o, idx) => idx === i ? next : o);
+	function setSlideOverlays(i: number, next: Overlay[], template: TemplateId = activeTemplate) {
+		slideOverlaysByTemplate = {
+			...slideOverlaysByTemplate,
+			[template]: (slideOverlaysByTemplate[template] ?? []).map((o, idx) => (idx === i ? next : o)),
+		};
 	}
 
-	// Text overlays — per slide (News template only)
-	let slideTextOverlays = $state<TextOverlay[][]>([]);
-	const activeTextOverlays = $derived(slideTextOverlays[activeSlide] ?? []);
+	// Text overlays — per slide, per template (so templates are independent)
+	let slideTextOverlaysByTemplate = $state<Record<TemplateId, TextOverlay[][]>>({
+		news: [[]],
+		tweet: [[]],
+		article: [[]],
+		textCarousel: [[]],
+		imageQuote: [[]],
+	});
+	const activeTextOverlays = $derived((slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? []);
 
-	function setSlideTextOverlays(i: number, next: TextOverlay[]) {
-		slideTextOverlays = slideTextOverlays.map((o, idx) => idx === i ? next : o);
+	function setSlideTextOverlays(i: number, next: TextOverlay[], template: TemplateId = activeTemplate) {
+		slideTextOverlaysByTemplate = {
+			...slideTextOverlaysByTemplate,
+			[template]: (slideTextOverlaysByTemplate[template] ?? []).map((o, idx) => (idx === i ? next : o)),
+		};
 	}
 
 	function addSlide() {
@@ -429,8 +447,12 @@
 		backgroundImages = [...backgroundImages, ''];
 		backgroundVideos = [...backgroundVideos, ''];
 		generatingImages = [...generatingImages, false];
-		slideOverlays = [...slideOverlays, []];
-		slideTextOverlays = [...slideTextOverlays, []];
+		slideOverlaysByTemplate = (Object.fromEntries(
+			Object.entries(slideOverlaysByTemplate).map(([k, arr]) => [k, [...(arr as Overlay[][]), []]]),
+		) as unknown) as Record<TemplateId, Overlay[][]>;
+		slideTextOverlaysByTemplate = (Object.fromEntries(
+			Object.entries(slideTextOverlaysByTemplate).map(([k, arr]) => [k, [...(arr as TextOverlay[][]), []]]),
+		) as unknown) as Record<TemplateId, TextOverlay[][]>;
 		tweetTopNameBySlide = [...tweetTopNameBySlide, tweetTopNameBySlide[tweetTopNameBySlide.length - 1] ?? 'Chef 👨‍🍳'];
 		tweetTopHandleBySlide = [...tweetTopHandleBySlide, tweetTopHandleBySlide[tweetTopHandleBySlide.length - 1] ?? '@chefsevenn'];
 		tweetBottomNameBySlide = [...tweetBottomNameBySlide, tweetBottomNameBySlide[tweetBottomNameBySlide.length - 1] ?? 'Mo Mohler'];
@@ -451,7 +473,7 @@
 
 	function addTextOverlay() {
 		const idx = activeSlide;
-		const current = slideTextOverlays[idx] ?? [];
+		const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
 		const next: TextOverlay = {
 			id: crypto.randomUUID(),
 			text: 'New text',
@@ -461,7 +483,7 @@
 			h: 160,
 			style: { color: '#FFFFFF', fontSize: 42, fontWeight: 800, align: 'left', lineHeight: 1.1 },
 		};
-		setSlideTextOverlays(idx, [...current, next]);
+		setSlideTextOverlays(idx, [...current, next], activeTemplate);
 	}
 
 	// ── Per-slide text styles (Canva-style toolbar) ──────────────────────
@@ -554,8 +576,12 @@
 		subjectCutouts   = pickOr(subjectCutouts, '');
 		showCutout       = pickOr(showCutout, false);
 		cuttingOut       = pickOr(cuttingOut, false);
-		slideOverlays    = pickOr(slideOverlays, [] as Overlay[]);
-		slideTextOverlays = pickOr(slideTextOverlays, [] as TextOverlay[]);
+		slideOverlaysByTemplate = (Object.fromEntries(
+			(Object.entries(slideOverlaysByTemplate) as [TemplateId, Overlay[][]][]).map(([k, arr]) => [k, pickOr(arr, [] as Overlay[])]),
+		) as unknown) as Record<TemplateId, Overlay[][]>;
+		slideTextOverlaysByTemplate = (Object.fromEntries(
+			(Object.entries(slideTextOverlaysByTemplate) as [TemplateId, TextOverlay[][]][]).map(([k, arr]) => [k, pickOr(arr, [] as TextOverlay[])]),
+		) as unknown) as Record<TemplateId, TextOverlay[][]>;
 		headlineStyles   = pickOr(headlineStyles, {} as TextStyle);
 		sourceStyles     = pickOr(sourceStyles, {} as TextStyle);
 		tweetTopNameBySlide = pickOr(tweetTopNameBySlide, 'Chef 👨‍🍳');
@@ -759,10 +785,11 @@
 		} else if (selectedText === 'source') {
 			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
 		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
-			const current = slideTextOverlays[activeSlide] ?? [];
+			const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
 			setSlideTextOverlays(
 				activeSlide,
 				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, style: { ...(o.style ?? {}), ...patch } } : o)),
+				activeTemplate,
 			);
 		}
 		// Re-anchor on next frame so the toolbar follows size changes.
@@ -784,10 +811,11 @@
 		} else if (selectedText === 'source') {
 			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? {} : s));
 		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
-			const current = slideTextOverlays[activeSlide] ?? [];
+			const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
 			setSlideTextOverlays(
 				activeSlide,
 				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, style: {} } : o)),
+				activeTemplate,
 			);
 		}
 	}
@@ -864,8 +892,18 @@
 		if (forcedTemplateFromQuery) applyTemplateToAll(forcedTemplateFromQuery);
 		if (Array.isArray(s.backgroundImages)) backgroundImages = s.backgroundImages;
 		if (Array.isArray(s.backgroundVideos)) backgroundVideos = s.backgroundVideos; // note: blob: URLs won't survive reload
-		if (Array.isArray(s.slideOverlays)) slideOverlays = s.slideOverlays;
-		if (Array.isArray(s.slideTextOverlays)) slideTextOverlays = s.slideTextOverlays;
+		if (s.slideOverlaysByTemplate && typeof s.slideOverlaysByTemplate === 'object') {
+			slideOverlaysByTemplate = s.slideOverlaysByTemplate as Record<TemplateId, Overlay[][]>;
+		} else if (Array.isArray(s.slideOverlays)) {
+			// Back-compat: old drafts stored overlays per slide (treat as News overlays).
+			slideOverlaysByTemplate = { ...slideOverlaysByTemplate, news: s.slideOverlays as Overlay[][] };
+		}
+		if (s.slideTextOverlaysByTemplate && typeof s.slideTextOverlaysByTemplate === 'object') {
+			slideTextOverlaysByTemplate = s.slideTextOverlaysByTemplate as Record<TemplateId, TextOverlay[][]>;
+		} else if (Array.isArray(s.slideTextOverlays)) {
+			// Back-compat: old drafts stored text overlays per slide (treat as News overlays).
+			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: s.slideTextOverlays as TextOverlay[][] };
+		}
 		if (Array.isArray(s.headlineStyles)) headlineStyles = s.headlineStyles;
 		if (Array.isArray(s.sourceStyles)) sourceStyles = s.sourceStyles;
 		if (Array.isArray(s.tweetStylesBySlide)) tweetStylesBySlide = s.tweetStylesBySlide;
@@ -956,8 +994,8 @@
 			videoMutedBySlide,
 			videoVolumeBySlide,
 			textOffsetsBySlide,
-			slideOverlays,
-			slideTextOverlays,
+			slideOverlaysByTemplate,
+			slideTextOverlaysByTemplate,
 			headlineStyles,
 			sourceStyles,
 			tweetStylesBySlide,
@@ -1278,8 +1316,8 @@
 			backgroundImages = [articleImageUrl]; // slide 0 gets article image right away
 			backgroundVideos = ['']; // reset video
 			generatingImages = [false];
-			slideOverlays    = [[]];
-			slideTextOverlays = [[]];
+			slideOverlaysByTemplate = { ...slideOverlaysByTemplate, news: [[]] };
+			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: [[]] };
 
 			// Generate supporting slide variants first (so we know all slide texts before imaging)
 			if (slideCount > 1) {
@@ -1381,8 +1419,18 @@
 		videoMutedBySlide = new Array(slides.length).fill(true);
 		videoVolumeBySlide = new Array(slides.length).fill(0.8);
 		generatingImages = new Array(slides.length).fill(true);
-		slideOverlays    = new Array(slides.length).fill(null).map(() => []);
-		slideTextOverlays = new Array(slides.length).fill(null).map(() => []);
+		slideOverlaysByTemplate = (Object.fromEntries(
+			(Object.entries(slideOverlaysByTemplate) as [TemplateId, Overlay[][]][]).map(([k]) => [
+				k,
+				new Array(slides.length).fill(null).map(() => []),
+			]),
+		) as unknown) as Record<TemplateId, Overlay[][]>;
+		slideTextOverlaysByTemplate = (Object.fromEntries(
+			(Object.entries(slideTextOverlaysByTemplate) as [TemplateId, TextOverlay[][]][]).map(([k]) => [
+				k,
+				new Array(slides.length).fill(null).map(() => []),
+			]),
+		) as unknown) as Record<TemplateId, TextOverlay[][]>;
 		slideTemplates   = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
 		// Slide 0: use article image directly if available, otherwise Vertex
@@ -1678,8 +1726,8 @@
 					w: Math.round(w),
 					h: Math.round(h),
 				};
-				const current = slideOverlays[idx] ?? [];
-				setSlideOverlays(idx, [...current, newOverlay]);
+				const current = (slideOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
+				setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
 			};
 			img.src = src;
 		};

@@ -503,11 +503,38 @@
 </div>
 
 <style>
+	:root:not([data-theme="dark"]) {
+		--wiz-bg: var(--app-bg);
+		--wiz-border: var(--app-border);
+		--wiz-border-2: var(--app-border-hover);
+		--wiz-text: var(--app-text);
+		--wiz-muted: var(--app-text-2);
+		--wiz-muted2: var(--app-text-3);
+		--wiz-input-bg: var(--app-surface-2);
+		--wiz-input-border: var(--app-border);
+		--wiz-chip-bg: color-mix(in oklab, var(--app-text) 5%, transparent);
+		--wiz-chip-border: color-mix(in oklab, var(--app-text) 12%, transparent);
+		--wiz-elev: 0 18px 60px rgba(2, 6, 23, 0.08);
+	}
+	:root[data-theme="dark"] {
+		--wiz-bg: #080808;
+		--wiz-border: rgba(255,255,255,0.08);
+		--wiz-border-2: rgba(255,255,255,0.14);
+		--wiz-text: rgba(255,255,255,0.92);
+		--wiz-muted: rgba(255,255,255,0.55);
+		--wiz-muted2: rgba(255,255,255,0.32);
+		--wiz-input-bg: rgba(255,255,255,0.04);
+		--wiz-input-border: rgba(255,255,255,0.08);
+		--wiz-chip-bg: rgba(255,255,255,0.05);
+		--wiz-chip-border: rgba(255,255,255,0.10);
+		--wiz-elev: 0 18px 60px rgba(0,0,0,0.42);
+	}
+
 	.wizard-root {
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
-		background: #080808;
+		background: var(--wiz-bg);
 		overflow: hidden;
 	}
 
@@ -517,7 +544,7 @@
 		align-items: center;
 		gap: 24px;
 		padding: 20px 32px;
-		border-bottom: 1px solid rgba(255,255,255,0.05);
+		border-bottom: 1px solid var(--wiz-border);
 		flex-shrink: 0;
 	}
 
@@ -526,12 +553,12 @@
 		align-items: center;
 		gap: 4px;
 		font-size: 13px;
-		color: rgba(255,255,255,0.3);
+		color: var(--wiz-muted2);
 		text-decoration: none;
 		font-family: 'DM Sans', sans-serif;
 		transition: color 0.15s;
 	}
-	.back-btn:hover { color: rgba(255,255,255,0.7); }
+	.back-btn:hover { color: var(--wiz-muted); }
 
 	.steps-track {
 		display: flex;
@@ -542,11 +569,11 @@
 	.step-pip {
 		width: 28px; height: 28px;
 		border-radius: 50%;
-		border: 1.5px solid rgba(255,255,255,0.12);
+		border: 1.5px solid var(--wiz-border);
 		display: flex; align-items: center; justify-content: center;
 		font-family: 'Space Mono', monospace;
 		font-size: 11px;
-		color: rgba(255,255,255,0.25);
+		color: var(--wiz-muted2);
 		transition: all 0.2s;
 		flex-shrink: 0;
 	}
@@ -562,7 +589,7 @@
 	}
 	.step-line {
 		width: 32px; height: 1.5px;
-		background: rgba(255,255,255,0.08);
+		background: var(--wiz-border);
 		transition: background 0.2s;
 	}
 	.step-line.active { background: rgba(232,255,72,0.4); }
@@ -570,7 +597,7 @@
 	.step-label {
 		font-family: 'Space Mono', monospace;
 		font-size: 11px;
-		color: rgba(255,255,255,0.25);
+		color: var(--wiz-muted2);
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		margin-left: auto;
@@ -604,7 +631,7 @@
 		font-family: 'Fraunces', serif;
 		font-size: 48px;
 		font-weight: 900;
-		color: #fff;
+		color: var(--wiz-text);
 		margin: 0 0 12px;
 		line-height: 1.08;
 		letter-spacing: -0.02em;
@@ -613,7 +640,7 @@
 	.step-sub {
 		font-family: 'DM Sans', sans-serif;
 		font-size: 16px;
-		color: rgba(255,255,255,0.4);
+		color: var(--wiz-muted);
 		margin: 0 0 40px;
 		line-height: 1.6;
 	}
@@ -627,21 +654,21 @@
 		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
-		color: rgba(255,255,255,0.3);
+		color: var(--wiz-muted2);
 		margin-bottom: 10px;
 	}
 	.required { color: #E8FF48; }
-	.optional { color: rgba(255,255,255,0.2); font-size: 10px; }
+	.optional { color: color-mix(in oklab, var(--wiz-muted2) 80%, transparent); font-size: 10px; }
 
 	.big-textarea, .text-input {
 		width: 100%;
-		background: rgba(255,255,255,0.04);
-		border: 1.5px solid rgba(255,255,255,0.08);
+		background: var(--wiz-input-bg);
+		border: 1.5px solid var(--wiz-input-border);
 		border-radius: 12px;
 		padding: 14px 16px;
 		font-family: 'DM Sans', sans-serif;
 		font-size: 15px;
-		color: #fff;
+		color: var(--wiz-text);
 		outline: none;
 		resize: none;
 		transition: border-color 0.15s;
@@ -650,18 +677,18 @@
 	.big-textarea:focus, .text-input:focus {
 		border-color: rgba(232,255,72,0.35);
 	}
-	::placeholder { color: rgba(255,255,255,0.18); }
+	::placeholder { color: color-mix(in oklab, var(--wiz-muted2) 70%, transparent); }
 
 	.field-hint {
 		font-family: 'DM Sans', sans-serif;
 		font-size: 12px;
-		color: rgba(255,255,255,0.2);
+		color: var(--wiz-muted2);
 		margin: 8px 0 0;
 	}
 
 	/* ── Drop zone ───────────────────────────────────────────────────────── */
 	.drop-zone {
-		border: 1.5px dashed rgba(255,255,255,0.1);
+		border: 1.5px dashed var(--wiz-border);
 		border-radius: 16px;
 		padding: 48px 32px;
 		text-align: center;
@@ -679,16 +706,16 @@
 	.drop-icon {
 		width: 52px; height: 52px;
 		border-radius: 12px;
-		background: rgba(255,255,255,0.05);
+		background: var(--wiz-chip-bg);
 		display: flex; align-items: center; justify-content: center;
 		margin: 0 auto 16px;
-		color: rgba(255,255,255,0.3);
+		color: var(--wiz-muted2);
 	}
 
 	.drop-text {
 		font-family: 'DM Sans', sans-serif;
 		font-size: 15px;
-		color: rgba(255,255,255,0.5);
+		color: var(--wiz-muted);
 		margin: 0 0 6px;
 	}
 	.drop-link { color: #E8FF48; text-decoration: underline; }
@@ -696,7 +723,7 @@
 	.drop-sub {
 		font-family: 'Space Mono', monospace;
 		font-size: 11px;
-		color: rgba(255,255,255,0.2);
+		color: var(--wiz-muted2);
 		margin: 0;
 	}
 
@@ -712,7 +739,7 @@
 		width: 88px; height: 88px;
 		border-radius: 10px;
 		overflow: hidden;
-		border: 1.5px solid rgba(255,255,255,0.08);
+		border: 1.5px solid var(--wiz-border);
 	}
 
 	.thumb-img {

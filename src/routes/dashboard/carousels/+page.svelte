@@ -175,7 +175,7 @@
 						: 'group-hover:text-amber-400'}
 				<a
 					href={tmpl.href}
-					class="group flex flex-col rounded-2xl overflow-hidden border border-white/[0.08] transition-all duration-200 flex-shrink-0 {hoverClass}"
+					class="tmpl-card group flex flex-col rounded-2xl overflow-hidden transition-all duration-200 flex-shrink-0 {hoverClass}"
 					style="width: 100%;"
 				>
 					<!-- Preview area -->
@@ -226,22 +226,25 @@
 							<!-- Slideshows static preview -->
 							<div style="
 								width: 100%; height: 100%;
-								background: linear-gradient(135deg, #0f0a1e 0%, #1a0f3a 45%, #0d1a2e 100%);
+								background: {uiTheme === 'dark'
+									? 'linear-gradient(135deg, #0f0a1e 0%, #1a0f3a 45%, #0d1a2e 100%)'
+									: 'linear-gradient(135deg, #ffffff 0%, #f4f2ff 45%, #eef6ff 100%)'};
 								display: flex; flex-direction: column;
 								align-items: center; justify-content: center;
 								gap: 14px; padding: 20px; position: relative; overflow: hidden;
 							">
 								<!-- Background glow -->
-								<div style="position:absolute;top:-30px;left:50%;transform:translateX(-50%);width:140px;height:140px;border-radius:50%;background:rgba(139,92,246,0.15);filter:blur(40px);pointer-events:none;"></div>
+								<div style="position:absolute;top:-30px;left:50%;transform:translateX(-50%);width:140px;height:140px;border-radius:50%;background:{uiTheme === 'dark' ? 'rgba(139,92,246,0.15)' : 'rgba(124,58,237,0.12)'};filter:blur(40px);pointer-events:none;"></div>
 
 								<!-- Icon -->
 								<div style="
 									width: 44px; height: 44px; border-radius: 14px;
-									background: rgba(139,92,246,0.2); border: 1.5px solid rgba(139,92,246,0.4);
+									background: {uiTheme === 'dark' ? 'rgba(139,92,246,0.2)' : 'rgba(124,58,237,0.10)'};
+									border: 1.5px solid {uiTheme === 'dark' ? 'rgba(139,92,246,0.4)' : 'rgba(124,58,237,0.22)'};
 									display: flex; align-items: center; justify-content: center;
 									position: relative; z-index: 1;
 								">
-									<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(167,139,250,1)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+									<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{uiTheme === 'dark' ? 'rgba(167,139,250,1)' : 'rgba(124,58,237,0.95)'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 										<path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/>
 										<path d="m3 3 18 18" opacity="0"/>
 										<circle cx="12" cy="12" r="3"/>
@@ -260,7 +263,7 @@
 										<div style="
 											width: 34px; height: 43px; border-radius: 4px;
 											background: {slide.bg};
-											border: 1px solid rgba(255,255,255,0.1);
+											border: 1px solid {uiTheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.10)'};
 											display: flex; flex-direction: column;
 											align-items: center; justify-content: center; gap: 3px;
 											flex-shrink: 0;
@@ -272,39 +275,41 @@
 									{/each}
 									<div style="
 										width: 34px; height: 43px; border-radius: 4px;
-										border: 1px dashed rgba(139,92,246,0.3);
+										border: 1px dashed {uiTheme === 'dark' ? 'rgba(139,92,246,0.3)' : 'rgba(124,58,237,0.30)'};
 										display: flex; align-items: center; justify-content: center;
 										flex-shrink: 0;
 									">
-										<span style="font-size:14px;color:rgba(139,92,246,0.4);">+</span>
+										<span style="font-size:14px;color:{uiTheme === 'dark' ? 'rgba(139,92,246,0.4)' : 'rgba(124,58,237,0.45)'};">+</span>
 									</div>
 								</div>
 
 								<!-- Color swatches -->
 								<div style="display:flex;gap:4px;position:relative;z-index:1;">
 									{#each ['#8B5CF6','#C4B5FD','#1A0F3A','#F8F9FA','#FDFCF8'] as swatch}
-										<div style="width:14px;height:14px;border-radius:50%;background:{swatch};border:1px solid rgba(255,255,255,0.15);flex-shrink:0;"></div>
+										<div style="width:14px;height:14px;border-radius:50%;background:{swatch};border:1px solid {uiTheme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.12)'};flex-shrink:0;"></div>
 									{/each}
-									<div style="width:14px;height:14px;border-radius:50%;border:1.5px dashed rgba(255,255,255,0.2);flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-										<span style="font-size:8px;color:rgba(255,255,255,0.3);">+</span>
+									<div style="width:14px;height:14px;border-radius:50%;border:1.5px dashed {uiTheme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.16)'};flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+										<span style="font-size:8px;color:{uiTheme === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(15,23,42,0.35)'};">+</span>
 									</div>
 								</div>
 
 								<!-- Label -->
 								<div style="position:relative;z-index:1;text-align:center;">
-									<p style="font-family:'Nunito Sans',sans-serif;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(167,139,250,0.8);margin-bottom:2px;">Upload images</p>
-									<p style="font-family:'Nunito Sans',sans-serif;font-size:9px;color:rgba(255,255,255,0.25);letter-spacing:0.04em;">AI copies your brand style</p>
+									<p style="font-family:'Nunito Sans',sans-serif;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:{uiTheme === 'dark' ? 'rgba(167,139,250,0.8)' : 'rgba(124,58,237,0.70)'};margin-bottom:2px;">Upload images</p>
+									<p style="font-family:'Nunito Sans',sans-serif;font-size:9px;color:{uiTheme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(15,23,42,0.40)'};letter-spacing:0.04em;">AI copies your brand style</p>
 								</div>
 
 								<!-- Bottom bar in preview -->
 								<div style="
 									position:absolute;bottom:0;left:0;right:0;
 									padding: 8px 12px;
-									background: linear-gradient(to top, rgba(15,10,30,0.95), transparent);
+									background: {uiTheme === 'dark'
+										? 'linear-gradient(to top, rgba(15,10,30,0.95), transparent)'
+										: 'linear-gradient(to top, rgba(255,255,255,0.92), transparent)'};
 								">
 									<div style="display:flex;gap:4px;">
 										{#each [30,60,45,70,50] as w}
-											<div style="height:2px;flex:{w};background:rgba(139,92,246,0.4);border-radius:1px;"></div>
+											<div style="height:2px;flex:{w};background:{uiTheme === 'dark' ? 'rgba(139,92,246,0.4)' : 'rgba(124,58,237,0.35)'};border-radius:1px;"></div>
 										{/each}
 									</div>
 								</div>
@@ -313,18 +318,18 @@
 					</div>
 
 					<!-- Card footer -->
-					<div class="px-3 py-2.5 bg-[#111] flex items-center justify-between gap-2 border-t border-white/[0.05]">
+					<div class="tmpl-footer px-3 py-2.5 flex items-center justify-between gap-2 border-t">
 						<div class="min-w-0">
-							<p class="text-xs font-display font-semibold text-white truncate">{tmpl.name}</p>
-							<p class="text-[10px] font-body text-white/30 truncate leading-tight">{tmpl.description}</p>
+							<p class="tmpl-title text-xs font-display font-semibold truncate">{tmpl.name}</p>
+							<p class="tmpl-desc text-[10px] font-body truncate leading-tight">{tmpl.description}</p>
 						</div>
-						<ArrowRight size={13} class="text-white/20 {arrowColor} group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+						<ArrowRight size={13} class="tmpl-arrow {arrowColor} group-hover:translate-x-0.5 transition-all flex-shrink-0" />
 					</div>
 				</a>
 			{/each}
 
 			<!-- "More coming" placeholder -->
-			<div class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/[0.05] text-white/15 flex-shrink-0"
+			<div class="tmpl-more flex flex-col items-center justify-center rounded-2xl border-2 border-dashed flex-shrink-0"
 				style="width: 100%; height: {Math.round(templateCardW * 1350/1080) + 46}px;">
 				<Plus size={18} class="mb-2 opacity-40" />
 				<span class="text-[10px] font-mono">More templates soon</span>
@@ -492,6 +497,22 @@
 		gap: 16px;
 		align-items: start;
 	}
+
+	/* Starter template cards */
+	.tmpl-card {
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
+	}
+	.tmpl-card:hover { border-color: var(--panel-border-hover); }
+	:root:not([data-theme="dark"]) .tmpl-card:hover { box-shadow: 0 14px 44px rgba(2, 6, 23, 0.08); }
+	:root[data-theme="dark"] .tmpl-card:hover { box-shadow: 0 14px 44px rgba(0, 0, 0, 0.34); }
+
+	.tmpl-footer { background: var(--panel-bg); border-color: var(--panel-border); }
+	.tmpl-title { color: var(--t-strong); }
+	.tmpl-desc { color: var(--t-muted); }
+	.tmpl-arrow { color: color-mix(in oklab, var(--t-muted) 55%, transparent); }
+
+	.tmpl-more { border-color: var(--panel-border); color: var(--t-muted); background: color-mix(in oklab, var(--panel-bg) 70%, transparent); }
 
 	/* Section divider */
 	.section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 0.5rem 0 1.5rem; }
