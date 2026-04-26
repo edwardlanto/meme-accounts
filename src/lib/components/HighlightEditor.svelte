@@ -408,6 +408,7 @@
 			bind:this={editorEl}
 			contenteditable="true"
 			role="textbox"
+			tabindex="0"
 			aria-multiline="true"
 			aria-label={ariaLabel}
 			oninput={handleInput}
@@ -443,5 +444,10 @@
 <style>
 	.hl-editor :global(span[data-hl]) {
 		font-weight: inherit;
+	}
+	.hl-editor {
+		cursor: text;
+		user-select: text;
+		caret-color: currentColor;
 	}
 </style>

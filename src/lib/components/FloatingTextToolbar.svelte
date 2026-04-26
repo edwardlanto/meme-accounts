@@ -326,6 +326,8 @@
 		<!-- Color -->
 		<div class="relative">
 			<button
+				onpointerdown={(e) => e.preventDefault()}
+				onmousedown={(e) => e.preventDefault()}
 				onclick={() => (colorPickerOpen = !colorPickerOpen)}
 				class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn"
 				title="Text color"
@@ -343,6 +345,8 @@
 					<div class="grid grid-cols-6 gap-1.5 mb-3">
 						{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#FFB347', '#B0A8B9'] as c}
 							<button
+								onpointerdown={(e) => e.preventDefault()}
+								onmousedown={(e) => e.preventDefault()}
 								onclick={() => { onChange({ color: c }); colorPickerOpen = false; }}
 								class="w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110
 									{style.color === c ? 'border-black/40' : 'border-black/10'}"
@@ -356,6 +360,8 @@
 						type="color"
 						value={style.color ?? '#FFFFFF'}
 						oninput={(e) => onChange({ color: (e.target as HTMLInputElement).value })}
+						onpointerdown={(e) => e.preventDefault()}
+						onmousedown={(e) => e.preventDefault()}
 						class="w-full h-8 rounded-lg cursor-pointer bg-transparent border border-black/10"
 					/>
 				</div>
@@ -365,6 +371,8 @@
 		<!-- Background -->
 		<div class="relative">
 			<button
+				onpointerdown={(e) => e.preventDefault()}
+				onmousedown={(e) => e.preventDefault()}
 				onclick={() => (bgPickerOpen = !bgPickerOpen)}
 				class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn"
 				title="Background"
@@ -401,6 +409,8 @@
 						type="color"
 						value={style.bgColor ?? '#000000'}
 						oninput={(e) => onChange({ bgColor: (e.target as HTMLInputElement).value })}
+						onpointerdown={(e) => e.preventDefault()}
+						onmousedown={(e) => e.preventDefault()}
 						class="w-full h-8 rounded-lg cursor-pointer bg-transparent border border-black/10"
 					/>
 					<button

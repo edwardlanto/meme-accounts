@@ -11,7 +11,11 @@
 		scale?: number;
 		interactive?: boolean;
 		textOverlays?: TextOverlay[];
+		/** Currently-selected text overlay id (for showing selection outline). */
+		selectedId?: string | null;
 		highlightColor?: string;
+		/** Plain-text selection range inside the active overlay editor. */
+		onRangeSelect?: (plainStart: number, plainEnd: number) => void;
 		onTextOverlaysChange?: (next: TextOverlay[]) => void;
 		onTextSelect?: (kind: 'textOverlay', anchor: HTMLElement) => void;
 	}
@@ -22,7 +26,9 @@
 		scale = 1,
 		interactive = true,
 		textOverlays = [],
+		selectedId = null,
 		highlightColor = '#F5A623',
+		onRangeSelect,
 		onTextOverlaysChange,
 		onTextSelect,
 	}: Props = $props();
@@ -31,6 +37,10 @@
 	const H = $derived(Math.max(1, Number(h) || 1350));
 
 	let activeId = $state<string | null>(null);
+	let dragId = $state<string | null>(null);
+	let holdTimer: ReturnType<typeof setTimeout> | null = null;
+	let downTarget: HTMLElement | null = null;
+	let downPointerId = -1;
 	let lastMx = 0;
 	let lastMy = 0;
 	let editingId = $state<string | null>(null);
@@ -42,24 +52,46 @@
 			const el = document.querySelector<HTMLElement>(
 				`[data-text-overlay-id="${CSS.escape(id)}"] [contenteditable="true"]`,
 			);
-			try { el?.focus(); } catch {}
+			try {
+				el?.focus();
+				// Match the "main text" behavior: enter edit mode with a visible selection.
+				// Selecting all also makes it obvious the overlay is editable.
+				if (el) {
+					const r = document.createRange();
+					r.selectNodeContents(el);
+					const sel = window.getSelection();
+					sel?.removeAllRanges();
+					sel?.addRange(r);
+				}
+			} catch {}
 		});
 	});
 
 	function down(e: PointerEvent, id: string) {
 		if (!interactive) return;
+		// If we're currently editing this overlay, do not hijack pointer events
+		// (selection/caret should behave like the main text editor).
+		if (editingId === id) return;
 		try { (e.currentTarget as HTMLElement).dataset.textOverlayId = id; } catch {}
 		onTextSelect?.('textOverlay', e.currentTarget as HTMLElement);
-		activeId = id;
+		activeId = id; // selected, but not dragging yet
+		downTarget = e.currentTarget as HTMLElement;
+		downPointerId = e.pointerId;
 		lastMx = e.clientX;
 		lastMy = e.clientY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		dragId = null;
+		if (holdTimer) { try { clearTimeout(holdTimer); } catch {} holdTimer = null; }
+		// Hold-to-drag: allow click/dblclick to pass through naturally.
+		holdTimer = setTimeout(() => {
+			if (!downTarget || downPointerId === -1) return;
+			dragId = id;
+			try { downTarget.setPointerCapture(downPointerId); } catch {}
+		}, 180);
 		e.stopPropagation();
-		e.preventDefault();
 	}
 
 	function move(e: PointerEvent, id: string) {
-		if (activeId !== id) return;
+		if (dragId !== id) return;
 		const dx = (e.clientX - lastMx) / scale;
 		const dy = (e.clientY - lastMy) / scale;
 		lastMx = e.clientX;
@@ -78,7 +110,11 @@
 	}
 
 	function up() {
+		if (holdTimer) { try { clearTimeout(holdTimer); } catch {} holdTimer = null; }
+		downTarget = null;
+		downPointerId = -1;
 		activeId = null;
+		dragId = null;
 	}
 
 	function del(e: MouseEvent, id: string) {
@@ -90,6 +126,12 @@
 	function startEdit(e: MouseEvent, id: string) {
 		if (!interactive) return;
 		e.stopPropagation();
+		// Keep toolbar selection anchored to this overlay when switching into edit mode.
+		const box = (e.currentTarget as HTMLElement).closest<HTMLElement>('[data-text-overlay-id]');
+		if (box) {
+			try { box.dataset.textOverlayId = id; } catch {}
+			onTextSelect?.('textOverlay', box);
+		}
 		editingId = id;
 	}
 
@@ -104,9 +146,13 @@
 	style="
 		position: absolute;
 		inset: 0;
-		width: {W * scale}px;
-		height: {H * scale}px;
-		pointer-events: {interactive ? 'auto' : 'none'};
+		z-index: 80;
+		/* Fill the preview canvas box (which is already sized to H*scale). */
+		width: 100%;
+		height: 100%;
+		/* Don't block interactions with the template beneath.
+		   Individual overlays opt-in to pointer events. */
+		pointer-events: none;
 	"
 >
 	<!-- Inner at W×H — scaled via CSS transform -->
@@ -117,21 +163,24 @@
 			position: relative;
 			transform: scale({scale});
 			transform-origin: top left;
+			pointer-events: none;
 		"
 	>
 		{#each textOverlays as t (t.id)}
 			{@const isEditing = editingId === t.id}
+			{@const isSelected = !!selectedId && selectedId === t.id}
 			{@const css = t.style ?? {}}
 			<div
 				style="
 					position: absolute;
 					left: {t.x}px; top: {t.y}px;
-					width: fit-content;
-					height: fit-content;
+					width: {Math.max(40, Number(t.w) || 0)}px;
+					height: {Math.max(24, Number(t.h) || 0)}px;
 					max-width: 820px;
 					z-index: 60;
 					touch-action: none;
 					cursor: {interactive ? (activeId === t.id ? 'grabbing' : 'grab') : 'default'};
+					pointer-events: {interactive ? 'auto' : 'none'};
 				"
 				data-text-selectable="textOverlay"
 				data-text-overlay-id={t.id}
@@ -139,6 +188,7 @@
 				onpointermove={(e) => move(e, t.id)}
 				onpointerup={up}
 				onpointercancel={up}
+				ondblclick={(e) => startEdit(e, t.id)}
 				role="presentation"
 			>
 				{#if isEditing}
@@ -150,6 +200,13 @@
 							border-radius: 10px;
 							background: rgba(0,0,0,0.14);
 							border: 1px solid rgba(255,255,255,0.25);
+							color: {css.color ?? '#FFFFFF'};
+							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
+							font-size: {css.fontSize ?? 42}px;
+							font-weight: {css.fontWeight ?? 700};
+							text-align: {css.align ?? 'left'};
+							line-height: {css.lineHeight ?? 1.15};
+							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
 						"
 						onclick={(e) => e.stopPropagation()}
 						role="presentation"
@@ -159,7 +216,21 @@
 							rows={3}
 							showToolbar={false}
 							defaultColor={highlightColor}
+							fontFamily={css.fontFamily}
+							fontSize={css.fontSize ?? 42}
 							ariaLabel="Text overlay editor"
+							onSelectionChange={(has, r) => {
+								if (!has || !r) onRangeSelect?.(-1, -1);
+								else onRangeSelect?.(r.start, r.end);
+							}}
+							onFocus={() => {
+								// Re-assert selection when the editor gains focus (keeps floating toolbar stable).
+								const box = document.querySelector<HTMLElement>(`[data-text-overlay-id="${CSS.escape(t.id)}"]`);
+								if (box) {
+									try { box.dataset.textOverlayId = t.id; } catch {}
+									onTextSelect?.('textOverlay', box);
+								}
+							}}
 							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
 							onBlur={() => finishEdit(t.id)}
 						/>
@@ -173,8 +244,9 @@
 							padding: 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
-							background: rgba(0,0,0,0.10);
-							border: 1px dashed rgba(255,255,255,0.25);
+							background: {isSelected ? 'color-mix(in oklab, var(--app-selection-bg) 55%, rgba(0,0,0,0.10))' : 'rgba(0,0,0,0.10)'};
+							border: 1px dashed {isSelected ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.25)'};
+							box-shadow: {isSelected ? '0 0 0 2px color-mix(in oklab, var(--app-selection-bg) 55%, transparent)' : 'none'};
 							color: {css.color ?? '#FFFFFF'};
 							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;
@@ -184,6 +256,8 @@
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
 							overflow: hidden;
 							user-select: none;
+							display: flex;
+							align-items: center;
 						"
 					>
 						{@html segmentText(parseHighlightMarkup(t.text, highlightColor)).map((seg) => {

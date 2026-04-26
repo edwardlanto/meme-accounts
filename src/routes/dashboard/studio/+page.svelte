@@ -416,10 +416,11 @@
 	}
 
 	function setSlideOverlays(i: number, next: Overlay[], template: TemplateId = activeTemplate) {
-		slideOverlaysByTemplate = {
-			...slideOverlaysByTemplate,
-			[template]: (slideOverlaysByTemplate[template] ?? []).map((o, idx) => (idx === i ? next : o)),
-		};
+		const cur = [...(slideOverlaysByTemplate[template] ?? [])];
+		// Ensure the per-template overlay array is long enough for this slide index.
+		while (cur.length <= i) cur.push([]);
+		cur[i] = next;
+		slideOverlaysByTemplate = { ...slideOverlaysByTemplate, [template]: cur };
 	}
 
 	// Text overlays — per slide, per template (so templates are independent)
@@ -433,10 +434,11 @@
 	const activeTextOverlays = $derived((slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? []);
 
 	function setSlideTextOverlays(i: number, next: TextOverlay[], template: TemplateId = activeTemplate) {
-		slideTextOverlaysByTemplate = {
-			...slideTextOverlaysByTemplate,
-			[template]: (slideTextOverlaysByTemplate[template] ?? []).map((o, idx) => (idx === i ? next : o)),
-		};
+		const cur = [...(slideTextOverlaysByTemplate[template] ?? [])];
+		// Ensure the per-template overlay array is long enough for this slide index.
+		while (cur.length <= i) cur.push([]);
+		cur[i] = next;
+		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: cur };
 	}
 
 	function addSlide() {
@@ -447,12 +449,21 @@
 		backgroundImages = [...backgroundImages, ''];
 		backgroundVideos = [...backgroundVideos, ''];
 		generatingImages = [...generatingImages, false];
-		slideOverlaysByTemplate = (Object.fromEntries(
-			Object.entries(slideOverlaysByTemplate).map(([k, arr]) => [k, [...(arr as Overlay[][]), []]]),
-		) as unknown) as Record<TemplateId, Overlay[][]>;
-		slideTextOverlaysByTemplate = (Object.fromEntries(
-			Object.entries(slideTextOverlaysByTemplate).map(([k, arr]) => [k, [...(arr as TextOverlay[][]), []]]),
-		) as unknown) as Record<TemplateId, TextOverlay[][]>;
+		// Keep overlays strictly template-scoped (avoid any accidental shared references).
+		slideOverlaysByTemplate = {
+			news: [...(slideOverlaysByTemplate.news ?? []), []],
+			tweet: [...(slideOverlaysByTemplate.tweet ?? []), []],
+			article: [...(slideOverlaysByTemplate.article ?? []), []],
+			textCarousel: [...(slideOverlaysByTemplate.textCarousel ?? []), []],
+			imageQuote: [...(slideOverlaysByTemplate.imageQuote ?? []), []],
+		};
+		slideTextOverlaysByTemplate = {
+			news: [...(slideTextOverlaysByTemplate.news ?? []), []],
+			tweet: [...(slideTextOverlaysByTemplate.tweet ?? []), []],
+			article: [...(slideTextOverlaysByTemplate.article ?? []), []],
+			textCarousel: [...(slideTextOverlaysByTemplate.textCarousel ?? []), []],
+			imageQuote: [...(slideTextOverlaysByTemplate.imageQuote ?? []), []],
+		};
 		tweetTopNameBySlide = [...tweetTopNameBySlide, tweetTopNameBySlide[tweetTopNameBySlide.length - 1] ?? 'Chef 👨‍🍳'];
 		tweetTopHandleBySlide = [...tweetTopHandleBySlide, tweetTopHandleBySlide[tweetTopHandleBySlide.length - 1] ?? '@chefsevenn'];
 		tweetBottomNameBySlide = [...tweetBottomNameBySlide, tweetBottomNameBySlide[tweetBottomNameBySlide.length - 1] ?? 'Mo Mohler'];
@@ -484,6 +495,10 @@
 			style: { color: '#FFFFFF', fontSize: 42, fontWeight: 800, align: 'left', lineHeight: 1.1 },
 		};
 		setSlideTextOverlays(idx, [...current, next], activeTemplate);
+		// Keep selection context so the toolbar can immediately target the overlay after it appears.
+		selectedTextOverlayId = next.id;
+		selectedText = 'textOverlay';
+		try { console.debug('[studio] addTextOverlay', { template: activeTemplate, slide: idx, id: next.id }); } catch {}
 	}
 
 	// ── Per-slide text styles (Canva-style toolbar) ──────────────────────
@@ -697,7 +712,10 @@
 	// Plain-text selection inside the headline (for applyHighlight).
 	// null when no active word/range selection.
 	let headlineRange = $state<{ start: number; end: number } | null>(null);
-	const hasRangeSelection = $derived(headlineRange !== null);
+	let textOverlayRange = $state<{ start: number; end: number } | null>(null);
+	const hasRangeSelection = $derived(
+		selectedText === 'textOverlay' ? textOverlayRange !== null : headlineRange !== null,
+	);
 
 	function onHeadlineRangeSelect(start: number, end: number) {
 		if (start < 0 || end < 0 || start === end) {
@@ -707,11 +725,20 @@
 		}
 	}
 
+	function onTextOverlayRangeSelect(start: number, end: number) {
+		if (start < 0 || end < 0 || start === end) {
+			textOverlayRange = null;
+		} else {
+			textOverlayRange = { start, end };
+		}
+	}
+
 	function onHighlight(spec: HighlightSpec) {
-		if (!headlineRange) return;
+		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+		if (!range) return;
 		// Apply highlight to the currently-selected editable text field (not always News headline).
-		const start = headlineRange.start;
-		const end = headlineRange.end;
+		const start = range.start;
+		const end = range.end;
 		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start)) return;
 
 		// Headline-like fields per template
@@ -735,6 +762,13 @@
 		} else if (selectedText === 'tweetTopText') {
 			const current = tweetTopTextBySlide[activeSlide] ?? '';
 			tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
+			const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
+			setSlideTextOverlays(
+				activeSlide,
+				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, text: applyHighlight(o.text ?? '', start, end, spec) } : o)),
+				activeTemplate,
+			);
 		}
 		// Keep the range so the user can try a different highlight without reselecting.
 		// Clear any native selection since the DOM just rerendered.
@@ -748,6 +782,7 @@
 		toolbarAnchor = el.getBoundingClientRect();
 		// Switching to the source label drops any stale headline word-range.
 		if (kind !== 'headline') headlineRange = null;
+		if (kind !== 'textOverlay') textOverlayRange = null;
 	}
 
 	function closeToolbar() {
@@ -756,6 +791,7 @@
 		toolbarAnchor = null;
 		toolbarTarget = null;
 		headlineRange = null;
+		textOverlayRange = null;
 	}
 
 	// Recompute toolbar anchor on scroll / resize so it stays glued to the text.
@@ -893,13 +929,29 @@
 		if (Array.isArray(s.backgroundImages)) backgroundImages = s.backgroundImages;
 		if (Array.isArray(s.backgroundVideos)) backgroundVideos = s.backgroundVideos; // note: blob: URLs won't survive reload
 		if (s.slideOverlaysByTemplate && typeof s.slideOverlaysByTemplate === 'object') {
-			slideOverlaysByTemplate = s.slideOverlaysByTemplate as Record<TemplateId, Overlay[][]>;
+			// Deep-clone to avoid any accidental shared references across templates/slides.
+			const raw = s.slideOverlaysByTemplate as Record<TemplateId, Overlay[][]>;
+			slideOverlaysByTemplate = {
+				news: (raw.news ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+				tweet: (raw.tweet ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+				article: (raw.article ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+				textCarousel: (raw.textCarousel ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+				imageQuote: (raw.imageQuote ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+			};
 		} else if (Array.isArray(s.slideOverlays)) {
 			// Back-compat: old drafts stored overlays per slide (treat as News overlays).
 			slideOverlaysByTemplate = { ...slideOverlaysByTemplate, news: s.slideOverlays as Overlay[][] };
 		}
 		if (s.slideTextOverlaysByTemplate && typeof s.slideTextOverlaysByTemplate === 'object') {
-			slideTextOverlaysByTemplate = s.slideTextOverlaysByTemplate as Record<TemplateId, TextOverlay[][]>;
+			// Deep-clone to avoid any accidental shared references across templates/slides.
+			const raw = s.slideTextOverlaysByTemplate as Record<TemplateId, TextOverlay[][]>;
+			slideTextOverlaysByTemplate = {
+				news: (raw.news ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+				tweet: (raw.tweet ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+				article: (raw.article ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+				textCarousel: (raw.textCarousel ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+				imageQuote: (raw.imageQuote ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+			};
 		} else if (Array.isArray(s.slideTextOverlays)) {
 			// Back-compat: old drafts stored text overlays per slide (treat as News overlays).
 			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: s.slideTextOverlays as TextOverlay[][] };
@@ -2414,6 +2466,23 @@
 					</div>
 				</div>
 			{/if}
+			<!-- Debug: show overlay counts (temporary) -->
+			<div
+				style="
+					position:absolute;
+					top:10px;
+					left:10px;
+					z-index: 200;
+					padding: 4px 8px;
+					border-radius: 999px;
+					background: rgba(0,0,0,0.55);
+					color: #fff;
+					font: 600 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+					pointer-events:none;
+				"
+			>
+				T:{activeTemplate} S:{activeSlide} overlays:{activeTextOverlays.length}
+			</div>
 			{#if generatingImages[activeSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
@@ -2481,7 +2550,7 @@
 					scale={previewScale}
 					interactive={true}
 					overlays={activeOverlays}
-					textOverlays={activeTextOverlays}
+					textOverlays={[]}
 					headlineStyle={activeHeadlineStyle}
 					sourceStyle={activeSourceStyle}
 					selectedText={selectedText}
@@ -2496,11 +2565,22 @@
 					}}
 					onCircle2AIClick={() => generateCircleFromPrompt(2)}
 					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
-					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
-				<!-- News renders its own text overlays internally -->
+				<!-- Shared text overlay layer (sits above the template) -->
+				<TextOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					highlightColor={highlightColor}
+					textOverlays={activeTextOverlays}
+					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					onRangeSelect={onTextOverlayRangeSelect}
+					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+				/>
 			{:else if activeTemplate === 'article'}
 				<!-- Shared text overlay layer for non-News templates -->
 				<TextOverlayLayer
@@ -2510,6 +2590,8 @@
 					interactive={true}
 					highlightColor={highlightColor}
 					textOverlays={activeTextOverlays}
+					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
 				/>
@@ -2531,6 +2613,18 @@
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{:else if activeTemplate === 'tweet'}
+				<TextOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					highlightColor={highlightColor}
+					textOverlays={activeTextOverlays}
+					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					onRangeSelect={onTextOverlayRangeSelect}
+					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+				/>
 				<!-- Tweet: minimal integration for now (top tweet text = slide text). -->
 				<TweetTemplate
 					templateTheme={uiTheme}
@@ -2568,6 +2662,8 @@
 					interactive={true}
 					highlightColor={highlightColor}
 					textOverlays={activeTextOverlays}
+					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
 				/>
@@ -2596,6 +2692,8 @@
 					interactive={true}
 					highlightColor={highlightColor}
 					textOverlays={activeTextOverlays}
+					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
 				/>
@@ -2618,13 +2716,12 @@
 					scale={previewScale}
 					interactive={true}
 					overlays={activeOverlays}
-					textOverlays={activeTextOverlays}
+					textOverlays={[]}
 					headlineStyle={activeHeadlineStyle}
 					sourceStyle={activeSourceStyle}
 					selectedText={selectedText}
 					onTextChange={(t) => setActiveSlideText(t)}
 					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
-					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
