@@ -31,6 +31,12 @@
 		headlineStyle?: TextStyle;
 		textOffsets?: Record<string, { x: number; y: number }>;
 		onTextOffsetChange?: (kind: TextElementKind, next: { x: number; y: number }) => void;
+		/** Optional per-field style overrides (font/size/color/etc). */
+		articleStyles?: Partial<Record<
+			| 'articleBody'
+			| 'articleSwipeText',
+			TextStyle
+		>>;
 		/** When true, inline highlight controls show while editing (no parent floating toolbar). */
 		showToolbar?: boolean;
 	}
@@ -54,6 +60,7 @@
 		onTextSelect,
 		onHeadlineRangeSelect,
 		headlineStyle = {},
+		articleStyles = {},
 		textOffsets = {},
 		onTextOffsetChange,
 		showToolbar = false,
@@ -76,6 +83,29 @@
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		return bits.join(' ');
 	});
+
+	function styleCss(s: TextStyle) {
+		const bits: string[] = [];
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Text', sans-serif;`);
+		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
+		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
+		if (s.italic) bits.push('font-style: italic;');
+		if (s.underline) bits.push('text-decoration: underline;');
+		if (s.color) bits.push(`color: ${s.color};`);
+		if (s.bgColor) {
+			bits.push(`background: ${s.bgColor};`);
+			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
+			bits.push('padding: 0.08em 0.18em;');
+			bits.push('border-radius: 0.18em;');
+		}
+		if (s.align) bits.push(`text-align: ${s.align};`);
+		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
+		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
+		return bits.join(' ');
+	}
+
+	const bodyCss = $derived(styleCss(articleStyles.articleBody ?? {}));
+	const swipeCss = $derived(styleCss(articleStyles.articleSwipeText ?? {}));
 
 	const W = 1080;
 	const H = 1350;
@@ -141,11 +171,12 @@
 						value={text}
 						{interactive}
 						defaultColor={accentColor}
-						selected={selectedText === 'headline'}
+						selected={selectedText === 'articleBody'}
+						toolbarKind="articleBody"
 						rows={12}
 						ariaLabel="Article body"
-						fontFamily={headlineStyle.fontFamily}
-						fontSize={headlineStyle.fontSize}
+						fontFamily={articleStyles.articleBody?.fontFamily ?? headlineStyle.fontFamily}
+						fontSize={articleStyles.articleBody?.fontSize ?? headlineStyle.fontSize}
 						{showToolbar}
 						onTextChange={onTextChange}
 						onTextSelect={onTextSelect}
@@ -164,7 +195,7 @@
 											letter-spacing: -0.3px;
 											color: {baseText};
 											word-break: break-word;
-											{bodyTypeCss}
+												{bodyTypeCss} {bodyCss}
 										">
 											{#each block as seg}
 												{#if seg.accent}
@@ -260,9 +291,10 @@
 						{interactive}
 						rows={1}
 						{showToolbar}
+						toolbarKind="articleSwipeText"
 						ariaLabel="Swipe text"
-						fontFamily={headlineStyle.fontFamily}
-						fontSize={28}
+						fontFamily={articleStyles.articleSwipeText?.fontFamily ?? headlineStyle.fontFamily}
+						fontSize={articleStyles.articleSwipeText?.fontSize ?? 28}
 						onTextChange={onSwipeTextChange}
 						onTextSelect={onTextSelect}
 					>
@@ -279,6 +311,7 @@
 								color: {baseText};
 								letter-spacing: -0.2px;
 								white-space: nowrap;
+								{swipeCss}
 							">{swipeText}</div>
 						{/snippet}
 					</CanvasMarkupTextBlock>

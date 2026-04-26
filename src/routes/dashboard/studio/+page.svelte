@@ -108,6 +108,49 @@
 		slideTemplates = slideTemplates.map(() => t);
 	}
 
+	function resetActiveTemplateContent() {
+		const i = activeSlide;
+		// Reset content (demo defaults) + clear style overrides for this template+slide.
+		if (activeTemplate === 'news') {
+			// Headline text for News lives in `slides` / `overlayText`.
+			const base = 'YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY';
+			slides = slides.map((x, idx) => (idx === i ? base : x));
+			setActiveSlideText(base);
+			source = 'Markets';
+		} else if (activeTemplate === 'tweet') {
+			tweetTopNameBySlide = tweetTopNameBySlide.map((x, idx) => (idx === i ? 'Chef 👨‍🍳' : x));
+			tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, idx) => (idx === i ? '@chefsevenn' : x));
+			tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, idx) => (idx === i ? 'Mo Mohler' : x));
+			tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, idx) => (idx === i ? '@MoMohler' : x));
+			tweetTopTextBySlide = tweetTopTextBySlide.map((x, idx) => (idx === i ? 'Ketchup or mayo or mustard?' : x));
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetStylesBySlide = tweetStylesBySlide.map((s, idx) => (idx === i ? {} : s));
+		} else if (activeTemplate === 'article') {
+			articleTextBySlide = articleTextBySlide.map((x, idx) =>
+				idx === i
+					? "Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate."
+					: x,
+			);
+			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? '«« Swipe' : x));
+		} else if (activeTemplate === 'textCarousel') {
+			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) => (idx === i ? 'Captains of industry' : x));
+			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? '@captainsofindustryy' : x));
+			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) =>
+				idx === i
+					? 'When your home is titled in your name, it becomes a legal target.\n\nCourts, creditors, and attorneys see it as your asset...'
+					: x,
+			);
+		}
+
+		// Clear style overrides for this template+slide.
+		stylesByTemplateBySlide = {
+			...stylesByTemplateBySlide,
+			[activeTemplate]: (stylesByTemplateBySlide[activeTemplate] ?? []).map((m, idx) => (idx === i ? {} : m)),
+		};
+		// Close any floating toolbar selection.
+		closeToolbar();
+	}
+
 	// Allow starter-template cards to deep-link into Studio with a template preselected.
 	onMount(() => {
 		if (initialTemplateParamApplied) return;
@@ -502,8 +545,13 @@
 	}
 
 	// ── Per-slide text styles (Canva-style toolbar) ──────────────────────
-	let headlineStyles = $state<TextStyle[]>([{}]);
-	let sourceStyles   = $state<TextStyle[]>([{}]);
+	let stylesByTemplateBySlide = $state<Record<TemplateId, Partial<Record<TextElementKind, TextStyle>>[]>>({
+		news: [{}],
+		article: [{}],
+		textCarousel: [{}],
+		tweet: [{}],
+		imageQuote: [{}],
+	});
 	// Tweet has multiple independent text fields; keep their styles separate.
 	type TweetKind =
 		| 'tweetTopName'
@@ -597,8 +645,12 @@
 		slideTextOverlaysByTemplate = (Object.fromEntries(
 			(Object.entries(slideTextOverlaysByTemplate) as [TemplateId, TextOverlay[][]][]).map(([k, arr]) => [k, pickOr(arr, [] as TextOverlay[])]),
 		) as unknown) as Record<TemplateId, TextOverlay[][]>;
-		headlineStyles   = pickOr(headlineStyles, {} as TextStyle);
-		sourceStyles     = pickOr(sourceStyles, {} as TextStyle);
+		stylesByTemplateBySlide = (Object.fromEntries(
+			(Object.entries(stylesByTemplateBySlide) as [TemplateId, Partial<Record<TextElementKind, TextStyle>>[]][]).map(([k, arr]) => [
+				k,
+				pickOr(arr, {} as Partial<Record<TextElementKind, TextStyle>>),
+			]),
+		) as unknown) as Record<TemplateId, Partial<Record<TextElementKind, TextStyle>>[]>;
 		tweetTopNameBySlide = pickOr(tweetTopNameBySlide, 'Chef 👨‍🍳');
 		tweetTopHandleBySlide = pickOr(tweetTopHandleBySlide, '@chefsevenn');
 		tweetBottomNameBySlide = pickOr(tweetBottomNameBySlide, 'Mo Mohler');
@@ -682,8 +734,9 @@
 			}
 		};
 	}
-	const activeHeadlineStyle = $derived(headlineStyles[activeSlide] ?? {});
-	const activeSourceStyle   = $derived(sourceStyles[activeSlide] ?? {});
+	const activeStyleMap = $derived((stylesByTemplateBySlide[activeTemplate] ?? [])[activeSlide] ?? {});
+	const activeHeadlineStyle = $derived(activeStyleMap.headline ?? {});
+	const activeSourceStyle   = $derived(activeStyleMap.source ?? {});
 	const activeTweetStyles = $derived(tweetStylesBySlide[activeSlide] ?? {});
 
 	function isTweetKind(k: TextElementKind | null): k is TweetKind {
@@ -699,8 +752,12 @@
 
 	function getActiveStyleForSelection(): TextStyle {
 		if (isTweetKind(selectedText)) return (activeTweetStyles[selectedText] ?? {});
-		if (selectedText === 'source') return activeSourceStyle;
-		return activeHeadlineStyle;
+		if (selectedText === 'textOverlay' && selectedTextOverlayId) {
+			const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
+			return (current.find((o) => o.id === selectedTextOverlayId)?.style ?? {});
+		}
+		if (!selectedText) return activeHeadlineStyle;
+		return activeStyleMap[selectedText] ?? (selectedText === 'source' ? activeSourceStyle : activeHeadlineStyle);
 	}
 
 	// Currently selected text element + DOM anchor for the floating toolbar.
@@ -741,21 +798,16 @@
 		const end = range.end;
 		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start)) return;
 
-		// Headline-like fields per template
+		// Highlightable fields
 		if (selectedText === 'headline') {
-			if (activeTemplate === 'news') {
-				const current = slides[activeSlide] ?? '';
-				setActiveSlideText(applyHighlight(current, start, end, spec));
-			} else if (activeTemplate === 'article') {
-				const current = articleTextBySlide[activeSlide] ?? '';
-				articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
-			} else if (activeTemplate === 'textCarousel') {
-				const current = textCarouselTextBySlide[activeSlide] ?? '';
-				textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
-			} else if (activeTemplate === 'tweet') {
-				const current = tweetTopTextBySlide[activeSlide] ?? '';
-				tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
-			}
+			const current = slides[activeSlide] ?? '';
+			setActiveSlideText(applyHighlight(current, start, end, spec));
+		} else if (selectedText === 'articleBody') {
+			const current = articleTextBySlide[activeSlide] ?? '';
+			articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+		} else if (selectedText === 'textCarouselBody') {
+			const current = textCarouselTextBySlide[activeSlide] ?? '';
+			textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
 		} else if (selectedText === 'tweetBottomText') {
 			const current = tweetBottomTextBySlide[activeSlide] ?? '';
 			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
@@ -780,8 +832,14 @@
 		selectedTextOverlayId = kind === 'textOverlay' ? (el.dataset.textOverlayId ?? null) : null;
 		toolbarTarget = el;
 		toolbarAnchor = el.getBoundingClientRect();
-		// Switching to the source label drops any stale headline word-range.
-		if (kind !== 'headline') headlineRange = null;
+		// Switching to a non-highlightable field drops any stale word-range selection.
+		if (
+			kind !== 'headline' &&
+			kind !== 'articleBody' &&
+			kind !== 'textCarouselBody' &&
+			!isTweetKind(kind)
+		)
+			headlineRange = null;
 		if (kind !== 'textOverlay') textOverlayRange = null;
 	}
 
@@ -816,10 +874,6 @@
 				const k: TweetKind = selectedText as TweetKind;
 				return { ...cur, [k]: { ...((cur as any)[k] ?? {}), ...patch } };
 			});
-		} else if (selectedText === 'headline') {
-			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
-		} else if (selectedText === 'source') {
-			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
 		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
 			const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
 			setSlideTextOverlays(
@@ -827,6 +881,16 @@
 				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, style: { ...(o.style ?? {}), ...patch } } : o)),
 				activeTemplate,
 			);
+		} else if (selectedText) {
+			const k = selectedText as TextElementKind;
+			stylesByTemplateBySlide = {
+				...stylesByTemplateBySlide,
+				[activeTemplate]: (stylesByTemplateBySlide[activeTemplate] ?? []).map((m, i) => {
+					if (i !== activeSlide) return m;
+					const cur = m ?? {};
+					return { ...cur, [k]: { ...(cur[k] ?? {}), ...patch } };
+				}),
+			};
 		}
 		// Re-anchor on next frame so the toolbar follows size changes.
 		requestAnimationFrame(() => {
@@ -842,10 +906,6 @@
 				const k: TweetKind = selectedText as TweetKind;
 				return { ...cur, [k]: {} };
 			});
-		} else if (selectedText === 'headline') {
-			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? {} : s));
-		} else if (selectedText === 'source') {
-			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? {} : s));
 		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
 			const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
 			setSlideTextOverlays(
@@ -853,6 +913,16 @@
 				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, style: {} } : o)),
 				activeTemplate,
 			);
+		} else if (selectedText) {
+			const k = selectedText as TextElementKind;
+			stylesByTemplateBySlide = {
+				...stylesByTemplateBySlide,
+				[activeTemplate]: (stylesByTemplateBySlide[activeTemplate] ?? []).map((m, i) => {
+					if (i !== activeSlide) return m;
+					const cur = m ?? {};
+					return { ...cur, [k]: {} };
+				}),
+			};
 		}
 	}
 
@@ -956,8 +1026,40 @@
 			// Back-compat: old drafts stored text overlays per slide (treat as News overlays).
 			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: s.slideTextOverlays as TextOverlay[][] };
 		}
-		if (Array.isArray(s.headlineStyles)) headlineStyles = s.headlineStyles;
-		if (Array.isArray(s.sourceStyles)) sourceStyles = s.sourceStyles;
+		// Style persistence (per-template, per-layer). Back-compat: older drafts had
+		// `headlineStyles`/`sourceStyles` arrays, which we treat as News styles.
+		if (s.stylesByTemplateBySlide && typeof s.stylesByTemplateBySlide === 'object') {
+			// Normalize: ensure all templates exist and each entry is an array of per-slide maps.
+			const raw = s.stylesByTemplateBySlide as any;
+			const n = Array.isArray(s.slides) ? s.slides.length : slides.length;
+			const norm = (v: any) =>
+				Array.from({ length: n }, (_, i) => {
+					const m = Array.isArray(v) ? v[i] : null;
+					return m && typeof m === 'object' ? m : {};
+				});
+			stylesByTemplateBySlide = {
+				news: norm(raw.news),
+				tweet: norm(raw.tweet),
+				article: norm(raw.article),
+				textCarousel: norm(raw.textCarousel),
+				imageQuote: norm(raw.imageQuote),
+			} as any;
+		} else {
+			if (Array.isArray((s as any).headlineStyles)) {
+				const hs = (s as any).headlineStyles as TextStyle[];
+				stylesByTemplateBySlide = {
+					...stylesByTemplateBySlide,
+					news: hs.map((st, i) => ({ ...((stylesByTemplateBySlide.news ?? [])[i] ?? {}), headline: st ?? {} })),
+				};
+			}
+			if (Array.isArray((s as any).sourceStyles)) {
+				const ss = (s as any).sourceStyles as TextStyle[];
+				stylesByTemplateBySlide = {
+					...stylesByTemplateBySlide,
+					news: (stylesByTemplateBySlide.news ?? []).map((m, i) => ({ ...(m ?? {}), source: ss[i] ?? {} })),
+				};
+			}
+		}
 		if (Array.isArray(s.tweetStylesBySlide)) tweetStylesBySlide = s.tweetStylesBySlide;
 		if (Array.isArray(s.tweetTopNameBySlide)) tweetTopNameBySlide = s.tweetTopNameBySlide;
 		if (Array.isArray(s.tweetTopHandleBySlide)) tweetTopHandleBySlide = s.tweetTopHandleBySlide;
@@ -1048,8 +1150,7 @@
 			textOffsetsBySlide,
 			slideOverlaysByTemplate,
 			slideTextOverlaysByTemplate,
-			headlineStyles,
-			sourceStyles,
+			stylesByTemplateBySlide,
 			tweetStylesBySlide,
 			tweetTopNameBySlide,
 			tweetTopHandleBySlide,
@@ -1546,11 +1647,19 @@
 		if (slideTemplates.length !== n) {
 			slideTemplates = Array.from({ length: n }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 		}
-		if (headlineStyles.length !== n) {
-			headlineStyles = Array.from({ length: n }, (_, i) => headlineStyles[i] ?? {});
+		// Ensure style maps have entries for each slide per template.
+		// IMPORTANT: only assign when a length mismatch exists (avoid infinite $effect loop).
+		let stylesNeedSync = false;
+		for (const [, arr] of Object.entries(stylesByTemplateBySlide) as [TemplateId, Partial<Record<TextElementKind, TextStyle>>[]][]) {
+			if (arr.length !== n) { stylesNeedSync = true; break; }
 		}
-		if (sourceStyles.length !== n) {
-			sourceStyles = Array.from({ length: n }, (_, i) => sourceStyles[i] ?? {});
+		if (stylesNeedSync) {
+			stylesByTemplateBySlide = (Object.fromEntries(
+				(Object.entries(stylesByTemplateBySlide) as [TemplateId, Partial<Record<TextElementKind, TextStyle>>[]][]).map(([k, arr]) => [
+					k,
+					Array.from({ length: n }, (_, i) => arr[i] ?? {}),
+				]),
+			) as unknown) as Record<TemplateId, Partial<Record<TextElementKind, TextStyle>>[]>;
 		}
 		if (tweetStylesBySlide.length !== n) {
 			tweetStylesBySlide = Array.from({ length: n }, (_, i) => tweetStylesBySlide[i] ?? {});
@@ -2093,6 +2202,16 @@
 							Apply all
 						</button>
 					</div>
+					<div class="pt-6">
+						<button
+							type="button"
+							onclick={resetActiveTemplateContent}
+							class="px-3 py-2 rounded-xl bg-white/2 border border-white/6 text-[10px] font-mono text-white/55 hover:bg-white/4 transition-colors"
+							title="Reset this template to its default demo content"
+						>
+							Reset
+						</button>
+					</div>
 				</div>
 
 				<!-- Slide tabs -->
@@ -2606,7 +2725,11 @@
 					onTextOffsetChange={(kind, next) => setTextOffset(activeSlide, String(kind), next)}
 					scale={previewScale}
 					interactive={true}
-					headlineStyle={activeHeadlineStyle}
+					headlineStyle={activeStyleMap.articleBody ?? activeHeadlineStyle}
+					articleStyles={{
+						articleBody: activeStyleMap.articleBody ?? {},
+						articleSwipeText: activeStyleMap.articleSwipeText ?? {},
+					}}
 					selectedText={selectedText}
 					onTextChange={(t) => articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? t : x)}
 					onTextSelect={onTextSelect}
@@ -2677,7 +2800,12 @@
 					onHandleChange={(v) => textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
 					scale={previewScale}
 					interactive={true}
-					headlineStyle={activeHeadlineStyle}
+					headlineStyle={activeStyleMap.textCarouselBody ?? activeHeadlineStyle}
+					textCarouselStyles={{
+						textCarouselName: activeStyleMap.textCarouselName ?? {},
+						textCarouselHandle: activeStyleMap.textCarouselHandle ?? {},
+						textCarouselBody: activeStyleMap.textCarouselBody ?? {},
+					}}
 					selectedText={selectedText}
 					onTextChange={(t) => textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? t : x)}
 					onTextSelect={onTextSelect}
@@ -3362,6 +3490,8 @@
 	style={getActiveStyleForSelection()}
 	autoFontSize={selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined}
 	supportsHighlights={(selectedText === 'headline' ||
+		selectedText === 'articleBody' ||
+		selectedText === 'textCarouselBody' ||
 		selectedText === 'tweetTopName' ||
 		selectedText === 'tweetTopHandle' ||
 		selectedText === 'tweetTopText' ||

@@ -39,7 +39,8 @@
 		return `background-image: url('${img}');` +
 			`background-size: cover; background-position: center;` +
 			`-webkit-background-clip: text; -webkit-text-fill-color: transparent;` +
-			`background-clip: text; display: inline;`;
+			`background-clip: text; display: inline;` +
+			`font-weight: inherit; font-style: inherit; text-decoration: inherit;`;
 	}
 </script>
 
@@ -50,9 +51,9 @@
 				{#if seg.patternImage}
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
-					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">{seg.text}</span>
+					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{:else}
-					<span style="color: {seg.color};">{seg.text}</span>
+					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
 			{:else}
 				{seg.text}
@@ -66,9 +67,9 @@
 				{#if seg.patternImage}
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
-					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">{seg.text}</span>
+					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{:else}
-					<span style="color: {seg.color};">{seg.text}</span>
+					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
 			{:else}
 				{seg.text}
@@ -82,9 +83,9 @@
 				{#if seg.patternImage}
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
-					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">{seg.text}</span>
+					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{:else}
-					<span style="color: {seg.color};">{seg.text}</span>
+					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
 			{:else}
 				{seg.text}

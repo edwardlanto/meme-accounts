@@ -22,6 +22,13 @@
 		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
 		onHeadlineRangeSelect?: (start: number, end: number) => void;
 		headlineStyle?: TextStyle;
+		/** Optional per-field style overrides (font/size/color/etc). */
+		textCarouselStyles?: Partial<Record<
+			| 'textCarouselName'
+			| 'textCarouselHandle'
+			| 'textCarouselBody',
+			TextStyle
+		>>;
 		showToolbar?: boolean;
 	}
 
@@ -44,6 +51,7 @@
 		onTextSelect,
 		onHeadlineRangeSelect,
 		headlineStyle = {},
+		textCarouselStyles = {},
 		showToolbar = false,
 	}: Props = $props();
 
@@ -65,6 +73,30 @@
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		return bits.join(' ');
 	});
+
+	function styleCss(s: TextStyle) {
+		const bits: string[] = [];
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Display', sans-serif;`);
+		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
+		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
+		if (s.italic) bits.push('font-style: italic;');
+		if (s.underline) bits.push('text-decoration: underline;');
+		if (s.color) bits.push(`color: ${s.color};`);
+		if (s.bgColor) {
+			bits.push(`background: ${s.bgColor};`);
+			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
+			bits.push('padding: 0.08em 0.18em;');
+			bits.push('border-radius: 0.18em;');
+		}
+		if (s.align) bits.push(`text-align: ${s.align};`);
+		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
+		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
+		return bits.join(' ');
+	}
+
+	const nameCss = $derived(styleCss(textCarouselStyles.textCarouselName ?? {}));
+	const handleCss = $derived(styleCss(textCarouselStyles.textCarouselHandle ?? {}));
+	const bodyCss = $derived(styleCss(textCarouselStyles.textCarouselBody ?? {}));
 
 	const W = 1080;
 	const H = 1350;
@@ -139,9 +171,10 @@
 					{interactive}
 					rows={1}
 					{showToolbar}
+					toolbarKind="textCarouselName"
 					ariaLabel="Name"
-					fontFamily={headlineStyle.fontFamily}
-					fontSize={46}
+					fontFamily={textCarouselStyles.textCarouselName?.fontFamily ?? headlineStyle.fontFamily}
+					fontSize={textCarouselStyles.textCarouselName?.fontSize ?? 46}
 					onTextChange={onNameChange}
 					onTextSelect={onTextSelect}
 				>
@@ -153,6 +186,7 @@
 							color: {baseText};
 							line-height: 1.1;
 							letter-spacing: -0.5px;
+							{nameCss}
 						">{name}</p>
 					{/snippet}
 				</CanvasMarkupTextBlock>
@@ -162,9 +196,10 @@
 					{interactive}
 					rows={1}
 					{showToolbar}
+					toolbarKind="textCarouselHandle"
 					ariaLabel="Handle"
-					fontFamily={headlineStyle.fontFamily}
-					fontSize={36}
+					fontFamily={textCarouselStyles.textCarouselHandle?.fontFamily ?? headlineStyle.fontFamily}
+					fontSize={textCarouselStyles.textCarouselHandle?.fontSize ?? 36}
 					onTextChange={onHandleChange}
 					onTextSelect={onTextSelect}
 				>
@@ -176,6 +211,7 @@
 							font-style: italic;
 							color: {baseMuted};
 							letter-spacing: -0.2px;
+							{handleCss}
 						">{handle}</p>
 					{/snippet}
 				</CanvasMarkupTextBlock>
@@ -187,11 +223,12 @@
 			<CanvasMarkupTextBlock
 				value={text}
 				{interactive}
-				selected={selectedText === 'headline'}
+				selected={selectedText === 'textCarouselBody'}
+				toolbarKind="textCarouselBody"
 				rows={10}
 				ariaLabel="Carousel text"
-				fontFamily={headlineStyle.fontFamily}
-				fontSize={headlineStyle.fontSize}
+				fontFamily={textCarouselStyles.textCarouselBody?.fontFamily ?? headlineStyle.fontFamily}
+				fontSize={textCarouselStyles.textCarouselBody?.fontSize ?? headlineStyle.fontSize}
 				{showToolbar}
 				onTextChange={onTextChange}
 				onTextSelect={onTextSelect}
@@ -203,7 +240,7 @@
 							<HighlightedText
 								as="p"
 								text={para}
-								style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: {baseText}; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss}"
+								style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: {baseText}; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss} {bodyCss}"
 							/>
 						{/each}
 					</div>

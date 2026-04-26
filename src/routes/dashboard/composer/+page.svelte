@@ -86,6 +86,53 @@ function blankImageQuote(): ImageQuoteData {
 		textColor: '#FFFFFF',
 	};
 }
+
+// Reset-to-default (template demo defaults, not empty blanks)
+function defaultTweet(): TweetData {
+	return {
+		topName: 'Chef 👨‍🍳',
+		topHandle: '@chefsevenn',
+		topAvatar: '',
+		topVerified: true,
+		topText: 'Ketchup or mayo or mustard?',
+		topImage: '',
+		bottomName: 'Mo Mohler',
+		bottomHandle: '@MoMohler',
+		bottomAvatar: '',
+		bottomVerified: true,
+		bottomText: '3 straight misses chef. These appear to be French fries.',
+	};
+}
+function defaultText(): TextData {
+	return {
+		name: 'Captains of industry',
+		handle: '@captainsofindustryy',
+		avatar: '',
+		ringColor: '#c9b97a',
+		bgColor: '#ffffff',
+		text: 'When your home is titled in your name, it becomes a legal target.\n\nCourts, creditors, and attorneys see it as your asset...',
+		showSwipe: true,
+	};
+}
+function defaultArticle(): ArticleData {
+	return {
+		text: "Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
+		image: '',
+		accentColor: '#3ecf8e',
+		bgColor: '#ffffff',
+		logoSrc: '',
+		logoRingColor: '#c9b97a',
+		showSwipe: true,
+		swipeText: '«« Swipe',
+	};
+}
+function defaultNews(): NewsData {
+	return blankNews();
+}
+function defaultImageQuote(): ImageQuoteData {
+	return blankImageQuote();
+}
+
 	function blankSlide(template: TemplateType = 'tweet', inherit?: Slide): Slide {
 		return {
 			id: crypto.randomUUID(), template,
@@ -128,6 +175,30 @@ function blankImageQuote(): ImageQuoteData {
 	function addSlide() {
 		slides = [...slides, blankSlide(s.template, s)];
 		activeIdx = slides.length - 1;
+	}
+
+	function resetActiveTemplateToDefaults() {
+		const cur = slides[activeIdx];
+		if (!cur) return;
+		switch (cur.template) {
+			case 'tweet':
+				cur.tweet = defaultTweet();
+				break;
+			case 'text':
+				cur.text = defaultText();
+				break;
+			case 'article':
+				cur.article = defaultArticle();
+				break;
+			case 'news':
+				cur.news = defaultNews();
+				break;
+			case 'imageQuote':
+				cur.imageQuote = defaultImageQuote();
+				break;
+		}
+		// Trigger reactive update for nested mutation in runes.
+		slides = slides.map((x, i) => (i === activeIdx ? cur : x));
 	}
 	function duplicateSlide() {
 		const src = slides[activeIdx];
@@ -387,7 +458,18 @@ function blankImageQuote(): ImageQuoteData {
 
 	<!-- ── Template selector ────────────────────────────────────────────────── -->
 	<div class="flex-shrink-0 px-3 pt-3 pb-3 border-b border-white/[0.04]">
-		<p class="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-2">Slide {activeIdx+1} template</p>
+		<div class="flex items-center justify-between gap-2 mb-2">
+			<p class="text-[9px] font-mono text-white/25 uppercase tracking-widest">Slide {activeIdx+1} template</p>
+			<button
+				type="button"
+				onclick={resetActiveTemplateToDefaults}
+				class="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-mono text-white/45 hover:text-white/70 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] transition-colors"
+				title="Reset current template to defaults"
+			>
+				<RefreshCw size={12} />
+				Reset
+			</button>
+		</div>
 		<div class="grid grid-cols-5 gap-1.5">
 			{#each TEMPLATES as tmpl}
 				{@const active = s.template === tmpl.id}
@@ -408,7 +490,10 @@ function blankImageQuote(): ImageQuoteData {
 	<!-- ════════════════════════ TWEET FORM -->
 	{#if s.template === 'tweet'}
 		<div>
-			<p class="text-[10px] font-mono mb-3 flex items-center gap-1.5" style="color:rgba(56,189,248,0.7);"><span class="w-2 h-2 rounded-full bg-sky-400 inline-block"></span>Original tweet</p>
+			<div class="flex items-center justify-between gap-2 mb-3">
+				<p class="text-[10px] font-mono flex items-center gap-1.5" style="color:rgba(56,189,248,0.7);"><span class="w-2 h-2 rounded-full bg-sky-400 inline-block"></span>Original tweet</p>
+				<button type="button" onclick={resetActiveTemplateToDefaults} class="text-[10px] font-mono text-white/30 hover:text-white/60 transition-colors">Reset template</button>
+			</div>
 			<div class="flex items-center gap-3 mb-3">
 				<div class="w-9 h-9 rounded-full overflow-hidden bg-white/[0.06] flex-shrink-0 flex items-center justify-center">
 					{#if s.tweet.topAvatar}<img src={s.tweet.topAvatar} alt="" class="w-full h-full object-cover" />{:else}<span class="text-[10px] font-bold text-white/30">{s.tweet.topName.replace(/[^\w\s]/g,'').trim()[0]?.toUpperCase()??'?'}</span>{/if}
@@ -449,7 +534,10 @@ function blankImageQuote(): ImageQuoteData {
 	<!-- ════════════════════════ TEXT FORM -->
 	{:else if s.template === 'text'}
 		<div>
-			<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider mb-3">Profile</p>
+			<div class="flex items-center justify-between gap-2 mb-3">
+				<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Profile</p>
+				<button type="button" onclick={resetActiveTemplateToDefaults} class="text-[10px] font-mono text-white/30 hover:text-white/60 transition-colors">Reset template</button>
+			</div>
 			<div class="flex items-center gap-3 mb-3">
 				<div class="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center" style="background:{s.text.bgColor};outline:2px solid {s.text.ringColor};outline-offset:2px;">
 					{#if s.text.avatar}<img src={s.text.avatar} alt="" class="w-full h-full object-cover"/>{:else}<span class="text-[10px] font-bold text-white">{s.text.name.replace(/[^\w\s]/g,'').trim().split(/\s+/).map((w:string)=>w[0]?.toUpperCase()??'').slice(0,2).join('')||'?'}</span>{/if}
@@ -478,7 +566,13 @@ function blankImageQuote(): ImageQuoteData {
 	<!-- ════════════════════════ ARTICLE FORM -->
 	{:else if s.template === 'article'}
 		<div>
-			<div class="flex items-center justify-between mb-2"><p class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Text</p><span class="text-[9px] font-mono text-white/20">*word* = accent</span></div>
+			<div class="flex items-center justify-between mb-2">
+				<div class="flex items-center gap-2">
+					<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider">Text</p>
+					<span class="text-[9px] font-mono text-white/20">*word* = accent</span>
+				</div>
+				<button type="button" onclick={resetActiveTemplateToDefaults} class="text-[10px] font-mono text-white/30 hover:text-white/60 transition-colors">Reset template</button>
+			</div>
 			<textarea bind:value={slides[activeIdx].article.text} rows={7} placeholder={"Text here…\n\nBlank line = paragraph.\n*Asterisks* = accent color."} class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-3 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/40 transition-colors resize-none leading-relaxed"></textarea>
 		</div>
 		<div>
@@ -585,6 +679,13 @@ function blankImageQuote(): ImageQuoteData {
 
 	<!-- ════════════════════════ NEWS FORM -->
 	{:else if s.template === 'news'}
+		<div class="flex items-center justify-between gap-2">
+			<div class="flex items-center gap-2">
+				<p class="text-[10px] font-mono text-white/30 uppercase tracking-wider">News</p>
+				<span class="text-[9px] font-mono text-white/20">fetch + style</span>
+			</div>
+			<button type="button" onclick={resetActiveTemplateToDefaults} class="text-[10px] font-mono text-white/30 hover:text-white/60 transition-colors">Reset template</button>
+		</div>
 
 		<!-- AI Fetch -->
 		<div>

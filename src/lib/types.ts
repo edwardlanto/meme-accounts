@@ -53,6 +53,14 @@ export type TextElementKind =
 	| 'tweetBottomName'
 	| 'tweetBottomHandle'
 	| 'tweetBottomText'
+	| 'tweetReplyCount'
+	| 'tweetRepostCount'
+	| 'tweetLikeCount'
+	| 'textCarouselName'
+	| 'textCarouselHandle'
+	| 'textCarouselBody'
+	| 'articleBody'
+	| 'articleSwipeText'
 	| 'imageQuoteFooterLeft'
 	| 'imageQuoteFooterRight';
 
