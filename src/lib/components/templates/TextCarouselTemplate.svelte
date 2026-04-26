@@ -138,7 +138,7 @@
 					value={name}
 					{interactive}
 					rows={1}
-					showToolbar={false}
+					{showToolbar}
 					ariaLabel="Name"
 					fontFamily={headlineStyle.fontFamily}
 					fontSize={46}
@@ -161,7 +161,7 @@
 					value={handle}
 					{interactive}
 					rows={1}
-					showToolbar={false}
+					{showToolbar}
 					ariaLabel="Handle"
 					fontFamily={headlineStyle.fontFamily}
 					fontSize={36}

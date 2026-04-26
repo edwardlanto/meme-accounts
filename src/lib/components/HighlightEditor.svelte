@@ -90,6 +90,32 @@
 		const parsed = parseHighlightMarkup(raw, defaultColor);
 		const segs = segmentText(parsed);
 		editorEl.innerHTML = '';
+
+		const appendTextWithBreaks = (parent: HTMLElement, text: string) => {
+			const parts = text.split('\n');
+			for (let i = 0; i < parts.length; i++) {
+				if (parts[i]) parent.appendChild(document.createTextNode(parts[i]));
+				if (i < parts.length - 1) parent.appendChild(document.createElement('br'));
+			}
+		};
+
+		const appendHighlightedWithBreaks = (
+			baseSpan: HTMLSpanElement,
+			text: string,
+			apply: (span: HTMLSpanElement) => void
+		) => {
+			const parts = text.split('\n');
+			for (let i = 0; i < parts.length; i++) {
+				if (parts[i]) {
+					const span = baseSpan.cloneNode(false) as HTMLSpanElement;
+					apply(span);
+					span.textContent = parts[i];
+					editorEl!.appendChild(span);
+				}
+				if (i < parts.length - 1) editorEl!.appendChild(document.createElement('br'));
+			}
+		};
+
 		if (segs.length === 0) {
 			// Keep a zero-width br so the caret has somewhere to sit.
 			editorEl.appendChild(document.createElement('br'));
@@ -97,7 +123,7 @@
 		}
 		for (const s of segs) {
 			if (!s.highlighted) {
-				editorEl.appendChild(document.createTextNode(s.text));
+				appendTextWithBreaks(editorEl, s.text);
 				continue;
 			}
 			const span = document.createElement('span');
@@ -116,24 +142,34 @@
 				span.setAttribute('data-hl-kind', 'default');
 			}
 			// Visual style (inside the editor — NOT what the template renders).
-			applySpanVisualStyle(span, s);
-			span.textContent = s.text;
-			editorEl.appendChild(span);
+			appendHighlightedWithBreaks(span, s.text, (next) => applySpanVisualStyle(next, s));
 		}
 	}
 
 	function applySpanVisualStyle(span: HTMLSpanElement, s: ReturnType<typeof segmentText>[number]) {
-		span.style.padding = '0 0.15em';
-		span.style.borderRadius = '3px';
-		span.style.color = '#000';
-		if (s.pattern) {
-			span.style.background = s.patternImage
-				? `url("${s.patternImage}") center/cover`
-				: '#F59E0B';
+		// Editor-only visual: make highlighted segments reflect THEIR highlight spec,
+		// not the editor wrapper color (templates may set red while editing).
+		span.style.padding = '0';
+		span.style.borderRadius = '0';
+
+		if (s.pattern && s.patternImage) {
+			span.style.backgroundImage = `url("${s.patternImage}")`;
+			span.style.backgroundSize = 'cover';
+			span.style.backgroundPosition = 'center';
+			(span.style as any).webkitBackgroundClip = 'text';
+			(span.style as any).webkitTextFillColor = 'transparent';
+			span.style.backgroundClip = 'text';
+			span.style.color = 'transparent';
 		} else if (s.gradientFrom && s.gradientTo) {
-			span.style.background = `linear-gradient(90deg, ${s.gradientFrom}, ${s.gradientTo})`;
+			span.style.backgroundImage = `linear-gradient(90deg, ${s.gradientFrom}, ${s.gradientTo})`;
+			(span.style as any).webkitBackgroundClip = 'text';
+			(span.style as any).webkitTextFillColor = 'transparent';
+			span.style.backgroundClip = 'text';
+			span.style.color = 'transparent';
 		} else {
-			span.style.background = s.color ?? '#F59E0B';
+			// Regular color highlight: show colored text (matches template rendering).
+			span.style.background = 'transparent';
+			span.style.color = s.color ?? defaultColor;
 		}
 	}
 
@@ -425,6 +461,7 @@
 			style="
 				/* Use line-based min-height so large font sizes don't create huge empty gaps. */
 				min-height: {minHeight ?? `${Math.max(1, rows)}lh`};
+				color: currentColor;
 				line-height: 1.12;
 				padding: 0;
 				{fontFamily ? `font-family: ${fontFamily};` : ''}

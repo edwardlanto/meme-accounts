@@ -192,7 +192,7 @@ let {
 							onTextSelect={onTextSelect}
 							onHeadlineRangeSelect={onHeadlineRangeSelect}
 							rows={1}
-							showToolbar={false}
+							{showToolbar}
 							ariaLabel="Top name"
 							fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
 							fontSize={tweetStyles.tweetTopName?.fontSize ?? 44}
@@ -218,7 +218,7 @@ let {
 						onTextSelect={onTextSelect}
 						onHeadlineRangeSelect={onHeadlineRangeSelect}
 						rows={1}
-						showToolbar={false}
+						{showToolbar}
 						ariaLabel="Top handle"
 						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
 						fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 36}
@@ -232,30 +232,33 @@ let {
 			</div>
 
 			<!-- Tweet text -->
-			<CanvasMarkupTextBlock
-				value={topText}
-				interactive={topEditable}
-				defaultColor={tweetHighlightDefault}
-				toolbarKind="tweetTopText"
-				selected={selectedText === 'tweetTopText'}
-				onTextSelect={onTextSelect}
-				onHeadlineRangeSelect={onHeadlineRangeSelect}
-				rows={5}
-				{showToolbar}
-				ariaLabel="Tweet text"
-				fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
-				fontSize={tweetStyles.tweetTopText?.fontSize ?? 58}
-				onTextChange={onTopTextChange}
-			>
-				{#snippet display()}
-					<HighlightedText
-						as="p"
-						text={topText}
-						defaultColor={tweetHighlightDefault}
-						style="font-size:58px; font-weight:400; color:{textPrimary}; line-height:1.35; margin:0 0 44px; letter-spacing:-0.3px; word-break:break-word; flex-shrink: 0; {topTextCss}"
-					/>
-				{/snippet}
-			</CanvasMarkupTextBlock>
+			<div style="margin: 0 0 44px;">
+				<CanvasMarkupTextBlock
+					value={topText}
+					interactive={topEditable}
+					defaultColor={tweetHighlightDefault}
+					toolbarKind="tweetTopText"
+					selected={selectedText === 'tweetTopText'}
+					onTextSelect={onTextSelect}
+					onHeadlineRangeSelect={onHeadlineRangeSelect}
+					rows={1}
+					minHeight="0px"
+					{showToolbar}
+					ariaLabel="Tweet text"
+					fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
+					fontSize={tweetStyles.tweetTopText?.fontSize ?? 58}
+					onTextChange={onTopTextChange}
+				>
+					{#snippet display()}
+						<HighlightedText
+							as="p"
+							text={topText}
+							defaultColor={tweetHighlightDefault}
+							style="font-size:58px; font-weight:400; color:{textPrimary}; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word; flex-shrink: 0; {topTextCss}"
+						/>
+					{/snippet}
+				</CanvasMarkupTextBlock>
+			</div>
 
 			<!-- Attached image -->
 			{#if topImage}
@@ -321,7 +324,7 @@ let {
 							onTextSelect={onTextSelect}
 							onHeadlineRangeSelect={onHeadlineRangeSelect}
 							rows={1}
-							showToolbar={false}
+							{showToolbar}
 							ariaLabel="Bottom name"
 							fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
 							fontSize={tweetStyles.tweetBottomName?.fontSize ?? 42}
@@ -347,7 +350,7 @@ let {
 						onTextSelect={onTextSelect}
 						onHeadlineRangeSelect={onHeadlineRangeSelect}
 						rows={1}
-						showToolbar={false}
+						{showToolbar}
 						ariaLabel="Bottom handle"
 						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
 						fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 34}
@@ -369,7 +372,8 @@ let {
 				selected={selectedText === 'tweetBottomText'}
 				onTextSelect={onTextSelect}
 				onHeadlineRangeSelect={onHeadlineRangeSelect}
-				rows={5}
+				rows={1}
+				minHeight="0px"
 				{showToolbar}
 				ariaLabel="Reply text"
 				fontFamily={headlineStyle.fontFamily ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}

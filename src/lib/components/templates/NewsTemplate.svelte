@@ -1039,7 +1039,7 @@
 		<!-- Gradient overlay — height/strength user-controlled. z=30 so it sits
 		     ABOVE the subject cutout (z=25) but BELOW the text (z=40), giving
 		     the text its legibility shelf even when a subject is cut out. -->
-		<div style="position: absolute; inset: 0; z-index: 30; pointer-events: none;
+		<div style="position: absolute; inset: 0; z-index: 36; pointer-events: none;
 			background: {shadowGradient};"></div>
 
 		<!-- ── Grid overlay (tiled texture) ───────────────────────────────── -->
@@ -1581,7 +1581,7 @@
 		{#if showSubjectCutout && subjectCutout}
 			<!-- Cutout must pan + zoom identically to the background (it was
 			     derived from the same pixels). Mirror the zoom/pan math above. -->
-			<!-- Above circles (z=31/32) and gradient (z=30), below text (z=40). -->
+			<!-- Above circles (z=31/32), below shadow shelf (z=36) and text (z=40). -->
 			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 34; pointer-events: none;">
 				{#if bgIsShrunk}
 					<img

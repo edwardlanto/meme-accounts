@@ -16,6 +16,8 @@
 		selected?: boolean;
 		toolbarKind?: TextElementKind;
 		rows?: number;
+		/** Override editor min-height (useful for tight, content-hugging boxes). */
+		minHeight?: string;
 		uppercase?: boolean;
 		showToolbar?: boolean;
 		fontFamily?: string;
@@ -34,6 +36,7 @@
 		selected = false,
 		toolbarKind = 'headline',
 		rows = 6,
+		minHeight,
 		uppercase = false,
 		showToolbar = false,
 		fontFamily,
@@ -50,6 +53,7 @@
 	let editing = $state(false);
 	let displayRoot = $state<HTMLElement | null>(null);
 	let editableEl = $state<HTMLElement | null>(null);
+	let editTextColor = $state<string | null>(null);
 
 	const expectedPlain = $derived(parseHighlightMarkup(value, defaultColor).plain);
 
@@ -124,6 +128,13 @@
 	function startEdit(e: MouseEvent) {
 		if (!canEdit) return;
 		e.stopPropagation();
+		// Match the visible template text color while editing (each template is independent).
+		// This avoids inheriting an unrelated outer color (e.g. white UI chrome).
+		try {
+			if (displayRoot) editTextColor = getComputedStyle(displayRoot).color;
+		} catch {
+			editTextColor = null;
+		}
 		editing = true;
 		setTimeout(() => {
 			const ce = editableEl?.querySelector<HTMLElement>('[contenteditable="true"]');
@@ -170,7 +181,7 @@
 		onkeydown={onEditKeydown}
 		onclick={(e) => e.stopPropagation()}
 		onmousedown={(e) => e.stopPropagation()}
-		style="margin: 0; padding: 0; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.55); border-radius: 4px; cursor: text;"
+		style="margin: 0; padding: 0; color: {editTextColor ?? 'inherit'}; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55); border-radius: 4px; cursor: text;"
 	>
 		<HighlightEditor
 			value={value}
@@ -181,6 +192,7 @@
 			{fontSize}
 			{showToolbar}
 			{ariaLabel}
+			{minHeight}
 			onChange={(v) => onTextChange?.(v)}
 			onBlur={finishEdit}
 			onSelectionChange={(has, r) => {

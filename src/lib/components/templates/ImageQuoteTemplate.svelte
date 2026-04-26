@@ -203,7 +203,7 @@
 							value={footerLeft}
 							{interactive}
 							rows={1}
-							showToolbar={false}
+							{showToolbar}
 							toolbarKind="imageQuoteFooterLeft"
 							selected={selectedText === 'imageQuoteFooterLeft'}
 							ariaLabel="Footer left"
@@ -233,7 +233,7 @@
 							value={footerRight}
 							{interactive}
 							rows={1}
-							showToolbar={false}
+							{showToolbar}
 							toolbarKind="imageQuoteFooterRight"
 							selected={selectedText === 'imageQuoteFooterRight'}
 							ariaLabel="Footer right"

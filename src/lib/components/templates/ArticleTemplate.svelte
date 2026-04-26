@@ -259,7 +259,7 @@
 						value={swipeText}
 						{interactive}
 						rows={1}
-						showToolbar={false}
+						{showToolbar}
 						ariaLabel="Swipe text"
 						fontFamily={headlineStyle.fontFamily}
 						fontSize={28}
