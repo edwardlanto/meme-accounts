@@ -491,7 +491,7 @@
 			x: 80,
 			y: 260,
 			w: 520,
-			h: 160,
+			h: 64,
 			style: { color: '#FFFFFF', fontSize: 42, fontWeight: 800, align: 'left', lineHeight: 1.1 },
 		};
 		setSlideTextOverlays(idx, [...current, next], activeTemplate);
@@ -2578,8 +2578,8 @@
 					textOverlays={activeTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
-					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
 			{:else if activeTemplate === 'article'}
 				<!-- Shared text overlay layer for non-News templates -->
@@ -2592,8 +2592,8 @@
 					textOverlays={activeTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
-					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
 				<ArticleTemplate
 					templateTheme={uiTheme}
@@ -2622,8 +2622,8 @@
 					textOverlays={activeTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
-					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
 				<!-- Tweet: minimal integration for now (top tweet text = slide text). -->
 				<TweetTemplate
@@ -2664,8 +2664,8 @@
 					textOverlays={activeTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
-					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
 				<TextCarouselTemplate
 					templateTheme={uiTheme}
@@ -2694,8 +2694,8 @@
 					textOverlays={activeTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
-					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
 				<NewsTemplate
 					templateTheme={uiTheme}

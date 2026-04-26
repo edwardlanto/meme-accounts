@@ -175,7 +175,8 @@
 					position: absolute;
 					left: {t.x}px; top: {t.y}px;
 					width: {Math.max(40, Number(t.w) || 0)}px;
-					height: {Math.max(24, Number(t.h) || 0)}px;
+					/* Height should hug content; old drafts may have large h values. */
+					min-height: {Math.max(24, Number(t.h) || 0)}px;
 					max-width: 820px;
 					z-index: 60;
 					touch-action: none;
@@ -184,18 +185,18 @@
 				"
 				data-text-selectable="textOverlay"
 				data-text-overlay-id={t.id}
-				onpointerdown={(e) => down(e, t.id)}
-				onpointermove={(e) => move(e, t.id)}
+				onpointerdown={(e: PointerEvent) => down(e, t.id)}
+				onpointermove={(e: PointerEvent) => move(e, t.id)}
 				onpointerup={up}
 				onpointercancel={up}
-				ondblclick={(e) => startEdit(e, t.id)}
+				ondblclick={(e: MouseEvent) => startEdit(e, t.id)}
 				role="presentation"
 			>
 				{#if isEditing}
 					<div
 						style="
-							position: absolute; inset: 0;
-							padding: 8px;
+							/* Let the editor define height so the box stays tight. */
+							padding: 6px 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
 							background: rgba(0,0,0,0.14);
@@ -207,13 +208,15 @@
 							text-align: {css.align ?? 'left'};
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							width: 100%;
 						"
 						onclick={(e) => e.stopPropagation()}
 						role="presentation"
 					>
 						<HighlightEditor
 							value={t.text}
-							rows={3}
+							rows={1}
+							minHeight="0px"
 							showToolbar={false}
 							defaultColor={highlightColor}
 							fontFamily={css.fontFamily}
@@ -240,13 +243,14 @@
 					<div
 						ondblclick={(e) => startEdit(e, t.id)}
 						style="
-							position: absolute; inset: 0;
-							padding: 8px;
+							padding: 6px 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
-							background: {isSelected ? 'color-mix(in oklab, var(--app-selection-bg) 55%, rgba(0,0,0,0.10))' : 'rgba(0,0,0,0.10)'};
-							border: 1px dashed {isSelected ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.25)'};
-							box-shadow: {isSelected ? '0 0 0 2px color-mix(in oklab, var(--app-selection-bg) 55%, transparent)' : 'none'};
+							background: {isSelected ? 'color-mix(in oklab, var(--app-selection-bg) 42%, rgba(0,0,0,0.10))' : 'rgba(0,0,0,0.10)'};
+							border: 1px dashed rgba(255,255,255,0.25);
+							/* Use outline so selection styling never shifts layout/position. */
+							outline: {isSelected ? '2px solid color-mix(in oklab, var(--app-selection-bg) 70%, rgba(255,255,255,0.18))' : '2px solid transparent'};
+							outline-offset: 0px;
 							color: {css.color ?? '#FFFFFF'};
 							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;
@@ -254,10 +258,10 @@
 							text-align: {css.align ?? 'left'};
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							width: 100%;
 							overflow: hidden;
 							user-select: none;
-							display: flex;
-							align-items: center;
+							white-space: pre-wrap;
 						"
 					>
 						{@html segmentText(parseHighlightMarkup(t.text, highlightColor)).map((seg) => {

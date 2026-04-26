@@ -18,6 +18,8 @@
 		/** Default highlight color used by parseHighlightMarkup (for [[WORD]] without explicit color). */
 		defaultColor?: string;
 		rows?: number;
+		/** Override min-height CSS (e.g. '0px' to remove extra gap). */
+		minHeight?: string;
 		/** Font used for the editor content. */
 		fontFamily?: string;
 		fontSize?: number;
@@ -39,6 +41,7 @@
 		placeholder = '',
 		defaultColor = '#F59E0B',
 		rows = 4,
+		minHeight,
 		fontFamily,
 		fontSize,
 		uppercase = false,
@@ -421,7 +424,7 @@
 			class="hl-editor w-full outline-none whitespace-pre-wrap break-words"
 			style="
 				/* Use line-based min-height so large font sizes don't create huge empty gaps. */
-				min-height: {Math.max(1, rows)}lh;
+				min-height: {minHeight ?? `${Math.max(1, rows)}lh`};
 				line-height: 1.12;
 				padding: 0;
 				{fontFamily ? `font-family: ${fontFamily};` : ''}
