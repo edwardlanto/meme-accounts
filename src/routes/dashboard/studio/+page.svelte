@@ -7,7 +7,7 @@
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
-	// ImageQuoteTemplate removed from public templates
+	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import TextOverlayLayer from '$lib/components/TextOverlayLayer.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
@@ -87,13 +87,14 @@
 	let articleSnippet = $state(''); // full article text for variants call
 
 	// ── Per-slide template selection ──────────────────────────────────────
-	type TemplateId = 'news' | 'tweet' | 'article' | 'textCarousel';
+	type TemplateId = 'news' | 'tweet' | 'article' | 'textCarousel' | 'imageQuote';
 	type TemplateDef = { id: TemplateId; label: string };
 	const TEMPLATES: TemplateDef[] = [
 		{ id: 'news', label: 'News' },
 		{ id: 'tweet', label: 'Tweet' },
 		{ id: 'article', label: 'Article' },
 		{ id: 'textCarousel', label: 'Text carousel' },
+		{ id: 'imageQuote', label: 'Image quote' },
 	];
 	let slideTemplates = $state<TemplateId[]>(['news']);
 	let lastTemplateUsed = $state<TemplateId>('news');
@@ -119,6 +120,8 @@
 			article: 'article',
 			text: 'textCarousel',
 			textCarousel: 'textCarousel',
+			'image-quote': 'imageQuote',
+			imageQuote: 'imageQuote',
 		};
 		// Unknown / removed templates should fall back safely to News.
 		const next = map[raw] ?? (raw ? 'news' : undefined);

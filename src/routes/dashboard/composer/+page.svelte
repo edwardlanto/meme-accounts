@@ -19,7 +19,7 @@
 	} from 'lucide-svelte';
 
 	// ── Types ──────────────────────────────────────────────────────────────────
-	type TemplateType = 'tweet' | 'text' | 'article' | 'news';
+	type TemplateType = 'tweet' | 'text' | 'article' | 'news' | 'imageQuote';
 
 	interface TweetData {
 		topName: string; topHandle: string; topAvatar: string;
@@ -49,9 +49,18 @@
 		overlays: Overlay[];
 		generatingImage: boolean; generatingCircle: boolean;
 	}
+	interface ImageQuoteData {
+		image: string;
+		text: string;
+		footerLeft: string;
+		footerRight: string;
+		topRatio: number;
+		bgColor: string;
+		textColor: string;
+	}
 	interface Slide {
 		id: string; template: TemplateType;
-		tweet: TweetData; text: TextData; article: ArticleData; news: NewsData;
+		tweet: TweetData; text: TextData; article: ArticleData; news: NewsData; imageQuote: ImageQuoteData;
 	}
 
 	function blankTweet(): TweetData {
@@ -66,6 +75,17 @@
 	function blankNews(): NewsData {
 		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:50, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
 	}
+function blankImageQuote(): ImageQuoteData {
+	return {
+		image: '/templates/image-quote/demo-bg.png',
+		text: 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
+		footerLeft: '$',
+		footerRight: 'WEALTHY SETUP',
+		topRatio: 0.56,
+		bgColor: '#000000',
+		textColor: '#FFFFFF',
+	};
+}
 	function blankSlide(template: TemplateType = 'tweet', inherit?: Slide): Slide {
 		return {
 			id: crypto.randomUUID(), template,
@@ -73,7 +93,7 @@
 			text:  inherit ? { ...inherit.text,  text:'' } : blankText(),
 			article: inherit ? { ...inherit.article, text:'', image:'' } : blankArticle(),
 			news: inherit ? { ...inherit.news, text:'', backgroundImage:'', backgroundVideo:'', overlays:[], generatingImage:false, generatingCircle:false } : blankNews(),
-			// imageQuote template removed
+		imageQuote: inherit ? { ...inherit.imageQuote } : blankImageQuote(),
 		};
 	}
 
@@ -87,7 +107,7 @@
 	let slides = $state<Slide[]>([{
 		id: crypto.randomUUID(), template: 'tweet',
 		tweet: { topName:'Chef 👨‍🍳', topHandle:'@chefsevenn', topAvatar:'', topVerified:true, topText:'Ketchup or mayo or mustard?', topImage:'', bottomName:'Mo Mohler', bottomHandle:'@MoMohler', bottomAvatar:'', bottomVerified:true, bottomText:'3 straight misses chef. These appear to be French fries.' },
-		text: blankText(), article: blankArticle(), news: blankNews(),
+		text: blankText(), article: blankArticle(), news: blankNews(), imageQuote: blankImageQuote(),
 	}]);
 	let activeIdx = $state(0);
 	let s = $derived(slides[activeIdx]);
@@ -275,7 +295,7 @@
 		{ id:'text'    as TemplateType, label:'Text',    icon: Type,      color:'#d4d4d4' },
 		{ id:'article' as TemplateType, label:'Article', icon: FileText,  color:'#34d399' },
 		{ id:'news'    as TemplateType, label:'News',    icon: Newspaper, color:'#F5A623' },
-		{ id:'imageQuote' as TemplateType, label:'Quote', icon: Image,    color:'#ffffff' },
+		// { id:'imageQuote' as TemplateType, label:'Quote', icon: Image,    color:'#ffffff' }, // hidden for now
 	];
 	function tColor(t: TemplateType) { return TEMPLATES.find(x => x.id === t)?.color ?? '#fff'; }
 </script>

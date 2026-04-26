@@ -160,7 +160,7 @@
 			class="templates-grid"
 			style="--cols:{templateCols}; --cardw:{templateCardW}px;"
 		>
-			{#each STARTER_TEMPLATES as tmpl}
+			{#each STARTER_TEMPLATES.filter((t) => t.id !== 'image-quote') as tmpl}
 				{@const hoverClass =
 						tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
 						: tmpl.id === 'text'  ? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
