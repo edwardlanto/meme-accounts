@@ -11,7 +11,7 @@
 	const primaryCards = [
 		{ href: '/dashboard/branding', icon: Sparkles, label: 'Generate Image', sub: 'Branding generator', accent: '#7c3aed' },
 		{ href: '/dashboard/slideshows', icon: Wand2, label: 'Slideshows', sub: 'Brand-style carousels', accent: '#06b6d4' },
-		{ href: '/dashboard/studio', icon: Layers, label: 'News Studio', sub: 'News → post', accent: '#f97316' },
+		{ href: '/dashboard/studio?template=news', icon: Layers, label: 'News Studio', sub: 'News → post', accent: '#f97316' },
 		{ href: '/dashboard/analytics', icon: BarChart3, label: 'Analytics', sub: 'Track performance', accent: '#22c55e' },
 	] as const;
 

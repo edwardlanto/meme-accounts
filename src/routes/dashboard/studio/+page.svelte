@@ -4,9 +4,11 @@
 	import { goto } from '$app/navigation';
 	import { toPng } from 'html-to-image';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
-	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
+	// ImageQuoteTemplate removed from public templates
+	import TextOverlayLayer from '$lib/components/TextOverlayLayer.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
@@ -62,6 +64,8 @@
 	// ── State ──────────────────────────────────────────────────────────────
 	let userId = $state('');
 	let useTestData = $state(true); // default to mock data
+	let initialTemplateParamApplied = $state(false);
+	let forcedTemplateFromQuery = $state<TemplateId | null>(null);
 
 	// News controls
 	let search = $state('');
@@ -83,13 +87,13 @@
 	let articleSnippet = $state(''); // full article text for variants call
 
 	// ── Per-slide template selection ──────────────────────────────────────
-	type TemplateId = 'news' | 'article' | 'textCarousel' | 'imageQuote';
+	type TemplateId = 'news' | 'tweet' | 'article' | 'textCarousel';
 	type TemplateDef = { id: TemplateId; label: string };
 	const TEMPLATES: TemplateDef[] = [
 		{ id: 'news', label: 'News' },
+		{ id: 'tweet', label: 'Tweet' },
 		{ id: 'article', label: 'Article' },
 		{ id: 'textCarousel', label: 'Text carousel' },
-		{ id: 'imageQuote', label: 'Image quote' },
 	];
 	let slideTemplates = $state<TemplateId[]>(['news']);
 	let lastTemplateUsed = $state<TemplateId>('news');
@@ -102,6 +106,26 @@
 		lastTemplateUsed = t;
 		slideTemplates = slideTemplates.map(() => t);
 	}
+
+	// Allow starter-template cards to deep-link into Studio with a template preselected.
+	onMount(() => {
+		if (initialTemplateParamApplied) return;
+		initialTemplateParamApplied = true;
+		if (typeof window === 'undefined') return;
+		const raw = new URLSearchParams(window.location.search).get('template') ?? '';
+		const map: Record<string, TemplateId> = {
+			news: 'news',
+			tweet: 'tweet',
+			article: 'article',
+			text: 'textCarousel',
+			textCarousel: 'textCarousel',
+		};
+		// Unknown / removed templates should fall back safely to News.
+		const next = map[raw] ?? (raw ? 'news' : undefined);
+		if (!next) return;
+		forcedTemplateFromQuery = next;
+		applyTemplateToAll(next);
+	});
 
 	// Convenience derived for current active slide text
 	const overlayText = $derived(slides[activeSlide] ?? '');
@@ -164,6 +188,12 @@
 	// (Important: many updates use `.map`, which is a no-op if the array is empty.)
 	$effect(() => {
 		const n = slides.length;
+		if (textOffsetsBySlide.length !== n) {
+			textOffsetsBySlide = Array.from({ length: n }, (_, i) => {
+				const row = textOffsetsBySlide[i];
+				return row && typeof row === 'object' ? row : {};
+			});
+		}
 		if (videoTrimStartSecBySlide.length !== n) {
 			videoTrimStartSecBySlide = Array.from({ length: n }, (_, i) => {
 				const v = videoTrimStartSecBySlide[i];
@@ -307,7 +337,8 @@
 
 	// Style
 	let highlightColor = $state('#F5A623');
-	let textColor = $state('#FFFFFF');
+	// Default to light-mode friendly; updated onMount to match global theme.
+	let textColor = $state('#0a0a0a');
 	let textColorTouched = $state(false);
 	let uiTheme = $state<'light' | 'dark'>('light');
 
@@ -358,6 +389,23 @@
 	let slideOverlays = $state<Overlay[][]>([]);
 	const activeOverlays = $derived(slideOverlays[activeSlide] ?? []);
 
+	// Per-slide draggable offsets for template text elements (template px).
+	type TextOffset = { x: number; y: number };
+	let textOffsetsBySlide = $state<Record<string, TextOffset>[]>([]);
+
+	function getTextOffset(i: number, kind: string): TextOffset {
+		const row = textOffsetsBySlide[i] ?? {};
+		const v = row[kind];
+		return v && Number.isFinite(v.x) && Number.isFinite(v.y) ? v : { x: 0, y: 0 };
+	}
+	function setTextOffset(i: number, kind: string, next: TextOffset) {
+		const cur = textOffsetsBySlide[i] ?? {};
+		textOffsetsBySlide = textOffsetsBySlide.map((r, idx) => {
+			if (idx !== i) return r;
+			return { ...cur, [kind]: { x: next.x, y: next.y } };
+		});
+	}
+
 	function setSlideOverlays(i: number, next: Overlay[]) {
 		slideOverlays = slideOverlays.map((o, idx) => idx === i ? next : o);
 	}
@@ -380,6 +428,20 @@
 		generatingImages = [...generatingImages, false];
 		slideOverlays = [...slideOverlays, []];
 		slideTextOverlays = [...slideTextOverlays, []];
+		tweetTopNameBySlide = [...tweetTopNameBySlide, tweetTopNameBySlide[tweetTopNameBySlide.length - 1] ?? 'Chef 👨‍🍳'];
+		tweetTopHandleBySlide = [...tweetTopHandleBySlide, tweetTopHandleBySlide[tweetTopHandleBySlide.length - 1] ?? '@chefsevenn'];
+		tweetBottomNameBySlide = [...tweetBottomNameBySlide, tweetBottomNameBySlide[tweetBottomNameBySlide.length - 1] ?? 'Mo Mohler'];
+		tweetBottomHandleBySlide = [...tweetBottomHandleBySlide, tweetBottomHandleBySlide[tweetBottomHandleBySlide.length - 1] ?? '@MoMohler'];
+		tweetTopTextBySlide = [...tweetTopTextBySlide, tweetTopTextBySlide[tweetTopTextBySlide.length - 1] ?? 'Ketchup or mayo or mustard?'];
+		tweetBottomTextBySlide = [...tweetBottomTextBySlide, ''];
+		articleTextBySlide = [...articleTextBySlide, articleTextBySlide[articleTextBySlide.length - 1] ?? ''];
+		textCarouselTextBySlide = [...textCarouselTextBySlide, textCarouselTextBySlide[textCarouselTextBySlide.length - 1] ?? ''];
+		imageQuoteTextBySlide = [...imageQuoteTextBySlide, imageQuoteTextBySlide[imageQuoteTextBySlide.length - 1] ?? ''];
+		textCarouselNameBySlide = [...textCarouselNameBySlide, textCarouselNameBySlide[textCarouselNameBySlide.length - 1] ?? 'Captains of industry'];
+		textCarouselHandleBySlide = [...textCarouselHandleBySlide, textCarouselHandleBySlide[textCarouselHandleBySlide.length - 1] ?? '@captainsofindustryy'];
+		imageQuoteFooterLeftBySlide = [...imageQuoteFooterLeftBySlide, imageQuoteFooterLeftBySlide[imageQuoteFooterLeftBySlide.length - 1] ?? '$'];
+		imageQuoteFooterRightBySlide = [...imageQuoteFooterRightBySlide, imageQuoteFooterRightBySlide[imageQuoteFooterRightBySlide.length - 1] ?? 'BRAND'];
+		articleSwipeTextBySlide = [...articleSwipeTextBySlide, articleSwipeTextBySlide[articleSwipeTextBySlide.length - 1] ?? '«« Swipe'];
 		slideIds = [...slideIds, newSlideId()];
 		slideMusic = [...slideMusic, null];
 	}
@@ -402,6 +464,37 @@
 	// ── Per-slide text styles (Canva-style toolbar) ──────────────────────
 	let headlineStyles = $state<TextStyle[]>([{}]);
 	let sourceStyles   = $state<TextStyle[]>([{}]);
+	// Tweet has multiple independent text fields; keep their styles separate.
+	type TweetKind =
+		| 'tweetTopName'
+		| 'tweetTopHandle'
+		| 'tweetTopText'
+		| 'tweetBottomName'
+		| 'tweetBottomHandle'
+		| 'tweetBottomText';
+	let tweetStylesBySlide = $state<Partial<Record<TweetKind, TextStyle>>[]>([{}]);
+
+	// ── Per-template extra text fields (per slide) ───────────────────────
+	let tweetTopNameBySlide = $state<string[]>(['Chef 👨‍🍳']);
+	let tweetTopHandleBySlide = $state<string[]>(['@chefsevenn']);
+	let tweetBottomNameBySlide = $state<string[]>(['Mo Mohler']);
+	let tweetBottomHandleBySlide = $state<string[]>(['@MoMohler']);
+	let tweetTopTextBySlide = $state<string[]>(['Ketchup or mayo or mustard?']);
+	let tweetBottomTextBySlide = $state<string[]>(['']);
+	let articleTextBySlide = $state<string[]>([
+		"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
+	]);
+	let textCarouselTextBySlide = $state<string[]>([
+		'When your home is titled in your name, it becomes a legal target.',
+	]);
+	let imageQuoteTextBySlide = $state<string[]>([
+		'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
+	]);
+	let textCarouselNameBySlide = $state<string[]>(['Captains of industry']);
+	let textCarouselHandleBySlide = $state<string[]>(['@captainsofindustryy']);
+	let imageQuoteFooterLeftBySlide = $state<string[]>(['$']);
+	let imageQuoteFooterRightBySlide = $state<string[]>(['BRAND']);
+	let articleSwipeTextBySlide = $state<string[]>(['«« Swipe']);
 
 	// Stable ids per slide, used as keys for filmstrip reordering.
 	let _slideUid = 0;
@@ -462,6 +555,20 @@
 		slideTextOverlays = pickOr(slideTextOverlays, [] as TextOverlay[]);
 		headlineStyles   = pickOr(headlineStyles, {} as TextStyle);
 		sourceStyles     = pickOr(sourceStyles, {} as TextStyle);
+		tweetTopNameBySlide = pickOr(tweetTopNameBySlide, 'Chef 👨‍🍳');
+		tweetTopHandleBySlide = pickOr(tweetTopHandleBySlide, '@chefsevenn');
+		tweetBottomNameBySlide = pickOr(tweetBottomNameBySlide, 'Mo Mohler');
+		tweetBottomHandleBySlide = pickOr(tweetBottomHandleBySlide, '@MoMohler');
+		tweetTopTextBySlide = pickOr(tweetTopTextBySlide, 'Ketchup or mayo or mustard?');
+		tweetBottomTextBySlide = pickOr(tweetBottomTextBySlide, '');
+		articleTextBySlide = pickOr(articleTextBySlide, '');
+		textCarouselTextBySlide = pickOr(textCarouselTextBySlide, '');
+		imageQuoteTextBySlide = pickOr(imageQuoteTextBySlide, '');
+		textCarouselNameBySlide = pickOr(textCarouselNameBySlide, 'Captains of industry');
+		textCarouselHandleBySlide = pickOr(textCarouselHandleBySlide, '@captainsofindustryy');
+		imageQuoteFooterLeftBySlide = pickOr(imageQuoteFooterLeftBySlide, '$');
+		imageQuoteFooterRightBySlide = pickOr(imageQuoteFooterRightBySlide, 'BRAND');
+		articleSwipeTextBySlide = pickOr(articleSwipeTextBySlide, '«« Swipe');
 		if (exportedSlides.length) exportedSlides = pickOr(exportedSlides, '');
 		slideIds        = pickOr(slideIds, newSlideId());
 		slideMusic      = pickOr(slideMusic, null);
@@ -533,6 +640,24 @@
 	}
 	const activeHeadlineStyle = $derived(headlineStyles[activeSlide] ?? {});
 	const activeSourceStyle   = $derived(sourceStyles[activeSlide] ?? {});
+	const activeTweetStyles = $derived(tweetStylesBySlide[activeSlide] ?? {});
+
+	function isTweetKind(k: TextElementKind | null): k is TweetKind {
+		return (
+			k === 'tweetTopName' ||
+			k === 'tweetTopHandle' ||
+			k === 'tweetTopText' ||
+			k === 'tweetBottomName' ||
+			k === 'tweetBottomHandle' ||
+			k === 'tweetBottomText'
+		);
+	}
+
+	function getActiveStyleForSelection(): TextStyle {
+		if (isTweetKind(selectedText)) return (activeTweetStyles[selectedText] ?? {});
+		if (selectedText === 'source') return activeSourceStyle;
+		return activeHeadlineStyle;
+	}
 
 	// Currently selected text element + DOM anchor for the floating toolbar.
 	let selectedText = $state<TextElementKind | null>(null);
@@ -555,9 +680,33 @@
 
 	function onHighlight(spec: HighlightSpec) {
 		if (!headlineRange) return;
-		const current = slides[activeSlide] ?? '';
-		const next = applyHighlight(current, headlineRange.start, headlineRange.end, spec);
-		setActiveSlideText(next);
+		// Apply highlight to the currently-selected editable text field (not always News headline).
+		const start = headlineRange.start;
+		const end = headlineRange.end;
+		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start)) return;
+
+		// Headline-like fields per template
+		if (selectedText === 'headline') {
+			if (activeTemplate === 'news') {
+				const current = slides[activeSlide] ?? '';
+				setActiveSlideText(applyHighlight(current, start, end, spec));
+			} else if (activeTemplate === 'article') {
+				const current = articleTextBySlide[activeSlide] ?? '';
+				articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+			} else if (activeTemplate === 'textCarousel') {
+				const current = textCarouselTextBySlide[activeSlide] ?? '';
+				textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+			} else if (activeTemplate === 'tweet') {
+				const current = tweetTopTextBySlide[activeSlide] ?? '';
+				tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+			}
+		} else if (selectedText === 'tweetBottomText') {
+			const current = tweetBottomTextBySlide[activeSlide] ?? '';
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+		} else if (selectedText === 'tweetTopText') {
+			const current = tweetTopTextBySlide[activeSlide] ?? '';
+			tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+		}
 		// Keep the range so the user can try a different highlight without reselecting.
 		// Clear any native selection since the DOM just rerendered.
 		window.getSelection()?.removeAllRanges();
@@ -595,7 +744,14 @@
 	});
 
 	function patchActiveStyle(patch: Partial<TextStyle>) {
-		if (selectedText === 'headline') {
+		if (isTweetKind(selectedText)) {
+			tweetStylesBySlide = tweetStylesBySlide.map((s, i) => {
+				if (i !== activeSlide) return s;
+				const cur = s ?? {};
+				const k: TweetKind = selectedText as TweetKind;
+				return { ...cur, [k]: { ...((cur as any)[k] ?? {}), ...patch } };
+			});
+		} else if (selectedText === 'headline') {
 			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
 		} else if (selectedText === 'source') {
 			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? { ...s, ...patch } : s));
@@ -613,7 +769,14 @@
 	}
 
 	function resetActiveStyle() {
-		if (selectedText === 'headline') {
+		if (isTweetKind(selectedText)) {
+			tweetStylesBySlide = tweetStylesBySlide.map((s, i) => {
+				if (i !== activeSlide) return s;
+				const cur = s ?? {};
+				const k: TweetKind = selectedText as TweetKind;
+				return { ...cur, [k]: {} };
+			});
+		} else if (selectedText === 'headline') {
 			headlineStyles = headlineStyles.map((s, i) => (i === activeSlide ? {} : s));
 		} else if (selectedText === 'source') {
 			sourceStyles = sourceStyles.map((s, i) => (i === activeSlide ? {} : s));
@@ -652,7 +815,10 @@
 	let draftLoaded = $state(false);
 	let draftSaving = $state(false);
 	let draftError = $state('');
+	let draftRestoring = $state(true);
 	let saveTimer: any = null;
+
+	const studioBooting = $derived(!initialTemplateParamApplied || draftRestoring || !userId);
 
 	async function loadLatestDraft() {
 		draftError = '';
@@ -691,12 +857,29 @@
 		if (typeof s.articleSnippet === 'string') articleSnippet = s.articleSnippet;
 
 		if (Array.isArray(s.slideTemplates)) slideTemplates = s.slideTemplates;
+		// If user came from a starter-template deep link, override any saved draft template.
+		if (forcedTemplateFromQuery) applyTemplateToAll(forcedTemplateFromQuery);
 		if (Array.isArray(s.backgroundImages)) backgroundImages = s.backgroundImages;
 		if (Array.isArray(s.backgroundVideos)) backgroundVideos = s.backgroundVideos; // note: blob: URLs won't survive reload
 		if (Array.isArray(s.slideOverlays)) slideOverlays = s.slideOverlays;
 		if (Array.isArray(s.slideTextOverlays)) slideTextOverlays = s.slideTextOverlays;
 		if (Array.isArray(s.headlineStyles)) headlineStyles = s.headlineStyles;
 		if (Array.isArray(s.sourceStyles)) sourceStyles = s.sourceStyles;
+		if (Array.isArray(s.tweetStylesBySlide)) tweetStylesBySlide = s.tweetStylesBySlide;
+		if (Array.isArray(s.tweetTopNameBySlide)) tweetTopNameBySlide = s.tweetTopNameBySlide;
+		if (Array.isArray(s.tweetTopHandleBySlide)) tweetTopHandleBySlide = s.tweetTopHandleBySlide;
+		if (Array.isArray(s.tweetBottomNameBySlide)) tweetBottomNameBySlide = s.tweetBottomNameBySlide;
+		if (Array.isArray(s.tweetBottomHandleBySlide)) tweetBottomHandleBySlide = s.tweetBottomHandleBySlide;
+		if (Array.isArray(s.tweetTopTextBySlide)) tweetTopTextBySlide = s.tweetTopTextBySlide;
+		if (Array.isArray(s.tweetBottomTextBySlide)) tweetBottomTextBySlide = s.tweetBottomTextBySlide;
+		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
+		if (Array.isArray(s.textCarouselTextBySlide)) textCarouselTextBySlide = s.textCarouselTextBySlide;
+		if (Array.isArray(s.imageQuoteTextBySlide)) imageQuoteTextBySlide = s.imageQuoteTextBySlide;
+		if (Array.isArray(s.textCarouselNameBySlide)) textCarouselNameBySlide = s.textCarouselNameBySlide;
+		if (Array.isArray(s.textCarouselHandleBySlide)) textCarouselHandleBySlide = s.textCarouselHandleBySlide;
+		if (Array.isArray(s.imageQuoteFooterLeftBySlide)) imageQuoteFooterLeftBySlide = s.imageQuoteFooterLeftBySlide;
+		if (Array.isArray(s.imageQuoteFooterRightBySlide)) imageQuoteFooterRightBySlide = s.imageQuoteFooterRightBySlide;
+		if (Array.isArray(s.articleSwipeTextBySlide)) articleSwipeTextBySlide = s.articleSwipeTextBySlide;
 		if (Array.isArray(s.slideIds)) slideIds = s.slideIds;
 		if (Array.isArray(s.subjectCutouts)) subjectCutouts = s.subjectCutouts;
 		if (Array.isArray(s.showCutout)) showCutout = s.showCutout;
@@ -706,6 +889,7 @@
 		if (Array.isArray(s.videoDurationBySlide)) videoDurationBySlide = s.videoDurationBySlide;
 		if (Array.isArray(s.videoMutedBySlide)) videoMutedBySlide = s.videoMutedBySlide;
 		if (Array.isArray(s.videoVolumeBySlide)) videoVolumeBySlide = s.videoVolumeBySlide;
+		if (Array.isArray(s.textOffsetsBySlide)) textOffsetsBySlide = s.textOffsetsBySlide;
 
 		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
 		// Back-compat: older drafts stored a single circleImage; newer ones store per-slide arrays.
@@ -768,10 +952,26 @@
 			videoDurationBySlide,
 			videoMutedBySlide,
 			videoVolumeBySlide,
+			textOffsetsBySlide,
 			slideOverlays,
 			slideTextOverlays,
 			headlineStyles,
 			sourceStyles,
+			tweetStylesBySlide,
+			tweetTopNameBySlide,
+			tweetTopHandleBySlide,
+			tweetBottomNameBySlide,
+			tweetBottomHandleBySlide,
+			tweetTopTextBySlide,
+			tweetBottomTextBySlide,
+			articleTextBySlide,
+			textCarouselTextBySlide,
+			imageQuoteTextBySlide,
+			textCarouselNameBySlide,
+			textCarouselHandleBySlide,
+			imageQuoteFooterLeftBySlide,
+			imageQuoteFooterRightBySlide,
+			articleSwipeTextBySlide,
 			slideIds,
 			subjectCutouts,
 			showCutout,
@@ -838,8 +1038,15 @@
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
-		await loadLatestDraft();
-		draftLoaded = true;
+		draftRestoring = true;
+		void loadLatestDraft()
+			.catch(() => {
+				// loadLatestDraft already sets draftError; swallow to keep UI responsive.
+			})
+			.finally(() => {
+				draftLoaded = true;
+				draftRestoring = false;
+			});
 
 		// Ensure the primary circle badge starts AI-generated.
 		if (showCircle && !activeCircleImage) void generateCircleImage(activeSlide);
@@ -968,6 +1175,9 @@
 		fetchingNews = true;
 		newsError = '';
 		activeSlide = 0;
+		// If we previously deep-linked into a non-news template (e.g. ?template=tweet),
+		// fetching news should always “take over” and show the News template.
+		forcedTemplateFromQuery = null;
 		// Reset circle + background to defaults
 		circleX    = 772;
 		circleY    = 52;
@@ -1057,8 +1267,11 @@
 
 			// Show slide 1 immediately
 			slides = [hookText];
-			// Default new content to the last template you used
-			slideTemplates = [lastTemplateUsed];
+			// News generator should always start from the News template.
+			// (Otherwise if your last template was Tweet/Article, fetching news “looks like” it routed wrong.)
+			lastTemplateUsed = 'news';
+			// Force ALL slides to News right away (and keep it stable as slides expand).
+			slideTemplates = Array.from({ length: Math.max(1, slideCount) }, () => 'news');
 			backgroundImages = [articleImageUrl]; // slide 0 gets article image right away
 			backgroundVideos = ['']; // reset video
 			generatingImages = [false];
@@ -1236,6 +1449,9 @@
 		if (sourceStyles.length !== n) {
 			sourceStyles = Array.from({ length: n }, (_, i) => sourceStyles[i] ?? {});
 		}
+		if (tweetStylesBySlide.length !== n) {
+			tweetStylesBySlide = Array.from({ length: n }, (_, i) => tweetStylesBySlide[i] ?? {});
+		}
 		if (subjectCutouts.length !== n) {
 			subjectCutouts = Array.from({ length: n }, (_, i) => subjectCutouts[i] ?? '');
 		}
@@ -1253,6 +1469,48 @@
 		}
 		if (showCircle2BySlide.length !== n) {
 			showCircle2BySlide = Array.from({ length: n }, (_, i) => showCircle2BySlide[i] ?? false);
+		}
+		if (tweetTopNameBySlide.length !== n) {
+			tweetTopNameBySlide = Array.from({ length: n }, (_, i) => tweetTopNameBySlide[i] ?? 'Chef 👨‍🍳');
+		}
+		if (tweetTopHandleBySlide.length !== n) {
+			tweetTopHandleBySlide = Array.from({ length: n }, (_, i) => tweetTopHandleBySlide[i] ?? '@chefsevenn');
+		}
+		if (tweetTopTextBySlide.length !== n) {
+			tweetTopTextBySlide = Array.from({ length: n }, (_, i) => tweetTopTextBySlide[i] ?? 'Ketchup or mayo or mustard?');
+		}
+		if (tweetBottomNameBySlide.length !== n) {
+			tweetBottomNameBySlide = Array.from({ length: n }, (_, i) => tweetBottomNameBySlide[i] ?? 'Mo Mohler');
+		}
+		if (tweetBottomHandleBySlide.length !== n) {
+			tweetBottomHandleBySlide = Array.from({ length: n }, (_, i) => tweetBottomHandleBySlide[i] ?? '@MoMohler');
+		}
+		if (tweetBottomTextBySlide.length !== n) {
+			tweetBottomTextBySlide = Array.from({ length: n }, (_, i) => tweetBottomTextBySlide[i] ?? '');
+		}
+		if (articleTextBySlide.length !== n) {
+			articleTextBySlide = Array.from({ length: n }, (_, i) => articleTextBySlide[i] ?? '');
+		}
+		if (textCarouselTextBySlide.length !== n) {
+			textCarouselTextBySlide = Array.from({ length: n }, (_, i) => textCarouselTextBySlide[i] ?? '');
+		}
+		if (imageQuoteTextBySlide.length !== n) {
+			imageQuoteTextBySlide = Array.from({ length: n }, (_, i) => imageQuoteTextBySlide[i] ?? '');
+		}
+		if (textCarouselNameBySlide.length !== n) {
+			textCarouselNameBySlide = Array.from({ length: n }, (_, i) => textCarouselNameBySlide[i] ?? 'Captains of industry');
+		}
+		if (textCarouselHandleBySlide.length !== n) {
+			textCarouselHandleBySlide = Array.from({ length: n }, (_, i) => textCarouselHandleBySlide[i] ?? '@captainsofindustryy');
+		}
+		if (imageQuoteFooterLeftBySlide.length !== n) {
+			imageQuoteFooterLeftBySlide = Array.from({ length: n }, (_, i) => imageQuoteFooterLeftBySlide[i] ?? '$');
+		}
+		if (imageQuoteFooterRightBySlide.length !== n) {
+			imageQuoteFooterRightBySlide = Array.from({ length: n }, (_, i) => imageQuoteFooterRightBySlide[i] ?? 'BRAND');
+		}
+		if (articleSwipeTextBySlide.length !== n) {
+			articleSwipeTextBySlide = Array.from({ length: n }, (_, i) => articleSwipeTextBySlide[i] ?? '«« Swipe');
 		}
 	});
 
@@ -1527,10 +1785,10 @@
 <div class="flex h-full overflow-hidden">
 
 	<!-- ── Left panel: controls ──────────────────────────────────────────── -->
-	<div class="w-80 flex-shrink-0 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-y-auto studio-left">
-		<div class="px-5 py-4 border-b border-white/[0.04]">
-			<h1 class="font-display font-bold text-base text-white">News Studio</h1>
-			<p class="font-body text-xs text-white/40 mt-0.5">AI-powered Instagram news posts</p>
+	<div class="w-80 flex-shrink-0 border-r flex flex-col overflow-y-auto studio-left" style="background: var(--app-surface-2); border-color: var(--app-border);">
+		<div class="px-5 py-4 border-b" style="border-color: var(--app-border);">
+			<h1 class="font-display font-bold text-base" style="color: var(--app-text);">News Studio</h1>
+			<p class="font-body text-xs mt-0.5" style="color: var(--app-text-muted);">AI-powered Instagram news posts</p>
 		</div>
 
 		<div class="flex flex-col gap-1 p-4">
@@ -2052,7 +2310,7 @@
 	</div>
 
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
-	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4 studio-right">
+	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4 studio-right" style="background: var(--app-bg);">
 
 		<!-- Format tabs + view mode -->
 		<div class="flex items-center gap-3">
@@ -2078,17 +2336,43 @@
 		<div class="flex items-start gap-3 relative">
 			<div style="width: {PREVIEW_WIDTH}px;" class="relative z-10">
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
-				<div style="height: {CANVAS_H * previewScale}px;" class="relative overflow-hidden rounded-2xl">
+				<div style="height: {CANVAS_H * previewScale}px; background: var(--app-surface-2); border: 1px solid var(--app-border);" class="relative overflow-hidden rounded-2xl">
+			{#if studioBooting}
+				<!-- Initial boot overlay: avoid template "jump" while restoring draft -->
+				<div class="absolute inset-0 rounded-2xl z-20 flex items-center justify-center" style="background: var(--app-surface-2); border: 1px solid var(--app-border);">
+					<div class="w-[78%] max-w-[420px]">
+						<div class="flex items-center gap-2 mb-3">
+							<Loader size={16} class="animate-spin text-violet-400" />
+							<p class="text-xs font-mono" style="color: var(--app-text-muted);">
+								Loading Studio…
+							</p>
+						</div>
+						<div class="boot-skel rounded-2xl p-4">
+							<div class="h-3 w-2/3 rounded-lg bg-white/10 mb-3"></div>
+							<div class="h-3 w-5/6 rounded-lg bg-white/10 mb-2"></div>
+							<div class="h-3 w-3/4 rounded-lg bg-white/10 mb-6"></div>
+							<div class="h-24 rounded-2xl bg-white/8 mb-4"></div>
+							<div class="flex items-center justify-between">
+								<div class="h-2 w-24 rounded bg-white/10"></div>
+								<div class="h-2 w-16 rounded bg-white/10"></div>
+							</div>
+						</div>
+						<p class="text-[10px] font-body mt-3 leading-relaxed" style="color: var(--app-text-muted);">
+							Restoring your last edit so nothing gets lost.
+						</p>
+					</div>
+				</div>
+			{/if}
 			{#if generatingImages[activeSlide]}
 				<!-- Image loading overlay -->
-				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
+				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
 					<Loader size={20} class="animate-spin text-violet-400" />
-					<p class="text-xs font-mono text-white/30">Generating image…</p>
+					<p class="text-xs font-mono" style="color: var(--app-text-muted);">Generating image…</p>
 				</div>
 			{:else if generatingVariants && activeSlide > 0 && !slides[activeSlide]}
-				<div class="absolute inset-0 rounded-2xl bg-[#111] border border-white/[0.06] flex flex-col items-center justify-center gap-3 z-10">
+				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
 					<Loader size={20} class="animate-spin text-amber-400" />
-					<p class="text-xs font-mono text-white/30">Writing slide {activeSlide + 1}…</p>
+					<p class="text-xs font-mono" style="color: var(--app-text-muted);">Writing slide {activeSlide + 1}…</p>
 				</div>
 			{/if}
 			{#if activeTemplate === 'news'}
@@ -2165,44 +2449,131 @@
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
+				<!-- News renders its own text overlays internally -->
 			{:else if activeTemplate === 'article'}
+				<!-- Shared text overlay layer for non-News templates -->
+				<TextOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					highlightColor={highlightColor}
+					textOverlays={activeTextOverlays}
+					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+				/>
 				<ArticleTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
-					text={overlayText}
+					text={articleTextBySlide[activeSlide] ?? ''}
 					image={backgroundImage}
+					swipeText={articleSwipeTextBySlide[activeSlide] ?? '«« Swipe'}
+					onSwipeTextChange={(v) => articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, i) => i === activeSlide ? v : x)}
+					textOffsets={textOffsetsBySlide[activeSlide] ?? {}}
+					onTextOffsetChange={(kind, next) => setTextOffset(activeSlide, String(kind), next)}
 					scale={previewScale}
 					interactive={true}
 					headlineStyle={activeHeadlineStyle}
 					selectedText={selectedText}
-					onTextChange={(t) => setActiveSlideText(t)}
+					onTextChange={(t) => articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? t : x)}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
+			{:else if activeTemplate === 'tweet'}
+				<!-- Tweet: minimal integration for now (top tweet text = slide text). -->
+				<TweetTemplate
+					templateTheme={uiTheme}
+					bind:exportRef
+					topText={tweetTopTextBySlide[activeSlide] ?? ''}
+					onTopTextChange={(v) => tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? v : x)}
+					/* Editable per-slide tweet fields */
+					topName={tweetTopNameBySlide[activeSlide] ?? 'Chef 👨‍🍳'}
+					topHandle={tweetTopHandleBySlide[activeSlide] ?? '@chefsevenn'}
+					bottomName={tweetBottomNameBySlide[activeSlide] ?? 'Mo Mohler'}
+					bottomHandle={tweetBottomHandleBySlide[activeSlide] ?? '@MoMohler'}
+					onTopNameChange={(v) => tweetTopNameBySlide = tweetTopNameBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onTopHandleChange={(v) => tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onBottomNameChange={(v) => tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onBottomHandleChange={(v) => tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
+					bottomText={tweetBottomTextBySlide[activeSlide] ?? ''}
+					onBottomTextChange={(v) => tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? v : x)}
+					topImage={backgroundImage || '/templates/tweet/demo-bg.jpg'}
+					scale={previewScale}
+					interactive={true}
+					tweetStyles={activeTweetStyles}
+					{...({
+						headlineStyle: activeHeadlineStyle,
+						selectedText,
+						onTextSelect,
+						onHeadlineRangeSelect,
+						showToolbar: false,
+					} as any)}
+				/>
 			{:else if activeTemplate === 'textCarousel'}
+				<TextOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					highlightColor={highlightColor}
+					textOverlays={activeTextOverlays}
+					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+				/>
 				<TextCarouselTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
-					text={overlayText}
+					text={textCarouselTextBySlide[activeSlide] ?? ''}
+					name={textCarouselNameBySlide[activeSlide] ?? 'Captains of industry'}
+					handle={textCarouselHandleBySlide[activeSlide] ?? '@captainsofindustryy'}
+					onNameChange={(v) => textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onHandleChange={(v) => textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
 					scale={previewScale}
 					interactive={true}
 					headlineStyle={activeHeadlineStyle}
 					selectedText={selectedText}
-					onTextChange={(t) => setActiveSlideText(t)}
+					onTextChange={(t) => textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? t : x)}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
 			{:else}
-				<ImageQuoteTemplate
-					templateTheme={uiTheme}
-					bind:exportRef
-					text={overlayText}
-					image={backgroundImage}
+				<!-- Image Quote template removed from public UI. Keep a safe fallback. -->
+				<TextOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
 					scale={previewScale}
 					interactive={true}
+					highlightColor={highlightColor}
+					textOverlays={activeTextOverlays}
+					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind, el) => onTextSelect(kind as any, el)}
+				/>
+				<NewsTemplate
+					templateTheme={uiTheme}
+					bind:exportRef
+					backgroundImage={backgroundImage}
+					backgroundVideo={backgroundVideo}
+					videoTrimStartSec={activeVideoTrimStartSec}
+					videoTrimEndSec={activeVideoTrimEndSec || activeVideoDurationSec || 0}
+					videoSeekSec={videoSeekSec}
+					videoMuted={activeVideoMuted}
+					videoVolume={activeVideoVolume}
+					text={overlayText}
+					source={source}
+					highlightColor={highlightColor}
+					textColor={textColor}
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					overlays={activeOverlays}
+					textOverlays={activeTextOverlays}
 					headlineStyle={activeHeadlineStyle}
+					sourceStyle={activeSourceStyle}
 					selectedText={selectedText}
 					onTextChange={(t) => setActiveSlideText(t)}
+					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					onTextOverlaysChange={(o) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -2210,9 +2581,8 @@
 				</div>
 			</div>
 
-			<!-- Quick actions column (News only) -->
-			{#if activeTemplate === 'news'}
-				<div class="flex flex-col gap-2 pt-1 relative z-50 pointer-events-auto">
+			<!-- Quick actions column -->
+			<div class="flex flex-col gap-2 pt-1 relative z-50 pointer-events-auto">
 					<input
 						bind:this={circle2QuickInput}
 						type="file"
@@ -2272,14 +2642,16 @@
 						{/if}
 					</button>
 
-					<button
-						type="button"
-						onclick={openCircle2QuickPicker}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
-						title="Add another circle"
-					>
-						<span class="text-lg leading-none">◯</span>
-					</button>
+					{#if activeTemplate === 'news'}
+						<button
+							type="button"
+							onclick={openCircle2QuickPicker}
+							class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+							title="Add another circle"
+						>
+							<span class="text-lg leading-none">◯</span>
+						</button>
+					{/if}
 
 					<button
 						type="button"
@@ -2299,7 +2671,6 @@
 						<Image size={16} />
 					</button>
 				</div>
-			{/if}
 		</div>
 		<!-- Slide filmstrip: drag to reorder -->
 		{#if slideCount > 1}
@@ -2352,13 +2723,13 @@
 						<button
 							type="button"
 							onclick={() => activeSlide = item.slideIndex}
-							class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all bg-[#111] relative
+							class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all relative
 								{activeSlide === item.slideIndex ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
 							aria-label={`Focus slide ${i + 1}`}
-							style="touch-action: none;"
+							style="touch-action: none; background: var(--app-surface-3);"
 						>
 								{#if item.loading}
-									<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
+									<div class="absolute inset-0 flex items-center justify-center" style="background: var(--app-surface-3);">
 										<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
 									</div>
 								{:else if isPlaceholder}
@@ -2371,6 +2742,14 @@
 									</div>
 								{:else if item.img}
 									<img src={item.img} alt="" class="w-full h-full object-cover opacity-70" draggable="false" />
+								{:else}
+									<div
+										class="absolute inset-0"
+										style="background: linear-gradient(135deg,
+											color-mix(in oklab, var(--app-text) 6%, transparent),
+											color-mix(in oklab, var(--color-violet) 12%, transparent)
+										);"
+									></div>
 								{/if}
 
 								{#if !isPlaceholder}
@@ -2832,13 +3211,15 @@
 <!-- Canva-style floating toolbar for text formatting -->
 <FloatingTextToolbar
 	anchor={toolbarAnchor}
-	style={selectedText === 'headline'
-		? activeHeadlineStyle
-		: selectedText === 'textOverlay'
-			? (activeTextOverlays.find((o) => o.id === selectedTextOverlayId)?.style ?? {})
-			: activeSourceStyle}
+	style={getActiveStyleForSelection()}
 	autoFontSize={selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined}
-	supportsHighlights={selectedText === 'headline' || selectedText === 'textOverlay'}
+	supportsHighlights={(selectedText === 'headline' ||
+		selectedText === 'tweetTopName' ||
+		selectedText === 'tweetTopHandle' ||
+		selectedText === 'tweetTopText' ||
+		selectedText === 'tweetBottomName' ||
+		selectedText === 'tweetBottomHandle' ||
+		selectedText === 'tweetBottomText') || selectedText === 'textOverlay'}
 	hasRangeSelection={hasRangeSelection}
 	onChange={patchActiveStyle}
 	onHighlight={onHighlight}
@@ -2847,6 +3228,17 @@
 />
 
 <style>
+	.boot-skel {
+		background:
+			linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+		background-size: 220% 100%;
+		animation: bootShimmer 1.1s ease-in-out infinite;
+		border: 1px solid color-mix(in oklab, var(--app-border) 70%, transparent);
+	}
+	@keyframes bootShimmer {
+		0% { background-position: 0% 0%; }
+		100% { background-position: 100% 0%; }
+	}
 	:root:not([data-theme="dark"]) .studio-left {
 		background: var(--app-surface-2) !important;
 		border-right-color: var(--app-border) !important;
@@ -2854,6 +3246,38 @@
 	:root:not([data-theme="dark"]) .studio-right {
 		background: var(--app-bg) !important;
 	}
+	/* Light theme: override “dark UI” utility classes inside studio-left */
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white) { color: var(--app-text) !important; }
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/95),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/90),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/80),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/70),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/60),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/55),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/50),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/45),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/40),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/35),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/30),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/25),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/20),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/15) { color: var(--app-text-muted) !important; }
+
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/\[0\.04\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/\[0\.03\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/\[0\.02\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/3),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/2) { background: var(--app-surface-3) !important; }
+
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.10\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.08\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.06\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.05\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.04\]),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/10),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/6) { border-color: var(--app-border) !important; }
+
+	:root:not([data-theme="dark"]) .studio-left :global(.placeholder-white\/20)::placeholder { color: var(--app-text-muted) !important; opacity: 0.65; }
 	:root:not([data-theme="dark"]) .studio-left :global(input),
 	:root:not([data-theme="dark"]) .studio-left :global(select),
 	:root:not([data-theme="dark"]) .studio-left :global(textarea) {

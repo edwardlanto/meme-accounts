@@ -17,6 +17,8 @@
 		exportRef?: HTMLElement | null;
 		selectedText?: TextElementKind | null;
 		onTextChange?: (t: string) => void;
+		onNameChange?: (v: string) => void;
+		onHandleChange?: (v: string) => void;
 		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
 		onHeadlineRangeSelect?: (start: number, end: number) => void;
 		headlineStyle?: TextStyle;
@@ -29,7 +31,7 @@
 		avatar    = '',
 		ringColor = '#c9b97a',
 		bgColor   = '',
-		templateTheme = 'dark',
+		templateTheme = 'light',
 		text      = 'When your home is titled in your name, it becomes a legal target.',
 		showSwipe = true,
 		scale     = 1,
@@ -37,6 +39,8 @@
 		exportRef = $bindable(null),
 		selectedText = null,
 		onTextChange,
+		onNameChange,
+		onHandleChange,
 		onTextSelect,
 		onHeadlineRangeSelect,
 		headlineStyle = {},
@@ -130,22 +134,51 @@
 
 			<!-- Name + handle -->
 			<div style="flex: 1; min-width: 0;">
-				<p style="
-					margin: 0 0 8px;
-					font-size: 46px;
-					font-weight: 800;
-					color: {baseText};
-					line-height: 1.1;
-					letter-spacing: -0.5px;
-				">{name}</p>
-				<p style="
-					margin: 0;
-					font-size: 36px;
-					font-weight: 400;
-					font-style: italic;
-					color: {baseMuted};
-					letter-spacing: -0.2px;
-				">{handle}</p>
+				<CanvasMarkupTextBlock
+					value={name}
+					{interactive}
+					rows={1}
+					showToolbar={false}
+					ariaLabel="Name"
+					fontFamily={headlineStyle.fontFamily}
+					fontSize={46}
+					onTextChange={onNameChange}
+					onTextSelect={onTextSelect}
+				>
+					{#snippet display()}
+						<p style="
+							margin: 0 0 8px;
+							font-size: 46px;
+							font-weight: 800;
+							color: {baseText};
+							line-height: 1.1;
+							letter-spacing: -0.5px;
+						">{name}</p>
+					{/snippet}
+				</CanvasMarkupTextBlock>
+
+				<CanvasMarkupTextBlock
+					value={handle}
+					{interactive}
+					rows={1}
+					showToolbar={false}
+					ariaLabel="Handle"
+					fontFamily={headlineStyle.fontFamily}
+					fontSize={36}
+					onTextChange={onHandleChange}
+					onTextSelect={onTextSelect}
+				>
+					{#snippet display()}
+						<p style="
+							margin: 0;
+							font-size: 36px;
+							font-weight: 400;
+							font-style: italic;
+							color: {baseMuted};
+							letter-spacing: -0.2px;
+						">{handle}</p>
+					{/snippet}
+				</CanvasMarkupTextBlock>
 			</div>
 		</div>
 

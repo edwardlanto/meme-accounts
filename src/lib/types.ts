@@ -43,7 +43,18 @@ export interface TextStyle {
 }
 
 /** A text element that can be edited/styled via the floating toolbar. */
-export type TextElementKind = 'headline' | 'source' | 'textOverlay';
+export type TextElementKind =
+	| 'headline'
+	| 'source'
+	| 'textOverlay'
+	| 'tweetTopName'
+	| 'tweetTopHandle'
+	| 'tweetTopText'
+	| 'tweetBottomName'
+	| 'tweetBottomHandle'
+	| 'tweetBottomText'
+	| 'imageQuoteFooterLeft'
+	| 'imageQuoteFooterRight';
 
 export interface TextSelection {
 	slideIndex: number;

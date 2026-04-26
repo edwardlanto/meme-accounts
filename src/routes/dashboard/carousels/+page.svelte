@@ -7,7 +7,7 @@
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
-	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
+	// ImageQuoteTemplate removed from public templates
 	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight, Wand2 } from 'lucide-svelte';
 
 	let carousels: any[] = $state([]);
@@ -97,7 +97,7 @@
 	let uiTheme = $state<'light' | 'dark'>('light');
 
 	onMount(() => {
-		const readTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light') as const;
+		const readTheme = (): 'light' | 'dark' => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 		uiTheme = readTheme();
 		const obs = new MutationObserver(() => { uiTheme = readTheme(); });
 		obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -203,16 +203,6 @@
 								bottomVerified={true}
 								bottomText="3 straight misses chef. These appear to be French fries."
 								scale={templateScale}
-							/>
-						{:else if tmpl.id === 'image-quote'}
-							<ImageQuoteTemplate
-								templateTheme={uiTheme}
-								image={tmpl.previewBg}
-								text={"YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT AND PUNCHY."}
-								footerLeft="$"
-								footerRight="WEALTHY SETUP"
-								scale={templateScale}
-								interactive={false}
 							/>
 						{:else if tmpl.id === 'text'}
 							<TextCarouselTemplate

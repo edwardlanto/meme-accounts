@@ -8,6 +8,7 @@
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
+	// ImageQuoteTemplate removed from public templates
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
 	import {
@@ -18,7 +19,7 @@
 	} from 'lucide-svelte';
 
 	// ── Types ──────────────────────────────────────────────────────────────────
-	type TemplateType = 'tweet' | 'text' | 'article' | 'news' | 'imageQuote';
+	type TemplateType = 'tweet' | 'text' | 'article' | 'news';
 
 	interface TweetData {
 		topName: string; topHandle: string; topAvatar: string;
@@ -48,18 +49,9 @@
 		overlays: Overlay[];
 		generatingImage: boolean; generatingCircle: boolean;
 	}
-	interface ImageQuoteData {
-		image: string;
-		text: string;
-		footerLeft: string;
-		footerRight: string;
-		topRatio: number;
-		bgColor: string;
-		textColor: string;
-	}
 	interface Slide {
 		id: string; template: TemplateType;
-		tweet: TweetData; text: TextData; article: ArticleData; news: NewsData; imageQuote: ImageQuoteData;
+		tweet: TweetData; text: TextData; article: ArticleData; news: NewsData;
 	}
 
 	function blankTweet(): TweetData {
@@ -74,17 +66,6 @@
 	function blankNews(): NewsData {
 		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:50, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
 	}
-	function blankImageQuote(): ImageQuoteData {
-		return {
-			image: '/templates/image-quote/demo-bg.png',
-			text: 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
-			footerLeft: '$',
-			footerRight: 'WEALTHY SETUP',
-			topRatio: 0.56,
-			bgColor: '#000000',
-			textColor: '#FFFFFF',
-		};
-	}
 	function blankSlide(template: TemplateType = 'tweet', inherit?: Slide): Slide {
 		return {
 			id: crypto.randomUUID(), template,
@@ -92,7 +73,7 @@
 			text:  inherit ? { ...inherit.text,  text:'' } : blankText(),
 			article: inherit ? { ...inherit.article, text:'', image:'' } : blankArticle(),
 			news: inherit ? { ...inherit.news, text:'', backgroundImage:'', backgroundVideo:'', overlays:[], generatingImage:false, generatingCircle:false } : blankNews(),
-			imageQuote: inherit ? { ...inherit.imageQuote } : blankImageQuote(),
+			// imageQuote template removed
 		};
 	}
 
@@ -106,7 +87,7 @@
 	let slides = $state<Slide[]>([{
 		id: crypto.randomUUID(), template: 'tweet',
 		tweet: { topName:'Chef 👨‍🍳', topHandle:'@chefsevenn', topAvatar:'', topVerified:true, topText:'Ketchup or mayo or mustard?', topImage:'', bottomName:'Mo Mohler', bottomHandle:'@MoMohler', bottomAvatar:'', bottomVerified:true, bottomText:'3 straight misses chef. These appear to be French fries.' },
-		text: blankText(), article: blankArticle(), news: blankNews(), imageQuote: blankImageQuote(),
+		text: blankText(), article: blankArticle(), news: blankNews(),
 	}]);
 	let activeIdx = $state(0);
 	let s = $derived(slides[activeIdx]);

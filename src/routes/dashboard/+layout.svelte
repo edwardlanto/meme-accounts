@@ -24,7 +24,7 @@
 			label: 'Studios',
 			items: [
 				{ href: '/dashboard/slideshows',  label: 'Slideshows',   icon: Wand2 },
-				{ href: '/dashboard/studio',       label: 'News Studio',  icon: Layers },
+				{ href: '/dashboard/studio?template=news',       label: 'News Studio',  icon: Layers },
 			]
 		},
 		{

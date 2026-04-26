@@ -1,6 +1,7 @@
 <script lang="ts">
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 
 	interface Segment { text: string; accent: boolean; }
@@ -18,6 +19,7 @@
 		logoRingColor?: string;
 		showSwipe?: boolean;
 		swipeText?: string;
+		onSwipeTextChange?: (v: string) => void;
 		// Rendering
 		scale?: number;
 		interactive?: boolean;
@@ -27,6 +29,8 @@
 		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
 		onHeadlineRangeSelect?: (start: number, end: number) => void;
 		headlineStyle?: TextStyle;
+		textOffsets?: Record<string, { x: number; y: number }>;
+		onTextOffsetChange?: (kind: TextElementKind, next: { x: number; y: number }) => void;
 		/** When true, inline highlight controls show while editing (no parent floating toolbar). */
 		showToolbar?: boolean;
 	}
@@ -36,11 +40,12 @@
 		image        = '',
 		accentColor  = '#3ecf8e',
 		bgColor      = '',
-		templateTheme = 'dark',
+		templateTheme = 'light',
 		logoSrc      = '',
 		logoRingColor = '#c9b97a',
 		showSwipe    = true,
 		swipeText    = '«« Swipe',
+		onSwipeTextChange,
 		scale        = 1,
 		interactive  = true,
 		exportRef    = $bindable(null),
@@ -49,6 +54,8 @@
 		onTextSelect,
 		onHeadlineRangeSelect,
 		headlineStyle = {},
+		textOffsets = {},
+		onTextOffsetChange,
 		showToolbar = false,
 	}: Props = $props();
 
@@ -122,53 +129,63 @@
 			overflow: hidden;
 		">
 			<!-- Text blocks -->
-			<CanvasMarkupTextBlock
-				value={text}
+			<DraggableBlock
+				dx={textOffsets.headline?.x ?? 0}
+				dy={textOffsets.headline?.y ?? 0}
 				{interactive}
-				defaultColor={accentColor}
-				selected={selectedText === 'headline'}
-				rows={12}
-				ariaLabel="Article body"
-				fontFamily={headlineStyle.fontFamily}
-				fontSize={headlineStyle.fontSize}
-				{showToolbar}
-				onTextChange={onTextChange}
-				onTextSelect={onTextSelect}
-				onHeadlineRangeSelect={onHeadlineRangeSelect}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 			>
-				{#snippet display()}
-					<div style="flex-shrink: 0; margin-bottom: {image ? '56px' : '0'};">
-						{#each blocks as block, bi}
-							{#if block !== null}
-								<p style="
-									margin: 0;
-									{bi > 0 ? 'margin-top: 40px;' : ''}
-									font-size: 46px;
-									font-weight: 400;
-									line-height: 1.42;
-									letter-spacing: -0.3px;
-									color: {baseText};
-									word-break: break-word;
-									{bodyTypeCss}
-								">
-									{#each block as seg}
-										{#if seg.accent}
-											<HighlightedText
-												as="span"
-												text={seg.text}
-												defaultColor={accentColor}
-												style="color: {accentColor}; font-weight: 600;"
-											/>
-										{:else}
-											<HighlightedText as="span" text={seg.text} defaultColor={accentColor} />
-										{/if}
-									{/each}
-								</p>
-							{/if}
-						{/each}
-					</div>
+				{#snippet children()}
+					<CanvasMarkupTextBlock
+						value={text}
+						{interactive}
+						defaultColor={accentColor}
+						selected={selectedText === 'headline'}
+						rows={12}
+						ariaLabel="Article body"
+						fontFamily={headlineStyle.fontFamily}
+						fontSize={headlineStyle.fontSize}
+						{showToolbar}
+						onTextChange={onTextChange}
+						onTextSelect={onTextSelect}
+						onHeadlineRangeSelect={onHeadlineRangeSelect}
+					>
+						{#snippet display()}
+							<div style="flex-shrink: 0; margin-bottom: {image ? '56px' : '0'};">
+								{#each blocks as block, bi}
+									{#if block !== null}
+										<p style="
+											margin: 0;
+											{bi > 0 ? 'margin-top: 40px;' : ''}
+											font-size: 46px;
+											font-weight: 400;
+											line-height: 1.42;
+											letter-spacing: -0.3px;
+											color: {baseText};
+											word-break: break-word;
+											{bodyTypeCss}
+										">
+											{#each block as seg}
+												{#if seg.accent}
+													<HighlightedText
+														as="span"
+														text={seg.text}
+														defaultColor={accentColor}
+														style="color: {accentColor}; font-weight: 600;"
+													/>
+												{:else}
+													<HighlightedText as="span" text={seg.text} defaultColor={accentColor} />
+												{/if}
+											{/each}
+										</p>
+									{/if}
+								{/each}
+							</div>
+						{/snippet}
+					</CanvasMarkupTextBlock>
 				{/snippet}
-			</CanvasMarkupTextBlock>
+			</DraggableBlock>
 
 			<!-- Embedded image -->
 			{#if image}
@@ -238,19 +255,33 @@
 			<!-- Swipe pill (right) -->
 			{#if showSwipe}
 				<div style="margin-left: auto;">
-					<div style="
-						display: flex;
-						align-items: center;
-						gap: 8px;
-						padding: 18px 36px;
-						border-radius: 100px;
-						border: 2.5px solid {isLight ? 'rgba(10,10,10,0.75)' : 'rgba(255,255,255,0.85)'};
-						font-size: 28px;
-						font-weight: 600;
-						color: {baseText};
-						letter-spacing: -0.2px;
-						white-space: nowrap;
-					">{swipeText}</div>
+					<CanvasMarkupTextBlock
+						value={swipeText}
+						{interactive}
+						rows={1}
+						showToolbar={false}
+						ariaLabel="Swipe text"
+						fontFamily={headlineStyle.fontFamily}
+						fontSize={28}
+						onTextChange={onSwipeTextChange}
+						onTextSelect={onTextSelect}
+					>
+						{#snippet display()}
+							<div style="
+								display: flex;
+								align-items: center;
+								gap: 8px;
+								padding: 18px 36px;
+								border-radius: 100px;
+								border: 2.5px solid {isLight ? 'rgba(10,10,10,0.75)' : 'rgba(255,255,255,0.85)'};
+								font-size: 28px;
+								font-weight: 600;
+								color: {baseText};
+								letter-spacing: -0.2px;
+								white-space: nowrap;
+							">{swipeText}</div>
+						{/snippet}
+					</CanvasMarkupTextBlock>
 				</div>
 			{/if}
 		</div>
