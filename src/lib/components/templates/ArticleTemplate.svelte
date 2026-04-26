@@ -30,7 +30,7 @@
 		onHeadlineRangeSelect?: (start: number, end: number) => void;
 		headlineStyle?: TextStyle;
 		textOffsets?: Record<string, { x: number; y: number }>;
-		onTextOffsetChange?: (kind: TextElementKind, next: { x: number; y: number }) => void;
+		onTextOffsetChange?: (kind: string, next: { x: number; y: number }) => void;
 		/** Optional per-field style overrides (font/size/color/etc). */
 		articleStyles?: Partial<Record<
 			| 'articleBody'
@@ -160,11 +160,11 @@
 		">
 			<!-- Text blocks -->
 			<DraggableBlock
-				dx={textOffsets.headline?.x ?? 0}
-				dy={textOffsets.headline?.y ?? 0}
+				dx={textOffsets.articleBody?.x ?? 0}
+				dy={textOffsets.articleBody?.y ?? 0}
 				{interactive}
 				{scale}
-				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
+				onChange={(x, y) => onTextOffsetChange?.('articleBody', { x, y })}
 			>
 				{#snippet children()}
 					<CanvasMarkupTextBlock
@@ -220,20 +220,30 @@
 
 			<!-- Embedded image -->
 			{#if image}
-				<div style="
-					flex: 1;
-					min-height: 0;
-					border-radius: 20px;
-					overflow: hidden;
-					flex-shrink: 0;
-					max-height: 620px;
-				">
-					<img
-						src={image}
-						alt=""
-						style="width: 100%; height: 100%; object-fit: cover; display: block;"
-					/>
-				</div>
+				<DraggableBlock
+					dx={textOffsets.articleImage?.x ?? 0}
+					dy={textOffsets.articleImage?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('articleImage', { x, y })}
+				>
+					{#snippet children()}
+						<div style="
+							flex: 1;
+							min-height: 0;
+							border-radius: 20px;
+							overflow: hidden;
+							flex-shrink: 0;
+							max-height: 620px;
+						">
+							<img
+								src={image}
+								alt=""
+								style="width: 100%; height: 100%; object-fit: cover; display: block;"
+							/>
+						</div>
+					{/snippet}
+				</DraggableBlock>
 			{/if}
 		</div>
 
@@ -248,74 +258,94 @@
 			box-sizing: border-box;
 		">
 			<!-- Centered logo -->
-			<div style="
-				position: absolute;
-				left: 50%;
-				transform: translateX(-50%);
-				width: 80px;
-				height: 80px;
-				border-radius: 50%;
-				padding: 3.5px;
-				background: linear-gradient(135deg, {logoRingColor}, color-mix(in srgb, {logoRingColor} 55%, white));
-				box-sizing: border-box;
-			">
-				<div style="
-					width: 100%;
-					height: 100%;
-					border-radius: 50%;
-					background: {baseBg};
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					overflow: hidden;
-					box-sizing: border-box;
-				">
-					{#if logoSrc}
-						<img src={logoSrc} alt="" style="width: 100%; height: 100%; object-fit: cover;" />
-					{:else}
-						<!-- Default lightning bolt -->
-						<svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-							<path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z"
-								fill="{logoRingColor}" stroke="{logoRingColor}" stroke-width="0.5"
-								stroke-linejoin="round"/>
-						</svg>
-					{/if}
-				</div>
-			</div>
+			<DraggableBlock
+				dx={textOffsets.articleLogo?.x ?? 0}
+				dy={textOffsets.articleLogo?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('articleLogo', { x, y })}
+			>
+				{#snippet children()}
+					<div style="
+						position: absolute;
+						left: 50%;
+						transform: translateX(-50%);
+						width: 80px;
+						height: 80px;
+						border-radius: 50%;
+						padding: 3.5px;
+						background: linear-gradient(135deg, {logoRingColor}, color-mix(in srgb, {logoRingColor} 55%, white));
+						box-sizing: border-box;
+					">
+						<div style="
+							width: 100%;
+							height: 100%;
+							border-radius: 50%;
+							background: {baseBg};
+							display: flex;
+							align-items: center;
+							justify-content: center;
+							overflow: hidden;
+							box-sizing: border-box;
+						">
+							{#if logoSrc}
+								<img src={logoSrc} alt="" style="width: 100%; height: 100%; object-fit: cover;" />
+							{:else}
+								<!-- Default lightning bolt -->
+								<svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+									<path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z"
+										fill="{logoRingColor}" stroke="{logoRingColor}" stroke-width="0.5"
+										stroke-linejoin="round"/>
+								</svg>
+							{/if}
+						</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
 
 			<!-- Swipe pill (right) -->
 			{#if showSwipe}
-				<div style="margin-left: auto;">
-					<CanvasMarkupTextBlock
-						value={swipeText}
-						{interactive}
-						rows={1}
-						{showToolbar}
-						toolbarKind="articleSwipeText"
-						ariaLabel="Swipe text"
-						fontFamily={articleStyles.articleSwipeText?.fontFamily ?? headlineStyle.fontFamily}
-						fontSize={articleStyles.articleSwipeText?.fontSize ?? 28}
-						onTextChange={onSwipeTextChange}
-						onTextSelect={onTextSelect}
-					>
-						{#snippet display()}
-							<div style="
-								display: flex;
-								align-items: center;
-								gap: 8px;
-								padding: 18px 36px;
-								border-radius: 100px;
-								border: 2.5px solid {isLight ? 'rgba(10,10,10,0.75)' : 'rgba(255,255,255,0.85)'};
-								font-size: 28px;
-								font-weight: 600;
-								color: {baseText};
-								letter-spacing: -0.2px;
-								white-space: nowrap;
-								{swipeCss}
-							">{swipeText}</div>
-						{/snippet}
-					</CanvasMarkupTextBlock>
-				</div>
+				<DraggableBlock
+					dx={textOffsets.articleSwipeText?.x ?? 0}
+					dy={textOffsets.articleSwipeText?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('articleSwipeText', { x, y })}
+				>
+					{#snippet children()}
+						<div style="margin-left: auto;">
+							<CanvasMarkupTextBlock
+								value={swipeText}
+								{interactive}
+								rows={1}
+								{showToolbar}
+								toolbarKind="articleSwipeText"
+								ariaLabel="Swipe text"
+								fontFamily={articleStyles.articleSwipeText?.fontFamily ?? headlineStyle.fontFamily}
+								fontSize={articleStyles.articleSwipeText?.fontSize ?? 28}
+								onTextChange={onSwipeTextChange}
+								onTextSelect={onTextSelect}
+							>
+								{#snippet display()}
+									<div style="
+										display: flex;
+										align-items: center;
+										gap: 8px;
+										padding: 18px 36px;
+										border-radius: 100px;
+										border: 2.5px solid {isLight ? 'rgba(10,10,10,0.75)' : 'rgba(255,255,255,0.85)'};
+										font-size: 28px;
+										font-weight: 600;
+										color: {baseText};
+										letter-spacing: -0.2px;
+										white-space: nowrap;
+										{swipeCss}
+									">{swipeText}</div>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						</div>
+					{/snippet}
+				</DraggableBlock>
 			{/if}
 		</div>
 

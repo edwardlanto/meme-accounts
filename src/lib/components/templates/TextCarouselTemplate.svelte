@@ -1,6 +1,7 @@
 <script lang="ts">
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 
 	interface Props {
@@ -22,6 +23,8 @@
 		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
 		onHeadlineRangeSelect?: (start: number, end: number) => void;
 		headlineStyle?: TextStyle;
+		textOffsets?: Record<string, { x: number; y: number }>;
+		onTextOffsetChange?: (kind: string, next: { x: number; y: number }) => void;
 		/** Optional per-field style overrides (font/size/color/etc). */
 		textCarouselStyles?: Partial<Record<
 			| 'textCarouselName'
@@ -56,6 +59,8 @@
 		onHeadlineRangeSelect,
 		headlineStyle = {},
 		textCarouselStyles = {},
+		textOffsets = {},
+		onTextOffsetChange,
 		showToolbar = false,
 	}: Props = $props();
 
@@ -139,7 +144,15 @@
 		"
 	>
 		<!-- ── Profile row ─────────────────────────────────────────────────── -->
-		<div style="display: flex; align-items: center; gap: 36px; margin-bottom: 100px; flex-shrink: 0;">
+		<DraggableBlock
+			dx={textOffsets.textCarouselProfile?.x ?? 0}
+			dy={textOffsets.textCarouselProfile?.y ?? 0}
+			{interactive}
+			{scale}
+			onChange={(x, y) => onTextOffsetChange?.('textCarouselProfile', { x, y })}
+		>
+			{#snippet children()}
+				<div style="display: flex; align-items: center; gap: 36px; margin-bottom: 100px; flex-shrink: 0;">
 
 			<!-- Avatar circle with ring -->
 			<div style="
@@ -224,49 +237,69 @@
 					{/snippet}
 				</CanvasMarkupTextBlock>
 			</div>
-		</div>
+				</div>
+			{/snippet}
+		</DraggableBlock>
 
 		<!-- ── Body text ──────────────────────────────────────────────────── -->
 		<div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
-			<CanvasMarkupTextBlock
-				value={text}
-				interactive={!!interactive && typeof onTextChange === 'function'}
-				selected={selectedText === 'textCarouselBody'}
-				toolbarKind="textCarouselBody"
-				rows={10}
-				ariaLabel="Carousel text"
-				fontFamily={textCarouselStyles.textCarouselBody?.fontFamily ?? headlineStyle.fontFamily}
-				fontSize={textCarouselStyles.textCarouselBody?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_BODY_SIZE}
-				{showToolbar}
-				onTextChange={onTextChange}
-				onTextSelect={onTextSelect}
-				onHeadlineRangeSelect={onHeadlineRangeSelect}
+			<DraggableBlock
+				dx={textOffsets.textCarouselBody?.x ?? 0}
+				dy={textOffsets.textCarouselBody?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('textCarouselBody', { x, y })}
 			>
-				{#snippet display()}
-					<div style="display: flex; flex-direction: column; justify-content: flex-start;">
-						{#each paragraphs as para, i}
-							<HighlightedText
-								as="p"
-								text={para}
-								style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: {baseText}; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss} {bodyCss}"
-							/>
-						{/each}
-					</div>
+				{#snippet children()}
+					<CanvasMarkupTextBlock
+						value={text}
+						interactive={!!interactive && typeof onTextChange === 'function'}
+						selected={selectedText === 'textCarouselBody'}
+						toolbarKind="textCarouselBody"
+						rows={10}
+						ariaLabel="Carousel text"
+						fontFamily={textCarouselStyles.textCarouselBody?.fontFamily ?? headlineStyle.fontFamily}
+						fontSize={textCarouselStyles.textCarouselBody?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_BODY_SIZE}
+						{showToolbar}
+						onTextChange={onTextChange}
+						onTextSelect={onTextSelect}
+						onHeadlineRangeSelect={onHeadlineRangeSelect}
+					>
+						{#snippet display()}
+							<div style="display: flex; flex-direction: column; justify-content: flex-start;">
+								{#each paragraphs as para, i}
+									<HighlightedText
+										as="p"
+										text={para}
+										style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: {baseText}; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss} {bodyCss}"
+									/>
+								{/each}
+							</div>
+						{/snippet}
+					</CanvasMarkupTextBlock>
 				{/snippet}
-			</CanvasMarkupTextBlock>
+			</DraggableBlock>
 		</div>
 
 		<!-- ── Swipe indicator ─────────────────────────────────────────────── -->
 		{#if showSwipe}
-			<div style="
-				position: absolute;
-				bottom: 72px;
-				right: 72px;
-				display: flex;
-				align-items: center;
-				gap: 10px;
-				opacity: 0.85;
-			">
+			<DraggableBlock
+				dx={textOffsets.textCarouselSwipe?.x ?? 0}
+				dy={textOffsets.textCarouselSwipe?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('textCarouselSwipe', { x, y })}
+			>
+				{#snippet children()}
+					<div style="
+						position: absolute;
+						bottom: 72px;
+						right: 72px;
+						display: flex;
+						align-items: center;
+						gap: 10px;
+						opacity: 0.85;
+					">
 				<!-- Arrow + hand SVG -->
 				<svg width="96" height="72" viewBox="0 0 96 72" fill="none" xmlns="http://www.w3.org/2000/svg">
 					<!-- Arrow pointing left -->
@@ -287,7 +320,9 @@
 						<rect x="4" y="32" width="12" height="8" rx="4" fill="{baseText}"/>
 					</g>
 				</svg>
-			</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
 		{/if}
 	</div>
 </div>

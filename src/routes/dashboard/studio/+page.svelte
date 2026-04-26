@@ -490,6 +490,24 @@
 	type TextOffset = { x: number; y: number };
 	let textOffsetsBySlide = $state<Record<string, TextOffset>[]>([]);
 
+	function offsetKey(template: TemplateId, kind: string) {
+		return `${template}:${kind}`;
+	}
+	function offsetsForTemplate(i: number, template: TemplateId): Record<string, TextOffset> {
+		const row = textOffsetsBySlide[i] ?? {};
+		const pref = `${template}:`;
+		const out: Record<string, TextOffset> = {};
+		for (const [k, v] of Object.entries(row)) {
+			if (!k.startsWith(pref)) continue;
+			if (!v || !Number.isFinite((v as any).x) || !Number.isFinite((v as any).y)) continue;
+			out[k.slice(pref.length)] = v as TextOffset;
+		}
+		return out;
+	}
+	function setTemplateOffset(i: number, template: TemplateId, kind: string, next: TextOffset) {
+		setTextOffset(i, offsetKey(template, kind), next);
+	}
+
 	function getTextOffset(i: number, kind: string): TextOffset {
 		const row = textOffsetsBySlide[i] ?? {};
 		const v = row[kind];
@@ -2842,8 +2860,8 @@
 					image={backgroundImage}
 					swipeText={articleSwipeTextBySlide[activeSlide] ?? '«« Swipe'}
 					onSwipeTextChange={(v) => articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, i) => i === activeSlide ? v : x)}
-					textOffsets={textOffsetsBySlide[activeSlide] ?? {}}
-					onTextOffsetChange={(kind, next) => setTextOffset(activeSlide, String(kind), next)}
+					textOffsets={offsetsForTemplate(activeSlide, 'article')}
+					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'article', String(kind), next)}
 					scale={previewScale}
 					interactive={true}
 					headlineStyle={activeStyleMap.articleBody ?? activeHeadlineStyle}
@@ -2894,6 +2912,8 @@
 					onLikeCountChange={(v) => tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === activeSlide ? v : x)}
 					topImage={(bgImagesByTemplate.tweet ?? [])[activeSlide] || '/templates/tweet/demo-bg.jpg'}
 					onTopImageChange={(v) => setSlideImage(activeSlide, v, 'tweet')}
+					textOffsets={offsetsForTemplate(activeSlide, 'tweet')}
+					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'tweet', String(kind), next)}
 					scale={previewScale}
 					interactive={true}
 					tweetStyles={activeTweetStyles}
@@ -2929,6 +2949,8 @@
 					scale={previewScale}
 					interactive={true}
 					showToolbar={false}
+					textOffsets={offsetsForTemplate(activeSlide, 'textCarousel')}
+					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'textCarousel', String(kind), next)}
 					headlineStyle={activeStyleMap.textCarouselBody ?? activeHeadlineStyle}
 					textCarouselStyles={{
 						textCarouselName: activeStyleMap.textCarouselName ?? {},

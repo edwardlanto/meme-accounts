@@ -33,6 +33,7 @@
 	let baseDy = 0;
 	let dragging = $state(false);
 	let armed = false;
+	let pointerId = 0;
 	let holdTimer: any = null;
 
 	function beginDrag() {
@@ -40,6 +41,10 @@
 		armed = false;
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = null;
+		// Only capture once we commit to dragging, so clicks still focus editors.
+		if (pointerId) {
+			try { root?.setPointerCapture(pointerId); } catch {}
+		}
 	}
 
 	function onPointerDown(e: PointerEvent) {
@@ -48,11 +53,11 @@
 		if ((e as any).button != null && (e as any).button !== 0) return;
 		dragging = false;
 		armed = true;
+		pointerId = e.pointerId;
 		downX = e.clientX;
 		downY = e.clientY;
 		baseDx = dx;
 		baseDy = dy;
-		try { root?.setPointerCapture(e.pointerId); } catch {}
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = setTimeout(() => {
 			if (!armed) return;
@@ -79,6 +84,7 @@
 	function endPointer() {
 		armed = false;
 		dragging = false;
+		pointerId = 0;
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = null;
 	}

@@ -1,6 +1,7 @@
 <script lang="ts">
 import HighlightedText from '$lib/components/HighlightedText.svelte';
 import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
 import { Image as ImageIcon, Trash2 } from 'lucide-svelte';
 
@@ -56,6 +57,8 @@ interface TweetProps {
 	onReplyCountChange?: (v: string) => void;
 	onRepostCountChange?: (v: string) => void;
 	onLikeCountChange?: (v: string) => void;
+	textOffsets?: Record<string, { x: number; y: number }>;
+	onTextOffsetChange?: (kind: string, next: { x: number; y: number }) => void;
 }
 
 let {
@@ -93,6 +96,8 @@ let {
 	onRepostCountChange,
 	onLikeCountChange,
 	onTopImageChange,
+	textOffsets = {},
+	onTextOffsetChange,
 }: TweetProps = $props();
 
 	const topEditable = $derived(!!interactive && typeof onTopTextChange === 'function');
@@ -265,7 +270,15 @@ let {
 			border-bottom: 3px solid {divider};
 		">
 			<!-- Profile row -->
-			<div style="display: flex; align-items: center; gap: 28px; margin-bottom: 44px;">
+			<DraggableBlock
+				dx={textOffsets.tweetTopProfile?.x ?? 0}
+				dy={textOffsets.tweetTopProfile?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('tweetTopProfile', { x, y })}
+			>
+				{#snippet children()}
+					<div style="display: flex; align-items: center; gap: 28px; margin-bottom: 44px;">
 				<!-- Avatar -->
 				<div style="
 					width: 112px; height: 112px; border-radius: 50%; flex-shrink: 0;
@@ -328,10 +341,20 @@ let {
 						{/snippet}
 					</CanvasMarkupTextBlock>
 				</div>
-			</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
 
 			<!-- Tweet text -->
-			<div style="margin: 0 0 44px;">
+			<DraggableBlock
+				dx={textOffsets.tweetTopText?.x ?? 0}
+				dy={textOffsets.tweetTopText?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('tweetTopText', { x, y })}
+			>
+				{#snippet children()}
+					<div style="margin: 0 0 44px;">
 				<CanvasMarkupTextBlock
 					value={topText}
 					interactive={topEditable}
@@ -357,7 +380,9 @@ let {
 						/>
 					{/snippet}
 				</CanvasMarkupTextBlock>
-			</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
 
 			<!-- Attached image -->
 			{#if topImage || topImageEditable}
@@ -368,57 +393,75 @@ let {
 					style="display:none"
 					onchange={onTopImageFile}
 				/>
-				<div
-					style="border-radius:24px;overflow:hidden;margin-bottom:44px;border:2px solid {divider};flex-shrink:0;position:relative;"
-					onmouseenter={() => (topImageHovering = true)}
-					onmouseleave={() => (topImageHovering = false)}
-					role="presentation"
+				<DraggableBlock
+					dx={textOffsets.tweetTopImage?.x ?? 0}
+					dy={textOffsets.tweetTopImage?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('tweetTopImage', { x, y })}
 				>
-					{#if topImage}
-						<img src={topImage} alt="" style="width:100%;display:block;max-height:560px;object-fit:cover;" />
-					{:else}
-						<div style="width:100%;height:320px;background:{card2};display:flex;align-items:center;justify-content:center;color:{textSecondary};font-size:28px;">
-							Add image
-						</div>
-					{/if}
-
-					{#if topImageEditable && topImageHovering}
-						<div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(0,0,0,0.0), rgba(0,0,0,0.25));pointer-events:none;"></div>
-						<div style="position:absolute;top:14px;right:14px;display:flex;gap:10px;pointer-events:auto;">
-							<button
-								type="button"
-								onclick={openTopImagePicker}
-								onmousedown={(e) => e.preventDefault()}
-								style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
-								title="Upload image"
-								aria-label="Upload image"
-							><ImageIcon size={18} /></button>
+					{#snippet children()}
+						<div
+							style="border-radius:24px;overflow:hidden;margin-bottom:44px;border:2px solid {divider};flex-shrink:0;position:relative;"
+							onmouseenter={() => (topImageHovering = true)}
+							onmouseleave={() => (topImageHovering = false)}
+							role="presentation"
+						>
 							{#if topImage}
-								<button
-									type="button"
-									onclick={removeTopImage}
-									onmousedown={(e) => e.preventDefault()}
-									style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
-									title="Remove image"
-									aria-label="Remove image"
-								><Trash2 size={18} /></button>
+								<img src={topImage} alt="" style="width:100%;display:block;max-height:560px;object-fit:cover;" />
+							{:else}
+								<div style="width:100%;height:320px;background:{card2};display:flex;align-items:center;justify-content:center;color:{textSecondary};font-size:28px;">
+									Add image
+								</div>
+							{/if}
+
+							{#if topImageEditable && topImageHovering}
+								<div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(0,0,0,0.0), rgba(0,0,0,0.25));pointer-events:none;"></div>
+								<div style="position:absolute;top:14px;right:14px;display:flex;gap:10px;pointer-events:auto;">
+									<button
+										type="button"
+										onclick={openTopImagePicker}
+										onmousedown={(e) => e.preventDefault()}
+										style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
+										title="Upload image"
+										aria-label="Upload image"
+									><ImageIcon size={18} /></button>
+									{#if topImage}
+										<button
+											type="button"
+											onclick={removeTopImage}
+											onmousedown={(e) => e.preventDefault()}
+											style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
+											title="Remove image"
+											aria-label="Remove image"
+										><Trash2 size={18} /></button>
+									{/if}
+								</div>
 							{/if}
 						</div>
-					{/if}
-				</div>
+					{/snippet}
+				</DraggableBlock>
 			{/if}
 
 			<!-- Spacer -->
 			<div style="flex:1;"></div>
 
 			<!-- Engagement row (static decorative) -->
-			<div style="
-				display:flex;gap:56px;align-items:center;flex-wrap:nowrap;
-				padding-top:36px;
-				border-top:2px solid {divider};
-				color:{textSecondary};font-size:32px;
-				flex-shrink: 0;
-			">
+			<DraggableBlock
+				dx={textOffsets.tweetEngagementRow?.x ?? 0}
+				dy={textOffsets.tweetEngagementRow?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('tweetEngagementRow', { x, y })}
+			>
+				{#snippet children()}
+					<div style="
+						display:flex;gap:56px;align-items:center;flex-wrap:nowrap;
+						padding-top:36px;
+						border-top:2px solid {divider};
+						color:{textSecondary};font-size:32px;
+						flex-shrink: 0;
+					">
 				<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap;min-width:0;">
 					<span style="display:inline-flex;align-items:center;line-height:1;">💬</span>
 					<CanvasMarkupTextBlock
@@ -488,7 +531,9 @@ let {
 						{/snippet}
 					</CanvasMarkupTextBlock>
 				</span>
-			</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
 		</div>
 
 		<!-- ── Reply tweet — fills bottom portion ─────────────────────────────── -->
@@ -501,12 +546,30 @@ let {
 			box-sizing: border-box;
 		">
 			<!-- "Replying to" label -->
-			<p style="font-size:28px;color:{textSecondary};margin:0 0 36px;font-weight:400;">
-				Replying to <span style="color:#1D9BF0;">{topHandle}</span>
-			</p>
+			<DraggableBlock
+				dx={textOffsets.tweetReplyingTo?.x ?? 0}
+				dy={textOffsets.tweetReplyingTo?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('tweetReplyingTo', { x, y })}
+			>
+				{#snippet children()}
+					<p style="font-size:28px;color:{textSecondary};margin:0 0 36px;font-weight:400;">
+						Replying to <span style="color:#1D9BF0;">{topHandle}</span>
+					</p>
+				{/snippet}
+			</DraggableBlock>
 
 			<!-- Profile row -->
-			<div style="display:flex;align-items:center;gap:24px;margin-bottom:40px;">
+			<DraggableBlock
+				dx={textOffsets.tweetBottomProfile?.x ?? 0}
+				dy={textOffsets.tweetBottomProfile?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('tweetBottomProfile', { x, y })}
+			>
+				{#snippet children()}
+					<div style="display:flex;align-items:center;gap:24px;margin-bottom:40px;">
 				<!-- Avatar -->
 				<div style="
 					width:104px;height:104px;border-radius:50%;flex-shrink:0;overflow:hidden;
@@ -568,34 +631,46 @@ let {
 						{/snippet}
 					</CanvasMarkupTextBlock>
 				</div>
-			</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
 
 			<!-- Reply text -->
-			<CanvasMarkupTextBlock
-				value={bottomText}
-				interactive={bottomEditable}
-				defaultColor={tweetHighlightDefault}
-				toolbarKind="tweetBottomText"
-				selected={selectedText === 'tweetBottomText'}
-				onTextSelect={onTextSelect}
-				onHeadlineRangeSelect={onHeadlineRangeSelect}
-				rows={1}
-				minHeight="0px"
-				{showToolbar}
-				ariaLabel="Reply text"
-				fontFamily={headlineStyle.fontFamily ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
-				fontSize={headlineStyle.fontSize ?? 56}
-				onTextChange={onBottomTextChange}
+			<DraggableBlock
+				dx={textOffsets.tweetBottomText?.x ?? 0}
+				dy={textOffsets.tweetBottomText?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('tweetBottomText', { x, y })}
 			>
-				{#snippet display()}
-					<HighlightedText
-						as="p"
-						text={bottomText}
+				{#snippet children()}
+					<CanvasMarkupTextBlock
+						value={bottomText}
+						interactive={bottomEditable}
 						defaultColor={tweetHighlightDefault}
-						style="font-size:56px; font-weight:400; color:{textPrimary}; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word; {bottomTextCss}"
-					/>
+						toolbarKind="tweetBottomText"
+						selected={selectedText === 'tweetBottomText'}
+						onTextSelect={onTextSelect}
+						onHeadlineRangeSelect={onHeadlineRangeSelect}
+						rows={1}
+						minHeight="0px"
+						{showToolbar}
+						ariaLabel="Reply text"
+						fontFamily={headlineStyle.fontFamily ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
+						fontSize={headlineStyle.fontSize ?? 56}
+						onTextChange={onBottomTextChange}
+					>
+						{#snippet display()}
+							<HighlightedText
+								as="p"
+								text={bottomText}
+								defaultColor={tweetHighlightDefault}
+								style="font-size:56px; font-weight:400; color:{textPrimary}; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word; {bottomTextCss}"
+							/>
+						{/snippet}
+					</CanvasMarkupTextBlock>
 				{/snippet}
-			</CanvasMarkupTextBlock>
+			</DraggableBlock>
 		</div>
 
 		<!-- X watermark -->
