@@ -24,7 +24,7 @@
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, ChevronDown, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -108,8 +108,226 @@
 		slideTemplates = slideTemplates.map(() => t);
 	}
 
+	// ── Undo (scoped to current template + slide) ─────────────────────────
+	type ScopedSnapshot =
+		| { template: 'tweet'; slide: number; data: { topName: string; topHandle: string; bottomName: string; bottomHandle: string; topText: string; bottomText: string; replyCount: string; repostCount: string; likeCount: string; topImage: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
+		| { template: 'textCarousel'; slide: number; data: { name: string; handle: string; text: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
+		| { template: 'article'; slide: number; data: { text: string; swipeText: string; image: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
+		| { template: 'news'; slide: number; data: { headline: string; source: string; image: string; video: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
+		| { template: 'imageQuote'; slide: number; data: { text: string; image: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } };
+
+	type ScopedHistory = { undo: ScopedSnapshot[]; redo: ScopedSnapshot[]; lastSig?: string };
+	let historyByTemplateBySlide = $state<Record<TemplateId, ScopedHistory[]>>({
+		news: [],
+		tweet: [],
+		article: [],
+		textCarousel: [],
+		imageQuote: [],
+	});
+
+	function ensureHistorySized(n: number) {
+		// IMPORTANT: Only assign when sizes mismatch (avoid reactive loops).
+		let needsSync = false;
+		for (const t of Object.keys(historyByTemplateBySlide) as TemplateId[]) {
+			if ((historyByTemplateBySlide[t] ?? []).length !== n) { needsSync = true; break; }
+		}
+		if (!needsSync) return;
+
+		historyByTemplateBySlide = (Object.fromEntries(
+			(Object.entries(historyByTemplateBySlide) as [TemplateId, ScopedHistory[]][]).map(([k, arr]) => [
+				k,
+				Array.from({ length: n }, (_, i) => arr[i] ?? { undo: [], redo: [] }),
+			]),
+		) as unknown) as Record<TemplateId, ScopedHistory[]>;
+	}
+
+	$effect(() => {
+		ensureHistorySized(slides.length);
+	});
+
+	function captureSnapshot(template: TemplateId, slide: number): ScopedSnapshot {
+		const offsets = offsetsForTemplate(slide, template);
+		const styles = (stylesByTemplateBySlide[template] ?? [])[slide] ?? {};
+		if (template === 'tweet') {
+			return {
+				template,
+				slide,
+				data: {
+					topName: tweetTopNameBySlide[slide] ?? 'Chef 👨‍🍳',
+					topHandle: tweetTopHandleBySlide[slide] ?? '@chefsevenn',
+					bottomName: tweetBottomNameBySlide[slide] ?? 'Mo Mohler',
+					bottomHandle: tweetBottomHandleBySlide[slide] ?? '@MoMohler',
+					topText: tweetTopTextBySlide[slide] ?? '',
+					bottomText: tweetBottomTextBySlide[slide] ?? '',
+					replyCount: tweetReplyCountBySlide[slide] ?? '4.2K',
+					repostCount: tweetRepostCountBySlide[slide] ?? '12.8K',
+					likeCount: tweetLikeCountBySlide[slide] ?? '89.4K',
+					topImage: (bgImagesByTemplate.tweet ?? [])[slide] ?? '',
+					styles,
+					offsets,
+				},
+			};
+		}
+		if (template === 'textCarousel') {
+			return {
+				template,
+				slide,
+				data: {
+					name: textCarouselNameBySlide[slide] ?? 'Captains of industry',
+					handle: textCarouselHandleBySlide[slide] ?? '@captainsofindustryy',
+					text: textCarouselTextBySlide[slide] ?? '',
+					styles,
+					offsets,
+				},
+			};
+		}
+		if (template === 'article') {
+			return {
+				template,
+				slide,
+				data: {
+					text: articleTextBySlide[slide] ?? '',
+					swipeText: articleSwipeTextBySlide[slide] ?? '«« Swipe',
+					image: (bgImagesByTemplate.article ?? [])[slide] ?? '',
+					styles,
+					offsets,
+				},
+			};
+		}
+		// Fallback snapshots (keeps types happy; undo focuses on tweet/text/article).
+		if (template === 'news') {
+			return {
+				template,
+				slide,
+				data: {
+					headline: slides[slide] ?? '',
+					source,
+					image: (bgImagesByTemplate.news ?? [])[slide] ?? '',
+					video: (bgVideosByTemplate.news ?? [])[slide] ?? '',
+					styles,
+					offsets,
+				},
+			};
+		}
+		return {
+			template: 'imageQuote',
+			slide,
+			data: {
+				text: imageQuoteTextBySlide[slide] ?? '',
+				image: (bgImagesByTemplate.imageQuote ?? [])[slide] ?? '',
+				styles: (stylesByTemplateBySlide.imageQuote ?? [])[slide] ?? {},
+				offsets: offsetsForTemplate(slide, 'imageQuote'),
+			},
+		};
+	}
+
+	function replaceTemplateOffsets(slide: number, template: TemplateId, next: Record<string, { x: number; y: number }>) {
+		const pref = `${template}:`;
+		const row = { ...(textOffsetsBySlide[slide] ?? {}) };
+		for (const k of Object.keys(row)) {
+			if (k.startsWith(pref)) delete row[k];
+		}
+		for (const [k, v] of Object.entries(next ?? {})) {
+			row[`${template}:${k}`] = { x: Number(v.x) || 0, y: Number(v.y) || 0 };
+		}
+		textOffsetsBySlide = textOffsetsBySlide.map((r, i) => (i === slide ? row : r));
+	}
+
+	function applySnapshot(snap: ScopedSnapshot) {
+		const i = snap.slide;
+		const t = snap.template;
+		// Clear selection (prevents toolbar anchoring to stale nodes).
+		closeToolbar();
+
+		replaceTemplateOffsets(i, t, (snap as any).data.offsets ?? {});
+		stylesByTemplateBySlide = {
+			...stylesByTemplateBySlide,
+			[t]: (stylesByTemplateBySlide[t] ?? []).map((m, idx) => (idx === i ? ((snap as any).data.styles ?? {}) : m)),
+		};
+
+		if (t === 'tweet') {
+			const d = snap.data;
+			tweetTopNameBySlide = tweetTopNameBySlide.map((x, idx) => (idx === i ? d.topName : x));
+			tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, idx) => (idx === i ? d.topHandle : x));
+			tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, idx) => (idx === i ? d.bottomName : x));
+			tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, idx) => (idx === i ? d.bottomHandle : x));
+			tweetTopTextBySlide = tweetTopTextBySlide.map((x, idx) => (idx === i ? d.topText : x));
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, idx) => (idx === i ? d.bottomText : x));
+			tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, idx) => (idx === i ? d.replyCount : x));
+			tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, idx) => (idx === i ? d.repostCount : x));
+			tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, idx) => (idx === i ? d.likeCount : x));
+			// Media for Tweet
+			bgImagesByTemplate = { ...bgImagesByTemplate, tweet: (bgImagesByTemplate.tweet ?? []).map((x, idx) => (idx === i ? d.topImage : x)) };
+			return;
+		}
+		if (t === 'textCarousel') {
+			const d = snap.data;
+			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) => (idx === i ? d.name : x));
+			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? d.handle : x));
+			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) => (idx === i ? d.text : x));
+			return;
+		}
+		if (t === 'article') {
+			const d = snap.data;
+			articleTextBySlide = articleTextBySlide.map((x, idx) => (idx === i ? d.text : x));
+			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? d.swipeText : x));
+			bgImagesByTemplate = { ...bgImagesByTemplate, article: (bgImagesByTemplate.article ?? []).map((x, idx) => (idx === i ? d.image : x)) };
+			return;
+		}
+	}
+
+	function pushUndo(template: TemplateId, slide: number) {
+		const snap = captureSnapshot(template, slide);
+		const sig = JSON.stringify(snap);
+		const row = historyByTemplateBySlide[template]?.[slide];
+		if (!row) return;
+		if (row.lastSig === sig) return;
+		row.undo = [...row.undo, snap].slice(-60);
+		row.redo = [];
+		row.lastSig = sig;
+		historyByTemplateBySlide = { ...historyByTemplateBySlide, [template]: historyByTemplateBySlide[template].map((r, i) => (i === slide ? row : r)) };
+	}
+
+	function canUndoActive() {
+		const row = historyByTemplateBySlide[activeTemplate]?.[activeSlide];
+		return !!row && row.undo.length > 0;
+	}
+	function canRedoActive() {
+		const row = historyByTemplateBySlide[activeTemplate]?.[activeSlide];
+		return !!row && row.redo.length > 0;
+	}
+
+	function undoActive() {
+		const t = activeTemplate;
+		const s = activeSlide;
+		const row = historyByTemplateBySlide[t]?.[s];
+		if (!row || row.undo.length === 0) return;
+		const current = captureSnapshot(t, s);
+		const prev = row.undo[row.undo.length - 1];
+		row.undo = row.undo.slice(0, -1);
+		row.redo = [...row.redo, current].slice(-60);
+		row.lastSig = JSON.stringify(prev);
+		historyByTemplateBySlide = { ...historyByTemplateBySlide, [t]: historyByTemplateBySlide[t].map((r, i) => (i === s ? row : r)) };
+		applySnapshot(prev);
+	}
+
+	function redoActive() {
+		const t = activeTemplate;
+		const s = activeSlide;
+		const row = historyByTemplateBySlide[t]?.[s];
+		if (!row || row.redo.length === 0) return;
+		const current = captureSnapshot(t, s);
+		const next = row.redo[row.redo.length - 1];
+		row.redo = row.redo.slice(0, -1);
+		row.undo = [...row.undo, current].slice(-60);
+		row.lastSig = JSON.stringify(next);
+		historyByTemplateBySlide = { ...historyByTemplateBySlide, [t]: historyByTemplateBySlide[t].map((r, i) => (i === s ? row : r)) };
+		applySnapshot(next);
+	}
+
 	function resetActiveTemplateContent() {
 		const i = activeSlide;
+		pushUndo(activeTemplate, i);
 		// Reset content (demo defaults) + clear style overrides for this template+slide.
 		if (activeTemplate === 'news') {
 			// Headline text for News lives in `slides` / `overlayText`.
@@ -489,6 +707,7 @@
 	// Per-slide draggable offsets for template text elements (template px).
 	type TextOffset = { x: number; y: number };
 	let textOffsetsBySlide = $state<Record<string, TextOffset>[]>([]);
+	let lastOffsetUndoAt = $state<Record<string, number>>({});
 
 	function offsetKey(template: TemplateId, kind: string) {
 		return `${template}:${kind}`;
@@ -505,6 +724,14 @@
 		return out;
 	}
 	function setTemplateOffset(i: number, template: TemplateId, kind: string, next: TextOffset) {
+		// Record undo sparingly (drag emits many onChange calls).
+		const key = `${template}:${i}:${kind}`;
+		(lastOffsetUndoAt as any)[key] = (lastOffsetUndoAt as any)[key] ?? 0;
+		const now = Date.now();
+		if (now - (lastOffsetUndoAt as any)[key] > 450) {
+			(lastOffsetUndoAt as any)[key] = now;
+			pushUndo(template, i);
+		}
 		setTextOffset(i, offsetKey(template, kind), next);
 	}
 
@@ -2859,7 +3086,7 @@
 					text={articleTextBySlide[activeSlide] ?? ''}
 					image={backgroundImage}
 					swipeText={articleSwipeTextBySlide[activeSlide] ?? '«« Swipe'}
-					onSwipeTextChange={(v) => articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onSwipeTextChange={(v) => { pushUndo('article', activeSlide); articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					textOffsets={offsetsForTemplate(activeSlide, 'article')}
 					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'article', String(kind), next)}
 					scale={previewScale}
@@ -2870,7 +3097,7 @@
 						articleSwipeText: activeStyleMap.articleSwipeText ?? {},
 					}}
 					selectedText={selectedText}
-					onTextChange={(t) => articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? t : x)}
+					onTextChange={(t) => { pushUndo('article', activeSlide); articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? t : x); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -2892,26 +3119,26 @@
 					templateTheme={uiTheme}
 					bind:exportRef
 					topText={tweetTopTextBySlide[activeSlide] ?? ''}
-					onTopTextChange={(v) => tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onTopTextChange={(v) => { pushUndo('tweet', activeSlide); tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					/* Editable per-slide tweet fields */
 					topName={tweetTopNameBySlide[activeSlide] ?? 'Chef 👨‍🍳'}
 					topHandle={tweetTopHandleBySlide[activeSlide] ?? '@chefsevenn'}
 					bottomName={tweetBottomNameBySlide[activeSlide] ?? 'Mo Mohler'}
 					bottomHandle={tweetBottomHandleBySlide[activeSlide] ?? '@MoMohler'}
-					onTopNameChange={(v) => tweetTopNameBySlide = tweetTopNameBySlide.map((x, i) => i === activeSlide ? v : x)}
-					onTopHandleChange={(v) => tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
-					onBottomNameChange={(v) => tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, i) => i === activeSlide ? v : x)}
-					onBottomHandleChange={(v) => tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onTopNameChange={(v) => { pushUndo('tweet', activeSlide); tweetTopNameBySlide = tweetTopNameBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					onTopHandleChange={(v) => { pushUndo('tweet', activeSlide); tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					onBottomNameChange={(v) => { pushUndo('tweet', activeSlide); tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					onBottomHandleChange={(v) => { pushUndo('tweet', activeSlide); tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					bottomText={tweetBottomTextBySlide[activeSlide] ?? ''}
-					onBottomTextChange={(v) => tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onBottomTextChange={(v) => { pushUndo('tweet', activeSlide); tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					replyCount={tweetReplyCountBySlide[activeSlide] ?? '4.2K'}
 					repostCount={tweetRepostCountBySlide[activeSlide] ?? '12.8K'}
 					likeCount={tweetLikeCountBySlide[activeSlide] ?? '89.4K'}
-					onReplyCountChange={(v) => tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, i) => i === activeSlide ? v : x)}
-					onRepostCountChange={(v) => tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, i) => i === activeSlide ? v : x)}
-					onLikeCountChange={(v) => tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onReplyCountChange={(v) => { pushUndo('tweet', activeSlide); tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					onRepostCountChange={(v) => { pushUndo('tweet', activeSlide); tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					onLikeCountChange={(v) => { pushUndo('tweet', activeSlide); tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					topImage={(bgImagesByTemplate.tweet ?? [])[activeSlide] || '/templates/tweet/demo-bg.jpg'}
-					onTopImageChange={(v) => setSlideImage(activeSlide, v, 'tweet')}
+					onTopImageChange={(v) => { pushUndo('tweet', activeSlide); setSlideImage(activeSlide, v, 'tweet'); }}
 					textOffsets={offsetsForTemplate(activeSlide, 'tweet')}
 					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'tweet', String(kind), next)}
 					scale={previewScale}
@@ -2944,8 +3171,8 @@
 					text={textCarouselTextBySlide[activeSlide] ?? ''}
 					name={textCarouselNameBySlide[activeSlide] ?? 'Captains of industry'}
 					handle={textCarouselHandleBySlide[activeSlide] ?? '@captainsofindustryy'}
-					onNameChange={(v) => textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) => i === activeSlide ? v : x)}
-					onHandleChange={(v) => textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === activeSlide ? v : x)}
+					onNameChange={(v) => { pushUndo('textCarousel', activeSlide); textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					onHandleChange={(v) => { pushUndo('textCarousel', activeSlide); textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					scale={previewScale}
 					interactive={true}
 					showToolbar={false}
@@ -2958,7 +3185,7 @@
 						textCarouselBody: activeStyleMap.textCarouselBody ?? {},
 					}}
 					selectedText={selectedText}
-					onTextChange={(t) => textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? t : x)}
+					onTextChange={(t) => { pushUndo('textCarousel', activeSlide); textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? t : x); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -3100,8 +3327,19 @@
 
 					<button
 						type="button"
+						onclick={undoActive}
+						disabled={!canUndoActive()}
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all mt-2 disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+						title={canUndoActive() ? 'Undo last change' : 'Nothing to undo'}
+						aria-label="Undo last change"
+					>
+						<Undo2 size={16} />
+					</button>
+
+					<button
+						type="button"
 						onclick={resetActiveTemplateContent}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all mt-2"
+						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
 						title="Reset this template"
 						aria-label="Reset this template"
 					>
