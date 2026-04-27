@@ -3992,41 +3992,65 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 </div>
 
 {#if circleAIModalFor !== null}
-	<!-- Circle AI prompt modal -->
+	<!-- Circle AI prompt modal (uses global --app-* tokens for light/dark) -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="fixed inset-0 z-[100] flex items-center justify-center"
 		onclick={closeCircleAIModal}
 	>
-		<div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
 		<div
-			class="relative w-[520px] max-w-[92vw] rounded-2xl bg-[#111] border border-white/10 shadow-2xl p-4"
+			class="absolute inset-0 backdrop-blur-sm"
+			style="background: color-mix(in oklab, var(--app-text) {uiTheme === 'light' ? '28%' : '52%'}, transparent);"
+		></div>
+		<div
+			class="relative w-[520px] max-w-[92vw] rounded-2xl border p-4 shadow-2xl"
+			style="
+				background: var(--app-surface-2);
+				border-color: var(--app-border);
+				color: var(--app-text);
+				box-shadow: 0 25px 50px -12px color-mix(in oklab, var(--app-text) 18%, transparent);
+			"
 			onclick={(e) => e.stopPropagation()}
 		>
 			<div class="flex items-center justify-between mb-3">
 				<div>
-					<p class="text-[10px] font-mono text-white/40 uppercase tracking-wider">Circle AI</p>
-					<p class="text-sm font-body text-white/80 -mt-0.5">Generate an image for circle {circleAIModalFor}</p>
+					<p class="text-[10px] font-mono uppercase tracking-wider" style="color: var(--app-text-3);">Circle AI</p>
+					<p class="text-sm font-body -mt-0.5" style="color: var(--app-text-2);">Generate an image for circle {circleAIModalFor}</p>
 				</div>
 				<button
 					type="button"
 					onclick={closeCircleAIModal}
-					class="w-8 h-8 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-white/60 hover:text-white flex items-center justify-center transition-colors"
+					class="w-8 h-8 rounded-xl border flex items-center justify-center transition-colors"
+					style="
+						border-color: var(--app-border);
+						background: var(--app-surface-3);
+						color: var(--app-text-2);
+					"
 					aria-label="Close"
 				>
 					<X size={14} />
 				</button>
 			</div>
 
-			<label class="block text-[10px] font-mono text-white/30 uppercase tracking-wider mb-1.5">Prompt</label>
+			<label
+				class="block text-[10px] font-mono uppercase tracking-wider mb-1.5"
+				style="color: var(--app-text-3);"
+				for="circle-ai-prompt-input"
+			>Prompt</label>
 			<input
+				id="circle-ai-prompt-input"
 				bind:value={circleAIPrompt}
 				placeholder="e.g. A smiling founder portrait, studio lighting…"
-				class="w-full bg-white/[0.04] border border-white/[0.10] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-cyan-400/40 transition-colors"
+				class="w-full rounded-xl py-2.5 px-3 text-sm font-body focus:outline-none transition-colors circle-ai-prompt-input"
+				style="
+					background: var(--app-surface-3);
+					border: 1px solid var(--app-border);
+					color: var(--app-text);
+				"
 				onkeydown={(e) => { if (e.key === 'Enter') submitCircleAIModal(); if (e.key === 'Escape') closeCircleAIModal(); }}
 				autofocus
 			/>
-			<p class="text-[10px] font-body text-white/25 mt-2 leading-relaxed">
+			<p class="text-[10px] font-body mt-2 leading-relaxed" style="color: var(--app-text-3);">
 				Tip: describe a subject and vibe. Keep it short—no text in the image.
 			</p>
 
@@ -4034,7 +4058,12 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 				<button
 					type="button"
 					onclick={closeCircleAIModal}
-					class="px-3 py-2 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-xs font-mono text-white/60 transition-colors"
+					class="px-3 py-2 rounded-xl border text-xs font-mono transition-colors"
+					style="
+						border-color: var(--app-border);
+						background: var(--app-surface-3);
+						color: var(--app-text-2);
+					"
 				>
 					Cancel
 				</button>
@@ -4045,7 +4074,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					class="px-3 py-2 rounded-xl text-xs font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] disabled:opacity-50"
 				>
 					{#if circleAIGenerating}
-						<span class="inline-flex items-center gap-2"><Loader size={12} class="animate-spin" /> Generating…</span>
+						<span class="inline-flex items-center gap-2"><Loader size={12} class="animate-spin text-[#0a0a0a]" /> Generating…</span>
 					{:else}
 						Generate
 					{/if}
@@ -4173,5 +4202,15 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 	}
 	.video-range-end {
 		z-index: 3;
+	}
+
+	/* Circle AI modal — placeholder + focus ring follow theme tokens */
+	.circle-ai-prompt-input::placeholder {
+		color: var(--app-text-3);
+		opacity: 0.9;
+	}
+	.circle-ai-prompt-input:focus {
+		border-color: color-mix(in oklab, var(--app-focus) 50%, var(--app-border)) !important;
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--app-focus) 20%, transparent);
 	}
 </style>
