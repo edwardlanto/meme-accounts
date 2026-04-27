@@ -2,7 +2,8 @@
 	import { supabase } from '$lib/supabase';
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { toPng } from 'html-to-image';
+import { toPng } from 'html-to-image';
+import JSZip from 'jszip';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
@@ -2396,34 +2397,50 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		reader.readAsDataURL(file);
 	}
 
-	// ── Export to PNG ─────────────────────────────────────────────────────
+	// ── Export PNGs (zip all slides) ──────────────────────────────────────
 	async function exportPng() {
 		if (!exportRef) return;
+		if (!slides.length) return;
 		exporting = true;
-
+		const prev = activeSlide;
 		try {
-			// Render at full canvas resolution
-			// Ensure any selected Google Fonts are fully loaded before rasterizing.
-			try { await (document as any).fonts?.ready; } catch { /* ignore */ }
-			const dataUrl = await toPng(exportRef, {
-				width: CANVAS_W,
-				height: CANVAS_H,
-				pixelRatio: 1,
-				style: { transform: 'scale(1)', transformOrigin: 'top left' },
-				// Let html-to-image inline @font-face rules so custom fonts render in the PNG.
-				// (Previously this was set to '' which disabled font embedding.)
-			} as any);
+			const zip = new JSZip();
+			const folder = zip.folder(`slides-${formatId}`) ?? zip;
 
+			for (let i = 0; i < slides.length; i++) {
+				activeSlide = i;
+				await tick();
+				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+				const node = exportRef;
+				if (!node) throw new Error('Preview not ready for export');
+				try { await (document as any).fonts?.ready; } catch { /* ignore */ }
+
+				const dataUrl = await toPng(node, {
+					width: CANVAS_W,
+					height: CANVAS_H,
+					pixelRatio: 1,
+					style: { transform: 'scale(1)', transformOrigin: 'top left' },
+					cacheBust: true,
+				} as any);
+				const base64 = dataUrl.split(',')[1] ?? '';
+				folder.file(`slide-${String(i + 1).padStart(2, '0')}.png`, base64, { base64: true });
+			}
+
+			const blob = await zip.generateAsync({ type: 'blob' });
+			const url = URL.createObjectURL(blob);
 			const a = document.createElement('a');
-			a.href = dataUrl;
-			a.download = `news-${formatId}-${Date.now()}.png`;
+			a.href = url;
+			a.download = `slides-${formatId}-${Date.now()}.zip`;
 			a.click();
+			setTimeout(() => URL.revokeObjectURL(url), 30_000);
 		} catch (e: any) {
-			console.error('Export failed:', e);
-			alert('Export failed: ' + e.message);
+			console.error('Export zip failed:', e);
+			alert('Export failed: ' + (e?.message ?? String(e)));
+		} finally {
+			activeSlide = prev;
+			exporting = false;
 		}
-
-		exporting = false;
 	}
 
 	async function exportAllSlidesToDraft() {
@@ -2732,21 +2749,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</div>
 				{/if}
 
-				<p class="text-[10px] font-body text-white/20 mb-1.5">Select text, then pick a color to highlight</p>
-				<div
-					data-slide-text
-					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white focus-within:border-violet-500/50 transition-colors leading-relaxed"
-				>
-					<HighlightEditor
-						value={overlayText}
-						rows={4}
-						showToolbar={true}
-						defaultColor={highlightColor}
-						placeholder="Type your headline, select words, then click a color…"
-						ariaLabel="Slide text editor"
-						onChange={(v) => setActiveSlideText(v)}
-					/>
-				</div>
+				<!-- Headline/highlight editor removed from sidebar (use inline editing on canvas) -->
 
 				<!-- Word count warning -->
 				{#if overlayText.split(/\s+/).filter(Boolean).length > 28}
@@ -2806,21 +2809,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<!-- Divider -->
 			<div class="border-t border-white/[0.05] my-3"></div>
 
-			<!-- Text color -->
-			<div>
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Text Color</label>
-				<div class="flex items-center gap-2">
-					{#each ['#FFFFFF', '#F5A623', '#08EBFF', '#000000'] as color}
-						<button onclick={() => { textColor = color; textColorTouched = true; }}
-							class="w-7 h-7 rounded-lg border-2 transition-all {textColor === color ? 'border-violet-400 scale-110' : 'border-white/10 hover:scale-105'}"
-							style="background: {color};">
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Divider -->
-			<div class="border-t border-white/[0.05] my-3"></div>
+			<!-- Text color control removed (use floating text toolbar instead) -->
 
 			<!-- Background image -->
 			<div>
@@ -3158,10 +3147,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							}
 						}}
 					subjectCutout={activeCutout}
-					showSubjectCutout={activeShowCutout}
-					circleImage={showCircle ? activeCircleImage : ''}
-					showCircle2={activeShowCircle2}
-					circle2Image={activeShowCircle2 ? activeCircle2Image : ''}
+showSubjectCutout={activeShowCutout}
+allowCircle={activeSlide === 0}
+allowCircle2={activeSlide === 0}
+circleImage={activeSlide === 0 && showCircle ? activeCircleImage : ''}
+showCircle2={activeShowCircle2}
+circle2Image={activeSlide === 0 && activeShowCircle2 ? activeCircle2Image : ''}
 					text={overlayText}
 					source={source}
 					highlightColor={highlightColor}

@@ -30,12 +30,20 @@
 		subjectCutout?: string;
 		showSubjectCutout?: boolean;
 		circleImage?: string;
+		/** If false, circle UI never renders (even in interactive mode). */
+		allowCircle?: boolean;
 		/** Circle border color (bindable). */
 		circleBorderColor?: string;
+		/** Circle border thickness in px (bindable). */
+		circleBorderWidth?: number;
 		/** Optional second circle badge (for a second photo/logo). */
 		showCircle2?: boolean;
 		circle2Image?: string;
+		/** If false, circle2 UI never renders (even in interactive mode). */
+		allowCircle2?: boolean;
 		circle2BorderColor?: string;
+		/** Circle2 border thickness in px (bindable). */
+		circle2BorderWidth?: number;
 		circle2X?: number;
 		circle2Y?: number;
 		circle2Size?: number;
@@ -104,10 +112,14 @@
 		subjectCutout = '',
 		showSubjectCutout = false,
 		circleImage,
+		allowCircle = true,
 		circleBorderColor = $bindable('#FFFFFF'),
+		circleBorderWidth = $bindable(8),
 		showCircle2 = false,
 		circle2Image = '',
+		allowCircle2 = true,
 		circle2BorderColor = $bindable('#FFFFFF'),
+		circle2BorderWidth = $bindable(8),
 		text,
 		source = 'Markets',
 		highlightColor = '#F5A623',
@@ -1275,7 +1287,7 @@
 		{/each}
 
 		<!-- ── Draggable circle badge ──────────────────────────────────────── -->
-		{#if circleImage || interactive}
+{#if allowCircle && (circleImage || interactive)}
 			<input
 				bind:this={circleFileEl}
 				type="file"
@@ -1298,7 +1310,7 @@
 					width: {circleSize}px;
 					height: {circleSize}px;
 					border-radius: 50%;
-					border: 8px solid {circleBorderColor};
+					border: {circleBorderWidth}px solid {circleBorderColor};
 					overflow: visible;
 					/* Keep circle controls above the shadow gradient (z=30),
 					   but below the main text layer (z=40). */
@@ -1378,6 +1390,31 @@
 							aria-label="Edit circle image"
 						>✎</button>
 
+						<div
+							style="display:flex;align-items:center;gap:8px;padding:0 10px;height:52px;border-radius:999px;border:0;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);"
+							title="Border thickness"
+							aria-label="Border thickness"
+							role="group"
+						>
+							<button
+								type="button"
+								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+								onclick={() => (circleBorderWidth = Math.max(0, Math.round((circleBorderWidth ?? 8) - 1)))}
+								style="width:28px;height:28px;border-radius:999px;border:0;background:rgba(0,0,0,0.28);color:rgba(255,255,255,0.95);cursor:pointer;line-height:1;"
+								title="Thinner border"
+								aria-label="Thinner border"
+							>−</button>
+							<span style="min-width:22px;text-align:center;font-size:12px;font-weight:700;opacity:0.9;">{Math.round(circleBorderWidth ?? 8)}</span>
+							<button
+								type="button"
+								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+								onclick={() => (circleBorderWidth = Math.min(40, Math.round((circleBorderWidth ?? 8) + 1)))}
+								style="width:28px;height:28px;border-radius:999px;border:0;background:rgba(0,0,0,0.28);color:rgba(255,255,255,0.95);cursor:pointer;line-height:1;"
+								title="Thicker border"
+								aria-label="Thicker border"
+							>+</button>
+						</div>
+
 						<button
 							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
 							onclick={openCircleBorderPicker}
@@ -1418,14 +1455,16 @@
 						onpointerup={circleResizeUp}
 						onpointercancel={circleResizeUp}
 						role="presentation"
-					><MoveDiagonal2 size={22} /></div>
+					title="Resize circle"
+					aria-label="Resize circle"
+				><MoveDiagonal2 size={22} /></div>
 				{/if}
 			{/if}
 			</div>
 		{/if}
 
 		<!-- ── Optional second circle badge ───────────────────────────────── -->
-		{#if circle2Image || (interactive && showCircle2)}
+{#if allowCircle2 && (circle2Image || (interactive && showCircle2))}
 			<input
 				bind:this={circle2FileEl}
 				type="file"
@@ -1448,7 +1487,7 @@
 					width: {circle2Size}px;
 					height: {circle2Size}px;
 					border-radius: 50%;
-					border: 8px solid {circle2BorderColor};
+					border: {circle2BorderWidth}px solid {circle2BorderColor};
 					overflow: visible;
 					/* Above gradient (z=30), below text (z=40), below main circle (z=32). */
 					z-index: 31;
