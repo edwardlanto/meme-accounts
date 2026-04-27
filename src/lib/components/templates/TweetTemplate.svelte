@@ -13,7 +13,9 @@ interface TweetProps {
 	topVerified?: boolean;
 	topText?: string;
 	topImage?: string;
+	topVideo?: string;
 	onTopImageChange?: (v: string) => void;
+	onTopVideoChange?: (v: string) => void;
 	/** Attached image frame height in px (editable). */
 	topImageHeight?: number;
 	/** Attached image frame width in px (editable). */
@@ -82,6 +84,7 @@ let {
 	topVerified  = true,
 	topText      = 'Ketchup or mayo or mustard?',
 	topImage     = '/templates/tweet/demo-bg.jpg',
+	topVideo     = '',
 	topImageHeight = 360,
 	topImageWidth = 920,
 	topImageZoom = 1,
@@ -115,6 +118,7 @@ let {
 	onRepostCountChange,
 	onLikeCountChange,
 	onTopImageChange,
+	onTopVideoChange,
 	onTopImageHeightChange,
 	onTopImageWidthChange,
 	onTopImageZoomChange,
@@ -133,6 +137,7 @@ let {
 	const repostCountEditable = $derived(!!interactive && typeof onRepostCountChange === 'function');
 	const likeCountEditable = $derived(!!interactive && typeof onLikeCountChange === 'function');
 	const topImageEditable = $derived(!!interactive && typeof onTopImageChange === 'function');
+	const topVideoEditable = $derived(!!interactive && typeof onTopVideoChange === 'function');
 
 	let topImageResizing = $state(false);
 	let topImagePanning = $state(false);
@@ -262,25 +267,39 @@ let {
 
 	function openTopImagePicker(e: MouseEvent) {
 		e.stopPropagation();
-		if (!topImageEditable) return;
+		if (!topImageEditable && !topVideoEditable) return;
 		topImageFileEl?.click();
 	}
 
 	function removeTopImage(e: MouseEvent) {
 		e.stopPropagation();
-		if (!topImageEditable) return;
+		if (!topImageEditable && !topVideoEditable) return;
 		onTopImageChange?.('');
+		onTopVideoChange?.('');
 	}
 
 	function onTopImageFile(e: Event) {
-		if (!topImageEditable) return;
+		if (!topImageEditable && !topVideoEditable) return;
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		(e.target as HTMLInputElement).value = '';
 
+		const extOk = /\.(mp4|mov|webm|m4v|mkv|avi)$/i.test(file.name ?? '');
+		const isVideo =
+			file.type.startsWith('video/') ||
+			file.type === 'application/mp4' ||
+			(file.type === 'application/octet-stream' && extOk) ||
+			extOk;
+		if (isVideo) {
+			const url = URL.createObjectURL(file);
+			onTopVideoChange?.(url);
+			return;
+		}
+
 		// 1) Instant preview (no base64).
 		const quickUrl = URL.createObjectURL(file);
 		onTopImageChange?.(quickUrl);
+		onTopVideoChange?.('');
 
 		// 2) Compress in background, then swap in a smaller blob URL.
 		(async () => {
@@ -502,7 +521,7 @@ let {
 				<input
 					bind:this={topImageFileEl}
 					type="file"
-					accept="image/*"
+					accept="image/*,video/*"
 					style="display:none"
 					onchange={onTopImageFile}
 				/>
@@ -524,7 +543,16 @@ onpointercancel={endTopImage}
 onwheel={onTopImageWheel}
 							role="presentation"
 						>
-							{#if topImage}
+{#if topVideo}
+	<video
+		src={topVideo}
+		muted
+		playsinline
+		autoplay
+		loop
+		style="width:100%;height:100%;display:block;object-fit:cover;"
+	></video>
+{:else if topImage}
 								<div
 									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && topImageHovering ? 'grab' : 'default'};"
 									onpointerdown={startTopImagePan}
@@ -563,17 +591,17 @@ onwheel={onTopImageWheel}
 										onclick={openTopImagePicker}
 										onmousedown={(e) => e.preventDefault()}
 										style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
-										title="Upload image"
-										aria-label="Upload image"
+										title="Upload media (image/video)"
+										aria-label="Upload media"
 									><ImageIcon size={18} /></button>
-									{#if topImage}
+									{#if topImage || topVideo}
 										<button
 											type="button"
 											onclick={removeTopImage}
 											onmousedown={(e) => e.preventDefault()}
 											style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
-											title="Remove image"
-											aria-label="Remove image"
+											title="Remove media"
+											aria-label="Remove media"
 										><Trash2 size={18} /></button>
 									{/if}
 								</div>

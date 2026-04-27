@@ -560,22 +560,44 @@ import JSZip from 'jszip';
 	const backgroundImage = $derived((bgImagesByTemplate[activeTemplate] ?? [])[activeSlide] ?? '');
 	const backgroundVideo = $derived((bgVideosByTemplate[activeTemplate] ?? [])[activeSlide] ?? '');
 
+	/** Tweet/article/etc. media arrays start empty; `.map` on [] does nothing without padding first. */
+	function templateMediaArraysPadded(template: TemplateId, slideIdx: number) {
+		const needLen = Math.max(slides.length, slideIdx + 1);
+		const padStr = (arr: string[] | undefined) => {
+			const a = [...(arr ?? [])];
+			while (a.length < needLen) a.push('');
+			return a;
+		};
+		const padBool = (arr: boolean[] | undefined) => {
+			const a = [...(arr ?? [])];
+			while (a.length < needLen) a.push(false);
+			return a;
+		};
+		return {
+			images: padStr(bgImagesByTemplate[template]),
+			videos: padStr(bgVideosByTemplate[template]),
+			generating: padBool(generatingImagesByTemplate[template]),
+		};
+	}
+
 	function setSlideImage(i: number, url: string, template: TemplateId = 'news') {
 		// If we’re replacing a blob URL, revoke it to keep memory stable.
 		const prev = (bgImagesByTemplate[template] ?? [])[i];
 		if (prev?.startsWith('blob:') && prev !== url) URL.revokeObjectURL(prev);
 
+		const { images, videos, generating } = templateMediaArraysPadded(template, i);
+
 		bgImagesByTemplate = {
 			...bgImagesByTemplate,
-			[template]: (bgImagesByTemplate[template] ?? []).map((img, idx) => idx === i ? url : img),
+			[template]: images.map((img, idx) => idx === i ? url : img),
 		};
 		bgVideosByTemplate = {
 			...bgVideosByTemplate,
-			[template]: (bgVideosByTemplate[template] ?? []).map((v, idx) => idx === i ? '' : v),
+			[template]: videos.map((v, idx) => idx === i ? '' : v),
 		};
 		generatingImagesByTemplate = {
 			...generatingImagesByTemplate,
-			[template]: (generatingImagesByTemplate[template] ?? []).map((v, idx) => idx === i ? false : v),
+			[template]: generating.map((v, idx) => idx === i ? false : v),
 		};
 		// Invalidate any existing cutout since it was computed from the old image.
 		if (template === 'news') {
@@ -605,17 +627,21 @@ import JSZip from 'jszip';
 	}
 
 	function setSlideVideo(i: number, url: string, template: TemplateId = 'news') {
+		const { images, videos, generating } = templateMediaArraysPadded(template, i);
+		const prevVid = videos[i];
+		if (prevVid?.startsWith('blob:') && prevVid !== url) URL.revokeObjectURL(prevVid);
+
 		bgVideosByTemplate = {
 			...bgVideosByTemplate,
-			[template]: (bgVideosByTemplate[template] ?? []).map((v, idx) => idx === i ? url : v),
+			[template]: videos.map((v, idx) => idx === i ? url : v),
 		};
 		bgImagesByTemplate = {
 			...bgImagesByTemplate,
-			[template]: (bgImagesByTemplate[template] ?? []).map((img, idx) => idx === i ? '' : img),
+			[template]: images.map((img, idx) => idx === i ? '' : img),
 		};
 		generatingImagesByTemplate = {
 			...generatingImagesByTemplate,
-			[template]: (generatingImagesByTemplate[template] ?? []).map((v, idx) => idx === i ? false : v),
+			[template]: generating.map((v, idx) => idx === i ? false : v),
 		};
 		// Reset trim to "full" until duration is known.
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
@@ -632,11 +658,12 @@ import JSZip from 'jszip';
 	}
 
 	function clearSlideBackground(i: number) {
-		// Revoke old blob URL to free memory
-		const old = (bgVideosByTemplate[activeTemplate] ?? [])[i];
+		const template = activeTemplate;
+		const { images, videos } = templateMediaArraysPadded(template, i);
+		const old = videos[i];
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
-		bgVideosByTemplate = { ...bgVideosByTemplate, [activeTemplate]: (bgVideosByTemplate[activeTemplate] ?? []).map((v, idx) => idx === i ? '' : v) };
-		bgImagesByTemplate = { ...bgImagesByTemplate, [activeTemplate]: (bgImagesByTemplate[activeTemplate] ?? []).map((img, idx) => idx === i ? '' : img) };
+		bgVideosByTemplate = { ...bgVideosByTemplate, [template]: videos.map((v, idx) => idx === i ? '' : v) };
+		bgImagesByTemplate = { ...bgImagesByTemplate, [template]: images.map((img, idx) => idx === i ? '' : img) };
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
 		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
 		videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0)));
@@ -2320,18 +2347,19 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (!file) return;
 		const reader = new FileReader();
 		const idx = activeSlide;
-		reader.onload = () => { setSlideImage(idx, reader.result as string); };
+		const t = activeTemplate;
+		reader.onload = () => {
+			setSlideImage(idx, reader.result as string, t);
+		};
 		reader.readAsDataURL(file);
 	}
 
 	function handleVideoUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
-		// Revoke existing blob if any
-		const old = (bgVideosByTemplate.news ?? [])[activeSlide];
-		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
+		const t = activeTemplate;
 		const url = URL.createObjectURL(file);
-		setSlideVideo(activeSlide, url);
+		setSlideVideo(activeSlide, url, t);
 	}
 
 	function handleCircleUpload(e: Event) {
@@ -3266,6 +3294,8 @@ circle2Image={activeSlide === 0 && activeShowCircle2 ? activeCircle2Image : ''}
 					onLikeCountChange={(v) => { pushUndo('tweet', activeSlide); tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
 topImage={(bgImagesByTemplate.tweet ?? [])[activeSlide] || '/templates/tweet/demo-bg.jpg'}
 onTopImageChange={(v) => { pushUndo('tweet', activeSlide); setSlideImage(activeSlide, v, 'tweet'); }}
+topVideo={(bgVideosByTemplate.tweet ?? [])[activeSlide] ?? ''}
+onTopVideoChange={(v) => { pushUndo('tweet', activeSlide); setSlideVideo(activeSlide, v, 'tweet'); }}
 topImageHeight={tweetTopImageHeightBySlide[activeSlide] ?? 360}
 onTopImageHeightChange={(v) => { pushUndo('tweet', activeSlide); tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, i) => i === activeSlide ? v : x); }}
 topImageWidth={tweetTopImageWidthBySlide[activeSlide] ?? 920}

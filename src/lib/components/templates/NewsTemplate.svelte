@@ -32,6 +32,12 @@
 		circleImage?: string;
 		/** If false, circle UI never renders (even in interactive mode). */
 		allowCircle?: boolean;
+		/** Circle image zoom (1–3). */
+		circleImageZoom?: number;
+		/** Circle image pan position as percent (0–100). */
+		circleImagePanX?: number;
+		/** Circle image pan position as percent (0–100). */
+		circleImagePanY?: number;
 		/** Circle border color (bindable). */
 		circleBorderColor?: string;
 		/** Circle border thickness in px (bindable). */
@@ -41,6 +47,12 @@
 		circle2Image?: string;
 		/** If false, circle2 UI never renders (even in interactive mode). */
 		allowCircle2?: boolean;
+		/** Circle2 image zoom (1–3). */
+		circle2ImageZoom?: number;
+		/** Circle2 image pan position as percent (0–100). */
+		circle2ImagePanX?: number;
+		/** Circle2 image pan position as percent (0–100). */
+		circle2ImagePanY?: number;
 		circle2BorderColor?: string;
 		/** Circle2 border thickness in px (bindable). */
 		circle2BorderWidth?: number;
@@ -113,11 +125,17 @@
 		showSubjectCutout = false,
 		circleImage,
 		allowCircle = true,
+		circleImageZoom = $bindable(1),
+		circleImagePanX = $bindable(50),
+		circleImagePanY = $bindable(50),
 		circleBorderColor = $bindable('#FFFFFF'),
 		circleBorderWidth = $bindable(8),
 		showCircle2 = false,
 		circle2Image = '',
 		allowCircle2 = true,
+		circle2ImageZoom = $bindable(1),
+		circle2ImagePanX = $bindable(50),
+		circle2ImagePanY = $bindable(50),
 		circle2BorderColor = $bindable('#FFFFFF'),
 		circle2BorderWidth = $bindable(8),
 		text,
@@ -616,6 +634,7 @@
 	let dragging = $state(false);
 	let resizingCircle = $state(false);
 	let hoveringCircle = $state(false);
+	let circleHoverHideTimer: ReturnType<typeof setTimeout> | null = null;
 	let lastMx = 0;
 	let lastMy = 0;
 	let circleStartSize = 0;
@@ -686,6 +705,68 @@
 
 	function circlePointerUp() {
 		dragging = false;
+	}
+
+	function circleHoverEnter() {
+		hoveringCircle = true;
+		if (circleHoverHideTimer) {
+			clearTimeout(circleHoverHideTimer);
+			circleHoverHideTimer = null;
+		}
+	}
+	function circleHoverLeave() {
+		if (circleHoverHideTimer) clearTimeout(circleHoverHideTimer);
+		// Small delay prevents the toolbar/handle from vanishing
+		// while the cursor travels from the circle to the controls.
+		circleHoverHideTimer = setTimeout(() => {
+			hoveringCircle = false;
+			circleHoverHideTimer = null;
+		}, 160);
+	}
+
+	function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+
+	let circlePanningImage = $state(false);
+	let circlePanStart = $state<{ x: number; y: number; panX: number; panY: number } | null>(null);
+
+	function startCircleImagePan(e: PointerEvent) {
+		if (!interactive) return;
+		if (!e.altKey) return;
+		e.preventDefault();
+		e.stopPropagation();
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+		circlePanningImage = true;
+		circlePanStart = {
+			x: e.clientX,
+			y: e.clientY,
+			panX: Number(circleImagePanX) || 50,
+			panY: Number(circleImagePanY) || 50,
+		};
+	}
+
+	function moveCircleImagePan(e: PointerEvent) {
+		if (!circlePanningImage || !circlePanStart) return;
+		const dx = (e.clientX - circlePanStart.x) / Math.max(0.001, scale);
+		const dy = (e.clientY - circlePanStart.y) / Math.max(0.001, scale);
+		const denom = Math.max(120, circleSize - 2 * (Number(circleBorderWidth) || 0)) * (Number(circleImageZoom) || 1);
+		circleImagePanX = clamp(circlePanStart.panX + (dx / denom) * 100, 0, 100);
+		circleImagePanY = clamp(circlePanStart.panY + (dy / denom) * 100, 0, 100);
+	}
+
+	function endCircleImagePan(e: PointerEvent) {
+		if (!circlePanningImage) return;
+		e.stopPropagation();
+		circlePanningImage = false;
+		circlePanStart = null;
+	}
+
+	function onCircleImageWheel(e: WheelEvent) {
+		if (!interactive) return;
+		if (!e.altKey) return;
+		e.preventDefault();
+		const z = Number(circleImageZoom) || 1;
+		const next = clamp(z + (e.deltaY > 0 ? -0.08 : 0.08), 1, 3);
+		circleImageZoom = next;
 	}
 
 	function circleResizeDown(e: PointerEvent) {
@@ -1323,21 +1404,52 @@
 				onpointermove={circlePointerMove}
 				onpointerup={circlePointerUp}
 				onpointercancel={circlePointerUp}
-				onmouseenter={() => hoveringCircle = true}
-				onmouseleave={() => hoveringCircle = false}
+				onmouseenter={circleHoverEnter}
+				onmouseleave={circleHoverLeave}
 				role="presentation"
 			>
 				{#if circleImage}
-					<img
-						src={circleImage}
-						alt=""
+					<div
 						style="
-							width: 100%; height: 100%;
-							object-fit: cover; object-position: center;
+							position: absolute;
+							left: {Math.max(0, Number(circleBorderWidth) || 0)}px;
+							top: {Math.max(0, Number(circleBorderWidth) || 0)}px;
+							right: {Math.max(0, Number(circleBorderWidth) || 0)}px;
+							bottom: {Math.max(0, Number(circleBorderWidth) || 0)}px;
 							border-radius: 50%;
-							pointer-events: none;
+							overflow: hidden;
+							background: rgba(255,255,255,0.06);
+							touch-action: none;
+							cursor: {interactive ? (circlePanningImage ? 'grabbing' : 'grab') : 'default'};
 						"
-					/>
+						onpointerdown={startCircleImagePan}
+						onpointermove={moveCircleImagePan}
+						onpointerup={endCircleImagePan}
+						onpointercancel={endCircleImagePan}
+						onwheel={onCircleImageWheel}
+						onmouseenter={circleHoverEnter}
+						onmouseleave={circleHoverLeave}
+						title="Alt+wheel to zoom · Alt+drag to pan"
+						role="presentation"
+					>
+						<img
+							src={circleImage}
+							alt=""
+							style="
+								position:absolute;
+								left:{Number(circleImagePanX) || 50}%;
+								top:{Number(circleImagePanY) || 50}%;
+								width:100%;
+								height:100%;
+								object-fit:cover;
+								transform:translate(-50%,-50%) scale({Number(circleImageZoom) || 1});
+								will-change: transform;
+								border-radius: 50%;
+								pointer-events: none;
+								user-select:none;
+							"
+						/>
+					</div>
 				{:else}
 					<div style="
 						width: 100%; height: 100%;
@@ -1372,6 +1484,8 @@
 							backdrop-filter: blur(10px);
 							pointer-events: auto;
 						"
+						onmouseenter={circleHoverEnter}
+						onmouseleave={circleHoverLeave}
 						role="presentation"
 					>
 						<button
@@ -1432,6 +1546,14 @@
 							title="Remove circle"
 							aria-label="Remove circle"
 						><Trash2 size={22} /></button>
+
+						<button
+							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onclick={() => { circleImageZoom = 1; circleImagePanX = 50; circleImagePanY = 50; }}
+							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; display:flex; align-items:center; justify-content:center; font-size: 12px; font-weight: 800;"
+							title="Reset image zoom/pan"
+							aria-label="Reset image zoom/pan"
+						>↺</button>
 					</div>
 				{/if}
 
@@ -1440,7 +1562,7 @@
 					<div
 						style="
 							position: absolute;
-							bottom: -26px; right: -26px;
+							bottom: -14px; right: -14px;
 							width: 52px; height: 52px;
 							border-radius: 999px;
 							background: rgba(0,0,0,0.85);
@@ -1450,6 +1572,8 @@
 							cursor: nwse-resize;
 							touch-action: none;
 						"
+						onmouseenter={circleHoverEnter}
+						onmouseleave={circleHoverLeave}
 						onpointerdown={circleResizeDown}
 						onpointermove={circleResizeMove}
 						onpointerup={circleResizeUp}
