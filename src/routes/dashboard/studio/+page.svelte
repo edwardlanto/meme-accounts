@@ -13,6 +13,7 @@ import JSZip from 'jszip';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import { DragDropProvider, DragOverlay } from '@dnd-kit-svelte/svelte';
 	import { PointerSensor } from '@dnd-kit-svelte/svelte';
 	import { PointerActivationConstraints } from '@dnd-kit/dom';
@@ -2019,21 +2020,31 @@ tweetTopImagePanYBySlide,
 	}
 
 	// ── Generate background image for a single slide ─────────────────────
-	async function generateBackground(slideIdx: number, promptOverride?: string) {
-		// Mark this slide as generating
+	function setNewsGeneratingFlag(slideIdx: number, value: boolean) {
+		const { generating } = templateMediaArraysPadded('news', slideIdx);
 		generatingImagesByTemplate = {
 			...generatingImagesByTemplate,
-			news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? true : v),
+			news: generating.map((v, i) => (i === slideIdx ? value : v)),
 		};
+	}
+
+	async function generateBackground(slideIdx: number, promptOverride?: string) {
+		setNewsGeneratingFlag(slideIdx, true);
 		bgError = '';
 
 		try {
 			const slideText = (slides[slideIdx] ?? '').replace(/\[\[|\]\]/g, '').trim();
-			const prompt = promptOverride ?? slideText ?? articleTitle ?? 'editorial news photo';
+			const title = String(articleTitle ?? '').trim();
+			// `??` skips only null/undefined — an empty headline must still fall back, or /api/vertex returns 400 "Missing prompt".
+			const prompt =
+				String(promptOverride ?? '').trim() ||
+				slideText ||
+				title ||
+				'editorial news photo';
 			const res = await fetch('/api/vertex', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ prompt, aspect: '3:4', context: articleTitle }),
+				body: JSON.stringify({ prompt, aspect: '3:4', context: title || undefined }),
 			});
 
 			const data = await res.json();
@@ -2041,23 +2052,14 @@ tweetTopImagePanYBySlide,
 				setSlideImage(slideIdx, data.dataUrl);
 			} else if (data.demo) {
 				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
-				generatingImagesByTemplate = {
-					...generatingImagesByTemplate,
-					news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? false : v),
-				};
+				setNewsGeneratingFlag(slideIdx, false);
 			} else {
-				bgError = data.error ?? 'Image generation failed';
-				generatingImagesByTemplate = {
-					...generatingImagesByTemplate,
-					news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? false : v),
-				};
+				bgError = data.error ?? (res.ok ? 'Image generation failed' : `Request failed (${res.status})`);
+				setNewsGeneratingFlag(slideIdx, false);
 			}
 		} catch (e: any) {
 			bgError = e.message;
-			generatingImagesByTemplate = {
-				...generatingImagesByTemplate,
-				news: (generatingImagesByTemplate.news ?? []).map((v, i) => i === slideIdx ? false : v),
-			};
+			setNewsGeneratingFlag(slideIdx, false);
 		}
 	}
 
@@ -3471,18 +3473,20 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 						onchange={handleOverlayUpload}
 					/>
 
-					<button
-						type="button"
+					<Button
+						variant="outline"
+						size="icon"
 						onclick={() => { showVideoTrim = !showVideoTrim; if (!showVideoTrim) videoSeekSec = NaN; }}
 						disabled={!backgroundVideo}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+						class="rounded-2xl"
 						title={backgroundVideo ? 'Trim video' : 'Trim (add a video background first)'}
 					>
 						<Scissors size={16} />
-					</button>
+					</Button>
 
-					<button
-						type="button"
+					<Button
+						variant="outline"
+						size="icon"
 						onclick={() => {
 							if (!backgroundVideo) return;
 							const next = !activeVideoMuted;
@@ -3505,7 +3509,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 							}
 						}}
 						disabled={!backgroundVideo}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+						class="rounded-2xl"
 						title={backgroundVideo ? (activeVideoMuted ? 'Unmute video' : 'Mute video') : 'Volume (add a video background first)'}
 					>
 						{#if activeVideoMuted}
@@ -3513,14 +3517,15 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 						{:else}
 							<Volume2 size={16} />
 						{/if}
-					</button>
+					</Button>
 
 					{#if activeTemplate === 'news'}
-						<button
-							type="button"
+						<Button
+							variant="outline"
+							size="icon"
 							onclick={() => void generateBackground(activeSlide)}
 							disabled={(generatingImagesByTemplate.news ?? [])[activeSlide]}
-							class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+							class="rounded-2xl"
 							title="Regenerate background with AI (uses this slide’s headline; replaces photo or video)"
 							aria-label="Regenerate background with AI"
 						>
@@ -3529,55 +3534,60 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 							{:else}
 								<Sparkles size={16} />
 							{/if}
-						</button>
-						<button
-							type="button"
+						</Button>
+						<Button
+							variant="outline"
+							size="icon"
 							onclick={openCircle2QuickPicker}
-							class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+							class="rounded-2xl"
 							title="Add another circle"
 						>
 							<span class="text-lg leading-none">◯</span>
-						</button>
+						</Button>
 					{/if}
 
-					<button
-						type="button"
+					<Button
+						variant="outline"
+						size="icon"
 						onclick={addTextOverlay}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+						class="rounded-2xl"
 						title="Add text layer"
 					>
 						<Type size={16} />
-					</button>
+					</Button>
 
-					<button
-						type="button"
+					<Button
+						variant="outline"
+						size="icon"
 						onclick={openOverlayQuickPicker}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+						class="rounded-2xl"
 						title="Add image overlay"
 					>
 						<Image size={16} />
-					</button>
+					</Button>
 
-					<button
-						type="button"
+					<Button
+						variant="outline"
+						size="icon"
 						onclick={undoActive}
 						disabled={!canUndoActive()}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all mt-2 disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+						class="mt-2 rounded-2xl"
 						title={canUndoActive() ? 'Undo last change' : 'Nothing to undo'}
 						aria-label="Undo last change"
 					>
 						<Undo2 size={16} />
-					</button>
+					</Button>
 
-					<button
-						type="button"
+					<Button
+						variant="outline"
+						size="icon"
 						onclick={resetActiveTemplateContent}
-						class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all"
+						class="rounded-2xl"
 						title="Reset this template"
 						aria-label="Reset this template"
 					>
 						<RefreshCw size={16} />
-					</button>
+					</Button>
 				</div>
 		</div>
 		<!-- Slide filmstrip: drag to reorder -->

@@ -4,7 +4,20 @@
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
-	import { Maximize2, Minimize2, Minus, Plus, Trash2, MoveDiagonal2 } from 'lucide-svelte';
+	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
+	import { Button } from '$lib/components/ui/button';
+	import {
+		Maximize2,
+		Minimize2,
+		Minus,
+		Plus,
+		Trash2,
+		MoveDiagonal2,
+		Pencil,
+		ZoomIn,
+		ZoomOut,
+		RotateCcw,
+	} from 'lucide-svelte';
 
 	interface Props {
 		// Canvas size (template pixels). Default is IG portrait 4:5.
@@ -636,8 +649,8 @@
 	// ── Circle drag ────────────────────────────────────────────────────────
 	let dragging = $state(false);
 	let resizingCircle = $state(false);
-	let hoveringCircle = $state(false);
-	let circleHoverHideTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Drives circle chrome + shadcn popover; bits-ui trigger uses openOnHover. */
+	let circleToolbarPopoverOpen = $state(false);
 	let lastMx = 0;
 	let lastMy = 0;
 	let circleStartSize = 0;
@@ -712,23 +725,6 @@
 
 	function circlePointerUp() {
 		dragging = false;
-	}
-
-	function circleHoverEnter() {
-		hoveringCircle = true;
-		if (circleHoverHideTimer) {
-			clearTimeout(circleHoverHideTimer);
-			circleHoverHideTimer = null;
-		}
-	}
-	function circleHoverLeave() {
-		if (circleHoverHideTimer) clearTimeout(circleHoverHideTimer);
-		// Small delay prevents the toolbar/handle from vanishing
-		// while the cursor travels from the circle to the controls.
-		circleHoverHideTimer = setTimeout(() => {
-			hoveringCircle = false;
-			circleHoverHideTimer = null;
-		}, 160);
 	}
 
 	function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
@@ -823,7 +819,7 @@
 	// ── Second circle drag ────────────────────────────────────────────────
 	let dragging2 = $state(false);
 	let resizingCircle2 = $state(false);
-	let hoveringCircle2 = $state(false);
+	let circle2ToolbarPopoverOpen = $state(false);
 	let lastMx2 = 0;
 	let lastMy2 = 0;
 	let circle2StartSize = 0;
@@ -894,22 +890,6 @@
 
 	function circle2PointerUp() {
 		dragging2 = false;
-	}
-
-	let circle2HoverHideTimer: ReturnType<typeof setTimeout> | null = null;
-	function circle2HoverEnter() {
-		hoveringCircle2 = true;
-		if (circle2HoverHideTimer) {
-			clearTimeout(circle2HoverHideTimer);
-			circle2HoverHideTimer = null;
-		}
-	}
-	function circle2HoverLeave() {
-		if (circle2HoverHideTimer) clearTimeout(circle2HoverHideTimer);
-		circle2HoverHideTimer = setTimeout(() => {
-			hoveringCircle2 = false;
-			circle2HoverHideTimer = null;
-		}, 160);
 	}
 
 	let circle2PanningImage = $state(false);
@@ -1548,7 +1528,9 @@
 				style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px"
 				oninput={(e) => (circleBorderColor = (e.target as HTMLInputElement).value)}
 			/>
+			{#snippet newsCirclePopoverTrigger({ props }: { props: Record<string, unknown> })}
 			<div
+				{...props}
 				style="
 					position: absolute;
 					left: {circleX}px;
@@ -1570,8 +1552,6 @@
 				onpointermove={circlePointerMove}
 				onpointerup={circlePointerUp}
 				onpointercancel={circlePointerUp}
-				onmouseenter={circleHoverEnter}
-				onmouseleave={circleHoverLeave}
 				role="presentation"
 			>
 				{#if circleImage}
@@ -1589,8 +1569,6 @@
 						onpointerup={endCircleImagePan}
 						onpointercancel={endCircleImagePan}
 						onwheel={onCircleImageWheel}
-						onmouseenter={circleHoverEnter}
-						onmouseleave={circleHoverLeave}
 						title="Alt+wheel or ± to zoom · Alt+drag to pan · use corner or ⊕/⊖ to resize circle"
 						role="presentation"
 					>
@@ -1626,147 +1604,7 @@
 				{/if}
 				<!-- Drag indicator (only in interactive mode) -->
 			{#if interactive}
-				{@const showCircleTools = hoveringCircle || dragging || resizingCircle}
-
-				{#if showCircleTools}
-					<!-- Hover toolbar (single place for all controls) -->
-					<div
-						style="
-							position: absolute;
-							top: -64px;
-							left: 50%;
-							transform: translateX(-50%);
-							display: flex;
-							gap: 10px;
-							padding: 8px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.18);
-							backdrop-filter: blur(10px);
-							pointer-events: auto;
-						"
-						onmouseenter={circleHoverEnter}
-						onmouseleave={circleHoverLeave}
-						role="presentation"
-					>
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={() => onCircleAIClick?.()}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 16px;"
-							title="Generate with AI"
-							aria-label="Generate with AI"
-						>AI</button>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={openCirclePicker}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 22px;"
-							title="Edit circle image"
-							aria-label="Edit circle image"
-						>✎</button>
-
-						<div
-							style="display:flex;align-items:center;gap:8px;padding:0 10px;height:52px;border-radius:999px;border:0;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);"
-							title="Border thickness"
-							aria-label="Border thickness"
-							role="group"
-						>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => (circleBorderWidth = Math.max(0, Math.round((circleBorderWidth ?? 8) - 1)))}
-								style="width:28px;height:28px;border-radius:999px;border:0;background:rgba(0,0,0,0.28);color:rgba(255,255,255,0.95);cursor:pointer;line-height:1;"
-								title="Thinner border"
-								aria-label="Thinner border"
-							>−</button>
-							<span style="min-width:22px;text-align:center;font-size:12px;font-weight:700;opacity:0.9;">{Math.round(circleBorderWidth ?? 8)}</span>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => (circleBorderWidth = Math.min(40, Math.round((circleBorderWidth ?? 8) + 1)))}
-								style="width:28px;height:28px;border-radius:999px;border:0;background:rgba(0,0,0,0.28);color:rgba(255,255,255,0.95);cursor:pointer;line-height:1;"
-								title="Thicker border"
-								aria-label="Thicker border"
-							>+</button>
-						</div>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={openCircleBorderPicker}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; cursor: pointer; touch-action: none;"
-							title="Change border color"
-							aria-label="Change border color"
-						>
-							<span style="width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,0.35);background:{circleBorderColor};display:block;"></span>
-						</button>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={removeCircle}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; display:flex; align-items:center; justify-content:center;"
-							title="Remove circle"
-							aria-label="Remove circle"
-						><Trash2 size={22} /></button>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={() => { circleImageZoom = 1; circleImagePanX = 50; circleImagePanY = 50; }}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; display:flex; align-items:center; justify-content:center; font-size: 12px; font-weight: 800;"
-							title="Reset image zoom/pan"
-							aria-label="Reset image zoom/pan"
-						>↺</button>
-
-						<div
-							style="display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:999px;background:rgba(255,255,255,0.06);"
-							role="group"
-							aria-label="Photo zoom inside circle"
-						>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircleImageZoom(0.12)}
-								disabled={(Number(circleImageZoom) || 1) >= 4.99}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{(Number(circleImageZoom) || 1) >= 4.99 ? 0.35 : 1};"
-								title="Zoom photo in (up to 5×)"
-								aria-label="Zoom photo in"
-							><Plus size={18} /></button>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircleImageZoom(-0.12)}
-								disabled={(Number(circleImageZoom) || 1) <= 1.01}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{(Number(circleImageZoom) || 1) <= 1.01 ? 0.35 : 1};"
-								title="Zoom photo out"
-								aria-label="Zoom photo out"
-							><Minus size={18} /></button>
-						</div>
-
-						<div
-							style="display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:999px;background:rgba(255,255,255,0.06);"
-							role="group"
-							aria-label="Circle size"
-						>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircleDiameter(36)}
-								disabled={Number(circleSize) >= 720}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{Number(circleSize) >= 720 ? 0.35 : 1};"
-								title="Expand circle"
-								aria-label="Expand circle"
-							><Maximize2 size={16} /></button>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircleDiameter(-36)}
-								disabled={Number(circleSize) <= 96}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{Number(circleSize) <= 96 ? 0.35 : 1};"
-								title="Shrink circle"
-								aria-label="Shrink circle"
-							><Minimize2 size={16} /></button>
-						</div>
-					</div>
-				{/if}
+				{@const showCircleTools = circleToolbarPopoverOpen || dragging || resizingCircle || circlePanningImage}
 
 				{#if showCircleTools}
 					<!-- Resize handle (bottom-right) -->
@@ -1783,8 +1621,6 @@
 							cursor: nwse-resize;
 							touch-action: none;
 						"
-						onmouseenter={circleHoverEnter}
-						onmouseleave={circleHoverLeave}
 						onpointerdown={circleResizeDown}
 						onpointermove={circleResizeMove}
 						onpointerup={circleResizeUp}
@@ -1796,6 +1632,45 @@
 				{/if}
 			{/if}
 			</div>
+			{/snippet}
+			<Popover bind:open={circleToolbarPopoverOpen}>
+				<PopoverTrigger
+					openOnHover={!!interactive}
+					openDelay={0}
+					closeDelay={280}
+					child={newsCirclePopoverTrigger}
+				/>
+				{#if interactive}
+					<PopoverContent
+						side="top"
+						sideOffset={10}
+						align="center"
+						trapFocus={false}
+						class="border-border bg-popover/95 text-foreground z-[60] !flex !w-max max-w-[calc(100vw-2rem)] !flex-row flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border p-2 shadow-lg ring-1 ring-border/40 backdrop-blur-md duration-100 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 !gap-1.5 !p-2 [&_svg]:shrink-0 [&_svg]:text-foreground"
+					>
+						<Button variant="secondary" size="sm" class="h-11 min-w-11 shrink-0 rounded-full px-3 font-semibold" onclick={() => onCircleAIClick?.()} title="Generate with AI" aria-label="Generate with AI">AI</Button>
+						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCirclePicker} title="Edit circle image" aria-label="Edit circle image"><Pencil size={20} class="text-foreground" strokeWidth={2} /></Button>
+						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2" role="group" aria-label="Border thickness in pixels" title="Border thickness">
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circleBorderWidth = Math.max(0, Math.round((circleBorderWidth ?? 8) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circleBorderWidth ?? 8)}</span>
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circleBorderWidth = Math.min(40, Math.round((circleBorderWidth ?? 8) + 1)))} title="Thicker border" aria-label="Thicker border"><Plus size={16} class="text-foreground" strokeWidth={2} /></Button>
+						</div>
+						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCircleBorderPicker} title="Change border color" aria-label="Change border color">
+							<span class="border-foreground/25 ring-foreground/15 box-border block h-[22px] w-[22px] rounded-md border-2 shadow-sm ring-1" style="background:{circleBorderColor}"></span>
+						</Button>
+						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
+						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={() => { circleImageZoom = 1; circleImagePanX = 50; circleImagePanY = 50; }} title="Reset image zoom/pan" aria-label="Reset image zoom/pan"><RotateCcw size={18} class="text-foreground" strokeWidth={2} /></Button>
+						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Circle size">
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleDiameter(36)} disabled={Number(circleSize) >= 720} title="Expand circle" aria-label="Expand circle"><Maximize2 size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleDiameter(-36)} disabled={Number(circleSize) <= 96} title="Shrink circle" aria-label="Shrink circle"><Minimize2 size={16} class="text-foreground" strokeWidth={2} /></Button>
+						</div>
+						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Photo zoom inside circle">
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleImageZoom(0.12)} disabled={(Number(circleImageZoom) || 1) >= 4.99} title="Zoom photo in (up to 5×)" aria-label="Zoom photo in"><ZoomIn size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleImageZoom(-0.12)} disabled={(Number(circleImageZoom) || 1) <= 1.01} title="Zoom photo out" aria-label="Zoom photo out"><ZoomOut size={16} class="text-foreground" strokeWidth={2} /></Button>
+						</div>
+					</PopoverContent>
+				{/if}
+			</Popover>
 		{/if}
 
 		<!-- ── Optional second circle badge ───────────────────────────────── -->
@@ -1814,7 +1689,9 @@
 				style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px"
 				oninput={(e) => (circle2BorderColor = (e.target as HTMLInputElement).value)}
 			/>
+			{#snippet newsCircle2PopoverTrigger({ props }: { props: Record<string, unknown> })}
 			<div
+				{...props}
 				style="
 					position: absolute;
 					left: {circle2X}px;
@@ -1835,8 +1712,6 @@
 				onpointermove={circle2PointerMove}
 				onpointerup={circle2PointerUp}
 				onpointercancel={circle2PointerUp}
-				onmouseenter={circle2HoverEnter}
-				onmouseleave={circle2HoverLeave}
 				role="presentation"
 			>
 				{#if circle2Image}
@@ -1854,8 +1729,6 @@
 						onpointerup={endCircle2ImagePan}
 						onpointercancel={endCircle2ImagePan}
 						onwheel={onCircle2ImageWheel}
-						onmouseenter={circle2HoverEnter}
-						onmouseleave={circle2HoverLeave}
 						title="Alt+wheel or ± to zoom · Alt+drag to pan · use corner or ⊕/⊖ to resize circle"
 						role="presentation"
 					>
@@ -1890,147 +1763,7 @@
 					">Circle</div>
 				{/if}
 			{#if interactive}
-				{@const showCircle2Tools = hoveringCircle2 || dragging2 || resizingCircle2 || circle2PanningImage}
-
-				{#if showCircle2Tools}
-					<!-- Hover toolbar — match primary circle controls -->
-					<div
-						style="
-							position: absolute;
-							top: -64px;
-							left: 50%;
-							transform: translateX(-50%);
-							display: flex;
-							gap: 10px;
-							padding: 8px;
-							border-radius: 999px;
-							background: rgba(0,0,0,0.78);
-							border: 2px solid rgba(255,255,255,0.18);
-							backdrop-filter: blur(10px);
-							pointer-events: auto;
-						"
-						onmouseenter={circle2HoverEnter}
-						onmouseleave={circle2HoverLeave}
-						role="presentation"
-					>
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={() => onCircle2AIClick?.()}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 16px;"
-							title="Generate with AI"
-							aria-label="Generate with AI"
-						>AI</button>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={openCircle2Picker}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; font-size: 22px;"
-							title="Edit circle image"
-							aria-label="Edit circle image"
-						>✎</button>
-
-						<div
-							style="display:flex;align-items:center;gap:8px;padding:0 10px;height:52px;border-radius:999px;border:0;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);"
-							title="Border thickness"
-							aria-label="Border thickness"
-							role="group"
-						>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => (circle2BorderWidth = Math.max(0, Math.round((circle2BorderWidth ?? 8) - 1)))}
-								style="width:28px;height:28px;border-radius:999px;border:0;background:rgba(0,0,0,0.28);color:rgba(255,255,255,0.95);cursor:pointer;line-height:1;"
-								title="Thinner border"
-								aria-label="Thinner border"
-							>−</button>
-							<span style="min-width:22px;text-align:center;font-size:12px;font-weight:700;opacity:0.9;">{Math.round(circle2BorderWidth ?? 8)}</span>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => (circle2BorderWidth = Math.min(40, Math.round((circle2BorderWidth ?? 8) + 1)))}
-								style="width:28px;height:28px;border-radius:999px;border:0;background:rgba(0,0,0,0.28);color:rgba(255,255,255,0.95);cursor:pointer;line-height:1;"
-								title="Thicker border"
-								aria-label="Thicker border"
-							>+</button>
-						</div>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={openCircle2BorderPicker}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; cursor: pointer; touch-action: none;"
-							title="Change border color"
-							aria-label="Change border color"
-						>
-							<span style="width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,0.35);background:{circle2BorderColor};display:block;"></span>
-						</button>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={removeCircle2}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; display:flex; align-items:center; justify-content:center;"
-							title="Remove circle"
-							aria-label="Remove circle"
-						><Trash2 size={22} /></button>
-
-						<button
-							onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-							onclick={() => { circle2ImageZoom = 1; circle2ImagePanX = 50; circle2ImagePanY = 50; }}
-							style="width: 52px; height: 52px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); cursor: pointer; touch-action: none; display:flex; align-items:center; justify-content:center; font-size: 12px; font-weight: 800;"
-							title="Reset image zoom/pan"
-							aria-label="Reset image zoom/pan"
-						>↺</button>
-
-						<div
-							style="display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:999px;background:rgba(255,255,255,0.06);"
-							role="group"
-							aria-label="Photo zoom inside circle"
-						>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircle2ImageZoom(0.12)}
-								disabled={(Number(circle2ImageZoom) || 1) >= 4.99}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{(Number(circle2ImageZoom) || 1) >= 4.99 ? 0.35 : 1};"
-								title="Zoom photo in (up to 5×)"
-								aria-label="Zoom photo in"
-							><Plus size={18} /></button>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircle2ImageZoom(-0.12)}
-								disabled={(Number(circle2ImageZoom) || 1) <= 1.01}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{(Number(circle2ImageZoom) || 1) <= 1.01 ? 0.35 : 1};"
-								title="Zoom photo out"
-								aria-label="Zoom photo out"
-							><Minus size={18} /></button>
-						</div>
-
-						<div
-							style="display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:999px;background:rgba(255,255,255,0.06);"
-							role="group"
-							aria-label="Circle size"
-						>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircle2Diameter(36)}
-								disabled={Number(circle2Size) >= 720}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{Number(circle2Size) >= 720 ? 0.35 : 1};"
-								title="Expand circle"
-								aria-label="Expand circle"
-							><Maximize2 size={16} /></button>
-							<button
-								type="button"
-								onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-								onclick={() => bumpCircle2Diameter(-36)}
-								disabled={Number(circle2Size) <= 96}
-								style="width:40px;height:40px;border-radius:999px;border:0;background:rgba(0,0,0,0.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:{Number(circle2Size) <= 96 ? 0.35 : 1};"
-								title="Shrink circle"
-								aria-label="Shrink circle"
-							><Minimize2 size={16} /></button>
-						</div>
-					</div>
-				{/if}
+				{@const showCircle2Tools = circle2ToolbarPopoverOpen || dragging2 || resizingCircle2 || circle2PanningImage}
 
 				{#if showCircle2Tools}
 					<!-- Resize handle (bottom-right) -->
@@ -2047,8 +1780,6 @@
 							cursor: nwse-resize;
 							touch-action: none;
 						"
-						onmouseenter={circle2HoverEnter}
-						onmouseleave={circle2HoverLeave}
 						onpointerdown={circle2ResizeDown}
 						onpointermove={circle2ResizeMove}
 						onpointerup={circle2ResizeUp}
@@ -2060,6 +1791,45 @@
 				{/if}
 			{/if}
 			</div>
+			{/snippet}
+			<Popover bind:open={circle2ToolbarPopoverOpen}>
+				<PopoverTrigger
+					openOnHover={!!interactive}
+					openDelay={0}
+					closeDelay={280}
+					child={newsCircle2PopoverTrigger}
+				/>
+				{#if interactive}
+					<PopoverContent
+						side="top"
+						sideOffset={10}
+						align="center"
+						trapFocus={false}
+						class="border-border bg-popover/95 text-foreground z-[60] !flex !w-max max-w-[calc(100vw-2rem)] !flex-row flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border p-2 shadow-lg ring-1 ring-border/40 backdrop-blur-md duration-100 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 !gap-1.5 !p-2 [&_svg]:shrink-0 [&_svg]:text-foreground"
+					>
+						<Button variant="secondary" size="sm" class="h-11 min-w-11 shrink-0 rounded-full px-3 font-semibold" onclick={() => onCircle2AIClick?.()} title="Generate with AI" aria-label="Generate with AI">AI</Button>
+						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCircle2Picker} title="Edit circle image" aria-label="Edit circle image"><Pencil size={20} class="text-foreground" strokeWidth={2} /></Button>
+						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2" role="group" aria-label="Border thickness in pixels" title="Border thickness">
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circle2BorderWidth = Math.max(0, Math.round((circle2BorderWidth ?? 8) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circle2BorderWidth ?? 8)}</span>
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circle2BorderWidth = Math.min(40, Math.round((circle2BorderWidth ?? 8) + 1)))} title="Thicker border" aria-label="Thicker border"><Plus size={16} class="text-foreground" strokeWidth={2} /></Button>
+						</div>
+						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCircle2BorderPicker} title="Change border color" aria-label="Change border color">
+							<span class="border-foreground/25 ring-foreground/15 box-border block h-[22px] w-[22px] rounded-md border-2 shadow-sm ring-1" style="background:{circle2BorderColor}"></span>
+						</Button>
+						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle2} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
+						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={() => { circle2ImageZoom = 1; circle2ImagePanX = 50; circle2ImagePanY = 50; }} title="Reset image zoom/pan" aria-label="Reset image zoom/pan"><RotateCcw size={18} class="text-foreground" strokeWidth={2} /></Button>
+						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Circle size">
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2Diameter(36)} disabled={Number(circle2Size) >= 720} title="Expand circle" aria-label="Expand circle"><Maximize2 size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2Diameter(-36)} disabled={Number(circle2Size) <= 96} title="Shrink circle" aria-label="Shrink circle"><Minimize2 size={16} class="text-foreground" strokeWidth={2} /></Button>
+						</div>
+						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Photo zoom inside circle">
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2ImageZoom(0.12)} disabled={(Number(circle2ImageZoom) || 1) >= 4.99} title="Zoom photo in (up to 5×)" aria-label="Zoom photo in"><ZoomIn size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2ImageZoom(-0.12)} disabled={(Number(circle2ImageZoom) || 1) <= 1.01} title="Zoom photo out" aria-label="Zoom photo out"><ZoomOut size={16} class="text-foreground" strokeWidth={2} /></Button>
+						</div>
+					</PopoverContent>
+				{/if}
+			</Popover>
 		{/if}
 
 		<!-- ── Subject cutout (transparent PNG) ────────────────────────────
