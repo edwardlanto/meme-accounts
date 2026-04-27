@@ -824,7 +824,12 @@
 		tweetBottomTextBySlide = [...tweetBottomTextBySlide, ''];
 		tweetReplyCountBySlide = [...tweetReplyCountBySlide, tweetReplyCountBySlide[tweetReplyCountBySlide.length - 1] ?? '4.2K'];
 		tweetRepostCountBySlide = [...tweetRepostCountBySlide, tweetRepostCountBySlide[tweetRepostCountBySlide.length - 1] ?? '12.8K'];
-		tweetLikeCountBySlide = [...tweetLikeCountBySlide, tweetLikeCountBySlide[tweetLikeCountBySlide.length - 1] ?? '89.4K'];
+tweetLikeCountBySlide = [...tweetLikeCountBySlide, tweetLikeCountBySlide[tweetLikeCountBySlide.length - 1] ?? '89.4K'];
+tweetTopImageHeightBySlide = [...tweetTopImageHeightBySlide, tweetTopImageHeightBySlide[tweetTopImageHeightBySlide.length - 1] ?? 360];
+tweetTopImageWidthBySlide = [...tweetTopImageWidthBySlide, tweetTopImageWidthBySlide[tweetTopImageWidthBySlide.length - 1] ?? 920];
+tweetTopImageZoomBySlide = [...tweetTopImageZoomBySlide, tweetTopImageZoomBySlide[tweetTopImageZoomBySlide.length - 1] ?? 1];
+tweetTopImagePanXBySlide = [...tweetTopImagePanXBySlide, tweetTopImagePanXBySlide[tweetTopImagePanXBySlide.length - 1] ?? 50];
+tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlide[tweetTopImagePanYBySlide.length - 1] ?? 50];
 		articleTextBySlide = [...articleTextBySlide, articleTextBySlide[articleTextBySlide.length - 1] ?? ''];
 		textCarouselTextBySlide = [...textCarouselTextBySlide, textCarouselTextBySlide[textCarouselTextBySlide.length - 1] ?? ''];
 		imageQuoteTextBySlide = [...imageQuoteTextBySlide, imageQuoteTextBySlide[imageQuoteTextBySlide.length - 1] ?? ''];
@@ -884,6 +889,12 @@
 	let tweetReplyCountBySlide = $state<string[]>(['4.2K']);
 	let tweetRepostCountBySlide = $state<string[]>(['12.8K']);
 	let tweetLikeCountBySlide = $state<string[]>(['89.4K']);
+	// Tweet attached image frame controls (per slide)
+	let tweetTopImageHeightBySlide = $state<number[]>([360]);
+	let tweetTopImageWidthBySlide = $state<number[]>([920]);
+	let tweetTopImageZoomBySlide = $state<number[]>([1]);
+	let tweetTopImagePanXBySlide = $state<number[]>([50]);
+	let tweetTopImagePanYBySlide = $state<number[]>([50]);
 	let articleTextBySlide = $state<string[]>([
 		"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
 	]);
@@ -977,7 +988,12 @@
 		tweetBottomNameBySlide = pickOr(tweetBottomNameBySlide, 'Mo Mohler');
 		tweetBottomHandleBySlide = pickOr(tweetBottomHandleBySlide, '@MoMohler');
 		tweetTopTextBySlide = pickOr(tweetTopTextBySlide, 'Ketchup or mayo or mustard?');
-		tweetBottomTextBySlide = pickOr(tweetBottomTextBySlide, '');
+tweetBottomTextBySlide = pickOr(tweetBottomTextBySlide, '');
+tweetTopImageHeightBySlide = pickOr(tweetTopImageHeightBySlide, 360);
+tweetTopImageWidthBySlide = pickOr(tweetTopImageWidthBySlide, 920);
+tweetTopImageZoomBySlide = pickOr(tweetTopImageZoomBySlide, 1);
+tweetTopImagePanXBySlide = pickOr(tweetTopImagePanXBySlide, 50);
+tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		articleTextBySlide = pickOr(articleTextBySlide, '');
 		textCarouselTextBySlide = pickOr(textCarouselTextBySlide, '');
 		imageQuoteTextBySlide = pickOr(imageQuoteTextBySlide, '');
@@ -1086,6 +1102,44 @@
 	let selectedTextOverlayId = $state<string | null>(null);
 	let toolbarAnchor = $state<DOMRect | null>(null);
 	let toolbarTarget = $state<HTMLElement | null>(null);
+	let toolbarAutoFontSize = $state<number | undefined>(undefined);
+
+	function defaultFontSizeForKind(kind: TextElementKind): number | undefined {
+		// These reflect the templates' visual defaults (used when no style override exists).
+		switch (kind) {
+			// News
+			case 'source': return 34;
+			case 'headline': return undefined; // News headline auto-sizes based on length
+
+			// Article
+			case 'articleBody': return 46;
+			case 'articleSwipeText': return 28;
+
+			// Text carousel
+			case 'textCarouselName': return 46;
+			case 'textCarouselHandle': return 36;
+			case 'textCarouselBody': return 72;
+
+			// Image quote
+			case 'imageQuoteFooterLeft': return 44;
+			case 'imageQuoteFooterRight': return 26;
+			// headline kind is used for the quote body in that template; leave undefined here.
+
+			// Tweet
+			case 'tweetTopName': return 44;
+			case 'tweetTopHandle': return 36;
+			case 'tweetTopText': return 58;
+			case 'tweetBottomName': return 42;
+			case 'tweetBottomHandle': return 34;
+			case 'tweetBottomText': return 56;
+			case 'tweetReplyCount': return 32;
+			case 'tweetRepostCount': return 32;
+			case 'tweetLikeCount': return 32;
+
+			// Overlays
+			case 'textOverlay': return 42;
+		}
+	}
 
 	// Plain-text selection inside the headline (for applyHighlight).
 	// null when no active word/range selection.
@@ -1153,6 +1207,18 @@
 		selectedTextOverlayId = kind === 'textOverlay' ? (el.dataset.textOverlayId ?? null) : null;
 		toolbarTarget = el;
 		toolbarAnchor = el.getBoundingClientRect();
+		// Try to read the element's computed font-size. Some selections pass a wrapper/ghost
+		// anchor, so also fall back to per-kind template defaults.
+		toolbarAutoFontSize = defaultFontSizeForKind(kind);
+		requestAnimationFrame(() => {
+			try {
+				const fs = getComputedStyle(el).fontSize;
+				const n = parseFloat(fs);
+				if (Number.isFinite(n) && n > 0) toolbarAutoFontSize = n;
+			} catch {
+				// keep fallback
+			}
+		});
 		// Switching to a non-highlightable field drops any stale word-range selection.
 		if (
 			kind !== 'headline' &&
@@ -1169,6 +1235,7 @@
 		selectedTextOverlayId = null;
 		toolbarAnchor = null;
 		toolbarTarget = null;
+		toolbarAutoFontSize = undefined;
 		headlineRange = null;
 		textOverlayRange = null;
 	}
@@ -1297,6 +1364,24 @@
 		const row = data as DraftRow;
 		draftId = row.id;
 		const s = row.state ?? {};
+		// If an older draft contains huge `exportedSlides` data URLs, prune it ASAP so
+		// subsequent loads are fast (don’t block initial render on this).
+		if (Array.isArray((s as any).exportedSlides) && (s as any).exportedSlides.length) {
+			const ex = (s as any).exportedSlides as unknown[];
+			const looksHuge = ex.some((v) => typeof v === 'string' && v.startsWith('data:') && v.length > 220_000);
+			if (looksHuge) {
+				queueMicrotask(() => {
+					try {
+						void (supabase as any)
+							.from('drafts')
+							.update({ state: { ...(s as any), exportedSlides: [] } })
+							.eq('id', row.id);
+					} catch {
+						// ignore
+					}
+				});
+			}
+		}
 
 		// Restore (best-effort)
 		if (typeof s.formatId === 'string') formatId = s.formatId as FormatId;
@@ -1400,7 +1485,12 @@
 		if (Array.isArray(s.tweetBottomNameBySlide)) tweetBottomNameBySlide = s.tweetBottomNameBySlide;
 		if (Array.isArray(s.tweetBottomHandleBySlide)) tweetBottomHandleBySlide = s.tweetBottomHandleBySlide;
 		if (Array.isArray(s.tweetTopTextBySlide)) tweetTopTextBySlide = s.tweetTopTextBySlide;
-		if (Array.isArray(s.tweetBottomTextBySlide)) tweetBottomTextBySlide = s.tweetBottomTextBySlide;
+if (Array.isArray(s.tweetBottomTextBySlide)) tweetBottomTextBySlide = s.tweetBottomTextBySlide;
+if (Array.isArray((s as any).tweetTopImageHeightBySlide)) tweetTopImageHeightBySlide = (s as any).tweetTopImageHeightBySlide;
+if (Array.isArray((s as any).tweetTopImageWidthBySlide)) tweetTopImageWidthBySlide = (s as any).tweetTopImageWidthBySlide;
+if (Array.isArray((s as any).tweetTopImageZoomBySlide)) tweetTopImageZoomBySlide = (s as any).tweetTopImageZoomBySlide;
+if (Array.isArray((s as any).tweetTopImagePanXBySlide)) tweetTopImagePanXBySlide = (s as any).tweetTopImagePanXBySlide;
+if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide = (s as any).tweetTopImagePanYBySlide;
 		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
 		if (Array.isArray(s.textCarouselTextBySlide)) textCarouselTextBySlide = s.textCarouselTextBySlide;
 		if (Array.isArray(s.imageQuoteTextBySlide)) imageQuoteTextBySlide = s.imageQuoteTextBySlide;
@@ -1455,6 +1545,7 @@
 		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
 		if (typeof s.highlightColor === 'string') highlightColor = s.highlightColor;
 		if (typeof s.textColor === 'string') textColor = s.textColor;
+		// Intentionally do NOT restore `exportedSlides` (huge data URLs) from drafts.
 		// slideCount is derived from slides.length; do not restore it directly.
 	}
 
@@ -1511,7 +1602,12 @@
 			tweetBottomNameBySlide,
 			tweetBottomHandleBySlide,
 			tweetTopTextBySlide,
-			tweetBottomTextBySlide,
+tweetBottomTextBySlide,
+tweetTopImageHeightBySlide,
+tweetTopImageWidthBySlide,
+tweetTopImageZoomBySlide,
+tweetTopImagePanXBySlide,
+tweetTopImagePanYBySlide,
 			articleTextBySlide,
 			textCarouselTextBySlide,
 			imageQuoteTextBySlide,
@@ -1544,8 +1640,9 @@
 			shadowStrength,
 			highlightColor,
 			textColor,
-			// Rendered PNG exports (data URLs) for scheduler publishing (FB supports data URLs; IG needs public URLs)
-			exportedSlides,
+			// Don’t persist `exportedSlides` (huge data URLs) in drafts — it makes restore slow.
+			// We can always re-export when needed.
+			exportedSlides: [],
 		};
 	}
 
@@ -2066,6 +2163,21 @@
 		if (tweetBottomTextBySlide.length !== n) {
 			tweetBottomTextBySlide = Array.from({ length: n }, (_, i) => tweetBottomTextBySlide[i] ?? '');
 		}
+if (tweetTopImageHeightBySlide.length !== n) {
+			tweetTopImageHeightBySlide = Array.from({ length: n }, (_, i) => tweetTopImageHeightBySlide[i] ?? 360);
+		}
+		if (tweetTopImageWidthBySlide.length !== n) {
+			tweetTopImageWidthBySlide = Array.from({ length: n }, (_, i) => tweetTopImageWidthBySlide[i] ?? 920);
+		}
+		if (tweetTopImageZoomBySlide.length !== n) {
+			tweetTopImageZoomBySlide = Array.from({ length: n }, (_, i) => tweetTopImageZoomBySlide[i] ?? 1);
+		}
+		if (tweetTopImagePanXBySlide.length !== n) {
+			tweetTopImagePanXBySlide = Array.from({ length: n }, (_, i) => tweetTopImagePanXBySlide[i] ?? 50);
+		}
+		if (tweetTopImagePanYBySlide.length !== n) {
+			tweetTopImagePanYBySlide = Array.from({ length: n }, (_, i) => tweetTopImagePanYBySlide[i] ?? 50);
+		}
 		if (articleTextBySlide.length !== n) {
 			articleTextBySlide = Array.from({ length: n }, (_, i) => articleTextBySlide[i] ?? '');
 		}
@@ -2090,6 +2202,29 @@
 		if (articleSwipeTextBySlide.length !== n) {
 			articleSwipeTextBySlide = Array.from({ length: n }, (_, i) => articleSwipeTextBySlide[i] ?? '«« Swipe');
 		}
+	});
+
+	// Seed dummy content the first time slides render (don’t overwrite real content).
+	let didSeedSlideDefaults = $state(false);
+	$effect(() => {
+		if (didSeedSlideDefaults) return;
+		if (draftRestoring) return;
+		if (!slides.length) return;
+
+		let changed = false;
+		const DEFAULT_ARTICLE =
+			"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.";
+
+		const nextArticleText = articleTextBySlide.map((v, i) => {
+			if (slideTemplates[i] !== 'article') return v;
+			const cur = (v ?? '').trim();
+			if (cur) return v;
+			changed = true;
+			return DEFAULT_ARTICLE;
+		});
+		if (changed) articleTextBySlide = nextArticleText;
+
+		didSeedSlideDefaults = true;
 	});
 
 	// Clear toolbar selection when user switches slides or template.
@@ -2349,6 +2484,7 @@
 <FloatingActions
 	{...({
 		slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
+		posting: exportingAll,
 		onPost: async () => {
 			const n = await exportAllSlidesToDraft();
 			if (!n) {
@@ -3137,8 +3273,17 @@
 					onReplyCountChange={(v) => { pushUndo('tweet', activeSlide); tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					onRepostCountChange={(v) => { pushUndo('tweet', activeSlide); tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
 					onLikeCountChange={(v) => { pushUndo('tweet', activeSlide); tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					topImage={(bgImagesByTemplate.tweet ?? [])[activeSlide] || '/templates/tweet/demo-bg.jpg'}
-					onTopImageChange={(v) => { pushUndo('tweet', activeSlide); setSlideImage(activeSlide, v, 'tweet'); }}
+topImage={(bgImagesByTemplate.tweet ?? [])[activeSlide] || '/templates/tweet/demo-bg.jpg'}
+onTopImageChange={(v) => { pushUndo('tweet', activeSlide); setSlideImage(activeSlide, v, 'tweet'); }}
+topImageHeight={tweetTopImageHeightBySlide[activeSlide] ?? 360}
+onTopImageHeightChange={(v) => { pushUndo('tweet', activeSlide); tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, i) => i === activeSlide ? v : x); }}
+topImageWidth={tweetTopImageWidthBySlide[activeSlide] ?? 920}
+onTopImageWidthChange={(v) => { pushUndo('tweet', activeSlide); tweetTopImageWidthBySlide = tweetTopImageWidthBySlide.map((x, i) => i === activeSlide ? v : x); }}
+topImageZoom={tweetTopImageZoomBySlide[activeSlide] ?? 1}
+onTopImageZoomChange={(v) => { pushUndo('tweet', activeSlide); tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, i) => i === activeSlide ? v : x); }}
+topImagePanX={tweetTopImagePanXBySlide[activeSlide] ?? 50}
+topImagePanY={tweetTopImagePanYBySlide[activeSlide] ?? 50}
+onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePanXBySlide = tweetTopImagePanXBySlide.map((v, i) => i === activeSlide ? x : v); tweetTopImagePanYBySlide = tweetTopImagePanYBySlide.map((v, i) => i === activeSlide ? y : v); }}
 					textOffsets={offsetsForTemplate(activeSlide, 'tweet')}
 					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'tweet', String(kind), next)}
 					scale={previewScale}
@@ -3353,15 +3498,30 @@
 			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
 			{@const dndItems = orderIds.map((id) => {
 				const i = idToIndex.get(id) ?? 0;
+				const t = slideTemplates[i] ?? 'news';
+				const rawThumbText =
+					t === 'tweet'
+						? `${tweetTopNameBySlide[i] ?? ''}\n${tweetTopTextBySlide[i] ?? ''}`.trim()
+						: t === 'article'
+							? (articleTextBySlide[i] ?? '')
+							: t === 'textCarousel'
+								? (textCarouselTextBySlide[i] ?? '')
+								: t === 'imageQuote'
+									? (imageQuoteTextBySlide[i] ?? '')
+									: (slides[i] ?? '');
+				const thumbText = String(rawThumbText || slides[i] || '')
+					.replace(/\[\[|\]\]/g, '')
+					.replace(/\s+/g, ' ')
+					.trim();
 				return {
 					id,
 					slideIndex: i,
 					// Derive thumbnail data by id→index lookup (stable during drag).
-					text: slides[i] ?? '',
-					img: (bgImagesByTemplate[slideTemplates[i] ?? 'news'] ?? [])[i] ?? '',
-					vid: (bgVideosByTemplate[slideTemplates[i] ?? 'news'] ?? [])[i] ?? '',
+					text: thumbText,
+					img: (bgImagesByTemplate[t] ?? [])[i] ?? '',
+					vid: (bgVideosByTemplate[t] ?? [])[i] ?? '',
 					music: slideMusic[i] ?? null,
-					loading: !!((generatingImagesByTemplate[slideTemplates[i] ?? 'news'] ?? [])[i]),
+					loading: !!((generatingImagesByTemplate[t] ?? [])[i]),
 				};
 			})}
 			<DragDropProvider
@@ -3887,7 +4047,7 @@
 <FloatingTextToolbar
 	anchor={toolbarAnchor}
 	style={getActiveStyleForSelection()}
-	autoFontSize={selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined}
+	autoFontSize={toolbarAutoFontSize ?? (selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined)}
 	supportsHighlights={(selectedText === 'headline' ||
 		selectedText === 'articleBody' ||
 		selectedText === 'textCarouselBody' ||

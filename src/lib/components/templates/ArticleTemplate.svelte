@@ -4,8 +4,6 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 
-	interface Segment { text: string; accent: boolean; }
-
 	interface Props {
 		// Content
 		text?: string;
@@ -110,19 +108,15 @@
 	const W = 1080;
 	const H = 1350;
 
-	/**
-	 * Parse text with *accent* markup.
-	 * Double newlines = paragraph break (returned as null sentinel).
-	 */
-	function parseBlocks(raw: string): Array<Segment[] | null> {
-		return raw.split(/\n\n+/).map(para => {
-			if (!para.trim()) return null;
-			const parts = para.split(/\*([^*]+)\*/);
-			return parts.map((p, i) => ({ text: p, accent: i % 2 === 1 }));
-		});
+	// Back-compat: old Article content used *accent* markup.
+	// We normalize it to the shared [[...]] highlight markup so highlights remain visible while editing.
+	function normalizeArticleMarkup(raw: string) {
+		const s = (raw ?? '').toString();
+		if (s.includes('[[')) return s;
+		return s.replace(/\*([^*\n]+)\*/g, (_, inner) => `[[${inner}]]`);
 	}
 
-	const blocks = $derived(parseBlocks(text));
+	const normalizedText = $derived(normalizeArticleMarkup(text));
 </script>
 
 <div style="
@@ -168,50 +162,38 @@
 			>
 				{#snippet children()}
 					<CanvasMarkupTextBlock
-						value={text}
+						value={normalizedText}
 						{interactive}
 						defaultColor={accentColor}
 						selected={selectedText === 'articleBody'}
 						toolbarKind="articleBody"
-						rows={12}
+						rows={1}
+						minHeight="0px"
 						ariaLabel="Article body"
 						fontFamily={articleStyles.articleBody?.fontFamily ?? headlineStyle.fontFamily}
-						fontSize={articleStyles.articleBody?.fontSize ?? headlineStyle.fontSize}
+						fontSize={articleStyles.articleBody?.fontSize ?? headlineStyle.fontSize ?? 46}
 						{showToolbar}
-						onTextChange={onTextChange}
+						onTextChange={(v) => onTextChange?.(v)}
 						onTextSelect={onTextSelect}
 						onHeadlineRangeSelect={onHeadlineRangeSelect}
 					>
 						{#snippet display()}
 							<div style="flex-shrink: 0; margin-bottom: {image ? '56px' : '0'};">
-								{#each blocks as block, bi}
-									{#if block !== null}
-										<p style="
-											margin: 0;
-											{bi > 0 ? 'margin-top: 40px;' : ''}
-											font-size: 46px;
-											font-weight: 400;
-											line-height: 1.42;
-											letter-spacing: -0.3px;
-											color: {baseText};
-											word-break: break-word;
-												{bodyTypeCss} {bodyCss}
-										">
-											{#each block as seg}
-												{#if seg.accent}
-													<HighlightedText
-														as="span"
-														text={seg.text}
-														defaultColor={accentColor}
-														style="color: {accentColor}; font-weight: 600;"
-													/>
-												{:else}
-													<HighlightedText as="span" text={seg.text} defaultColor={accentColor} />
-												{/if}
-											{/each}
-										</p>
-									{/if}
-								{/each}
+								<HighlightedText
+									as="div"
+									text={normalizedText}
+									defaultColor={accentColor}
+									style="
+										font-size: 46px;
+										font-weight: 400;
+										line-height: 1.42;
+										letter-spacing: -0.3px;
+										color: {baseText};
+										word-break: break-word;
+										white-space: pre-wrap;
+										{bodyTypeCss} {bodyCss}
+									"
+								/>
 							</div>
 						{/snippet}
 					</CanvasMarkupTextBlock>

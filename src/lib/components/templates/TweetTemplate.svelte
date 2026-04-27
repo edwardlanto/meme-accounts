@@ -14,6 +14,20 @@ interface TweetProps {
 	topText?: string;
 	topImage?: string;
 	onTopImageChange?: (v: string) => void;
+	/** Attached image frame height in px (editable). */
+	topImageHeight?: number;
+	/** Attached image frame width in px (editable). */
+	topImageWidth?: number;
+	/** Attached image zoom (1–3). */
+	topImageZoom?: number;
+	/** Attached image pan position as percent (0–100). */
+	topImagePanX?: number;
+	/** Attached image pan position as percent (0–100). */
+	topImagePanY?: number;
+	onTopImageHeightChange?: (v: number) => void;
+	onTopImageWidthChange?: (v: number) => void;
+	onTopImageZoomChange?: (v: number) => void;
+	onTopImagePanChange?: (x: number, y: number) => void;
 	// Bottom reply
 	bottomName?: string;
 	bottomHandle?: string;
@@ -68,6 +82,11 @@ let {
 	topVerified  = true,
 	topText      = 'Ketchup or mayo or mustard?',
 	topImage     = '/templates/tweet/demo-bg.jpg',
+	topImageHeight = 360,
+	topImageWidth = 920,
+	topImageZoom = 1,
+	topImagePanX = 50,
+	topImagePanY = 50,
 	bottomName   = 'Mo Mohler',
 	bottomHandle = '@MoMohler',
 	bottomAvatar = '',
@@ -96,6 +115,10 @@ let {
 	onRepostCountChange,
 	onLikeCountChange,
 	onTopImageChange,
+	onTopImageHeightChange,
+	onTopImageWidthChange,
+	onTopImageZoomChange,
+	onTopImagePanChange,
 	textOffsets = {},
 	onTextOffsetChange,
 }: TweetProps = $props();
@@ -110,6 +133,96 @@ let {
 	const repostCountEditable = $derived(!!interactive && typeof onRepostCountChange === 'function');
 	const likeCountEditable = $derived(!!interactive && typeof onLikeCountChange === 'function');
 	const topImageEditable = $derived(!!interactive && typeof onTopImageChange === 'function');
+
+	let topImageResizing = $state(false);
+	let topImagePanning = $state(false);
+	let topImageStart = $state<{ x: number; y: number; h: number; w: number; panX: number; panY: number } | null>(null);
+
+	function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+	function setTopImageHeight(next: number) {
+		const v = clamp(Math.round(next), 180, 760);
+		onTopImageHeightChange?.(v);
+	}
+	function setTopImageWidth(next: number) {
+		const v = clamp(Math.round(next), 520, 920);
+		onTopImageWidthChange?.(v);
+	}
+	function setTopImageZoom(next: number) {
+		const v = clamp(Number(next) || 1, 1, 3);
+		onTopImageZoomChange?.(v);
+	}
+	function setTopImagePan(x: number, y: number) {
+		onTopImagePanChange?.(clamp(x, 0, 100), clamp(y, 0, 100));
+	}
+
+	function startTopImageResize(e: PointerEvent) {
+		if (!interactive) return;
+		e.preventDefault();
+		e.stopPropagation();
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+		topImageResizing = true;
+		topImageStart = {
+			x: e.clientX,
+			y: e.clientY,
+			h: Number(topImageHeight) || 360,
+			w: Number(topImageWidth) || 920,
+			panX: Number(topImagePanX) || 50,
+			panY: Number(topImagePanY) || 50,
+		};
+	}
+
+	function startTopImagePan(e: PointerEvent) {
+		if (!interactive) return;
+		// Alt/Option drag pans the image inside its frame (keeps normal drag-to-move for the block).
+		if (!e.altKey) return;
+		e.preventDefault();
+		e.stopPropagation();
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+		topImagePanning = true;
+		topImageStart = {
+			x: e.clientX,
+			y: e.clientY,
+			h: Number(topImageHeight) || 360,
+			w: Number(topImageWidth) || 920,
+			panX: Number(topImagePanX) || 50,
+			panY: Number(topImagePanY) || 50,
+		};
+	}
+
+	function moveTopImage(e: PointerEvent) {
+		if (!topImageStart) return;
+		if (!topImageResizing && !topImagePanning) return;
+		const dx = (e.clientX - topImageStart.x) / Math.max(0.001, scale);
+		const dy = (e.clientY - topImageStart.y) / Math.max(0.001, scale);
+		if (topImageResizing) {
+			setTopImageHeight(topImageStart.h + dy);
+			setTopImageWidth(topImageStart.w + dx);
+			return;
+		}
+		if (topImagePanning) {
+			const h = Number(topImageHeight) || 360;
+			const denomX = 920 * (Number(topImageZoom) || 1);
+			const denomY = Math.max(160, h) * (Number(topImageZoom) || 1);
+			setTopImagePan(topImageStart.panX + (dx / denomX) * 100, topImageStart.panY + (dy / denomY) * 100);
+		}
+	}
+
+	function endTopImage(e: PointerEvent) {
+		if (topImageResizing || topImagePanning) e.stopPropagation();
+		topImageResizing = false;
+		topImagePanning = false;
+		topImageStart = null;
+	}
+
+	function onTopImageWheel(e: WheelEvent) {
+		if (!interactive) return;
+		// Alt/Option wheel to zoom inside the frame.
+		if (!e.altKey) return;
+		e.preventDefault();
+		const z = Number(topImageZoom) || 1;
+		const next = z + (e.deltaY > 0 ? -0.08 : 0.08);
+		setTopImageZoom(next);
+	}
 
 	let topImageHovering = $state(false);
 	let topImageFileEl = $state<HTMLInputElement | null>(null);
@@ -402,17 +515,44 @@ let {
 				>
 					{#snippet children()}
 						<div
-							style="border-radius:24px;overflow:hidden;margin-bottom:44px;border:2px solid {divider};flex-shrink:0;position:relative;"
+style="border-radius:24px;overflow:hidden;margin:0 auto 44px;border:2px solid {divider};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;"
 							onmouseenter={() => (topImageHovering = true)}
-							onmouseleave={() => (topImageHovering = false)}
+onmouseleave={() => (topImageHovering = false)}
+onpointermove={moveTopImage}
+onpointerup={endTopImage}
+onpointercancel={endTopImage}
+onwheel={onTopImageWheel}
 							role="presentation"
 						>
 							{#if topImage}
-								<img src={topImage} alt="" style="width:100%;display:block;max-height:560px;object-fit:cover;" />
+								<div
+									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && topImageHovering ? 'grab' : 'default'};"
+									onpointerdown={startTopImagePan}
+									role="presentation"
+								>
+									<img
+										src={topImage}
+										alt=""
+										style="
+											position:absolute;
+											left:{Number(topImagePanX) || 50}%;
+											top:{Number(topImagePanY) || 50}%;
+											width:100%;
+											height:100%;
+											object-fit:cover;
+											transform:translate(-50%,-50%) scale({Number(topImageZoom) || 1});
+											will-change: transform;
+											display:block;
+											user-select:none;
+											pointer-events:none;
+										"
+									/>
+								</div>
 							{:else}
 								<div style="width:100%;height:320px;background:{card2};display:flex;align-items:center;justify-content:center;color:{textSecondary};font-size:28px;">
 									Add image
 								</div>
+
 							{/if}
 
 							{#if topImageEditable && topImageHovering}
@@ -436,6 +576,21 @@ let {
 											aria-label="Remove image"
 										><Trash2 size={18} /></button>
 									{/if}
+								</div>
+								<div style="position:absolute;left:14px;bottom:14px;pointer-events:none;">
+									<div style="font-size:11px;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.14);padding:6px 8px;border-radius:999px;">
+										Drag corner to resize · Alt+wheel zoom · Alt+drag pan
+									</div>
+								</div>
+								<div
+									style="position:absolute;right:12px;bottom:12px;width:18px;height:18px;border-radius:6px;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;cursor:nwse-resize;pointer-events:auto;"
+									onpointerdown={startTopImageResize}
+									title="Drag to resize"
+									role="button"
+									tabindex="0"
+									aria-label="Resize image"
+								>
+									<div style="width:10px;height:10px;border-right:2px solid rgba(255,255,255,0.7);border-bottom:2px solid rgba(255,255,255,0.7);transform:translate(1px,1px);"></div>
 								</div>
 							{/if}
 						</div>
@@ -477,7 +632,7 @@ let {
 						{showToolbar}
 						ariaLabel="Reply count"
 						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={32}
+						fontSize={tweetStyles.tweetReplyCount?.fontSize ?? 32}
 						onTextChange={onReplyCountChange}
 					>
 						{#snippet display()}
@@ -500,7 +655,7 @@ let {
 						{showToolbar}
 						ariaLabel="Repost count"
 						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={32}
+						fontSize={tweetStyles.tweetRepostCount?.fontSize ?? 32}
 						onTextChange={onRepostCountChange}
 					>
 						{#snippet display()}
@@ -523,7 +678,7 @@ let {
 						{showToolbar}
 						ariaLabel="Like count"
 						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={32}
+						fontSize={tweetStyles.tweetLikeCount?.fontSize ?? 32}
 						onTextChange={onLikeCountChange}
 					>
 						{#snippet display()}

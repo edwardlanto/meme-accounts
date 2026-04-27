@@ -371,10 +371,10 @@ function defaultImageQuote(): ImageQuoteData {
 	function tColor(t: TemplateType) { return TEMPLATES.find(x => x.id === t)?.color ?? '#fff'; }
 </script>
 
-<div class="flex h-full overflow-hidden">
+<div class="composer-root flex h-full overflow-hidden" style="background: var(--app-bg); color: var(--app-text);">
 
 <!-- ═══════════════════════════════════════════════════════════════ SIDEBAR -->
-<div class="w-80 flex-shrink-0 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-hidden">
+<div class="w-80 flex-shrink-0 border-r flex flex-col overflow-hidden" style="background: var(--app-surface-2); border-color: var(--app-border);">
 
 	<!-- Header -->
 	<div class="px-5 py-4 border-b border-white/[0.04] flex-shrink-0 flex items-center gap-2">
@@ -428,7 +428,7 @@ function defaultImageQuote(): ImageQuoteData {
 								arr[i] = { song: (e.target as HTMLSelectElement).value };
 								slideMusic = arr;
 							}}
-							class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1 px-1.5 text-[9px] font-body text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors [color-scheme:dark]"
+							class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1 px-1.5 text-[9px] font-body text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors"
 						>
 							{#each SONG_OPTIONS as opt}
 								<option value={opt}>{opt}</option>
@@ -838,14 +838,15 @@ function defaultImageQuote(): ImageQuoteData {
 <div class="fixed bottom-6 right-6 z-50">
 	<button
 		onclick={() => goto('/dashboard/post-scheduler')}
-		class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all bg-[#1a1a1a] border border-white/[0.12] text-white/70 hover:text-white hover:border-cyan-500/40 hover:bg-[#1e1e1e]"
+		class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
+		style="background: color-mix(in oklab, var(--app-text) 6%, transparent); border-color: var(--app-border); color: var(--app-text-2);"
 	>
 		<Calendar size={14} /> Post
 	</button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ PREVIEW -->
-<div class="flex-1 flex flex-col items-center justify-center bg-[#060606] overflow-auto p-8 gap-4">
+<div class="flex-1 flex flex-col items-center justify-center overflow-auto p-8 gap-4" style="background: var(--app-bg);">
 	<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">Slide {activeIdx+1} / {slides.length} — 1080 × 1350</p>
 
 	<div style="width:{PREVIEW_W}px;height:{Math.round(PREVIEW_W*1350/1080)}px;">

@@ -3,7 +3,7 @@
 	import { onMount, tick } from 'svelte';
 	import { supabase } from '$lib/supabase';
 	import { authFetch } from '$lib/authFetch';
-	import { ArrowLeft, Calendar, Plus, X, GripVertical } from 'lucide-svelte';
+	import { ArrowLeft, Calendar, Plus, X, GripVertical, ChevronLeft, ChevronRight } from 'lucide-svelte';
 
 	type ChannelId = 'x' | 'linkedin' | 'linkedinPage' | 'reddit' | 'instagramBusiness' | 'facebookPage' | 'threads' | 'youtube' | 'gmb' | 'tiktok' | 'pinterest';
 	type Channel = { id: ChannelId; label: string; accent: string; kind?: 'business' | 'page' | 'standalone'; icon: (active: boolean) => string };
@@ -163,7 +163,28 @@
 	let recentPosts = $state<RecentPost[]>([]);
 	let metaBanner = $state<{ kind: 'error' | 'success'; message: string } | null>(null);
 	let studioDraftId = $state<string>('');
+	let studioExportPreview = $state<string[]>([]);
 	let dismissedDraftIds = $state<string[]>([]);
+	let lightbox = $state<{ open: boolean; images: string[]; index: number; title?: string }>({
+		open: false,
+		images: [],
+		index: 0,
+	});
+
+	function openLightbox(images: string[], index: number, title?: string) {
+		const arr = (images ?? []).map((x) => String(x)).filter(Boolean);
+		if (!arr.length) return;
+		lightbox = { open: true, images: arr, index: Math.max(0, Math.min(arr.length - 1, index)), title };
+	}
+	function closeLightbox() { lightbox = { open: false, images: [], index: 0 }; }
+	function lbPrev() {
+		if (!lightbox.open) return;
+		lightbox = { ...lightbox, index: (lightbox.index - 1 + lightbox.images.length) % lightbox.images.length };
+	}
+	function lbNext() {
+		if (!lightbox.open) return;
+		lightbox = { ...lightbox, index: (lightbox.index + 1) % lightbox.images.length };
+	}
 
 	const DISMISSED_KEY = 'ssp.dismissedDraftIds.v1';
 	function loadDismissed() {
@@ -284,6 +305,9 @@
 			const row = (data?.[0] ?? null) as any;
 			const exported = Array.isArray(row?.state?.exportedSlides) ? row.state.exportedSlides.map((x: any) => String(x)).filter(Boolean) : [];
 			if (!exported.length) return;
+			// Only show the "Ready to upload" preview when the user just came from Studio.
+			const preferStudio = params?.get('from') === 'studio' && params?.get('exported') === '1';
+			studioExportPreview = preferStudio ? exported : [];
 
 			// Prepend a draft that actually contains images so Facebook carousel posting works.
 			// Use a stable id so it doesn't duplicate across reloads.
@@ -293,7 +317,6 @@
 			studioDraftId = id;
 
 			// If we explicitly came from Studio export, pin the studio draft and avoid confusing starter drafts.
-			const preferStudio = params?.get('from') === 'studio' && params?.get('exported') === '1';
 			drafts = [
 				{
 					id,
@@ -585,6 +608,13 @@
 		x.setHours(0, 0, 0, 0);
 		return x;
 	}
+	function startOfMonthGridSunday(d: Date) {
+		const first = new Date(d.getFullYear(), d.getMonth(), 1);
+		const day = first.getDay(); // 0=Sun
+		first.setDate(first.getDate() - day);
+		first.setHours(0, 0, 0, 0);
+		return first;
+	}
 	function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 	function fmtDayLabel(d: Date) { return d.toLocaleDateString(undefined, { weekday: 'short' }); }
 	function fmtMonth(d: Date) { return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }
@@ -593,6 +623,7 @@
 	let view = $state<'day' | 'week' | 'month'>('week');
 	let anchor = $state(new Date());
 	let calendarScrollEl: HTMLDivElement | null = $state(null);
+	const calLine = 'color-mix(in oklab, var(--app-text) 18%, transparent)';
 	function scrollCalendarToHour(hr: number) {
 		if (!calendarScrollEl) return;
 		const HOUR_HEIGHT = 80; // must match h-20 in grid rows
@@ -602,6 +633,9 @@
 	}
 	const weekStart = $derived(startOfWeek(anchor));
 	const weekDays = $derived(Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)));
+	const dayOnly = $derived(new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()));
+	const monthGridStart = $derived(startOfMonthGridSunday(anchor));
+	const monthDays = $derived(Array.from({ length: 42 }, (_, i) => addDays(monthGridStart, i)));
 	// Calendar rows span a full 24h so scheduled/published posts never fall
 	// outside the visible range regardless of time of day.
 	const START_HOUR = 0;
@@ -686,8 +720,16 @@
 		}
 	}
 
-	function prev() { anchor = addDays(anchor, view === 'week' ? -7 : -1); }
-	function next() { anchor = addDays(anchor, view === 'week' ? 7 : 1); }
+	function prev() {
+		if (view === 'week') { anchor = addDays(anchor, -7); return; }
+		if (view === 'month') { anchor = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1); return; }
+		anchor = addDays(anchor, -1);
+	}
+	function next() {
+		if (view === 'week') { anchor = addDays(anchor, 7); return; }
+		if (view === 'month') { anchor = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1); return; }
+		anchor = addDays(anchor, 1);
+	}
 	function today() { anchor = new Date(); }
 
 	function pickMetaConnectionForChannel(channel: ChannelId): DbSocialConnection | null {
@@ -868,8 +910,8 @@
 	}
 </script>
 
-<div class="h-[calc(100vh-0px)] w-full flex overflow-hidden">
-	<aside class="w-72 shrink-0 border-r border-white/5 bg-[#0b0b0b] flex flex-col">
+<div class="scheduler-root h-[calc(100vh-0px)] w-full flex overflow-hidden" style="background: var(--app-bg); color: var(--app-text);">
+	<aside class="w-72 shrink-0 border-r flex flex-col" style="background: var(--app-surface-2); border-color: var(--app-border);">
 		<div class="p-4 border-b border-white/5">
 			<div class="flex items-center gap-2">
 				<button onclick={() => history.length > 1 ? history.back() : goto('/dashboard')}
@@ -1008,6 +1050,38 @@
 								</span>
 							</div>
 						</div>
+						{#if (d.images?.length ?? 0) > 0}
+							<div class="mb-2">
+								<div class="flex items-center justify-between">
+									<p class="text-[10px] font-mono text-white/25 uppercase tracking-widest">Preview</p>
+									<button
+										type="button"
+										onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], 0, d.title); }}
+										class="text-[10px] font-mono text-violet-200/70 hover:text-violet-200 transition-colors"
+									>
+										Open →
+									</button>
+								</div>
+								<div class="mt-2 flex items-center gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
+									{#each (d.images ?? []).slice(0, 8) as src, i (src + ':' + i)}
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], i, d.title); }}
+											class="shrink-0 relative w-12 h-12 rounded-xl overflow-hidden border border-white/10 bg-white/5 hover:opacity-95 transition-opacity"
+											title="Click to preview"
+										>
+											<img src={src} alt={`Draft image ${i + 1}`} class="w-full h-full object-cover" />
+											<div class="absolute bottom-1 left-1 text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-black/55 text-white/80 border border-white/10">
+												{i + 1}
+											</div>
+										</button>
+									{/each}
+									{#if (d.images?.length ?? 0) > 8}
+										<div class="shrink-0 text-[10px] font-mono text-white/25 px-2">+{(d.images?.length ?? 0) - 8}</div>
+									{/if}
+								</div>
+							</div>
+						{/if}
 						<div class="flex items-center justify-between gap-2 mb-2">
 							<p class="text-[10px] font-mono text-white/25 uppercase tracking-widest">Instagram type</p>
 							<select
@@ -1040,7 +1114,7 @@
 		</div>
 	</aside>
 
-	<main class="flex-1 bg-[#070707] overflow-hidden">
+	<main class="flex-1 overflow-hidden" style="background: var(--app-bg);">
 		{#if metaBanner}
 			<div class="px-6 py-3 border-b border-white/5">
 				<div class="rounded-2xl p-3 text-sm font-body border
@@ -1056,6 +1130,39 @@
 						>
 							<X size={14} />
 						</button>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		{#if studioExportPreview.length > 0}
+			<div class="px-6 pt-4">
+				<div class="rounded-2xl bg-white/3 border border-white/10 p-4">
+					<div class="flex items-start justify-between gap-3">
+						<div class="min-w-0">
+							<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Ready to upload</p>
+							<p class="text-sm font-display font-semibold text-white/85">
+								{studioExportPreview.length} PNG{studioExportPreview.length === 1 ? '' : 's'} exported from Studio
+							</p>
+							<p class="text-[11px] font-body text-white/35 mt-1 leading-relaxed">
+								These are the exact images that will be uploaded when you post the “News Studio: carousel …” draft.
+							</p>
+						</div>
+					</div>
+					<div class="mt-3 flex items-center gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
+						{#each studioExportPreview as src, i (i)}
+							<button
+								type="button"
+								onclick={() => openLightbox(studioExportPreview, i, 'Studio export')}
+								class="shrink-0 relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-white/5 hover:opacity-95 transition-opacity"
+								title="Click to preview"
+							>
+								<img src={src} alt={`Slide ${i + 1}`} class="w-full h-full object-cover" />
+								<div class="absolute bottom-1 left-1 text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-black/55 text-white/80 border border-white/10">
+									{i + 1}
+								</div>
+							</button>
+						{/each}
 					</div>
 				</div>
 			</div>
@@ -1154,36 +1261,177 @@
 				{#if loadingPosts}
 					<div class="px-6 py-6 text-sm font-body text-white/40">Loading scheduled posts…</div>
 				{/if}
-				<div class="grid" style="grid-template-columns: 72px repeat(7, 1fr);">
-					<div class="h-14 border-b border-white/5"></div>
-					{#each weekDays as d (d.toISOString())}
-						<div class="h-14 border-b border-white/5 px-3 flex items-center justify-between">
-							<div>
-								<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">{fmtDayLabel(d)}</p>
-								<p class="text-sm font-display font-semibold text-white/75">{fmtDayNum(d)}</p>
+				{#if view === 'month'}
+					<div class="grid" style="grid-template-columns: repeat(7, 1fr);">
+						{#each ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as wd (wd)}
+							<div class="h-12 border-b px-3 flex items-center" style="border-color: {calLine};">
+								<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">{wd}</p>
 							</div>
-							<div class="w-2 h-2 rounded-full bg-white/8"></div>
-						</div>
-					{/each}
-				</div>
-
-				<div class="grid" style="grid-template-columns: 72px repeat(7, 1fr);">
-					{#each hours as hr (hr)}
-						<div class="h-20 border-b border-white/5 pr-3 flex items-start justify-end pt-2">
-							<span class="text-[10px] font-mono text-white/20">{hr === 12 ? '12 PM' : hr < 12 ? `${hr} AM` : `${hr - 12} PM`}</span>
-						</div>
-						{#each weekDays as d (d.toISOString() + ':' + hr)}
-							{@const slotPosts = postsForDay(d)
-								.filter(p => new Date(p.startISO).getHours() === hr)
-								.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
+						{/each}
+					</div>
+					<div class="grid" style="grid-template-columns: repeat(7, 1fr);">
+						{#each monthDays as d (d.toISOString())}
+							{@const inMonth = d.getMonth() === anchor.getMonth()}
+							{@const isToday = d.toDateString() === new Date().toDateString()}
+							{@const dayPosts = postsForDay(d)}
 							<div
 								role="presentation"
-								class="relative h-20 border-b border-white/5 border-l hover:bg-white/2 transition-colors overflow-y-auto overflow-x-hidden scrollbar-thin"
+								class="relative h-28 border-b border-l hover:bg-white/2 transition-colors overflow-hidden"
+								style="border-color: {calLine}; background: {inMonth ? 'transparent' : 'color-mix(in oklab, var(--app-text) 2%, transparent)'};"
+								ondragover={(e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; }}
+								ondrop={(e) => dropToSlot(e, d, 9)}
+							>
+								<div class="absolute top-2 left-2">
+									<span class="text-[11px] font-mono px-2 py-0.5 rounded-lg border"
+										style="
+											border-color: {isToday ? 'rgba(139,92,246,0.35)' : 'transparent'};
+											background: {isToday ? 'rgba(139,92,246,0.12)' : 'transparent'};
+											color: {inMonth ? 'var(--app-text-2)' : 'var(--app-text-3)'};
+										"
+									>{fmtDayNum(d)}</span>
+								</div>
+								<div class="pt-10 px-2 pb-2 flex flex-col gap-1">
+									{#each dayPosts.slice(0, 3) as p (p.id)}
+										<div class="rounded-lg border px-2 py-1 bg-white/3"
+											style="border-color: {calLine};"
+											title={p.title}
+										>
+											<p class="text-[10px] font-body text-white/75 leading-tight line-clamp-1">{p.title}</p>
+										</div>
+									{/each}
+									{#if dayPosts.length > 3}
+										<p class="text-[10px] font-mono text-white/25 px-1">+{dayPosts.length - 3} more</p>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+				{:else if view === 'day'}
+					<div class="grid" style="grid-template-columns: 72px 1fr;">
+						<div class="h-14 border-b" style="border-color: {calLine};"></div>
+						<div class="h-14 border-b px-3 flex items-center justify-between" style="border-color: {calLine};">
+							<div>
+								<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">{fmtDayLabel(dayOnly)}</p>
+								<p class="text-sm font-display font-semibold text-white/75">{dayOnly.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+							</div>
+						</div>
+					</div>
+					<div class="grid" style="grid-template-columns: 72px 1fr;">
+						{#each hours as hr (hr)}
+							{@const slotPosts = postsForDay(dayOnly)
+								.filter(p => new Date(p.startISO).getHours() === hr)
+								.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
+							<div class="h-20 border-b pr-3 flex items-start justify-end pt-2" style="border-color: {calLine};">
+								<span class="text-[10px] font-mono text-white/20">{hr === 12 ? '12 PM' : hr < 12 ? `${hr} AM` : `${hr - 12} PM`}</span>
+							</div>
+							<div
+								role="presentation"
+								class="relative h-20 border-b border-l hover:bg-white/2 transition-colors overflow-y-auto overflow-x-hidden scrollbar-thin"
+								style="border-color: {calLine};"
 								ondragover={allowDrop}
-								ondrop={(e) => dropToSlot(e, d, hr)}
+								ondrop={(e) => dropToSlot(e, dayOnly, hr)}
 							>
 								<div class="flex flex-col gap-1 p-1">
-								{#each slotPosts as p, idx (p.id)}
+									{#each slotPosts as p, idx (p.id)}
+										{@const isDone = p.status === 'published'}
+										{@const isFailed = p.status === 'failed'}
+										{@const isPublishing = p.status === 'publishing'}
+										{@const pillClass =
+											isDone ? 'bg-emerald-500/12 border-emerald-500/25' :
+											isFailed ? 'bg-red-500/12 border-red-500/25' :
+											isPublishing ? 'bg-amber-500/12 border-amber-500/25' :
+											'bg-violet-500/14 border-violet-500/25'}
+										{@const statusLabel =
+											isDone ? 'Posted' :
+											isFailed ? 'Failed' :
+											isPublishing ? 'Publishing…' :
+											'Scheduled'}
+										{@const statusLabelClass =
+											isDone ? 'text-emerald-200/80 bg-emerald-500/10 border-emerald-500/25' :
+											isFailed ? 'text-red-200/80 bg-red-500/10 border-red-500/25' :
+											isPublishing ? 'text-amber-200/80 bg-amber-500/10 border-amber-500/25' :
+											'text-sky-200/70 bg-sky-500/10 border-sky-500/20'}
+										<div
+											role="button"
+											tabindex="0"
+											draggable={!isDone && !isFailed && !isPublishing}
+											ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
+											class="shrink-0 rounded-xl border {pillClass} p-2 {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} select-none shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.45)] transition-shadow"
+											title={isFailed && p.lastError ? `Failed: ${p.lastError}\n\n${p.title}` : p.title}
+										>
+											<div class="flex items-start justify-between gap-2 mb-1.5">
+												<p class="text-[11px] font-body text-white/85 leading-tight line-clamp-1 flex-1 min-w-0">{p.title}</p>
+												<div class="flex items-center gap-1 shrink-0">
+													<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {statusLabelClass}">
+														{statusLabel}
+													</span>
+													{#if !isDone && !isPublishing}
+														<button
+															onclick={(e) => {
+																e.stopPropagation();
+																const msg = isFailed ? 'Remove this failed post from the calendar?' : 'Unschedule this post?';
+																if (confirm(msg)) unschedulePost(p.id);
+															}}
+															class="w-5 h-5 rounded-md bg-white/5 border border-white/10 hover:bg-red-500/20 hover:border-red-500/30 text-white/40 hover:text-red-200 transition-all flex items-center justify-center"
+															aria-label={isFailed ? 'Remove failed post' : 'Unschedule post'}
+															title={isFailed ? 'Remove from calendar' : 'Unschedule'}
+														>
+															<X size={10} />
+														</button>
+													{/if}
+												</div>
+											</div>
+											<div class="flex items-center gap-1 flex-wrap">
+												<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {igTypePillClass(p.igType)}">
+													{igTypeLabel(p.igType)}
+												</span>
+												{#each p.channels as cid (cid)}
+													{@const c = channelById(cid)}
+													<span class="text-[9px] font-mono text-white/55 bg-white/3 border border-white/6 px-1.5 py-0.5 rounded-md flex items-center gap-1">
+														<span class="w-1 h-1 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
+														{c?.label ?? cid}
+													</span>
+												{/each}
+											</div>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<!-- Week view -->
+					<div class="grid" style="grid-template-columns: 72px repeat(7, 1fr);">
+						<div class="h-14 border-b" style="border-color: {calLine};"></div>
+						{#each weekDays as d (d.toISOString())}
+							<div class="h-14 border-b px-3 flex items-center justify-between" style="border-color: {calLine};">
+								<div>
+									<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">{fmtDayLabel(d)}</p>
+									<p class="text-sm font-display font-semibold text-white/75">{fmtDayNum(d)}</p>
+								</div>
+								<div class="w-2 h-2 rounded-full bg-white/8"></div>
+							</div>
+						{/each}
+					</div>
+
+					<div class="grid" style="grid-template-columns: 72px repeat(7, 1fr);">
+						{#each hours as hr (hr)}
+							<div class="h-20 border-b pr-3 flex items-start justify-end pt-2" style="border-color: {calLine};">
+								<span class="text-[10px] font-mono text-white/20">{hr === 12 ? '12 PM' : hr < 12 ? `${hr} AM` : `${hr - 12} PM`}</span>
+							</div>
+							{#each weekDays as d (d.toISOString() + ':' + hr)}
+								{@const slotPosts = postsForDay(d)
+									.filter(p => new Date(p.startISO).getHours() === hr)
+									.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
+								<div
+									role="presentation"
+									class="relative h-20 border-b border-l hover:bg-white/2 transition-colors overflow-y-auto overflow-x-hidden scrollbar-thin"
+									style="border-color: {calLine};"
+									ondragover={allowDrop}
+									ondrop={(e) => dropToSlot(e, d, hr)}
+								>
+									<div class="flex flex-col gap-1 p-1">
+									{#each slotPosts as p, idx (p.id)}
 									{@const isDone = p.status === 'published'}
 									{@const isFailed = p.status === 'failed'}
 									{@const isPublishing = p.status === 'publishing'}
@@ -1251,9 +1499,82 @@
 						{/each}
 					{/each}
 				</div>
+				{/if}
 			</div>
 		</div>
 	</main>
+
+	{#if lightbox.open}
+		<div
+			role="button"
+			tabindex="0"
+			class="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm"
+			onclick={closeLightbox}
+			onkeydown={(e) => {
+				if (e.key === 'Escape') closeLightbox();
+				if (e.key === 'ArrowLeft') lbPrev();
+				if (e.key === 'ArrowRight') lbNext();
+			}}
+			aria-label="Close preview"
+		>
+			<div class="absolute inset-0 flex items-center justify-center p-6">
+				<div
+					role="dialog"
+					aria-modal="true"
+					class="w-full max-w-5xl rounded-2xl overflow-hidden border bg-black/40"
+					style="border-color: color-mix(in oklab, var(--app-text) 16%, transparent);"
+					tabindex="-1"
+					onclick={(e) => e.stopPropagation()}
+					onkeydown={(e) => e.stopPropagation()}
+				>
+					<div
+						class="px-4 py-3 flex items-center justify-between gap-3 border-b"
+						style="border-color: color-mix(in oklab, var(--app-text) 12%, transparent);"
+					>
+						<div class="min-w-0">
+							<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Preview</p>
+							<p class="text-xs font-body text-white/80 truncate">
+								{lightbox.title ?? 'Images'} · {lightbox.index + 1}/{lightbox.images.length}
+							</p>
+						</div>
+						<button
+							type="button"
+							onclick={closeLightbox}
+							class="w-8 h-8 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/50 hover:text-white/90 transition-all flex items-center justify-center"
+							aria-label="Close"
+						>
+							<X size={14} />
+						</button>
+					</div>
+					<div class="relative bg-black/30">
+						<button
+							type="button"
+							onclick={lbPrev}
+							class="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 flex items-center justify-center"
+							aria-label="Previous image"
+							title="Previous (←)"
+						>
+							<ChevronLeft size={18} />
+						</button>
+						<button
+							type="button"
+							onclick={lbNext}
+							class="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 flex items-center justify-center"
+							aria-label="Next image"
+							title="Next (→)"
+						>
+							<ChevronRight size={18} />
+						</button>
+						<img
+							src={lightbox.images[lightbox.index]}
+							alt="Preview"
+							class="w-full max-h-[78vh] object-contain block"
+						/>
+					</div>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	{#if showAddChannel}
 		<div
@@ -1268,7 +1589,8 @@
 				<div
 					role="dialog"
 					aria-modal="true"
-					class="w-full max-w-3xl rounded-2xl bg-[#0f0f0f] border border-white/10 shadow-2xl overflow-hidden"
+class="w-full max-w-3xl rounded-2xl border shadow-2xl overflow-hidden"
+style="background: var(--app-surface-2); border-color: var(--app-border);"
 					onclick={(e) => e.stopPropagation()}
 					onkeydown={(e) => e.stopPropagation()}
 					tabindex="-1"
@@ -1315,4 +1637,14 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* Make faint text utilities more readable on this page (light theme). */
+	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/20) { color: var(--app-text-3) !important; }
+	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/25) { color: var(--app-text-3) !important; }
+	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/30) { color: var(--app-text-2) !important; }
+	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/35) { color: var(--app-text-2) !important; }
+	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/40) { color: var(--app-text-2) !important; }
+	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/45) { color: var(--app-text-2) !important; }
+</style>
 

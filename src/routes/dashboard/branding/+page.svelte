@@ -218,7 +218,7 @@
 					bind:value={topic}
 					rows={3}
 					placeholder="e.g. Top ten richest founders under 30"
-					class="mt-2 w-full rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 text-sm text-white/85 placeholder:text-white/25 focus:outline-none focus:border-white/25 resize-none"
+					class="mt-2 w-full rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 text-sm text-white/85 placeholder:text-white/40 focus:outline-none focus:border-white/25 resize-none"
 				></textarea>
 			</div>
 
@@ -229,7 +229,7 @@
 						id="brandName"
 						bind:value={brandName}
 						placeholder="e.g. StartupStealth"
-						class="mt-2 w-full rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 text-sm text-white/85 placeholder:text-white/25 focus:outline-none focus:border-white/25"
+						class="mt-2 w-full rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 text-sm text-white/85 placeholder:text-white/40 focus:outline-none focus:border-white/25"
 					/>
 				</div>
 				<div>
@@ -261,7 +261,7 @@
 					<select
 						id="img-size"
 						bind:value={imageSizePreset}
-						class="flex-1 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 text-sm text-white/85 focus:outline-none focus:border-white/25 [color-scheme:dark]"
+						class="flex-1 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 text-sm text-white/85 focus:outline-none focus:border-white/25"
 					>
 						<option value="ig_4_5">Instagram 4:5 (1024×1280)</option>
 						<option value="square">Square (1024×1024)</option>

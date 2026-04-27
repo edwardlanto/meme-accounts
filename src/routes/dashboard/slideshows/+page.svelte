@@ -5,7 +5,7 @@
 	import {
 		Sparkles, Loader, Upload, Trash2, Download, RefreshCw,
 		Image, Wand2, Check, ChevronRight, ChevronLeft,
-		Pencil, Save, X, BookMarked, Music, Calendar
+		Pencil, Save, X, BookMarked, Music, Calendar, Type
 	} from 'lucide-svelte';
 
 	// ── Auth ──────────────────────────────────────────────────────────────────
@@ -590,10 +590,13 @@ ${inlineEditScript}
 	const hasSlides   = $derived(extractedSlides.length > 0 && !generating);
 </script>
 
-<div class="flex h-full overflow-hidden">
+<div class="slideshows-root flex h-full overflow-hidden" style="background: var(--app-bg); color: var(--app-text);">
 
 <!-- ══════════════════════════════════════════════════════════ SIDEBAR -->
-<div class="w-[272px] flex-shrink-0 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-hidden">
+<div
+	class="w-[272px] flex-shrink-0 border-r flex flex-col overflow-hidden"
+	style="background: var(--app-surface-2); border-color: var(--app-border);"
+>
 
 	<!-- Header + Stepper -->
 	<div class="px-5 pt-5 pb-4 border-b border-white/[0.04] flex-shrink-0">
@@ -900,7 +903,7 @@ ${inlineEditScript}
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ MAIN AREA -->
-<div class="flex-1 flex overflow-hidden bg-[#060606]">
+<div class="flex-1 flex overflow-hidden" style="background: var(--app-bg);">
 
 	{#if generating}
 		<div class="flex-1 flex flex-col items-center justify-center gap-5">
@@ -956,7 +959,7 @@ ${inlineEditScript}
 				{@const previewH = 380}
 				{@const previewW = Math.round(previewH * s.w / s.h)}
 				{@const previewScale = previewW / s.w}
-				<div class="flex-1 flex items-center justify-center overflow-hidden bg-[#060606]">
+			<div class="flex-1 flex items-center justify-center overflow-hidden" style="background: var(--app-bg);">
 					<div style="width:{previewW}px;height:{previewH}px;overflow:hidden;border-radius:16px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 24px 60px rgba(0,0,0,0.6);flex-shrink:0;">
 						<div style="width:{s.w}px;height:{s.h}px;transform:scale({previewScale});transform-origin:top left;pointer-events:{inlineEdit ? 'auto' : 'none'};">
 							{#key `${selectedSlide}-${inlineEdit}`}
@@ -973,7 +976,7 @@ ${inlineEditScript}
 			{/if}
 
 			<!-- Horizontal slide strip (selectable "slider") -->
-			<div class="flex-shrink-0 border-t border-white/[0.04] bg-[#080808]">
+			<div class="flex-shrink-0 border-t" style="border-color: var(--app-border); background: var(--app-surface-2);">
 				<div class="flex gap-3 px-4 py-3 overflow-x-auto" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.08) transparent;">
 					{#each extractedSlides as slide (slide.idx)}
 						{@const thumbH = 110}
@@ -1023,7 +1026,7 @@ ${inlineEditScript}
 										arr[slide.idx] = { ...arr[slide.idx], song: (e.target as HTMLSelectElement).value };
 										slideMusic = arr;
 									}}
-									class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1 px-1.5 text-[9px] font-body text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors [color-scheme:dark]"
+									class="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg py-1 px-1.5 text-[9px] font-body text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors"
 								>
 									{#each SONG_OPTIONS as opt}
 										<option value={opt}>{opt}</option>
@@ -1054,7 +1057,7 @@ ${inlineEditScript}
 		</div>
 
 		<!-- Edit panel -->
-		<div class="w-64 flex-shrink-0 border-l border-white/[0.05] flex flex-col overflow-hidden bg-[#0a0a0a]">
+		<div class="w-64 flex-shrink-0 border-l flex flex-col overflow-hidden" style="border-color: var(--app-border); background: var(--app-surface-2);">
 			<div class="flex-shrink-0 px-4 py-3 border-b border-white/[0.04]">
 				<p class="text-[9px] font-mono text-white/25 uppercase tracking-wider">
 					Editing — <span class="text-violet-300">{extractedSlides[selectedSlide]?.label}</span>

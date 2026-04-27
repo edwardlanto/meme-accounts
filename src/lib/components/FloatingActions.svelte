@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Music, Calendar, X, Send } from 'lucide-svelte';
+	import { Music, Calendar, X, Send, LoaderCircle } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 
 	interface $$Props {
@@ -9,6 +9,7 @@
 		zIndex?: number;
 		postUrl?: string;
 		onPost?: () => void | Promise<void>;
+		posting?: boolean;
 	}
 
 	let {
@@ -18,6 +19,7 @@
 		zIndex = 50,
 		postUrl = '/dashboard/post-scheduler',
 		onPost = undefined,
+		posting = false,
 	} = ($props() as $$Props);
 
 	interface SlideMusicSettings { song: string; seconds: number; }
@@ -56,6 +58,7 @@
 	}
 
 	async function handlePostClick() {
+		if (posting) return;
 		if (onPost) {
 			await onPost();
 			return;
@@ -66,13 +69,15 @@
 
 {#if hasSlides}
 	<div
-		class="fixed flex flex-col items-end gap-2"
+		class="fixed flex flex-row items-end gap-2"
 		style="right:{rightOffsetPx}px;bottom:{bottomOffsetPx}px;z-index:{zIndex};"
 	>
 		<!-- POST button + panel -->
 		<div class="relative">
 			{#if showPostPanel}
-				<div class="absolute bottom-full mb-2 right-0 w-[340px] rounded-2xl bg-[#111] border border-white/[0.1] shadow-2xl overflow-hidden">
+				<div class="absolute bottom-full mb-2 right-0 w-[340px] rounded-2xl shadow-2xl overflow-hidden"
+					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
+				>
 					<div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
 						<div class="flex items-center gap-2">
 							<Calendar size={13} class="text-cyan-400" />
@@ -169,20 +174,33 @@
 
 			<button
 				onclick={handlePostClick}
-				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all
-					{showPostPanel
-						? 'bg-cyan-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-						: 'bg-[#1a1a1a] border border-white/[0.12] text-white/70 hover:text-white hover:border-cyan-500/40 hover:bg-[#1e1e1e]'}"
+				disabled={posting}
+				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
+				style="
+					background: {showPostPanel ? 'rgb(6 182 212)' : 'color-mix(in oklab, var(--app-text) 6%, transparent)'};
+					border-color: {showPostPanel ? 'rgba(6,182,212,0.35)' : 'var(--app-border)'};
+					color: {showPostPanel ? '#fff' : 'var(--app-text-2)'};
+					{posting ? 'opacity: 0.75; cursor: progress;' : 'cursor: pointer;'}
+				"
 			>
 				<Calendar size={14} />
-				Post
+				{#if posting}
+					<span class="inline-flex items-center gap-2">
+						Exporting…
+						<LoaderCircle size={14} class="animate-spin" />
+					</span>
+				{:else}
+					Post
+				{/if}
 			</button>
 		</div>
 
 		<!-- BURN MUSIC button + panel -->
 		<div class="relative">
 			{#if showMusicPanel}
-				<div class="absolute bottom-full mb-2 right-0 w-[400px] rounded-2xl bg-[#111] border border-white/[0.1] shadow-2xl overflow-hidden">
+				<div class="absolute bottom-full mb-2 right-0 w-[400px] rounded-2xl shadow-2xl overflow-hidden"
+					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
+				>
 					<div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
 						<div class="flex items-center gap-2">
 							<Music size={13} class="text-violet-400" />
@@ -261,10 +279,12 @@
 					showMusicPanel = !showMusicPanel;
 					showPostPanel = false;
 				}}
-				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all
-					{showMusicPanel
-						? 'bg-violet-600 text-white shadow-[0_0_20px_rgba(139,92,246,0.5)]'
-						: 'bg-[#1a1a1a] border border-white/[0.12] text-white/70 hover:text-white hover:border-violet-500/40 hover:bg-[#1e1e1e]'}"
+				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
+				style="
+					background: {showMusicPanel ? 'rgb(124 58 237)' : 'color-mix(in oklab, var(--app-text) 6%, transparent)'};
+					border-color: {showMusicPanel ? 'rgba(139,92,246,0.35)' : 'var(--app-border)'};
+					color: {showMusicPanel ? '#fff' : 'var(--app-text-2)'};
+				"
 			>
 				<Music size={14} />
 				Burn Music
