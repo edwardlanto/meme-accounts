@@ -13,7 +13,20 @@ import JSZip from 'jszip';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
-	import { Button } from '$lib/components/ui/button';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { cn } from '$lib/utils.js';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger,
+	} from '$lib/components/ui/select';
+	import { Switch } from '$lib/components/ui/switch';
+	import { Slider } from '$lib/components/ui/slider';
+	import { Tabs, TabsList, TabsTrigger } from '$lib/components/ui/tabs';
+	import { Separator } from '$lib/components/ui/separator';
 	import { DragDropProvider, DragOverlay } from '@dnd-kit-svelte/svelte';
 	import { PointerSensor } from '@dnd-kit-svelte/svelte';
 	import { PointerActivationConstraints } from '@dnd-kit/dom';
@@ -25,7 +38,7 @@ import JSZip from 'jszip';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
-		Image, Type, ChevronDown, Search, FlaskConical, Wifi, Layers,
+		Image, Type, Search, FlaskConical, Wifi, Layers,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2
 	} from 'lucide-svelte';
 
@@ -2568,72 +2581,54 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 			<!-- Content type (News template generator) -->
 			<div class="mb-2">
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Content</label>
-				<div class="flex rounded-xl p-0.5 bg-white/[0.04] border border-white/[0.08] gap-0.5">
-					<button
-						type="button"
-						onclick={() => (newsContentMode = 'news')}
-						class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
-							{newsContentMode === 'news'
-								? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
-								: 'text-white/45 hover:text-white/70 border border-transparent'}"
-					>News</button>
-					<button
-						type="button"
-						onclick={() => (newsContentMode = 'fact')}
-						class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
-							{newsContentMode === 'fact'
-								? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
-								: 'text-white/45 hover:text-white/70 border border-transparent'}"
-					>Random fact</button>
-					<button
-						type="button"
-						onclick={() => (newsContentMode = 'story')}
-						class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
-							{newsContentMode === 'story'
-								? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
-								: 'text-white/45 hover:text-white/70 border border-transparent'}"
-					>Random story</button>
-				</div>
+				<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Content</Label>
+				<Tabs bind:value={newsContentMode} class="w-full">
+					<TabsList class="grid h-auto w-full grid-cols-3 gap-0.5 p-1">
+						<TabsTrigger value="news" class="px-1 py-2 text-[10px] font-semibold">News</TabsTrigger>
+						<TabsTrigger value="fact" class="px-1 py-2 text-[10px] font-semibold">Random fact</TabsTrigger>
+						<TabsTrigger value="story" class="px-1 py-2 text-[10px] font-semibold">Random story</TabsTrigger>
+					</TabsList>
+				</Tabs>
 			</div>
 
 			{#if newsContentMode === 'news'}
 				<!-- News category -->
 				<div class="mb-1">
-					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Category</label>
-					<div class="relative">
-						<select bind:value={category}
-							class="w-full appearance-none bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-3 pr-8 text-sm font-body text-white focus:outline-none focus:border-violet-500/50 transition-colors">
+					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Category</Label>
+					<Select type="single" bind:value={category}>
+						<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body">
+							{categories.find((c) => c.id === category)?.label ?? 'Category'}
+						</SelectTrigger>
+						<SelectContent>
 							{#each categories as cat}
-								<option value={cat.id}>{cat.label}</option>
+								<SelectItem value={cat.id} label={cat.label}>{cat.label}</SelectItem>
 							{/each}
-						</select>
-						<ChevronDown size={13} class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-					</div>
+						</SelectContent>
+					</Select>
 				</div>
 
 				<!-- Search -->
 				<div class="mb-3">
-					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Search (optional)</label>
+					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Search (optional)</Label>
 					<div class="relative">
-						<Search size={13} class="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-						<input bind:value={search} placeholder="e.g. interest rates, Tesla..."
-							class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-8 pr-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors" />
+						<Search size={13} class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 -translate-y-1/2" />
+						<Input bind:value={search} placeholder="e.g. interest rates, Tesla..." class="rounded-xl py-2.5 pl-9 text-sm font-body" />
 					</div>
 				</div>
 			{:else if newsContentMode === 'story'}
 				<div class="mb-3">
-					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Story theme</label>
-					<div class="relative">
-						<select bind:value={storyCategory}
-							class="w-full appearance-none bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 pl-3 pr-8 text-sm font-body text-white focus:outline-none focus:border-violet-500/50 transition-colors">
+					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Story theme</Label>
+					<Select type="single" bind:value={storyCategory}>
+						<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body">
+							{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
+						</SelectTrigger>
+						<SelectContent>
 							{#each storyThemes as th}
-								<option value={th.id}>{th.label}</option>
+								<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
 							{/each}
-						</select>
-						<ChevronDown size={13} class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-					</div>
-					<p class="text-[10px] font-body text-white/25 mt-1.5 leading-relaxed">Generate uses this theme for the micro-story hook and carousel context.</p>
+						</SelectContent>
+					</Select>
+					<p class="text-muted-foreground mt-1.5 text-[10px] font-body leading-relaxed">Generate uses this theme for the micro-story hook and carousel context.</p>
 				</div>
 			{:else}
 				<p class="text-[10px] font-body text-white/25 mb-3 leading-relaxed">
@@ -2643,30 +2638,43 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 			<!-- Slide count -->
 			<div class="mb-1">
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Number of slides</label>
+				<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Number of slides</Label>
 				<div class="flex items-center gap-2">
-					<button
-						onclick={() => slideCount = Math.max(1, slideCount - 1)}
-						class="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:text-white hover:bg-white/[0.08] transition-all flex items-center justify-center text-base font-bold">−</button>
-					<span class="flex-1 text-center text-sm font-mono text-white">{slideCount} slide{slideCount !== 1 ? 's' : ''}</span>
-					<button
-						onclick={() => slideCount = Math.min(10, slideCount + 1)}
-						class="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:text-white hover:bg-white/[0.08] transition-all flex items-center justify-center text-base font-bold">+</button>
+					<Button
+						type="button"
+						variant="outline"
+						size="icon-sm"
+						class="shrink-0 text-base font-bold"
+						onclick={() => (slideCount = Math.max(1, slideCount - 1))}
+					>−</Button>
+					<span class="flex-1 text-center text-sm font-mono text-foreground">{slideCount} slide{slideCount !== 1 ? 's' : ''}</span>
+					<Button
+						type="button"
+						variant="outline"
+						size="icon-sm"
+						class="shrink-0 text-base font-bold"
+						onclick={() => (slideCount = Math.min(10, slideCount + 1))}
+					>+</Button>
 				</div>
-				<div class="flex gap-1 mt-2">
-					{#each [1,2,3,4,5,6,8,10] as n}
-						<button
-							onclick={() => slideCount = n}
-							class="flex-1 py-1 rounded-lg text-[10px] font-mono transition-all
-								{slideCount === n ? 'bg-amber-500/20 text-amber-300 border border-amber-500/25' : 'bg-white/[0.03] text-white/25 border border-white/[0.05] hover:text-white/50'}">
-							{n}
-						</button>
+				<div class="mt-2 flex gap-1">
+					{#each [1, 2, 3, 4, 5, 6, 8, 10] as n}
+						<Button
+							type="button"
+							variant="outline"
+							size="xs"
+							class={cn(
+								'min-w-0 flex-1 py-1 text-[10px] font-mono',
+								slideCount === n &&
+									'border-amber-500/25 bg-amber-500/20 text-amber-300 hover:bg-amber-500/25 hover:text-amber-200'
+							)}
+							onclick={() => (slideCount = n)}
+						>{n}</Button>
 					{/each}
 				</div>
 			</div>
 
 			<!-- Data source toggle -->
-			<div class="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] mb-1">
+			<div class="mb-1 flex items-center justify-between rounded-xl border border-border bg-muted/30 p-3">
 				<div class="flex items-center gap-2">
 					{#if useTestData}
 						<FlaskConical size={12} class="text-amber-400" />
@@ -2676,22 +2684,19 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						<span class="text-xs font-mono text-emerald-400">Live API</span>
 					{/if}
 				</div>
-				<!-- Toggle switch -->
-				<button
-					onclick={() => useTestData = !useTestData}
-					class="relative w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0
-						{useTestData ? 'bg-amber-500/30' : 'bg-emerald-500/40'}"
-					title="{useTestData ? 'Switch to Live API' : 'Switch to Test Data'}"
-				>
-					<span class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow transition-transform duration-200
-						{useTestData ? 'translate-x-0 bg-amber-400' : 'translate-x-5 bg-emerald-400'}">
-					</span>
-				</button>
+				<Switch
+					bind:checked={useTestData}
+					title={useTestData ? 'Switch to Live API' : 'Switch to Test Data'}
+					class="shrink-0"
+				/>
 			</div>
 
 			<!-- Fetch / Generate button -->
-			<button onclick={fetchNews} disabled={fetchingNews}
-				class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
+			<Button
+				onclick={fetchNews}
+				disabled={fetchingNews}
+				class="h-auto w-full gap-2 rounded-xl bg-[#E8FF48] py-2.5 font-body text-sm font-semibold text-[#0a0a0a] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)]"
+			>
 				{#if fetchingNews}
 					<Loader size={13} class="animate-spin" />
 					{#if useTestData}
@@ -2715,7 +2720,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						<Sparkles size={13} /> Generate
 					{/if}
 				{/if}
-			</button>
+			</Button>
 
 			{#if newsError}
 				<div class="flex items-start gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 mt-1">
@@ -2724,15 +2729,14 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</div>
 			{/if}
 
-			<!-- Divider -->
-			<div class="border-t border-white/[0.05] my-3"></div>
+			<Separator class="my-3" />
 
 			<!-- Slide tabs + overlay text -->
 			<div>
-				<div class="flex items-center justify-between mb-2">
-					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider">
-						<Type size={9} class="inline mr-1" />Slide Text
-					</label>
+				<div class="mb-2 flex items-center justify-between">
+					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+						<Type size={9} class="shrink-0" />Slide Text
+					</Label>
 					{#if generatingVariants}
 						<span class="flex items-center gap-1 text-[10px] font-mono text-amber-400">
 							<Loader size={9} class="animate-spin" /> Writing slides…
@@ -2741,52 +2745,64 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</div>
 
 				<!-- Per-slide template selector -->
-				<div class="flex items-center gap-2 mb-2">
-					<div class="flex-1">
-						<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-1.5">Template (this slide)</p>
-						<select
+				<div class="mb-2 flex items-end gap-2">
+					<div class="min-w-0 flex-1">
+						<p class="mb-1.5 text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Template (this slide)</p>
+						<Select
+							type="single"
 							value={activeTemplate}
-							onchange={(e) => setActiveTemplate((e.target as HTMLSelectElement).value as TemplateId)}
-							class="w-full bg-white/3 border border-white/10 rounded-xl py-2 px-3 text-xs font-mono text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors scheme-dark cursor-pointer"
+							onValueChange={(v) => {
+								if (v) setActiveTemplate(v as TemplateId);
+							}}
 						>
-							{#each TEMPLATES as t (t.id)}
-								<option value={t.id}>{t.label}</option>
-							{/each}
-						</select>
+							<SelectTrigger class="w-full rounded-xl py-2 font-mono text-xs">
+								{TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Template'}
+							</SelectTrigger>
+							<SelectContent>
+								{#each TEMPLATES as t (t.id)}
+									<SelectItem value={t.id} label={t.label}>{t.label}</SelectItem>
+								{/each}
+							</SelectContent>
+						</Select>
 					</div>
-					<div class="pt-6">
-						<button
-							onclick={() => applyTemplateToAll(activeTemplate)}
-							class="px-3 py-2 rounded-xl bg-white/2 border border-white/6 text-[10px] font-mono text-white/55 hover:bg-white/4 transition-colors"
-							title="Apply this template to all slides"
-						>
-							Apply all
-						</button>
-					</div>
-					<div class="pt-6">
-						<button
-							type="button"
-							onclick={resetActiveTemplateContent}
-							class="px-3 py-2 rounded-xl bg-white/2 border border-white/6 text-[10px] font-mono text-white/55 hover:bg-white/4 transition-colors"
-							title="Reset this template to its default demo content"
-						>
-							Reset
-						</button>
-					</div>
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-auto shrink-0 rounded-xl py-2 font-mono text-[10px]"
+						onclick={() => applyTemplateToAll(activeTemplate)}
+						title="Apply this template to all slides"
+					>
+						Apply all
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="h-auto shrink-0 rounded-xl py-2 font-mono text-[10px]"
+						onclick={resetActiveTemplateContent}
+						title="Reset this template to its default demo content"
+					>
+						Reset
+					</Button>
 				</div>
 
 				<!-- Slide tabs -->
 				{#if slides.length > 1}
-					<div class="flex gap-1 mb-2 flex-wrap">
+					<div class="mb-2 flex flex-wrap gap-1">
 						{#each slides as _, i}
-							<button
-								onclick={() => activeSlide = i}
-								class="px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all
-									{activeSlide === i
-										? 'bg-violet-500/20 text-violet-300 border border-violet-500/25'
-										: 'bg-white/[0.03] text-white/30 border border-white/[0.05] hover:text-white/50'}">
-								{i === 0 ? '① Hook' : `${['②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'][i-1] ?? i+1} Slide ${i+1}`}
-							</button>
+							<Button
+								type="button"
+								variant="outline"
+								size="xs"
+								class={cn(
+									'rounded-lg px-2.5 py-1 font-mono text-[10px]',
+									activeSlide === i &&
+										'border-violet-500/25 bg-violet-500/20 text-violet-300 hover:bg-violet-500/25 hover:text-violet-200'
+								)}
+								onclick={() => (activeSlide = i)}
+							>
+								{i === 0 ? '① Hook' : `${['②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'][i - 1] ?? i + 1} Slide ${i + 1}`}
+							</Button>
 						{/each}
 					</div>
 				{/if}
@@ -2803,88 +2819,105 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 			<!-- Source label -->
 			<div>
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">Source Label</label>
-				<input bind:value={source} placeholder="Markets"
-					class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2.5 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/50 transition-colors" />
+				<Label for="source-label" class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Source Label</Label>
+				<Input id="source-label" bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body" />
 			</div>
 
 			<!-- Bottom shadow controls -->
 			<div>
-				<div class="flex items-center justify-between mb-2">
-					<label for="shadow-h" class="text-[10px] font-mono text-white/30 uppercase tracking-wider">
-						Bottom Shadow
-					</label>
-					<button
+				<div class="mb-2 flex items-center justify-between">
+					<Label for="shadow-h" class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Bottom Shadow</Label>
+					<Button
 						type="button"
-						onclick={() => { shadowHeight = 75; shadowStrength = 1; }}
-						class="text-[9px] font-mono text-white/30 hover:text-white/60 transition-colors"
+						variant="ghost"
+						size="sm"
+						class="h-auto p-0 font-mono text-[9px] text-muted-foreground hover:text-foreground"
+						onclick={() => {
+							shadowHeight = 75;
+							shadowStrength = 1;
+						}}
 						title="Reset shadow"
-					>Reset</button>
+					>Reset</Button>
 				</div>
-				<div class="flex items-center gap-2 mb-2">
-					<span class="text-[9px] font-mono text-white/40 w-10">Height</span>
-					<input
+				<div class="mb-2 flex min-w-0 items-center gap-2">
+					<span class="w-10 shrink-0 font-mono text-[9px] text-muted-foreground">Height</span>
+					<Slider
 						id="shadow-h"
-						type="range"
-						min="0"
-						max="100"
-						step="1"
+						type="single"
 						bind:value={shadowHeight}
-						class="flex-1 accent-violet-500"
+						min={0}
+						max={100}
+						step={1}
+						class="min-w-0 flex-1"
 					/>
-					<span class="text-[9px] font-mono text-white/40 w-8 text-right">{shadowHeight}%</span>
+					<span class="w-8 shrink-0 text-right font-mono text-[9px] text-muted-foreground">{shadowHeight}%</span>
 				</div>
-				<div class="flex items-center gap-2">
-					<span class="text-[9px] font-mono text-white/40 w-10">Darkness</span>
-					<input
-						type="range"
-						min="0"
-						max="1"
-						step="0.05"
+				<div class="flex min-w-0 items-center gap-2">
+					<span class="w-10 shrink-0 font-mono text-[9px] text-muted-foreground">Darkness</span>
+					<Slider
+						type="single"
 						bind:value={shadowStrength}
-						class="flex-1 accent-violet-500"
+						min={0}
+						max={1}
+						step={0.05}
+						class="min-w-0 flex-1"
 					/>
-					<span class="text-[9px] font-mono text-white/40 w-8 text-right">{Math.round(shadowStrength * 100)}%</span>
+					<span class="w-8 shrink-0 text-right font-mono text-[9px] text-muted-foreground">{Math.round(shadowStrength * 100)}%</span>
 				</div>
 			</div>
 
-			<!-- Divider -->
-			<div class="border-t border-white/[0.05] my-3"></div>
+			<Separator class="my-3" />
 
 			<!-- Text color control removed (use floating text toolbar instead) -->
 
 			<!-- Background image -->
 			<div>
-				<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-2">
-					<Image size={9} class="inline mr-1" />Background — Slide {activeSlide + 1}
-				</label>
+				<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
+					<Image size={9} class="shrink-0" />Background — Slide {activeSlide + 1}
+				</Label>
 				<div class="flex flex-col gap-2">
-					<button onclick={() => generateBackground(activeSlide)}
+					<Button
+						variant="outline"
+						class="h-auto gap-1.5 rounded-xl border-violet-500/15 bg-violet-500/10 py-2 font-body text-xs font-semibold text-violet-300 hover:bg-violet-500/20"
+						onclick={() => generateBackground(activeSlide)}
 						disabled={(generatingImagesByTemplate.news ?? [])[activeSlide]}
-						class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/15 transition-all disabled:opacity-50">
+					>
 						{#if (generatingImagesByTemplate.news ?? [])[activeSlide]}
 							<Loader size={11} class="animate-spin" /> Generating...
 						{:else}
 							<Sparkles size={11} /> Regenerate with AI
 						{/if}
-					</button>
-					<button onclick={() => generateAllSlideImages()}
+					</Button>
+					<Button
+						variant="outline"
+						class="h-auto gap-1.5 rounded-xl border-cyan-500/15 bg-cyan-500/10 py-2 font-body text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20"
+						onclick={() => generateAllSlideImages()}
 						disabled={(generatingImagesByTemplate.news ?? []).some(Boolean)}
-						class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/15 transition-all disabled:opacity-50">
+					>
 						{#if (generatingImagesByTemplate.news ?? []).some(Boolean)}
 							<Loader size={11} class="animate-spin" /> Generating all…
 						{:else}
 							<Sparkles size={11} /> Regenerate all slides
 						{/if}
-					</button>
+					</Button>
 					<!-- Upload row: image + video side by side -->
 					<div class="grid grid-cols-2 gap-2">
-						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
+						<label
+							class={cn(
+								buttonVariants({ variant: 'outline', size: 'sm' }),
+								'glass glass-hover h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground'
+							)}
+						>
 							<Image size={11} /> Photo
 							<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
 						</label>
-						<label class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-white/40 glass glass-hover border border-white/[0.06] transition-all cursor-pointer">
-							<span class="text-base leading-none" style="font-size:11px;">▶</span> Video
+						<label
+							class={cn(
+								buttonVariants({ variant: 'outline', size: 'sm' }),
+								'glass glass-hover h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground'
+							)}
+						>
+							<Play size={11} class="shrink-0" /> Video
 							<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
 						</label>
 					</div>
@@ -2897,18 +2930,23 @@ if (tweetTopImageHeightBySlide.length !== n) {
 									<Scissors size={9} class="inline mr-1" />Subject Cutout
 								</p>
 								{#if activeCutout}
-									<button
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										class={cn(
+											'h-auto gap-1 p-0 font-mono text-[10px] hover:bg-transparent',
+											activeShowCutout ? 'text-emerald-400' : 'text-muted-foreground hover:text-foreground'
+										)}
 										onclick={() => toggleCutoutVisibility()}
-										class="flex items-center gap-1 text-[10px] font-mono transition-colors
-											{activeShowCutout ? 'text-emerald-400' : 'text-white/30 hover:text-white/60'}"
-										title="{activeShowCutout ? 'Hide cutout' : 'Show cutout'}"
+										title={activeShowCutout ? 'Hide cutout' : 'Show cutout'}
 									>
 										{#if activeShowCutout}
 											<Eye size={10} /> ON
 										{:else}
 											<EyeOff size={10} /> OFF
 										{/if}
-									</button>
+									</Button>
 								{/if}
 							</div>
 
@@ -2936,31 +2974,38 @@ if (tweetTopImageHeightBySlide.length !== n) {
 									<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style="background: repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 50% / 12px 12px;">
 										<img src={activeCutout} alt="cutout" class="w-full h-full object-contain" />
 									</div>
-									<span class="text-[11px] font-mono text-emerald-300 flex-1">Subject isolated</span>
-									<button
+									<span class="flex-1 font-mono text-[11px] text-emerald-300">Subject isolated</span>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-xs"
+										class="text-muted-foreground hover:text-emerald-400"
 										onclick={() => cutOutSubject()}
 										title="Regenerate cutout"
-										class="text-white/20 hover:text-emerald-400 transition-colors"
 									>
 										<RefreshCw size={11} />
-									</button>
-									<button
+									</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-xs"
+										class="text-xs text-muted-foreground hover:text-red-400"
 										onclick={() => clearCutout()}
 										title="Remove cutout"
-										class="text-white/20 hover:text-red-400 transition-colors text-xs"
-									>✕</button>
+									>✕</Button>
 								</div>
 								<p class="text-[10px] font-body text-white/25 leading-relaxed">
 									Cutout sits in <b class="text-white/50">front</b> of the circle — so the subject overlaps it like the reference image.
 								</p>
 							{:else}
 								<!-- No cutout yet: CTA -->
-								<button
+								<Button
+									variant="outline"
+									class="h-auto gap-1.5 rounded-xl border-emerald-500/15 bg-emerald-500/10 py-2 font-body text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20"
 									onclick={() => cutOutSubject()}
-									class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold font-body text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 transition-all"
 								>
 									<Scissors size={11} /> Cut out subject
-								</button>
+								</Button>
 								<p class="text-[10px] font-body text-white/25 leading-relaxed">
 									Removes the background so the subject sits <b class="text-white/50">in front</b> of the circle. First run downloads a ~40MB AI model.
 								</p>
@@ -2977,7 +3022,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
 							<span class="text-cyan-400 text-[11px]">▶</span>
 							<span class="text-[11px] font-mono text-cyan-300 flex-1 truncate">Video background active</span>
-							<button onclick={() => clearSlideBackground(activeSlide)} class="text-white/20 hover:text-red-400 transition-colors text-xs">✕</button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-xs"
+								class="text-xs text-muted-foreground hover:text-red-400"
+								onclick={() => clearSlideBackground(activeSlide)}
+							>✕</Button>
 						</div>
 					{/if}
 
@@ -2990,98 +3041,108 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<!-- Position + zoom sliders (shown when a background is loaded) -->
 					{#if backgroundImage || backgroundVideo}
 						<div class="flex flex-col gap-1.5 pt-1">
-							<p class="text-[10px] font-mono text-white/25 uppercase tracking-wider mb-0.5">
-								Position <span class="normal-case text-white/15 font-body">(or drag in preview)</span>
+							<p class="mb-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+								Position <span class="font-body text-[10px] font-normal normal-case text-muted-foreground/70">(or drag in preview)</span>
 							</p>
 							<!-- Horizontal -->
-							<div class="flex items-center gap-2.5">
-								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">←</span>
-								<input
-									type="range" min="0" max="100" step="1"
+							<div class="flex min-w-0 items-center gap-2.5">
+								<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">←</span>
+								<Slider
+									type="single"
 									bind:value={bgOffsetX}
-									class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+									min={0}
+									max={100}
+									step={1}
+									class="min-w-0 flex-1"
 								/>
-								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">→</span>
+								<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">→</span>
 							</div>
 							<!-- Vertical -->
-							<div class="flex items-center gap-2.5">
-								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">↑</span>
-								<input
-									type="range" min="0" max="100" step="1"
+							<div class="flex min-w-0 items-center gap-2.5">
+								<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">↑</span>
+								<Slider
+									type="single"
 									bind:value={bgOffsetY}
-									class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+									min={0}
+									max={100}
+									step={1}
+									class="min-w-0 flex-1"
 								/>
-								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">↓</span>
+								<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">↓</span>
 							</div>
 
-							<div class="flex flex-col gap-1.5 mt-2">
-								<p class="text-[10px] font-mono text-white/25 uppercase tracking-wider">Background fit</p>
-								<div class="flex rounded-xl p-0.5 bg-white/[0.04] border border-white/[0.08] gap-0.5">
-									<button
-										type="button"
-										onclick={() => { bgFitMode = 'cover'; }}
-										class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
-											{bgFitMode === 'cover'
-												? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
-												: 'text-white/45 hover:text-white/70 border border-transparent'}"
-									>Fill frame</button>
-									<button
-										type="button"
-										onclick={() => { bgFitMode = 'contain'; bgContainMagnify = 100; }}
-										class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
-											{bgFitMode === 'contain'
-												? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
-												: 'text-white/45 hover:text-white/70 border border-transparent'}"
-									>Show all</button>
-								</div>
+							<div class="mt-2 flex flex-col gap-1.5">
+								<p class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Background fit</p>
+								<Tabs
+									bind:value={bgFitMode}
+									class="w-full"
+									onValueChange={(v) => {
+										if (v === 'contain') bgContainMagnify = 100;
+									}}
+								>
+									<TabsList class="grid h-auto w-full grid-cols-2 gap-0.5 p-1">
+										<TabsTrigger value="cover" class="px-1 py-2 text-[10px] font-semibold">Fill frame</TabsTrigger>
+										<TabsTrigger value="contain" class="px-1 py-2 text-[10px] font-semibold">Show all</TabsTrigger>
+									</TabsList>
+								</Tabs>
 
 								{#if bgFitMode === 'contain'}
-									<p class="text-[9px] font-body text-white/20 leading-snug">
+									<p class="text-[9px] font-body leading-snug text-muted-foreground/80">
 										Shows the whole image (letterboxed). Magnify zooms that uncropped view; position still pans the focal point.
 									</p>
-									<div class="flex items-center justify-between mt-0.5 mb-0.5">
-										<button
+									<div class="mb-0.5 mt-0.5 flex items-center justify-between">
+										<Button
 											type="button"
+											variant="ghost"
+											size="sm"
+											class="h-auto p-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-violet-400"
 											onclick={() => (bgContainMagnify = 100)}
-											class="text-[10px] font-mono text-white/25 uppercase tracking-wider hover:text-violet-400 transition-colors"
 											title="Reset magnify to 100%"
-										>Magnify</button>
-										<span class="text-[9px] font-mono text-white/40">{bgContainMagnify}%</span>
+										>Magnify</Button>
+										<span class="font-mono text-[9px] text-muted-foreground">{bgContainMagnify}%</span>
 									</div>
-									<div class="flex items-center gap-2.5">
-										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">−</span>
-										<input
-											type="range" min="50" max="200" step="1"
+									<div class="flex min-w-0 items-center gap-2.5">
+										<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">−</span>
+										<Slider
+											type="single"
 											bind:value={bgContainMagnify}
-											class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+											min={50}
+											max={200}
+											step={1}
+											class="min-w-0 flex-1"
 										/>
-										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">+</span>
+										<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">+</span>
 									</div>
 								{:else}
 									<!-- Zoom: <100% shrinks (letterboxed on dark bg),
 									     >100% zooms in. At 100%, template still overscans to 105% for clean PNG edges. -->
-									<p class="text-[9px] font-body text-white/20 leading-snug -mb-0.5">
+									<p class="-mb-0.5 text-[9px] font-body leading-snug text-muted-foreground/80">
 										At 100% zoom the image is drawn at 105% of the frame (overscan) so exports don’t pick up thin black lines at the sides.
 									</p>
-									<div class="flex items-center justify-between mt-1 mb-0.5">
-										<button
+									<div class="mb-0.5 mt-1 flex items-center justify-between">
+										<Button
 											type="button"
-											onclick={() => bgZoom = 100}
-											class="text-[10px] font-mono text-white/25 uppercase tracking-wider hover:text-violet-400 transition-colors"
+											variant="ghost"
+											size="sm"
+											class="h-auto p-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-violet-400"
+											onclick={() => (bgZoom = 100)}
 											title="Reset zoom to 100%"
 										>
 											Zoom
-										</button>
-										<span class="text-[9px] font-mono text-white/40">{bgZoom}%</span>
+										</Button>
+										<span class="font-mono text-[9px] text-muted-foreground">{bgZoom}%</span>
 									</div>
-									<div class="flex items-center gap-2.5">
-										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">−</span>
-										<input
-											type="range" min="30" max="300" step="1"
+									<div class="flex min-w-0 items-center gap-2.5">
+										<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">−</span>
+										<Slider
+											type="single"
 											bind:value={bgZoom}
-											class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+											min={30}
+											max={300}
+											step={1}
+											class="min-w-0 flex-1"
 										/>
-										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">+</span>
+										<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">+</span>
 									</div>
 								{/if}
 							</div>
@@ -3093,14 +3154,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<!-- Circle badge controls removed from sidebar (managed on-canvas) -->
 
 			<!-- Export -->
-			<button onclick={exportPng} disabled={exporting || exportingAll}
-				class="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_6px_24px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
+			<Button
+				onclick={exportPng}
+				disabled={exporting || exportingAll}
+				class="h-auto w-full gap-2 rounded-xl bg-[#E8FF48] py-3 font-body text-sm font-semibold text-[#0a0a0a] hover:bg-[#f0ff70] hover:shadow-[0_6px_24px_rgba(232,255,72,0.25)]"
+			>
 				{#if exporting}
 					<Loader size={13} class="animate-spin" /> Exporting...
 				{:else}
 					<Download size={13} /> Export {CANVAS_W}×{CANVAS_H} PNG
 				{/if}
-			</button>
+			</Button>
 
 			<!-- Posting now automatically exports slides; no separate export button -->
 
@@ -4243,14 +4307,8 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 
 	:root:not([data-theme="dark"]) .studio-left :global(.placeholder-white\/20)::placeholder { color: var(--app-text-muted) !important; opacity: 0.65; }
 	:root:not([data-theme="dark"]) .studio-left :global(input),
-	:root:not([data-theme="dark"]) .studio-left :global(select),
 	:root:not([data-theme="dark"]) .studio-left :global(textarea) {
 		color: var(--app-text) !important;
-	}
-
-	select option {
-		background: var(--app-surface-2);
-		color: var(--app-text);
 	}
 
 	/* Hide scrollbars (keep scroll) for the bottom filmstrip */
