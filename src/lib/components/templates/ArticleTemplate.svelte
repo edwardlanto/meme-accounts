@@ -82,7 +82,7 @@
 		return bits.join(' ');
 	});
 
-	function styleCss(s: TextStyle) {
+	function styleCss(s: TextStyle, opts?: { omitBlockBg?: boolean }) {
 		const bits: string[] = [];
 		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Text', sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
@@ -90,7 +90,7 @@
 		if (s.italic) bits.push('font-style: italic;');
 		if (s.underline) bits.push('text-decoration: underline;');
 		if (s.color) bits.push(`color: ${s.color};`);
-		if (s.bgColor) {
+		if (s.bgColor && !opts?.omitBlockBg) {
 			bits.push(`background: ${s.bgColor};`);
 			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
 			bits.push('padding: 0.08em 0.18em;');
@@ -102,7 +102,8 @@
 		return bits.join(' ');
 	}
 
-	const bodyCss = $derived(styleCss(articleStyles.articleBody ?? {}));
+	/** Block bgColor painted the whole body; per-run backgrounds use [[marker(...)]] in text. */
+	const bodyCss = $derived(styleCss(articleStyles.articleBody ?? {}, { omitBlockBg: true }));
 	const swipeCss = $derived(styleCss(articleStyles.articleSwipeText ?? {}));
 
 	const W = 1080;

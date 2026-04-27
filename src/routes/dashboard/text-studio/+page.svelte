@@ -30,7 +30,7 @@
 	let slides = $state<TextSlide[]>([
 		{
 			id: crypto.randomUUID(),
-			text: 'When your home is titled in your name, it becomes a legal target.\n\nCourts, creditors, and attorneys see it as your asset…\n\nWhich means they can freeze it, lien it, or force a sale.',
+			text: 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nAdd a third line only if you need a closing detail.',
 			showSwipe: true,
 		},
 	]);

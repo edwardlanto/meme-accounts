@@ -209,7 +209,7 @@
 								templateTheme={uiTheme}
 								name="Captains of industry"
 								handle="@captainsofindustryy"
-								text={"When your home is titled in your name, it becomes a legal target.\n\nCourts, creditors, and attorneys see it as your asset…"}
+								text={"Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable."}
 								showSwipe={true}
 								scale={templateScale}
 								interactive={false}

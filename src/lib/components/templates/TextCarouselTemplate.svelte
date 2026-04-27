@@ -46,7 +46,7 @@
 		ringColor = '#c9b97a',
 		bgColor   = '',
 		templateTheme = 'light',
-		text      = 'When your home is titled in your name, it becomes a legal target.',
+		text      = 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.',
 		showSwipe = true,
 		scale     = 1,
 		interactive = true,
@@ -83,7 +83,7 @@
 		return bits.join(' ');
 	});
 
-	function styleCss(s: TextStyle) {
+	function styleCss(s: TextStyle, opts?: { omitBlockBg?: boolean }) {
 		const bits: string[] = [];
 		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Display', sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
@@ -91,7 +91,7 @@
 		if (s.italic) bits.push('font-style: italic;');
 		if (s.underline) bits.push('text-decoration: underline;');
 		if (s.color) bits.push(`color: ${s.color};`);
-		if (s.bgColor) {
+		if (s.bgColor && !opts?.omitBlockBg) {
 			bits.push(`background: ${s.bgColor};`);
 			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
 			bits.push('padding: 0.08em 0.18em;');
@@ -105,7 +105,7 @@
 
 	const nameCss = $derived(styleCss(textCarouselStyles.textCarouselName ?? {}));
 	const handleCss = $derived(styleCss(textCarouselStyles.textCarouselHandle ?? {}));
-	const bodyCss = $derived(styleCss(textCarouselStyles.textCarouselBody ?? {}));
+	const bodyCss = $derived(styleCss(textCarouselStyles.textCarouselBody ?? {}, { omitBlockBg: true }));
 
 	const W = 1080;
 	const H = 1350;
@@ -114,8 +114,6 @@
 		return n.replace(/[^\w\s]/g, '').trim().split(/\s+/).map(w => w[0]?.toUpperCase() ?? '').slice(0, 3).join('');
 	}
 
-	/** Split text into paragraphs on double-newline */
-	const paragraphs = $derived((text ?? '').split(/\n\n+/).map(p => p.trim()).filter(Boolean));
 </script>
 
 <div style="
@@ -266,15 +264,12 @@
 						onHeadlineRangeSelect={onHeadlineRangeSelect}
 					>
 						{#snippet display()}
-							<div style="display: flex; flex-direction: column; justify-content: flex-start;">
-								{#each paragraphs as para, i}
-									<HighlightedText
-										as="p"
-										text={para}
-										style="margin: 0; {i < paragraphs.length - 1 ? 'margin-bottom: 72px;' : ''} font-size: 72px; font-weight: 500; color: {baseText}; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; {bodyTypeCss} {bodyCss}"
-									/>
-								{/each}
-							</div>
+							<!-- Single block so plain-text selection maps to the stored `text` string (incl. \\n\\n). -->
+							<HighlightedText
+								as="div"
+								text={text ?? ''}
+								style="margin: 0; font-size: 72px; font-weight: 500; color: {baseText}; line-height: 1.38; letter-spacing: -0.8px; word-break: break-word; white-space: pre-wrap; {bodyTypeCss} {bodyCss}"
+							/>
 						{/snippet}
 					</CanvasMarkupTextBlock>
 				{/snippet}

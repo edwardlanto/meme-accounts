@@ -24,6 +24,8 @@ export interface HighlightRange {
 	gradientTo?: string;
 	pattern?: string;
 	patternImage?: string;
+	/** Solid background behind text (not text-fill). */
+	markerBg?: string;
 }
 
 export interface ParsedText {
@@ -39,6 +41,7 @@ export interface TextSegment {
 	gradientTo?: string;
 	pattern?: string;
 	patternImage?: string;
+	markerBg?: string;
 }
 
 /**
@@ -47,6 +50,7 @@ export interface TextSegment {
  *   [[#F59E0B: WORD]]           → solid custom color
  *   [[grad(#FF0000,#FFFF00): WORD]] → gradient
  *   [[pattern(waves,#00CED1): WORD]] → pattern fill
+ *   [[marker(#hex): WORD]]          → background chip behind phrase
  */
 export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): ParsedText {
 	const ranges: HighlightRange[] = [];
@@ -68,6 +72,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		let gradientTo: string | undefined;
 		let pattern: string | undefined;
 		let patternImage: string | undefined;
+		let markerBg: string | undefined;
 
 		// pattern(name): phrase  — any name, optional ,#hex suffix ignored (image-based)
 		const patternRe = /^pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/i;
@@ -88,9 +93,18 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 			phrase = gm[3].trim();
 		}
 
+		// marker(#hex): phrase — background chip (toolbar BG)
+		const markerRe = /^marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/i;
+		const mm = !pm && !gm ? inner.match(markerRe) : null;
+		if (mm) {
+			markerBg = mm[1];
+			phrase = mm[2].trim();
+			color = defaultColor;
+		}
+
 		// #hex: phrase
 		const colorRe = /^(#[0-9a-fA-F]{6})\s*:\s*(.+)$/i;
-		const cm = !pm && !gm ? inner.match(colorRe) : null;
+		const cm = !pm && !gm && !mm ? inner.match(colorRe) : null;
 		if (cm) {
 			color = cm[1];
 			phrase = cm[2].trim();
@@ -98,7 +112,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 
 		const start = plain.length;
 		plain += phrase;
-		ranges.push({ start, end: plain.length, color, gradientFrom, gradientTo, pattern, patternImage });
+		ranges.push({ start, end: plain.length, color, gradientFrom, gradientTo, pattern, patternImage, markerBg });
 		i = close + 2;
 	}
 
@@ -124,6 +138,7 @@ export function segmentText(parsed: ParsedText): TextSegment[] {
 			gradientTo: range.gradientTo,
 			pattern: range.pattern,
 			patternImage: range.patternImage,
+			markerBg: range.markerBg,
 		});
 		cursor = range.end;
 	}
@@ -208,8 +223,13 @@ function extractPhraseFromInner(inner: string): string {
 	const trimmed = inner.trim();
 	const patternRe = /^pattern\(\s*[\w-]+\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/i;
 	const gradRe = /^grad\(\s*#[0-9a-fA-F]{6}\s*,\s*#[0-9a-fA-F]{6}\s*\)\s*:\s*(.+)$/i;
+	const markerRe = /^marker\(\s*#[0-9a-fA-F]{3,8}\s*\)\s*:\s*(.+)$/i;
 	const colorRe = /^#[0-9a-fA-F]{3,8}\s*:\s*(.+)$/i;
-	const m = trimmed.match(patternRe) ?? trimmed.match(gradRe) ?? trimmed.match(colorRe);
+	const m =
+		trimmed.match(patternRe) ??
+		trimmed.match(gradRe) ??
+		trimmed.match(markerRe) ??
+		trimmed.match(colorRe);
 	return m ? m[1].trim() : trimmed;
 }
 
@@ -218,6 +238,7 @@ export type HighlightSpec =
 	| { kind: 'color'; color: string }                   // [[#F5A623: WORD]]
 	| { kind: 'gradient'; from: string; to: string }     // [[grad(#a,#b): WORD]]
 	| { kind: 'pattern'; name: string }                  // [[pattern(name): WORD]]
+	| { kind: 'marker'; color: string }                  // [[marker(#hex): WORD]]
 	| { kind: 'clear' };                                 // remove highlight for that range
 
 /**
@@ -255,6 +276,7 @@ function wrapPhrase(phrase: string, spec: HighlightSpec): string {
 		case 'color':    return `[[${spec.color}: ${phrase}]]`;
 		case 'gradient': return `[[grad(${spec.from},${spec.to}): ${phrase}]]`;
 		case 'pattern':  return `[[pattern(${spec.name}): ${phrase}]]`;
+		case 'marker':   return `[[marker(${spec.color}): ${phrase}]]`;
 		case 'clear':    return phrase;
 	}
 }

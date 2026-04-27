@@ -72,6 +72,35 @@
 		highlightPickerOpen = false;
 	}
 
+	/** BG chip: with markup + selection → inline `[[marker(...)]]`; else block `bgColor`. */
+	function pickBackgroundPreset(c: string) {
+		if (supportsHighlights && hasRangeSelection) {
+			if (c === 'transparent') applyHighlight({ kind: 'clear' });
+			else applyHighlight({ kind: 'marker', color: c });
+		} else {
+			onChange({ bgColor: c === 'transparent' ? undefined : c });
+		}
+		bgPickerOpen = false;
+	}
+
+	function onBgCustomColorInput(e: Event) {
+		const v = (e.target as HTMLInputElement).value;
+		if (supportsHighlights && hasRangeSelection) {
+			applyHighlight({ kind: 'marker', color: v });
+		} else {
+			onChange({ bgColor: v });
+		}
+	}
+
+	function clearBackgroundFill() {
+		if (supportsHighlights && hasRangeSelection) {
+			applyHighlight({ kind: 'clear' });
+		} else {
+			onChange({ bgColor: undefined });
+		}
+		bgPickerOpen = false;
+	}
+
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
 		const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
@@ -368,14 +397,20 @@
 			{/if}
 		</div>
 
-		<!-- Background -->
+		<!-- Background (selection → inline marker markup when supportsHighlights) -->
 		<div class="relative">
 			<button
 				onpointerdown={(e) => e.preventDefault()}
 				onmousedown={(e) => e.preventDefault()}
 				onclick={() => (bgPickerOpen = !bgPickerOpen)}
-				class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn"
-				title="Background"
+				disabled={supportsHighlights && !hasRangeSelection}
+				class="flex items-center gap-1.5 h-9 px-2 rounded-lg transition-colors ftb-btn
+					{supportsHighlights && !hasRangeSelection ? 'opacity-40 cursor-not-allowed' : ''}"
+				title={supportsHighlights && !hasRangeSelection
+					? 'Select part of the text first, then pick a background color'
+					: supportsHighlights
+						? 'Background on selected text'
+						: 'Block background'}
 			>
 				<span
 					class="w-5 h-5 rounded border ftb-chip"
@@ -393,7 +428,7 @@
 							<button
 								onpointerdown={(e) => e.preventDefault()}
 								onmousedown={(e) => e.preventDefault()}
-								onclick={() => { onChange({ bgColor: c === 'transparent' ? undefined : c }); bgPickerOpen = false; }}
+								onclick={() => pickBackgroundPreset(c)}
 								class="w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110
 									{style.bgColor === c ? 'border-black/40' : 'border-black/10'}"
 									style="background: {c === 'transparent'
@@ -408,17 +443,19 @@
 					<input
 						type="color"
 						value={style.bgColor ?? '#000000'}
-						oninput={(e) => onChange({ bgColor: (e.target as HTMLInputElement).value })}
+						oninput={onBgCustomColorInput}
 						onpointerdown={(e) => e.preventDefault()}
 						onmousedown={(e) => e.preventDefault()}
+						disabled={supportsHighlights && !hasRangeSelection}
 						class="w-full h-8 rounded-lg cursor-pointer bg-transparent border border-black/10"
 					/>
 					<button
 						onpointerdown={(e) => e.preventDefault()}
 						onmousedown={(e) => e.preventDefault()}
-						onclick={() => { onChange({ bgColor: undefined }); bgPickerOpen = false; }}
+						onclick={clearBackgroundFill}
+						disabled={supportsHighlights && !hasRangeSelection}
 						class="w-full mt-2 py-2 rounded-lg text-[11px] font-mono border transition-colors ftb-muted ftb-btn"
-						title="Clear background"
+						title="Clear background on selection"
 					>
 						Clear background
 					</button>

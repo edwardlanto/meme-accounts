@@ -128,7 +128,10 @@
 			}
 			const span = document.createElement('span');
 			span.setAttribute('data-hl', '1');
-			if (s.pattern) {
+			if (s.markerBg) {
+				span.setAttribute('data-hl-kind', 'marker');
+				span.setAttribute('data-hl-marker', s.markerBg);
+			} else if (s.pattern) {
 				span.setAttribute('data-hl-kind', 'pattern');
 				span.setAttribute('data-hl-name', s.pattern);
 			} else if (s.gradientFrom && s.gradientTo) {
@@ -151,6 +154,16 @@
 		// not the editor wrapper color (templates may set red while editing).
 		span.style.padding = '0';
 		span.style.borderRadius = '0';
+
+		if (s.markerBg) {
+			span.style.background = s.markerBg;
+			span.style.boxDecorationBreak = 'clone';
+			(span.style as any).webkitBoxDecorationBreak = 'clone';
+			span.style.padding = '0.08em 0.16em';
+			span.style.borderRadius = '0.12em';
+			span.style.color = 'inherit';
+			return;
+		}
 
 		if (s.pattern && s.patternImage) {
 			span.style.backgroundImage = `url("${s.patternImage}")`;
@@ -197,6 +210,10 @@
 			const inner = (el.textContent ?? '').replace(/\[\[|\]\]/g, '');
 			if (!inner) return '';
 			switch (kind) {
+				case 'marker': {
+					const c = el.getAttribute('data-hl-marker') ?? '#FFFFFF';
+					return `[[marker(${c}): ${inner}]]`;
+				}
 				case 'color': {
 					const c = el.getAttribute('data-hl-color') ?? defaultColor;
 					return `[[${c}: ${inner}]]`;

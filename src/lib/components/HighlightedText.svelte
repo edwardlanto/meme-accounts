@@ -10,6 +10,7 @@
 	 *   [[#hex: WORD]]            → colored with explicit hex
 	 *   [[grad(#a,#b): WORD]]     → linear gradient fill on the text
 	 *   [[pattern(name): WORD]]   → image/pattern fill on the text
+	 *   [[marker(#hex): WORD]]  → solid background behind phrase
 	 */
 	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
 
@@ -42,13 +43,24 @@
 			`background-clip: text; display: inline;` +
 			`font-weight: inherit; font-style: inherit; text-decoration: inherit;`;
 	}
+
+	function markerStyle(bg: string): string {
+		return (
+			`background: ${bg};` +
+			`box-decoration-break: clone; -webkit-box-decoration-break: clone;` +
+			`padding: 0.08em 0.16em; border-radius: 0.14em;` +
+			`color: inherit; font-weight: inherit; font-style: inherit; text-decoration: inherit;`
+		);
+	}
 </script>
 
 {#if as === 'div'}
 	<div {style} class={klass}>
 		{#each segments as seg}
 			{#if seg.highlighted}
-				{#if seg.patternImage}
+				{#if seg.markerBg}
+					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
+				{:else if seg.patternImage}
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
 					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
@@ -64,7 +76,9 @@
 	<p {style} class={klass}>
 		{#each segments as seg}
 			{#if seg.highlighted}
-				{#if seg.patternImage}
+				{#if seg.markerBg}
+					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
+				{:else if seg.patternImage}
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
 					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
@@ -80,7 +94,9 @@
 	<span {style} class={klass}>
 		{#each segments as seg}
 			{#if seg.highlighted}
-				{#if seg.patternImage}
+				{#if seg.markerBg}
+					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
+				{:else if seg.patternImage}
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
 					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>

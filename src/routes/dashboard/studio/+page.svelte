@@ -359,7 +359,7 @@ import JSZip from 'jszip';
 			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? '@captainsofindustryy' : x));
 			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) =>
 				idx === i
-					? 'When your home is titled in your name, it becomes a legal target.\n\nCourts, creditors, and attorneys see it as your asset...'
+					? 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.'
 					: x,
 			);
 		}
@@ -707,7 +707,7 @@ import JSZip from 'jszip';
 	// Canvas editing — circle position + size (template coordinates)
 	let circleX    = $state(772);
 	let circleY    = $state(52);
-	let circleSize = $state(256); // diameter in template px (128–512)
+	let circleSize = $state(300); // diameter in template px (studio + News badge)
 	let circle2X    = $state(80);
 	let circle2Y    = $state(80);
 	let circle2Size = $state(220);
@@ -927,7 +927,7 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 		"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
 	]);
 	let textCarouselTextBySlide = $state<string[]>([
-		'When your home is titled in your name, it becomes a legal target.',
+		'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.',
 	]);
 	let imageQuoteTextBySlide = $state<string[]>([
 		'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
@@ -1196,6 +1196,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	function onHighlight(spec: HighlightSpec) {
 		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
 		if (!range) return;
+		pushUndo(activeTemplate, activeSlide);
 		// Apply highlight to the currently-selected editable text field (not always News headline).
 		const start = range.start;
 		const end = range.end;
@@ -1854,7 +1855,7 @@ tweetTopImagePanYBySlide,
 		// Reset circle + background to defaults
 		circleX    = 772;
 		circleY    = 52;
-		circleSize = 256;
+		circleSize = 300;
 		// Reset per-slide circle images for the new story.
 		circleImages = [];
 		circle2Images = [];
@@ -3104,23 +3105,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</div>
 				</div>
 			{/if}
-			<!-- Debug: show overlay counts (temporary) -->
-			<div
-				style="
-					position:absolute;
-					top:10px;
-					left:10px;
-					z-index: 200;
-					padding: 4px 8px;
-					border-radius: 999px;
-					background: rgba(0,0,0,0.55);
-					color: #fff;
-					font: 600 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-					pointer-events:none;
-				"
-			>
-				T:{activeTemplate} S:{activeSlide} overlays:{activeTextOverlays.length}
-			</div>
 			{#if (generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
@@ -3176,11 +3160,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						}}
 					subjectCutout={activeCutout}
 showSubjectCutout={activeShowCutout}
-allowCircle={activeSlide === 0}
-allowCircle2={activeSlide === 0}
-circleImage={activeSlide === 0 && showCircle ? activeCircleImage : ''}
-showCircle2={activeShowCircle2}
-circle2Image={activeSlide === 0 && activeShowCircle2 ? activeCircle2Image : ''}
+					allowCircle={showCircle}
+					allowCircle2={true}
+					circleImage={showCircle ? activeCircleImage : ''}
+					showCircle2={activeShowCircle2}
+					circle2Image={activeShowCircle2 ? activeCircle2Image : ''}
 					text={overlayText}
 					source={source}
 					highlightColor={highlightColor}
@@ -3196,7 +3180,14 @@ circle2Image={activeSlide === 0 && activeShowCircle2 ? activeCircle2Image : ''}
 					selectedText={selectedText}
 					onTextChange={(t) => setActiveSlideText(t)}
 					onCircleMove={(x, y) => { circleX = x; circleY = y; }}
-					onCircleImageChange={(src) => { circleImages = circleImages.map((v, i) => (i === activeSlide ? src : v)); showCircle = true; }}
+					onCircleImageChange={(src) => {
+						circleImages = circleImages.map((v, i) => (i === activeSlide ? src : v));
+						if (String(src ?? '').trim()) showCircle = true;
+					}}
+					onCircleRemove={() => {
+						circleImages = circleImages.map((v, i) => (i === activeSlide ? '' : v));
+						showCircle = false;
+					}}
 					onCircleAIClick={() => generateCircleFromPrompt(1)}
 					onCircle2Move={(x, y) => { circle2X = x; circle2Y = y; }}
 					onCircle2ImageChange={(src) => {

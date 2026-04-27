@@ -3,7 +3,7 @@ import HighlightedText from '$lib/components/HighlightedText.svelte';
 import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
-import { Image as ImageIcon, Trash2 } from 'lucide-svelte';
+import { Image as ImageIcon, Minus, Move, Plus, Trash2 } from 'lucide-svelte';
 
 interface TweetProps {
 	// Top tweet
@@ -152,12 +152,25 @@ let {
 		const v = clamp(Math.round(next), 520, 920);
 		onTopImageWidthChange?.(v);
 	}
+	/** Inner media zoom (object-fit cover + transform scale). */
+	const MEDIA_ZOOM_MIN = 1;
+	const MEDIA_ZOOM_MAX = 5;
+
 	function setTopImageZoom(next: number) {
-		const v = clamp(Number(next) || 1, 1, 3);
+		const v = clamp(Number(next) || 1, MEDIA_ZOOM_MIN, MEDIA_ZOOM_MAX);
 		onTopImageZoomChange?.(v);
 	}
+
+	function bumpTopMediaZoom(delta: number) {
+		const z = Number(topImageZoom) || 1;
+		setTopImageZoom(z + delta);
+	}
+	/** Wider than 0–100 so tall/wide cover crops can reach edges without hitting a hard wall. */
+	const PAN_PCT_MIN = -55;
+	const PAN_PCT_MAX = 155;
+
 	function setTopImagePan(x: number, y: number) {
-		onTopImagePanChange?.(clamp(x, 0, 100), clamp(y, 0, 100));
+		onTopImagePanChange?.(clamp(x, PAN_PCT_MIN, PAN_PCT_MAX), clamp(y, PAN_PCT_MIN, PAN_PCT_MAX));
 	}
 
 	function startTopImageResize(e: PointerEvent) {
@@ -176,10 +189,8 @@ let {
 		};
 	}
 
-	function startTopImagePan(e: PointerEvent) {
+	function beginMediaPan(e: PointerEvent) {
 		if (!interactive) return;
-		// Alt/Option drag pans the image inside its frame (keeps normal drag-to-move for the block).
-		if (!e.altKey) return;
 		e.preventDefault();
 		e.stopPropagation();
 		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -194,6 +205,18 @@ let {
 		};
 	}
 
+	function startTopImagePan(e: PointerEvent) {
+		// Alt/Option drag pans the image inside its frame (keeps normal drag-to-move for the block).
+		if (!e.altKey) return;
+		beginMediaPan(e);
+	}
+
+	/** Pan video (or framed media) from the visible move handle — no Alt required. */
+	function startTopVideoPanFromHandle(e: PointerEvent) {
+		if (!interactive || !topVideo) return;
+		beginMediaPan(e);
+	}
+
 	function moveTopImage(e: PointerEvent) {
 		if (!topImageStart) return;
 		if (!topImageResizing && !topImagePanning) return;
@@ -205,10 +228,12 @@ let {
 			return;
 		}
 		if (topImagePanning) {
-			const h = Number(topImageHeight) || 360;
-			const denomX = 920 * (Number(topImageZoom) || 1);
-			const denomY = Math.max(160, h) * (Number(topImageZoom) || 1);
-			setTopImagePan(topImageStart.panX + (dx / denomX) * 100, topImageStart.panY + (dy / denomY) * 100);
+			const h = topImageStart.h;
+			const w = topImageStart.w;
+			const z = Number(topImageZoom) || 1;
+			// Single scale for X and Y so diagonal drags feel even (split denoms felt “sticky” vertically).
+			const denom = Math.max(380, (w + h) * 0.52) * z;
+			setTopImagePan(topImageStart.panX + (dx / denom) * 100, topImageStart.panY + (dy / denom) * 100);
 		}
 	}
 
@@ -536,7 +561,9 @@ let {
 						<div
 style="border-radius:24px;overflow:hidden;margin:0 auto 44px;border:2px solid {divider};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;"
 							onmouseenter={() => (topImageHovering = true)}
-onmouseleave={() => (topImageHovering = false)}
+							onmouseleave={() => {
+								if (!topImagePanning && !topImageResizing) topImageHovering = false;
+							}}
 onpointermove={moveTopImage}
 onpointerup={endTopImage}
 onpointercancel={endTopImage}
@@ -544,15 +571,35 @@ onwheel={onTopImageWheel}
 							role="presentation"
 						>
 {#if topVideo}
-	<video
-		src={topVideo}
-		muted
-		playsinline
-		autoplay
-		loop
-		style="width:100%;height:100%;display:block;object-fit:cover;"
-	></video>
-{:else if topImage}
+								<div
+									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && topImageHovering && !topVideo ? 'grab' : 'default'};"
+									onpointerdown={(e) => {
+										if (e.altKey) startTopImagePan(e);
+									}}
+									role="presentation"
+								>
+									<video
+										src={topVideo}
+										muted
+										playsinline
+										autoplay
+										loop
+										style="
+											position:absolute;
+											left:{Number(topImagePanX) || 50}%;
+											top:{Number(topImagePanY) || 50}%;
+											width:100%;
+											height:100%;
+											object-fit:cover;
+											transform:translate(-50%,-50%) scale({Number(topImageZoom) || 1});
+											will-change: transform;
+											display:block;
+											user-select:none;
+											pointer-events:none;
+										"
+									></video>
+								</div>
+							{:else if topImage}
 								<div
 									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && topImageHovering ? 'grab' : 'default'};"
 									onpointerdown={startTopImagePan}
@@ -605,9 +652,73 @@ onwheel={onTopImageWheel}
 										><Trash2 size={18} /></button>
 									{/if}
 								</div>
-								<div style="position:absolute;left:14px;bottom:14px;pointer-events:none;">
+								<div style="position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:8px;pointer-events:none;">
+									{#if topVideo && onTopImagePanChange}
+										<button
+											type="button"
+											style="pointer-events:auto;width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;"
+											title="Drag to reposition video in frame"
+											aria-label="Drag to reposition video in frame"
+											onpointerdown={(e) => {
+												(e.currentTarget as HTMLButtonElement).style.cursor = 'grabbing';
+												startTopVideoPanFromHandle(e);
+											}}
+											onpointerup={(e) => {
+												(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
+											}}
+											onpointercancel={(e) => {
+												(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
+											}}
+											onlostpointercapture={(e) => {
+												(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
+											}}
+											onmousedown={(e) => e.preventDefault()}
+										>
+											<Move size={18} />
+										</button>
+									{/if}
+									{#if (topVideo || topImage) && onTopImageZoomChange}
+										<div
+											style="display:flex;flex-direction:column;gap:3px;pointer-events:auto;"
+											role="group"
+											aria-label="Zoom media in frame"
+										>
+											<button
+												type="button"
+												style="width:36px;height:36px;border-radius:10px;border:2px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.72);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:{(Number(topImageZoom) || 1) >= MEDIA_ZOOM_MAX - 0.02 ? 0.35 : 1};"
+												disabled={(Number(topImageZoom) || 1) >= MEDIA_ZOOM_MAX - 0.02}
+												title="Zoom in (expand crop)"
+												aria-label="Zoom in"
+												onclick={(e) => {
+													e.stopPropagation();
+													bumpTopMediaZoom(0.12);
+												}}
+												onmousedown={(e) => e.preventDefault()}
+											>
+												<Plus size={16} strokeWidth={2.5} />
+											</button>
+											<button
+												type="button"
+												style="width:36px;height:36px;border-radius:10px;border:2px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.72);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:{(Number(topImageZoom) || 1) <= MEDIA_ZOOM_MIN + 0.02 ? 0.35 : 1};"
+												disabled={(Number(topImageZoom) || 1) <= MEDIA_ZOOM_MIN + 0.02}
+												title="Zoom out"
+												aria-label="Zoom out"
+												onclick={(e) => {
+													e.stopPropagation();
+													bumpTopMediaZoom(-0.12);
+												}}
+												onmousedown={(e) => e.preventDefault()}
+											>
+												<Minus size={16} strokeWidth={2.5} />
+											</button>
+										</div>
+									{/if}
 									<div style="font-size:11px;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.14);padding:6px 8px;border-radius:999px;">
-										Drag corner to resize · Alt+wheel zoom · Alt+drag pan
+										{#if topVideo}
+											Move icon: pan · ±: zoom · Alt+wheel · Alt+drag
+										{:else}
+											Corner: resize · ±: zoom · Alt+wheel · Alt+drag
+										{/if}
 									</div>
 								</div>
 								<div
