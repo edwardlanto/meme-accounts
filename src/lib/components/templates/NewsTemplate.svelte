@@ -72,11 +72,15 @@
 		circleSize?: number;  // diameter in template px (bindable)
 		bgOffsetX?: number;   // background horizontal position 0–100% (bindable)
 		bgOffsetY?: number;   // background vertical position 0–100% (bindable)
-		/** Background zoom as a percentage of frame size. 100 = exact cover,
-		 *  values >100 zoom in, values <100 shrink the image and letterbox it.
-		 *  We always *render* at max(bgZoom, 115) so both pan sliders still have
-		 *  room to work regardless of the source aspect ratio. */
+		/** Background zoom as a percentage of frame size. 100 = fill frame
+		 *  (object-fit cover at 100% box); >100 enlarges the media for crop-style
+		 *  zoom-in; <100 letterboxes. Pan sliders move the layer when zoom ≠ 100.
+		 *  Ignored when `bgFitMode` is `contain` (use `bgContainMagnify` instead). */
 		bgZoom?: number;      // default 100
+		/** `cover` = fill frame (may crop). `contain` = whole image visible (letterbox). */
+		bgFitMode?: 'cover' | 'contain';
+		/** In `contain` mode: scale % (50–200). 100 = largest fit without crop; >100 zooms in. */
+		bgContainMagnify?: number;
 		textPanelOffsetY?: number; // bottom text panel offset (bindable, px)
 		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 75. */
 		shadowHeight?: number;
@@ -156,6 +160,8 @@
 		bgOffsetX  = $bindable(50),
 		bgOffsetY  = $bindable(50),
 		bgZoom     = $bindable(100),
+		bgFitMode = $bindable<'cover' | 'contain'>('cover'),
+		bgContainMagnify = $bindable(100),
 		textPanelOffsetY = $bindable(0),
 		shadowHeight = $bindable(75),
 		shadowStrength = $bindable(1),
@@ -381,15 +387,17 @@
 	// Whether there's any background media (image or video)
 	const hasBg = $derived(!!(backgroundVideo || backgroundImage));
 
-	// Effective background zoom. We render at max(bgZoom, 115) so the X/Y pan
-	// sliders always have room to move the image regardless of source aspect
-	// ratio (even a 1:1 image inside a 4:5 frame). When the user asks for LESS
-	// than 100% (shrink), the image is positioned inside a full-frame solid
-	// backdrop (letterboxed) rather than stretched. That case is handled with
-	// a separate render path below.
+	// Clamped zoom % (30–300). At ≥100, cover mode draws the layer at bgZoomPct% with
+	// object-fit: cover. Minimum overscan to 105% at low zoom avoids gaps that
+	// show as black lines on the sides when rasterizing (e.g. html-to-image export).
 	const bgZoomPct = $derived(Math.max(30, Math.min(300, Number(bgZoom) || 100)));
-	const bgRenderSize = $derived(Math.max(bgZoomPct, 115));
-	const bgRenderOverflowPct = $derived(bgRenderSize - 100); // total overflow
+	const BG_COVER_MIN_BLEED = 105; // % of frame — overscan past clip for clean PNG export
+	/** Extra scale on cover media so raster export (html-to-image) doesn’t leave 1px side gutters */
+	const BG_COVER_RASTER_PAD = 1.03;
+	const bgRenderSize = $derived(
+		bgFitMode === 'contain' ? bgZoomPct : Math.max(bgZoomPct, BG_COVER_MIN_BLEED),
+	);
+	const bgRenderOverflowPct = $derived(Math.max(0, bgRenderSize - 100)); // pan room when zoomed in
 	// Natural panning: slide an oversized layer inside the frame.
 	//  - bgOffsetX/Y = 0  → show left/top edge
 	//  - bgOffsetX/Y = 100→ show right/bottom edge
@@ -401,6 +409,10 @@
 	const bgIsShrunk = $derived(bgZoomPct < 100);
 	const bgShrunkLeftPct = $derived(bgIsShrunk ? bgOffsetX * (100 - bgZoomPct) / 100 : 0);
 	const bgShrunkTopPct = $derived(bgIsShrunk ? bgOffsetY * (100 - bgZoomPct) / 100 : 0);
+
+	const bgContainMagnifyPct = $derived(
+		Math.max(50, Math.min(200, Number(bgContainMagnify) || 100)),
+	);
 
 	// Bottom shadow gradient — height/strength controllable.
 	const shadowGradient = $derived.by(() => {
@@ -1110,7 +1122,7 @@
 			height: {H}px;
 			position: relative;
 			overflow: hidden;
-			background: {isLight ? '#ffffff' : '#000000'};
+			background: {isLight ? '#ffffff' : '#0a0a0a'};
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;
@@ -1120,16 +1132,51 @@
 		<!-- Background: video takes priority over image.
 
 		     Zoom + pan model:
-		     - At zoom ≥ 100%, we render the media at max(zoom, 115)% using
-		       object-fit:cover so the image always fills the frame; pan
-		       sliders translate the oversize element within the clip.
+		     - Fill frame (cover): max(zoom,105)% box + slight scale() so raster export
+		       doesn’t leave thin side gutters (html-to-image / subpixels).
+		       Pan sliders translate the oversize element.
 		     - At zoom < 100% (shrink), we letterbox the media inside a dark
 		       backdrop and the pan sliders reposition the shrunken media
 		       within the visible frame.
 		     - The outer div always clips so nothing leaks into other layers. -->
 		{#if backgroundVideo}
 			<div style="position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #0a0a0a;">
-				{#if bgIsShrunk}
+				{#if bgFitMode === 'contain'}
+					<div
+						style="
+							position: absolute;
+							inset: 0;
+							display: flex;
+							align-items: center;
+							justify-content: center;
+						"
+					>
+						<div
+							style="
+								width: 100%;
+								height: 100%;
+								transform: scale({bgContainMagnifyPct / 100});
+								transform-origin: center center;
+							"
+						>
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video
+								src={backgroundVideo}
+								autoplay loop playsinline
+								muted={videoMuted}
+								onloadedmetadata={onBgVideoMeta}
+								ontimeupdate={onBgVideoTimeUpdate}
+								style="
+									width: 100%;
+									height: 100%;
+									display: block;
+									object-fit: contain;
+									object-position: {bgOffsetX}% {bgOffsetY}%;
+								"
+							></video>
+						</div>
+					</div>
+				{:else if bgIsShrunk}
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
 						src={backgroundVideo}
@@ -1158,13 +1205,46 @@
 							width: {bgRenderSize}%; height: {bgRenderSize}%;
 							object-fit: cover;
 							object-position: center;
+							transform: translate3d(0,0,0) scale({BG_COVER_RASTER_PAD});
+							transform-origin: center center;
 						"
 					></video>
 				{/if}
 			</div>
 		{:else if backgroundImage}
 			<div style="position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #0a0a0a;">
-				{#if bgIsShrunk}
+				{#if bgFitMode === 'contain'}
+					<div
+						style="
+							position: absolute;
+							inset: 0;
+							display: flex;
+							align-items: center;
+							justify-content: center;
+						"
+					>
+						<div
+							style="
+								width: 100%;
+								height: 100%;
+								transform: scale({bgContainMagnifyPct / 100});
+								transform-origin: center center;
+							"
+						>
+							<img
+								src={backgroundImage}
+								alt=""
+								style="
+									width: 100%;
+									height: 100%;
+									display: block;
+									object-fit: contain;
+									object-position: {bgOffsetX}% {bgOffsetY}%;
+								"
+							/>
+						</div>
+					</div>
+				{:else if bgIsShrunk}
 					<img
 						src={backgroundImage}
 						alt=""
@@ -1185,6 +1265,8 @@
 							width: {bgRenderSize}%; height: {bgRenderSize}%;
 							object-fit: cover;
 							object-position: center;
+							transform: translate3d(0,0,0) scale({BG_COVER_RASTER_PAD});
+							transform-origin: center center;
 						"
 					/>
 				{/if}
@@ -1991,7 +2073,38 @@
 			     derived from the same pixels). Mirror the zoom/pan math above. -->
 			<!-- Above circles (z=31/32), below shadow shelf (z=36) and text (z=40). -->
 			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 34; pointer-events: none;">
-				{#if bgIsShrunk}
+				{#if bgFitMode === 'contain'}
+					<div
+						style="
+							position: absolute;
+							inset: 0;
+							display: flex;
+							align-items: center;
+							justify-content: center;
+						"
+					>
+						<div
+							style="
+								width: 100%;
+								height: 100%;
+								transform: scale({bgContainMagnifyPct / 100});
+								transform-origin: center center;
+							"
+						>
+							<img
+								src={subjectCutout}
+								alt=""
+								style="
+									width: 100%;
+									height: 100%;
+									display: block;
+									object-fit: contain;
+									object-position: {bgOffsetX}% {bgOffsetY}%;
+								"
+							/>
+						</div>
+					</div>
+				{:else if bgIsShrunk}
 					<img
 						src={subjectCutout}
 						alt=""
@@ -2012,6 +2125,8 @@
 							width: {bgRenderSize}%; height: {bgRenderSize}%;
 							object-fit: cover;
 							object-position: center;
+							transform: translate3d(0,0,0) scale({BG_COVER_RASTER_PAD});
+							transform-origin: center center;
 						"
 					/>
 				{/if}

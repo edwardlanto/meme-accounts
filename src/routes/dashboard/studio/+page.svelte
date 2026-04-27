@@ -715,7 +715,9 @@ import JSZip from 'jszip';
 	// Background pan (0–100 %)
 	let bgOffsetX = $state(50); // horizontal: 0=left, 100=right
 	let bgOffsetY = $state(50); // vertical:   0=top,  100=bottom
-	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in
+	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in (cover mode only)
+	let bgFitMode = $state<'cover' | 'contain'>('cover'); // contain = full image visible + optional magnify
+	let bgContainMagnify = $state(100); // 50–200%, only when bgFitMode === 'contain'
 
 	// Text panel drag (template px)
 	let textPanelOffsetY = $state(0);
@@ -1569,6 +1571,8 @@ if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide
 		if (typeof s.bgOffsetX === 'number') bgOffsetX = s.bgOffsetX;
 		if (typeof s.bgOffsetY === 'number') bgOffsetY = s.bgOffsetY;
 		if (typeof s.bgZoom === 'number') bgZoom = s.bgZoom;
+		if (s.bgFitMode === 'cover' || s.bgFitMode === 'contain') bgFitMode = s.bgFitMode;
+		if (typeof s.bgContainMagnify === 'number') bgContainMagnify = s.bgContainMagnify;
 		if (typeof s.textPanelOffsetY === 'number') textPanelOffsetY = s.textPanelOffsetY;
 		if (typeof s.shadowHeight === 'number') shadowHeight = s.shadowHeight;
 		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
@@ -1664,6 +1668,8 @@ tweetTopImagePanYBySlide,
 			bgOffsetX,
 			bgOffsetY,
 			bgZoom,
+			bgFitMode,
+			bgContainMagnify,
 			textPanelOffsetY,
 			shadowHeight,
 			shadowStrength,
@@ -1862,6 +1868,8 @@ tweetTopImagePanYBySlide,
 		showCircle2BySlide = [];
 		bgOffsetX  = 50;
 		bgOffsetY  = 0;
+		bgFitMode = 'cover';
+		bgContainMagnify = 100;
 
 		try {
 			let hookText = '';
@@ -2449,6 +2457,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					width: CANVAS_W,
 					height: CANVAS_H,
 					pixelRatio: 1,
+					// Match News canvas gutter so antialiasing gaps aren’t pure black
+					backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
 					style: { transform: 'scale(1)', transformOrigin: 'top left' },
 					cacheBust: true,
 				} as any);
@@ -2493,6 +2503,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					width: CANVAS_W,
 					height: CANVAS_H,
 					pixelRatio: 1,
+					backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
 					style: { transform: 'scale(1)', transformOrigin: 'top left' },
 					cacheBust: true,
 					// Let html-to-image inline @font-face rules so custom fonts render in the PNG.
@@ -3001,27 +3012,76 @@ if (tweetTopImageHeightBySlide.length !== n) {
 								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">↓</span>
 							</div>
 
-							<!-- Zoom: <100% shrinks (letterboxed on dark bg),
-							     >100% zooms in. Double-click the label to reset. -->
-							<div class="flex items-center justify-between mt-1 mb-0.5">
-								<button
-									type="button"
-									onclick={() => bgZoom = 100}
-									class="text-[10px] font-mono text-white/25 uppercase tracking-wider hover:text-violet-400 transition-colors"
-									title="Reset zoom to 100%"
-								>
-									Zoom
-								</button>
-								<span class="text-[9px] font-mono text-white/40">{bgZoom}%</span>
-							</div>
-							<div class="flex items-center gap-2.5">
-								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">−</span>
-								<input
-									type="range" min="30" max="200" step="1"
-									bind:value={bgZoom}
-									class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
-								/>
-								<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">+</span>
+							<div class="flex flex-col gap-1.5 mt-2">
+								<p class="text-[10px] font-mono text-white/25 uppercase tracking-wider">Background fit</p>
+								<div class="flex rounded-xl p-0.5 bg-white/[0.04] border border-white/[0.08] gap-0.5">
+									<button
+										type="button"
+										onclick={() => { bgFitMode = 'cover'; }}
+										class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
+											{bgFitMode === 'cover'
+												? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
+												: 'text-white/45 hover:text-white/70 border border-transparent'}"
+									>Fill frame</button>
+									<button
+										type="button"
+										onclick={() => { bgFitMode = 'contain'; bgContainMagnify = 100; }}
+										class="flex-1 py-2 px-1 rounded-lg text-[10px] font-semibold font-body transition-all
+											{bgFitMode === 'contain'
+												? 'bg-violet-500/25 text-violet-200 border border-violet-500/30'
+												: 'text-white/45 hover:text-white/70 border border-transparent'}"
+									>Show all</button>
+								</div>
+
+								{#if bgFitMode === 'contain'}
+									<p class="text-[9px] font-body text-white/20 leading-snug">
+										Shows the whole image (letterboxed). Magnify zooms that uncropped view; position still pans the focal point.
+									</p>
+									<div class="flex items-center justify-between mt-0.5 mb-0.5">
+										<button
+											type="button"
+											onclick={() => (bgContainMagnify = 100)}
+											class="text-[10px] font-mono text-white/25 uppercase tracking-wider hover:text-violet-400 transition-colors"
+											title="Reset magnify to 100%"
+										>Magnify</button>
+										<span class="text-[9px] font-mono text-white/40">{bgContainMagnify}%</span>
+									</div>
+									<div class="flex items-center gap-2.5">
+										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">−</span>
+										<input
+											type="range" min="50" max="200" step="1"
+											bind:value={bgContainMagnify}
+											class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+										/>
+										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">+</span>
+									</div>
+								{:else}
+									<!-- Zoom: <100% shrinks (letterboxed on dark bg),
+									     >100% zooms in. At 100%, template still overscans to 105% for clean PNG edges. -->
+									<p class="text-[9px] font-body text-white/20 leading-snug -mb-0.5">
+										At 100% zoom the image is drawn at 105% of the frame (overscan) so exports don’t pick up thin black lines at the sides.
+									</p>
+									<div class="flex items-center justify-between mt-1 mb-0.5">
+										<button
+											type="button"
+											onclick={() => bgZoom = 100}
+											class="text-[10px] font-mono text-white/25 uppercase tracking-wider hover:text-violet-400 transition-colors"
+											title="Reset zoom to 100%"
+										>
+											Zoom
+										</button>
+										<span class="text-[9px] font-mono text-white/40">{bgZoom}%</span>
+									</div>
+									<div class="flex items-center gap-2.5">
+										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0">−</span>
+										<input
+											type="range" min="30" max="300" step="1"
+											bind:value={bgZoom}
+											class="flex-1 h-1 rounded-full accent-violet-400 cursor-pointer"
+										/>
+										<span class="text-[10px] font-mono text-white/30 w-3 flex-shrink-0 text-right">+</span>
+									</div>
+								{/if}
 							</div>
 						</div>
 					{/if}
@@ -3132,6 +3192,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					bind:bgOffsetX
 					bind:bgOffsetY
 					bind:bgZoom
+					bind:bgFitMode
+					bind:bgContainMagnify
 					bind:textPanelOffsetY
 					bind:shadowHeight
 					bind:shadowStrength
@@ -3454,6 +3516,20 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					</button>
 
 					{#if activeTemplate === 'news'}
+						<button
+							type="button"
+							onclick={() => void generateBackground(activeSlide)}
+							disabled={(generatingImagesByTemplate.news ?? [])[activeSlide]}
+							class="w-11 h-11 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-white/[0.03] disabled:hover:text-white/70"
+							title="Regenerate background with AI (uses this slide’s headline; replaces photo or video)"
+							aria-label="Regenerate background with AI"
+						>
+							{#if (generatingImagesByTemplate.news ?? [])[activeSlide]}
+								<Loader size={16} class="animate-spin" />
+							{:else}
+								<Sparkles size={16} />
+							{/if}
+						</button>
 						<button
 							type="button"
 							onclick={openCircle2QuickPicker}
