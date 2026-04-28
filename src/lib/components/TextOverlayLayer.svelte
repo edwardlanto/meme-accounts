@@ -202,7 +202,7 @@
 							background: rgba(0,0,0,0.14);
 							border: 1px solid rgba(255,255,255,0.25);
 							color: {css.color ?? '#FFFFFF'};
-							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
+							font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;
 							font-weight: {css.fontWeight ?? 700};
 							text-align: {css.align ?? 'left'};
@@ -252,7 +252,7 @@
 							outline: {isSelected ? '2px solid color-mix(in oklab, var(--app-selection-bg) 70%, rgba(255,255,255,0.18))' : '2px solid transparent'};
 							outline-offset: 0px;
 							color: {css.color ?? '#FFFFFF'};
-							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
+							font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;
 							font-weight: {css.fontWeight ?? 700};
 							text-align: {css.align ?? 'left'};

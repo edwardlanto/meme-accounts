@@ -209,7 +209,7 @@
 				<Type size={13} class="ftb-muted" />
 				<span
 					class="ftb-strong flex-1 truncate text-left text-xs"
-					style="font-family: '{style.fontFamily ?? 'Inter'}', sans-serif;"
+					style="font-family: '{style.fontFamily ?? 'Lexend'}', sans-serif;"
 				>
 					{style.fontFamily ?? 'Default'}
 				</span>

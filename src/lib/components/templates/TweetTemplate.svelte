@@ -349,7 +349,7 @@ let {
 
 	function styleCss(s: TextStyle) {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Inter', system-ui, sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Lexend', system-ui, sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -402,7 +402,7 @@ let {
 			background: {card};
 			transform: scale({scale});
 			transform-origin: top left;
-			font-family: 'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif;
+			font-family: 'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 			display: flex;
 			flex-direction: column;
 			box-sizing: border-box;
@@ -446,7 +446,7 @@ let {
 									rows={1}
 									{showToolbar}
 									ariaLabel="Top name"
-									fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+									fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 									fontSize={tweetStyles.tweetTopName?.fontSize ?? 38}
 									onTextChange={onTopNameChange}
 								>
@@ -472,7 +472,7 @@ let {
 								rows={1}
 								{showToolbar}
 								ariaLabel="Top handle"
-								fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+								fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 30}
 								onTextChange={onTopHandleChange}
 							>
@@ -507,7 +507,7 @@ let {
 					minHeight="0px"
 					{showToolbar}
 					ariaLabel="Tweet text"
-					fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
+					fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
 					fontSize={tweetStyles.tweetTopText?.fontSize ?? 50}
 					onTextChange={onTopTextChange}
 				>
@@ -756,7 +756,7 @@ onwheel={onTopImageWheel}
 									rows={1}
 									{showToolbar}
 									ariaLabel="Bottom name"
-									fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+							fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 38}
 									onTextChange={onBottomNameChange}
 								>
@@ -782,7 +782,7 @@ onwheel={onTopImageWheel}
 								rows={1}
 								{showToolbar}
 								ariaLabel="Bottom handle"
-								fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+						fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 30}
 								onTextChange={onBottomHandleChange}
 							>
@@ -816,7 +816,7 @@ onwheel={onTopImageWheel}
 						minHeight="0px"
 						{showToolbar}
 						ariaLabel="Reply text"
-						fontFamily={headlineStyle.fontFamily ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
+						fontFamily={headlineStyle.fontFamily ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
 						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 50}
 						onTextChange={onBottomTextChange}
 					>

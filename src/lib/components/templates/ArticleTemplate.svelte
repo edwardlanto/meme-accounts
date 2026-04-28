@@ -71,7 +71,7 @@
 	const bodyTypeCss = $derived.by(() => {
 		const s = headlineStyle;
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Text', sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -84,7 +84,7 @@
 
 	function styleCss(s: TextStyle, opts?: { omitBlockBg?: boolean }) {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Text', sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -137,7 +137,7 @@
 			background: {baseBg};
 			transform: scale({scale});
 			transform-origin: top left;
-			font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+			font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 			display: flex;
 			flex-direction: column;
 			box-sizing: border-box;
