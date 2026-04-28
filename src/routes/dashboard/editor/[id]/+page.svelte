@@ -12,6 +12,16 @@
 		Search, Image, RefreshCw, AlertCircle, ChevronDown, Video
 	} from 'lucide-svelte';
 
+	let uiTheme = $state<'light' | 'dark'>('light');
+	onMount(() => {
+		const readTheme = (): 'light' | 'dark' =>
+			(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+		uiTheme = readTheme();
+		const obs = new MutationObserver(() => { uiTheme = readTheme(); });
+		obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+		return () => obs.disconnect();
+	});
+
 	const carouselId = $derived($page.params.id);
 
 	// ── Mode ──────────────────────────────────────────────────────────────
@@ -541,6 +551,7 @@
 			<p class="font-mono text-[10px] text-white/20 mb-4 uppercase tracking-widest">Preview — 1080 × 1350</p>
 			<NewsTemplate
 				bind:exportRef={newsExportRef}
+				templateTheme={uiTheme}
 				backgroundImage={bgImage}
 				circleImage={circleImage}
 				text={overlayText}

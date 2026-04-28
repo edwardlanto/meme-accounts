@@ -179,7 +179,7 @@
 					style="width: 100%;"
 				>
 					<!-- Preview area -->
-					<div style="width: 100%; height: {Math.round(templateCardW * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative;">
+					<div style="width: 100%; height: {Math.round(templateCardW * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;">
 						{#if tmpl.id === 'news'}
 							<NewsTemplate
 								templateTheme={uiTheme}
@@ -330,7 +330,7 @@
 
 			<!-- "More coming" placeholder -->
 			<div class="tmpl-more flex flex-col items-center justify-center rounded-2xl border-2 border-dashed flex-shrink-0"
-				style="width: 100%; height: {Math.round(templateCardW * 1350/1080) + 46}px;">
+				style="width: 100%; height: {Math.round(templateCardW * 1350/1080) + 46}px; display: flex;">
 				<Plus size={18} class="mb-2 opacity-40" />
 				<span class="text-[10px] font-mono">More templates soon</span>
 			</div>
