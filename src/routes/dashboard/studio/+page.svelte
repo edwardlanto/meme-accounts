@@ -27,6 +27,7 @@ import JSZip from 'jszip';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Tabs, TabsList, TabsTrigger } from '$lib/components/ui/tabs';
 	import { Separator } from '$lib/components/ui/separator';
+	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { DragDropProvider, DragOverlay } from '@dnd-kit-svelte/svelte';
 	import { PointerSensor } from '@dnd-kit-svelte/svelte';
 	import { PointerActivationConstraints } from '@dnd-kit/dom';
@@ -39,7 +40,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Palette
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -443,6 +444,9 @@ import JSZip from 'jszip';
 		imageQuote: [],
 	}); // per template, per slide
 
+	/** News template only: solid canvas fill when slide has no photo/video (hex or ''). */
+	let newsSolidBgBySlide = $state<string[]>(['']);
+
 	// Video trim (per slide, seconds) — used for preview and later export.
 	let videoTrimStartSecBySlide = $state<number[]>([]);
 	let videoTrimEndSecBySlide = $state<number[]>([]);
@@ -451,6 +455,8 @@ import JSZip from 'jszip';
 	let videoMutedBySlide = $state<boolean[]>([]);
 	let videoVolumeBySlide = $state<number[]>([]);
 	let showVideoTrim = $state(false);
+	/** Quick action: solid News background color picker */
+	let solidBgPopoverOpen = $state(false);
 	let videoSeekSec = $state<number>(NaN);
 	let trimDrag = $state<null | { start: number; end: number; startX: number; w: number }>(null);
 
@@ -613,6 +619,11 @@ import JSZip from 'jszip';
 			...generatingImagesByTemplate,
 			[template]: generating.map((v, idx) => idx === i ? false : v),
 		};
+		if (template === 'news' && String(url ?? '').trim()) {
+			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
+			);
+		}
 		// Invalidate any existing cutout since it was computed from the old image.
 		if (template === 'news') {
 			subjectCutouts = subjectCutouts.map((v, idx) => idx === i ? '' : v);
@@ -657,6 +668,11 @@ import JSZip from 'jszip';
 			...generatingImagesByTemplate,
 			[template]: generating.map((v, idx) => idx === i ? false : v),
 		};
+		if (template === 'news' && String(url ?? '').trim()) {
+			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
+			);
+		}
 		// Reset trim to "full" until duration is known.
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
 		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
@@ -678,6 +694,11 @@ import JSZip from 'jszip';
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
 		bgVideosByTemplate = { ...bgVideosByTemplate, [template]: videos.map((v, idx) => idx === i ? '' : v) };
 		bgImagesByTemplate = { ...bgImagesByTemplate, [template]: images.map((img, idx) => idx === i ? '' : img) };
+		if (template === 'news') {
+			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
+			);
+		}
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
 		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
 		videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0)));
@@ -1013,6 +1034,7 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 			(Object.entries(generatingImagesByTemplate) as [TemplateId, boolean[]][]).map(([k, arr]) => [k, pickOr(arr, false)]),
 		) as unknown) as Record<TemplateId, boolean[]>;
 		subjectCutouts   = pickOr(subjectCutouts, '');
+		newsSolidBgBySlide = pickOr(newsSolidBgBySlide, '');
 		showCutout       = pickOr(showCutout, false);
 		cuttingOut       = pickOr(cuttingOut, false);
 		slideOverlaysByTemplate = (Object.fromEntries(
@@ -1462,6 +1484,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if ((s as any).bgVideosByTemplate && typeof (s as any).bgVideosByTemplate === 'object') {
 			bgVideosByTemplate = (s as any).bgVideosByTemplate;
 		}
+		if (Array.isArray((s as any).newsSolidBgBySlide)) {
+			newsSolidBgBySlide = (s as any).newsSolidBgBySlide.map((x: unknown) => String(x ?? ''));
+		}
 		if (s.slideOverlaysByTemplate && typeof s.slideOverlaysByTemplate === 'object') {
 			// Deep-clone to avoid any accidental shared references across templates/slides.
 			const raw = s.slideOverlaysByTemplate as Record<TemplateId, Overlay[][]>;
@@ -1633,6 +1658,7 @@ if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide
 			slideTemplates,
 			bgImagesByTemplate: pruneMediaMap(bgImagesByTemplate as any),
 			bgVideosByTemplate: pruneMediaMap(bgVideosByTemplate as any),
+			newsSolidBgBySlide,
 			generatingImagesByTemplate,
 			videoTrimStartSecBySlide,
 			videoTrimEndSecBySlide,
@@ -2081,6 +2107,7 @@ tweetTopImagePanYBySlide,
 		// Reset image arrays to match current slide count
 		bgImagesByTemplate = { ...bgImagesByTemplate, news: new Array(slides.length).fill('') };
 		bgVideosByTemplate = { ...bgVideosByTemplate, news: new Array(slides.length).fill('') };
+		newsSolidBgBySlide = new Array(slides.length).fill('');
 		videoTrimStartSecBySlide = new Array(slides.length).fill(0);
 		videoTrimEndSecBySlide = new Array(slides.length).fill(0);
 		videoDurationBySlide = new Array(slides.length).fill(0);
@@ -2181,6 +2208,9 @@ tweetTopImagePanYBySlide,
 		}
 		if (subjectCutouts.length !== n) {
 			subjectCutouts = Array.from({ length: n }, (_, i) => subjectCutouts[i] ?? '');
+		}
+		if (newsSolidBgBySlide.length !== n) {
+			newsSolidBgBySlide = Array.from({ length: n }, (_, i) => newsSolidBgBySlide[i] ?? '');
 		}
 		if (showCutout.length !== n) {
 			showCutout = Array.from({ length: n }, (_, i) => showCutout[i] ?? false);
@@ -2363,6 +2393,52 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			circleAIGenerating = false;
 			closeCircleAIModal();
 		}
+	}
+
+	const NEWS_SOLID_PRESETS = [
+		'#0a0a0a',
+		'#111827',
+		'#1e1b4b',
+		'#0c4a6e',
+		'#134e4a',
+		'#4c1d95',
+		'#831843',
+		'#ffffff',
+		'#f8fafc',
+	] as const;
+
+	function normalizeSolidHex(v: string): string {
+		const t = v.trim();
+		if (/^#[0-9a-fA-F]{6}$/.test(t)) return t;
+		if (/^#[0-9a-fA-F]{3}$/.test(t)) {
+			const h = t.slice(1);
+			return (
+				'#' +
+				h
+					.split('')
+					.map((ch) => ch + ch)
+					.join('')
+			);
+		}
+		return '#0a0a0a';
+	}
+
+	function applyNewsSolidBg(hex: string) {
+		if (activeTemplate !== 'news') return;
+		const c = normalizeSolidHex(hex);
+		clearSlideBackground(activeSlide);
+		newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
+			i === activeSlide ? c : (newsSolidBgBySlide[i] ?? '')
+		);
+		solidBgPopoverOpen = false;
+	}
+
+	function resetNewsSolidToGradient() {
+		if (activeTemplate !== 'news') return;
+		newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
+			i === activeSlide ? '' : (newsSolidBgBySlide[i] ?? '')
+		);
+		solidBgPopoverOpen = false;
 	}
 
 	// ── Handle image uploads ──────────────────────────────────────────────
@@ -3265,6 +3341,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					bind:shadowStrength
 					backgroundImage={backgroundImage}
 					backgroundVideo={backgroundVideo}
+					solidBackgroundColor={newsSolidBgBySlide[activeSlide] ?? ''}
 					videoTrimStartSec={activeVideoTrimStartSec}
 					videoTrimEndSec={activeVideoTrimEndSec || activeVideoDurationSec || 0}
 					videoSeekSec={videoSeekSec}
@@ -3474,7 +3551,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
-			{:else}
+			{:else if activeTemplate === 'imageQuote'}
 				<!-- Image Quote template removed from public UI. Keep a safe fallback. -->
 				<TextOverlayLayer
 					w={CANVAS_W}
@@ -3629,6 +3706,57 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					>
 						<Image size={16} />
 					</Button>
+
+					{#if activeTemplate === 'news'}
+						<Popover bind:open={solidBgPopoverOpen}>
+							<PopoverTrigger
+								class={cn(
+									buttonVariants({ variant: 'outline', size: 'icon' }),
+									'rounded-2xl ring-offset-background',
+									(newsSolidBgBySlide[activeSlide] ?? '').trim() ? 'ring-2 ring-violet-500/40' : ''
+								)}
+								title="Solid background (no photo or video)"
+								aria-label="Solid background color"
+							>
+								<Palette size={16} />
+							</PopoverTrigger>
+							<PopoverContent
+								class="w-60 gap-3 p-3"
+								side="left"
+								align="end"
+								sideOffset={10}
+							>
+								<p class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Solid fill</p>
+								<p class="text-[10px] text-muted-foreground leading-snug">
+									Removes the current slide’s photo/video and fills the canvas behind the story.
+								</p>
+								<div class="grid grid-cols-3 gap-1.5">
+									{#each NEWS_SOLID_PRESETS as p}
+										<button
+											type="button"
+											class="h-9 w-full rounded-lg border border-border transition-transform hover:scale-105"
+											style="background: {p};"
+											onclick={() => applyNewsSolidBg(p)}
+											aria-label="Use background {p}"
+											title={p}
+										></button>
+									{/each}
+								</div>
+								<div class="flex flex-col gap-1.5">
+									<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Custom</Label>
+									<Input
+										type="color"
+										class="h-10 w-full cursor-pointer p-1"
+										value={(newsSolidBgBySlide[activeSlide] ?? '').trim() || '#1a1a2e'}
+										oninput={(e) => applyNewsSolidBg((e.currentTarget as HTMLInputElement).value)}
+									/>
+								</div>
+								<Button variant="outline" size="sm" class="w-full font-mono text-xs" onclick={() => resetNewsSolidToGradient()}>
+									Default gradient
+								</Button>
+							</PopoverContent>
+						</Popover>
+					{/if}
 
 					<Button
 						variant="outline"

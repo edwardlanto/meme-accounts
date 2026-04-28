@@ -25,6 +25,8 @@
 		h?: number;
 		backgroundImage?: string;
 		backgroundVideo?: string; // blob URL or data URL for video background
+		/** When there is no photo/video, fill the frame with this solid (hex). Empty = default gradient. */
+		solidBackgroundColor?: string;
 		/** Light/dark look for the template canvas itself. */
 		templateTheme?: 'light' | 'dark';
 		/** Optional trim range (seconds) for backgroundVideo preview. */
@@ -133,6 +135,7 @@
 		h = 1350,
 		backgroundImage = '',
 		backgroundVideo = '',
+		solidBackgroundColor = '',
 		templateTheme = 'light',
 		videoTrimStartSec = 0,
 		videoTrimEndSec = 0,
@@ -1252,10 +1255,16 @@
 				{/if}
 			</div>
 		{:else}
-			<div style="
-				position: absolute; inset: 0;
-				background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-			"></div>
+			{#if solidBackgroundColor?.trim()}
+				<div
+					style="position: absolute; inset: 0; background: {solidBackgroundColor.trim()};"
+				></div>
+			{:else}
+				<div style="
+					position: absolute; inset: 0;
+					background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+				"></div>
+			{/if}
 		{/if}
 
 		<!-- Background pan capture (sits above bg, below text z-10 and circle z-20) -->

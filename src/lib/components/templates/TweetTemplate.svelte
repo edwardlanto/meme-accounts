@@ -133,9 +133,6 @@ let {
 	const topHandleEditable = $derived(!!interactive && typeof onTopHandleChange === 'function');
 	const bottomNameEditable = $derived(!!interactive && typeof onBottomNameChange === 'function');
 	const bottomHandleEditable = $derived(!!interactive && typeof onBottomHandleChange === 'function');
-	const replyCountEditable = $derived(!!interactive && typeof onReplyCountChange === 'function');
-	const repostCountEditable = $derived(!!interactive && typeof onRepostCountChange === 'function');
-	const likeCountEditable = $derived(!!interactive && typeof onLikeCountChange === 'function');
 	const topImageEditable = $derived(!!interactive && typeof onTopImageChange === 'function');
 	const topVideoEditable = $derived(!!interactive && typeof onTopVideoChange === 'function');
 
@@ -342,10 +339,11 @@ let {
 	}
 	const tweetHighlightDefault = '#1D9BF0';
 	const isLight = $derived(templateTheme === 'light');
-	const surface = $derived(isLight ? '#F7F9FA' : '#0b0b0b');
 	const card = $derived(isLight ? '#FFFFFF' : '#111111');
 	const card2 = $derived(isLight ? '#F0F3F4' : '#0f0f10');
 	const divider = $derived(isLight ? '#EFF3F4' : 'rgba(255,255,255,0.10)');
+	/** Media frame border (X / screenshot style). */
+	const mediaBorder = $derived(isLight ? '#CFD9DE' : 'rgba(255,255,255,0.14)');
 	const textPrimary = $derived(isLight ? '#0F1419' : '#F3F5F7');
 	const textSecondary = $derived(isLight ? '#536471' : 'rgba(243,245,247,0.62)');
 
@@ -369,10 +367,6 @@ let {
 	const bottomNameCss = $derived(styleCss(tweetStyles.tweetBottomName ?? {}));
 	const bottomHandleCss = $derived(styleCss(tweetStyles.tweetBottomHandle ?? {}));
 	const bottomTextCss = $derived(styleCss(tweetStyles.tweetBottomText ?? {}));
-	const replyCountCss = $derived(styleCss(tweetStyles.tweetReplyCount ?? {}));
-	const repostCountCss = $derived(styleCss(tweetStyles.tweetRepostCount ?? {}));
-	const likeCountCss = $derived(styleCss(tweetStyles.tweetLikeCount ?? {}));
-
 	const W = 1080;
 	const H = 1350;
 
@@ -405,7 +399,7 @@ let {
 			width: {W}px;
 			height: {H}px;
 			position: relative;
-			background: {surface};
+			background: {card};
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: 'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -413,20 +407,10 @@ let {
 			flex-direction: column;
 			box-sizing: border-box;
 			overflow: hidden;
+			padding: 56px 72px 72px;
 		"
 	>
-
-		<!-- ── Top tweet — fills top portion ──────────────────────────────────── -->
-		<div style="
-			flex: 1;
-			background: {card};
-			padding: 72px 80px 52px;
-			display: flex;
-			flex-direction: column;
-			box-sizing: border-box;
-			border-bottom: 3px solid {divider};
-		">
-			<!-- Profile row -->
+			<!-- OP: avatar + name + badge + handle (classic tweet header) -->
 			<DraggableBlock
 				dx={textOffsets.tweetTopProfile?.x ?? 0}
 				dy={textOffsets.tweetTopProfile?.y ?? 0}
@@ -435,74 +419,73 @@ let {
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopProfile', { x, y })}
 			>
 				{#snippet children()}
-					<div style="display: flex; align-items: center; gap: 28px; margin-bottom: 44px;">
-				<!-- Avatar -->
-				<div style="
-					width: 112px; height: 112px; border-radius: 50%; flex-shrink: 0;
-					overflow: hidden;
-					{topAvatar ? '' : `background: hsl(${nameHue(topName)}, 60%, 50%);`}
-					display: flex; align-items: center; justify-content: center;
-				">
-					{#if topAvatar}
-						<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
-					{:else}
-						<span style="color:#fff;font-size:44px;font-weight:700;letter-spacing:-1px;">{initials(topName)}</span>
-					{/if}
-				</div>
-				<!-- Name / handle -->
-				<div style="flex:1;min-width:0;">
-					<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-						<CanvasMarkupTextBlock
-							value={topName}
-							interactive={topNameEditable}
-							defaultColor={tweetHighlightDefault}
-							toolbarKind="tweetTopName"
-							selected={selectedText === 'tweetTopName'}
-							onTextSelect={onTextSelect}
-							onHeadlineRangeSelect={onHeadlineRangeSelect}
-							rows={1}
-							{showToolbar}
-							ariaLabel="Top name"
-							fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-							fontSize={tweetStyles.tweetTopName?.fontSize ?? 44}
-							onTextChange={onTopNameChange}
+					<div style="display:flex;align-items:flex-start;gap:16px;margin:0 0 20px;">
+						<div
+							style="
+								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
+								{topAvatar ? '' : `background: hsl(${nameHue(topName)}, 60%, 50%);`}
+								display:flex;align-items:center;justify-content:center;
+							"
 						>
-							{#snippet display()}
-								<span style="font-size:44px;font-weight:800;color:{textPrimary};letter-spacing:-0.5px;line-height:1.1; {topNameCss}">{topName}</span>
-							{/snippet}
-						</CanvasMarkupTextBlock>
-						{#if topVerified}
-							<svg width="36" height="36" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
-								<circle cx="12" cy="12" r="12" fill="#1D9BF0"/>
-								<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white"/>
-							</svg>
-						{/if}
-					</div>
-					<CanvasMarkupTextBlock
-						value={topHandle}
-						interactive={topHandleEditable}
-						defaultColor={tweetHighlightDefault}
-						toolbarKind="tweetTopHandle"
-						selected={selectedText === 'tweetTopHandle'}
-						onTextSelect={onTextSelect}
-						onHeadlineRangeSelect={onHeadlineRangeSelect}
-						rows={1}
-						{showToolbar}
-						ariaLabel="Top handle"
-						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 36}
-						onTextChange={onTopHandleChange}
-					>
-						{#snippet display()}
-							<span style="font-size:36px;color:{textSecondary};font-weight:400;line-height:1.2; {topHandleCss}">{topHandle}</span>
-						{/snippet}
-					</CanvasMarkupTextBlock>
-				</div>
+							{#if topAvatar}
+								<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
+							{:else}
+								<span style="color:#fff;font-size:26px;font-weight:700;letter-spacing:-0.5px;">{initials(topName)}</span>
+							{/if}
+						</div>
+						<div style="flex:1;min-width:0;padding-top:2px;">
+							<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+								<CanvasMarkupTextBlock
+									value={topName}
+									interactive={topNameEditable}
+									defaultColor={tweetHighlightDefault}
+									toolbarKind="tweetTopName"
+									selected={selectedText === 'tweetTopName'}
+									onTextSelect={onTextSelect}
+									onHeadlineRangeSelect={onHeadlineRangeSelect}
+									rows={1}
+									{showToolbar}
+									ariaLabel="Top name"
+									fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+									fontSize={tweetStyles.tweetTopName?.fontSize ?? 38}
+									onTextChange={onTopNameChange}
+								>
+									{#snippet display()}
+										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {topNameCss}">{topName}</span>
+									{/snippet}
+								</CanvasMarkupTextBlock>
+								{#if topVerified}
+									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px;">
+										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
+										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
+									</svg>
+								{/if}
+							</div>
+							<CanvasMarkupTextBlock
+								value={topHandle}
+								interactive={topHandleEditable}
+								defaultColor={tweetHighlightDefault}
+								toolbarKind="tweetTopHandle"
+								selected={selectedText === 'tweetTopHandle'}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+								rows={1}
+								{showToolbar}
+								ariaLabel="Top handle"
+								fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 30}
+								onTextChange={onTopHandleChange}
+							>
+								{#snippet display()}
+									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandle}</span>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						</div>
 					</div>
 				{/snippet}
 			</DraggableBlock>
 
-			<!-- Tweet text -->
+			<!-- Tweet body -->
 			<DraggableBlock
 				dx={textOffsets.tweetTopText?.x ?? 0}
 				dy={textOffsets.tweetTopText?.y ?? 0}
@@ -511,7 +494,7 @@ let {
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopText', { x, y })}
 			>
 				{#snippet children()}
-					<div style="margin: 0 0 44px;">
+					<div style="margin: 0 0 22px;">
 				<CanvasMarkupTextBlock
 					value={topText}
 					interactive={topEditable}
@@ -525,7 +508,7 @@ let {
 					{showToolbar}
 					ariaLabel="Tweet text"
 					fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
-					fontSize={tweetStyles.tweetTopText?.fontSize ?? 58}
+					fontSize={tweetStyles.tweetTopText?.fontSize ?? 50}
 					onTextChange={onTopTextChange}
 				>
 					{#snippet display()}
@@ -533,7 +516,7 @@ let {
 							as="p"
 							text={topText}
 							defaultColor={tweetHighlightDefault}
-							style="font-size:58px; font-weight:400; color:{textPrimary}; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word; flex-shrink: 0; {topTextCss}"
+							style="font-size:50px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
 						/>
 					{/snippet}
 				</CanvasMarkupTextBlock>
@@ -559,7 +542,7 @@ let {
 				>
 					{#snippet children()}
 						<div
-style="border-radius:24px;overflow:hidden;margin:0 auto 44px;border:2px solid {divider};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;"
+style="border-radius:16px;overflow:hidden;margin:0 0 40px;border:1px solid {mediaBorder};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;"
 							onmouseenter={() => (topImageHovering = true)}
 							onmouseleave={() => {
 								if (!topImagePanning && !topImageResizing) topImageHovering = false;
@@ -737,124 +720,7 @@ onwheel={onTopImageWheel}
 				</DraggableBlock>
 			{/if}
 
-			<!-- Spacer -->
-			<div style="flex:1;"></div>
-
-			<!-- Engagement row (static decorative) -->
-			<DraggableBlock
-				dx={textOffsets.tweetEngagementRow?.x ?? 0}
-				dy={textOffsets.tweetEngagementRow?.y ?? 0}
-				{interactive}
-				{scale}
-				onChange={(x, y) => onTextOffsetChange?.('tweetEngagementRow', { x, y })}
-			>
-				{#snippet children()}
-					<div style="
-						display:flex;gap:56px;align-items:center;flex-wrap:nowrap;
-						padding-top:36px;
-						border-top:2px solid {divider};
-						color:{textSecondary};font-size:32px;
-						flex-shrink: 0;
-					">
-				<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap;min-width:0;">
-					<span style="display:inline-flex;align-items:center;line-height:1;">💬</span>
-					<CanvasMarkupTextBlock
-						value={replyCount}
-						interactive={replyCountEditable}
-						defaultColor={tweetHighlightDefault}
-						toolbarKind="tweetReplyCount"
-						selected={selectedText === 'tweetReplyCount'}
-						onTextSelect={onTextSelect}
-						onHeadlineRangeSelect={onHeadlineRangeSelect}
-						rows={1}
-						minHeight="0px"
-						{showToolbar}
-						ariaLabel="Reply count"
-						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={tweetStyles.tweetReplyCount?.fontSize ?? 32}
-						onTextChange={onReplyCountChange}
-					>
-						{#snippet display()}
-							<span style="font-weight:500; {replyCountCss}">{replyCount}</span>
-						{/snippet}
-					</CanvasMarkupTextBlock>
-				</span>
-				<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap;min-width:0;">
-					<span style="display:inline-flex;align-items:center;line-height:1;">🔁</span>
-					<CanvasMarkupTextBlock
-						value={repostCount}
-						interactive={repostCountEditable}
-						defaultColor={tweetHighlightDefault}
-						toolbarKind="tweetRepostCount"
-						selected={selectedText === 'tweetRepostCount'}
-						onTextSelect={onTextSelect}
-						onHeadlineRangeSelect={onHeadlineRangeSelect}
-						rows={1}
-						minHeight="0px"
-						{showToolbar}
-						ariaLabel="Repost count"
-						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={tweetStyles.tweetRepostCount?.fontSize ?? 32}
-						onTextChange={onRepostCountChange}
-					>
-						{#snippet display()}
-							<span style="font-weight:500; {repostCountCss}">{repostCount}</span>
-						{/snippet}
-					</CanvasMarkupTextBlock>
-				</span>
-				<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap;min-width:0;">
-					<span style="display:inline-flex;align-items:center;line-height:1;">❤️</span>
-					<CanvasMarkupTextBlock
-						value={likeCount}
-						interactive={likeCountEditable}
-						defaultColor={tweetHighlightDefault}
-						toolbarKind="tweetLikeCount"
-						selected={selectedText === 'tweetLikeCount'}
-						onTextSelect={onTextSelect}
-						onHeadlineRangeSelect={onHeadlineRangeSelect}
-						rows={1}
-						minHeight="0px"
-						{showToolbar}
-						ariaLabel="Like count"
-						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={tweetStyles.tweetLikeCount?.fontSize ?? 32}
-						onTextChange={onLikeCountChange}
-					>
-						{#snippet display()}
-							<span style="font-weight:500; {likeCountCss}">{likeCount}</span>
-						{/snippet}
-					</CanvasMarkupTextBlock>
-				</span>
-					</div>
-				{/snippet}
-			</DraggableBlock>
-		</div>
-
-		<!-- ── Reply tweet — fills bottom portion ─────────────────────────────── -->
-		<div style="
-			flex: 1;
-			background: {card2};
-			padding: 60px 80px 72px;
-			display: flex;
-			flex-direction: column;
-			box-sizing: border-box;
-		">
-			<!-- "Replying to" label -->
-			<DraggableBlock
-				dx={textOffsets.tweetReplyingTo?.x ?? 0}
-				dy={textOffsets.tweetReplyingTo?.y ?? 0}
-				{interactive}
-				{scale}
-				onChange={(x, y) => onTextOffsetChange?.('tweetReplyingTo', { x, y })}
-			>
-				{#snippet children()}
-					<p style="font-size:28px;color:{textSecondary};margin:0 0 36px;font-weight:400;">
-						Replying to <span style="color:#1D9BF0;">{topHandle}</span>
-					</p>
-				{/snippet}
-			</DraggableBlock>
-
-			<!-- Profile row -->
+			<!-- Reply: author row (directly under media, same canvas) -->
 			<DraggableBlock
 				dx={textOffsets.tweetBottomProfile?.x ?? 0}
 				dy={textOffsets.tweetBottomProfile?.y ?? 0}
@@ -863,68 +729,68 @@ onwheel={onTopImageWheel}
 				onChange={(x, y) => onTextOffsetChange?.('tweetBottomProfile', { x, y })}
 			>
 				{#snippet children()}
-					<div style="display:flex;align-items:center;gap:24px;margin-bottom:40px;">
-				<!-- Avatar -->
-				<div style="
-					width:104px;height:104px;border-radius:50%;flex-shrink:0;overflow:hidden;
-					{bottomAvatar ? '' : `background:hsl(${nameHue(bottomName)},60%,45%);`}
-					display:flex;align-items:center;justify-content:center;
-				">
-					{#if bottomAvatar}
-						<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
-					{:else}
-						<span style="color:#fff;font-size:40px;font-weight:700;">{initials(bottomName)}</span>
-					{/if}
-				</div>
-				<!-- Name / handle -->
-				<div style="flex:1;min-width:0;">
-					<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-						<CanvasMarkupTextBlock
-							value={bottomName}
-							interactive={bottomNameEditable}
-							defaultColor={tweetHighlightDefault}
-							toolbarKind="tweetBottomName"
-							selected={selectedText === 'tweetBottomName'}
-							onTextSelect={onTextSelect}
-							onHeadlineRangeSelect={onHeadlineRangeSelect}
-							rows={1}
-							{showToolbar}
-							ariaLabel="Bottom name"
-							fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-							fontSize={tweetStyles.tweetBottomName?.fontSize ?? 42}
-							onTextChange={onBottomNameChange}
+					<div style="display:flex;align-items:flex-start;gap:16px;margin:8px 0 14px;">
+						<div
+							style="
+								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
+								{bottomAvatar ? '' : `background:hsl(${nameHue(bottomName)},60%,45%);`}
+								display:flex;align-items:center;justify-content:center;
+							"
 						>
-							{#snippet display()}
-								<span style="font-size:42px;font-weight:800;color:{textPrimary};letter-spacing:-0.5px;line-height:1.1; {bottomNameCss}">{bottomName}</span>
-							{/snippet}
-						</CanvasMarkupTextBlock>
-						{#if bottomVerified}
-							<svg width="32" height="32" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
-								<circle cx="12" cy="12" r="12" fill="#1D9BF0"/>
-								<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white"/>
-							</svg>
-						{/if}
-					</div>
-					<CanvasMarkupTextBlock
-						value={bottomHandle}
-						interactive={bottomHandleEditable}
-						defaultColor={tweetHighlightDefault}
-						toolbarKind="tweetBottomHandle"
-						selected={selectedText === 'tweetBottomHandle'}
-						onTextSelect={onTextSelect}
-						onHeadlineRangeSelect={onHeadlineRangeSelect}
-						rows={1}
-						{showToolbar}
-						ariaLabel="Bottom handle"
-						fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
-						fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 34}
-						onTextChange={onBottomHandleChange}
-					>
-						{#snippet display()}
-							<span style="font-size:34px;color:{textSecondary};font-weight:400; {bottomHandleCss}">{bottomHandle}</span>
-						{/snippet}
-					</CanvasMarkupTextBlock>
-				</div>
+							{#if bottomAvatar}
+								<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
+							{:else}
+								<span style="color:#fff;font-size:26px;font-weight:700;">{initials(bottomName)}</span>
+							{/if}
+						</div>
+						<div style="flex:1;min-width:0;padding-top:2px;">
+							<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+								<CanvasMarkupTextBlock
+									value={bottomName}
+									interactive={bottomNameEditable}
+									defaultColor={tweetHighlightDefault}
+									toolbarKind="tweetBottomName"
+									selected={selectedText === 'tweetBottomName'}
+									onTextSelect={onTextSelect}
+									onHeadlineRangeSelect={onHeadlineRangeSelect}
+									rows={1}
+									{showToolbar}
+									ariaLabel="Bottom name"
+									fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 38}
+									onTextChange={onBottomNameChange}
+								>
+									{#snippet display()}
+										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {bottomNameCss}">{bottomName}</span>
+									{/snippet}
+								</CanvasMarkupTextBlock>
+								{#if bottomVerified}
+									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px;">
+										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
+										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
+									</svg>
+								{/if}
+							</div>
+							<CanvasMarkupTextBlock
+								value={bottomHandle}
+								interactive={bottomHandleEditable}
+								defaultColor={tweetHighlightDefault}
+								toolbarKind="tweetBottomHandle"
+								selected={selectedText === 'tweetBottomHandle'}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+								rows={1}
+								{showToolbar}
+								ariaLabel="Bottom handle"
+								fontFamily="'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"
+								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 30}
+								onTextChange={onBottomHandleChange}
+							>
+								{#snippet display()}
+									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandle}</span>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						</div>
 					</div>
 				{/snippet}
 			</DraggableBlock>
@@ -951,7 +817,7 @@ onwheel={onTopImageWheel}
 						{showToolbar}
 						ariaLabel="Reply text"
 						fontFamily={headlineStyle.fontFamily ?? "'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif"}
-						fontSize={headlineStyle.fontSize ?? 56}
+						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 50}
 						onTextChange={onBottomTextChange}
 					>
 						{#snippet display()}
@@ -959,19 +825,20 @@ onwheel={onTopImageWheel}
 								as="p"
 								text={bottomText}
 								defaultColor={tweetHighlightDefault}
-								style="font-size:56px; font-weight:400; color:{textPrimary}; line-height:1.35; margin:0; letter-spacing:-0.3px; word-break:break-word; {bottomTextCss}"
+								style="font-size:50px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; {bottomTextCss}"
 							/>
 						{/snippet}
 					</CanvasMarkupTextBlock>
 				{/snippet}
 			</DraggableBlock>
-		</div>
 
-		<!-- X watermark -->
-		<div style="
-			position:absolute;bottom:32px;right:64px;
-			font-size:24px;font-weight:700;color:{textSecondary};opacity:0.35;
-			letter-spacing:0;font-family:inherit;
-		">𝕏 / twitter</div>
+			<div style="flex:1;min-height:0;"></div>
+
+			<!-- X watermark -->
+			<div style="
+				position:absolute;bottom:32px;right:64px;
+				font-size:22px;font-weight:600;color:{textSecondary};opacity:0.28;
+				letter-spacing:0;font-family:inherit;
+			">𝕏</div>
 	</div>
 </div>
