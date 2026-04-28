@@ -343,7 +343,7 @@
 		color: #a78bfa; flex-shrink: 0;
 	}
 	.page-title {
-		font-family: 'Fraunces', serif; font-size: 22px; font-weight: 900;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 22px; font-weight: 900;
 		letter-spacing: -0.03em; color: #fff; margin: 0;
 	}
 	.page-sub { font-size: 12px; color: rgba(255,255,255,0.3); margin: 0; margin-top: 2px; }
@@ -449,7 +449,7 @@
 		margin-bottom: 4px;
 	}
 	.empty-title {
-		font-family: 'Fraunces', serif; font-size: 18px; font-weight: 900;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 18px; font-weight: 900;
 		letter-spacing: -0.02em; color: #fff; margin: 0;
 	}
 	.empty-sub {
@@ -467,7 +467,7 @@
 		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
 	}
 	.stat-n {
-		font-family: 'Fraunces', serif; font-size: 18px; font-weight: 900;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 18px; font-weight: 900;
 		color: #E8FF48;
 	}
 	.stat-l { font-size: 12px; color: rgba(255,255,255,0.35); }

@@ -37,7 +37,7 @@
 
 <svelte:head>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+	<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 </svelte:head>
 
 <div class="auth-root">
@@ -186,7 +186,7 @@
 <style>
 	.auth-root {
 		min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr;
-		background: var(--app-bg); color: var(--app-text); font-family: 'DM Sans', sans-serif;
+		background: var(--app-bg); color: var(--app-text); font-family: 'Lexend', sans-serif;
 		position: relative; overflow: hidden;
 	}
 
@@ -222,7 +222,7 @@
 		font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700;
 	}
 	.logo-text {
-		font-family: 'Fraunces', serif; font-size: 18px; font-weight: 900;
+		font-family: 'Lexend', sans-serif; font-size: 18px; font-weight: 900;
 		color: var(--app-text); letter-spacing: -0.02em;
 	}
 	.logo-text em { font-style: italic; color: #E8FF48; }
@@ -239,7 +239,7 @@
 	}
 
 	.brand-headline {
-		font-family: 'Fraunces', serif; font-size: clamp(28px, 3vw, 42px);
+		font-family: 'Lexend', sans-serif; font-size: clamp(28px, 3vw, 42px);
 		font-weight: 900; line-height: 1.05; letter-spacing: -0.03em;
 		color: var(--app-text); margin: 0;
 	}
@@ -274,7 +274,7 @@
 	.av--4 { background: color-mix(in oklab, var(--app-text) 6%, transparent); color: var(--app-text-2); font-size: 11px; }
 
 	.proof-text { display: flex; flex-direction: column; gap: 2px; }
-	.proof-count { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 900; color: var(--app-text); margin: 0; }
+	.proof-count { font-family: 'Lexend', sans-serif; font-size: 16px; font-weight: 900; color: var(--app-text); margin: 0; }
 	.proof-sub { font-size: 12px; color: var(--app-text-2); margin: 0; }
 
 	/* Form panel */
@@ -295,7 +295,7 @@
 		display: flex; align-items: center; justify-content: center; color: #E8FF48;
 	}
 	.success-title {
-		font-family: 'Fraunces', serif; font-size: 26px; font-weight: 900;
+		font-family: 'Lexend', sans-serif; font-size: 26px; font-weight: 900;
 		letter-spacing: -0.03em; color: var(--app-text); margin: 0;
 	}
 	.success-body { font-size: 14px; color: var(--app-text-2); line-height: 1.65; margin: 0; }
@@ -303,7 +303,7 @@
 	.success-btn {
 		margin-top: 8px; padding: 11px 24px; border-radius: 10px;
 		background: color-mix(in oklab, var(--app-text) 4%, transparent); border: 1px solid var(--app-border);
-		font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		font-size: 14px; font-weight: 600; font-family: 'Lexend', sans-serif;
 		color: var(--app-text-2); text-decoration: none; transition: all 0.15s;
 	}
 	.success-btn:hover { background: color-mix(in oklab, var(--app-text) 6%, transparent); color: var(--app-text); }
@@ -311,7 +311,7 @@
 	/* Form header */
 	.form-header { display: flex; flex-direction: column; gap: 8px; }
 	.form-title {
-		font-family: 'Fraunces', serif; font-size: 28px; font-weight: 900;
+		font-family: 'Lexend', sans-serif; font-size: 28px; font-weight: 900;
 		letter-spacing: -0.03em; color: var(--app-text); margin: 0;
 	}
 	.form-sub { font-size: 14px; color: var(--app-text-2); margin: 0; }

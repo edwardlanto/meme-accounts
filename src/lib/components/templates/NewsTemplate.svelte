@@ -370,8 +370,8 @@
 	const sourceCss = $derived.by(() => {
 		const s = sourceStyle;
 		const lines: string[] = [];
-		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', Georgia, serif;`);
-		else lines.push(`font-family: Georgia, 'Times New Roman', serif;`);
+		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif;`);
+		else lines.push(`font-family: var(--font-sans), system-ui, -apple-system, sans-serif;`);
 		lines.push(`font-size: ${s.fontSize ?? 34}px;`);
 		lines.push(`font-weight: ${s.fontWeight ?? 700};`);
 		lines.push(`font-style: ${s.italic === false ? 'normal' : (s.italic ?? true) ? 'italic' : 'normal'};`);

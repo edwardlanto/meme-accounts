@@ -628,7 +628,7 @@
 	}
 
 	.step-headline {
-		font-family: 'Fraunces', serif;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
 		font-size: 48px;
 		font-weight: 900;
 		color: var(--wiz-text);
@@ -813,7 +813,7 @@
 	}
 
 	.style-name {
-		font-family: 'Fraunces', serif;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
 		font-size: 17px;
 		font-weight: 700;
 		color: #fff;
@@ -914,7 +914,7 @@
 	}
 
 	.gen-title {
-		font-family: 'Fraunces', serif;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
 		font-size: 32px;
 		font-weight: 900;
 		color: #fff;
@@ -955,7 +955,7 @@
 		text-align: center;
 	}
 	.gen-error h3 {
-		font-family: 'Fraunces', serif;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
 		font-size: 22px;
 		font-weight: 700;
 		color: #fff;
@@ -981,7 +981,7 @@
 
 	.preview-meta { }
 	.preview-title {
-		font-family: 'Fraunces', serif;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
 		font-size: 22px;
 		font-weight: 700;
 		color: #fff;

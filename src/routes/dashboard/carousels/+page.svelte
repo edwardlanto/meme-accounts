@@ -470,7 +470,7 @@
 
 	/* Header */
 	.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 2rem; }
-	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.25rem; }
+	.page-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.25rem; }
 	.page-sub   { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
 	.create-btn {
 		display: flex; align-items: center; gap: 0.4rem;
@@ -519,7 +519,7 @@
 
 	/* Library header */
 	.library-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-	.library-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
+	.library-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
 
 	/* Filter tabs */
 	.filter-tabs {
@@ -568,7 +568,7 @@
 		text-decoration: none; cursor: pointer;
 	}
 	.card-preview-text {
-		font-family: 'Fraunces', serif; font-weight: 700; text-align: center;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-weight: 700; text-align: center;
 		line-height: 1.25; color: var(--card-color, #fff);
 		font-size: clamp(10px, 1.8vw, 16px);
 		display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
@@ -645,7 +645,7 @@
 		display: flex; align-items: center; justify-content: center;
 		color: rgba(139,92,246,0.7); margin-bottom: 0.5rem;
 	}
-	.empty-title { font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
+	.empty-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
 	.empty-desc  { font-size: 0.8125rem; color: var(--t-muted); margin: 0; max-width: 280px; }
 	.empty-cta {
 		display: inline-flex; align-items: center; gap: 0.4rem;

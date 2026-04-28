@@ -98,7 +98,7 @@
 	}
 	.back:hover { color: var(--app-text); }
 	h1 {
-		font-family: 'Fraunces', Georgia, serif;
+		font-family: var(--font-display, var(--font-sans, system-ui));
 		font-size: clamp(32px, 5vw, 44px);
 		font-weight: 900;
 		letter-spacing: -0.02em;
@@ -111,7 +111,7 @@
 		margin: 0 0 48px;
 	}
 	h2 {
-		font-family: 'Fraunces', Georgia, serif;
+		font-family: var(--font-display, var(--font-sans, system-ui));
 		font-size: 20px;
 		font-weight: 700;
 		margin: 36px 0 10px;

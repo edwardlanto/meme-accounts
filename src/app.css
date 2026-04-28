@@ -39,7 +39,7 @@
   --color-text-faint:  rgba(10, 10, 10, 0.35);
 
   /* Typography */
-  --font-display: 'Fraunces', serif;
+  --font-display: 'Lexend', sans-serif;
   --font-body:    'Lexend', sans-serif;
   --font-mono:    'Space Mono', monospace;
   --font-sans:    'Lexend', sans-serif;
@@ -206,6 +206,7 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-family: var(--font-sans);
 }
 
 body {
@@ -215,6 +216,19 @@ body {
   margin: 0;
   overflow-x: hidden;
   line-height: 1.5;
+}
+
+/* Make form controls inherit the app font */
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* Headings use display token (currently Lexend) */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
 }
 
 /* ─── Cursors (make buttons feel clickable) ───────────────── */

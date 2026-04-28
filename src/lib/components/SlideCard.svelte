@@ -73,7 +73,7 @@
       background: #0a0a0a;
       color: #fff;
       overflow: hidden;
-      font-family: 'Fraunces', Georgia, serif;
+      font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
     "
 	>
 		<!-- ═══════════════════════════════════ HERO LAYOUT ═══════════════════ -->
@@ -277,7 +277,7 @@
           position: absolute; top: 80px; left: 52px;
           font-size: 240px; font-weight: 900; font-style: italic;
           color: {brandColor}; line-height: 1; opacity: 0.18;
-          font-family: 'Fraunces', serif;
+          font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
         "
 			>"</div>
 

@@ -201,7 +201,7 @@
 		color: var(--app-text-2);
 	}
 	.logo-text {
-		font-family: 'Fraunces', serif; font-size: 14px;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 14px;
 		font-weight: 900; letter-spacing: -0.02em;
 	}
 	.logo-word  { color: var(--app-text-2); }

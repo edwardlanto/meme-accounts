@@ -448,7 +448,7 @@
 								<path d={seg.path} fill={seg.color} opacity="0.9" class="donut-seg"/>
 							{/each}
 							<circle cx="80" cy="80" r="40" fill="#111111"/>
-							<text x="80" y="76" font-size="22" font-weight="700" fill="white" text-anchor="middle" font-family="Fraunces, serif">124</text>
+							<text x="80" y="76" font-size="22" font-weight="700" fill="white" text-anchor="middle" font-family="Lexend, system-ui, sans-serif">124</text>
 							<text x="80" y="93" font-size="9" fill="rgba(255,255,255,0.4)" text-anchor="middle" font-family="Space Mono">POSTS</text>
 						</svg>
 					</div>
@@ -726,7 +726,7 @@
 		color: #0a0a0a; flex-shrink: 0;
 	}
 	.page-title {
-		font-family: 'Fraunces', serif; font-size: 1.6rem;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem;
 		font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.2rem;
 	}
 	.page-sub { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
@@ -790,7 +790,7 @@
 	.kpi-change--up   { background: rgba(16,185,129,0.12); color: #34d399; }
 	.kpi-change--down { background: rgba(239,68,68,0.1);   color: #f87171; }
 	.kpi-value {
-		font-family: 'Fraunces', serif; font-size: 1.6rem;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem;
 		font-weight: 900; color: var(--t-strong); line-height: 1;
 	}
 	.kpi-label { font-size: 0.7rem; color: var(--t-muted); font-family: 'Space Mono', monospace; text-transform: uppercase; letter-spacing: 0.07em; }
@@ -901,7 +901,7 @@
 		border-bottom: 1px solid var(--panel-border);
 	}
 	.section-title {
-		font-family: 'Fraunces', serif; font-size: 1rem;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1rem;
 		font-weight: 700; color: var(--t-strong); margin: 0;
 	}
 	.section-badge {

@@ -4,6 +4,7 @@
 	import ArcGalleryHero from '$lib/components/ArcGalleryHero.svelte';
 	import MultiOrbitSemiCircle from '../lib/components/MultiOrbitSemiCircle.svelte';
 	import CtaWithMarquee from '$lib/components/CtaWithMarquee.svelte';
+	import ImageAutoSlider from '$lib/components/ImageAutoSlider.svelte';
 
 	let mounted = $state(false);
 	let scrollY = $state(0);
@@ -97,7 +98,7 @@
 <svelte:head>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,700;1,9..144,900&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+	<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 </svelte:head>
 
 <div class="root" class:mounted>
@@ -112,7 +113,7 @@
 		<div class="nav-links">
 			<a href="#features">Features</a>
 			<a href="#how">How it works</a>
-			<a href="#pricing">Pricing</a>
+			<a href="/pricing">Pricing</a>
 		</div>
 		<div class="nav-actions">
 			<a href="/login" class="nav-signin">Sign in</a>
@@ -144,6 +145,7 @@
 	<!-- INTEGRATIONS (replaces old Supported Platforms section) -->
 	<MultiOrbitSemiCircle items={platforms} />
 	<CtaWithMarquee />
+	<ImageAutoSlider />
 
 	<!-- FEATURES BENTO -->
 	<section id="features" class="section-dark section-pad">
@@ -259,64 +261,6 @@
 		</div>
 	</section>
 
-	<!-- PRICING -->
-	<section id="pricing" class="section-dark section-pad">
-		<div class="container">
-			<div class="section-header center reveal">
-				<span class="eyebrow-mono">Pricing</span>
-				<h2 class="title-dark">Simple,<br/><em>creator-first pricing.</em></h2>
-				<p class="body-muted">Start free. Scale when you grow.</p>
-			</div>
-			<div class="pricing-grid">
-				<div class="price-card reveal">
-					<div class="price-tier">Free</div>
-					<div class="price-amount">
-						<span class="price-num">$0</span>
-						<span class="price-per">/mo</span>
-					</div>
-					<p class="price-note">No card needed. Forever free.</p>
-					<ul class="price-list">
-						{#each ['5 carousels/month', '3 competitor tracks', 'AI hook suggestions', 'Basic canvas editor'] as item}
-							<li><span class="price-check">✓</span>{item}</li>
-						{/each}
-					</ul>
-					<a href="/signup" class="btn-outline-glass">Get started</a>
-				</div>
-
-				<div class="price-card price-featured reveal" style="--delay:0.08s">
-					<div class="price-badge">Most popular</div>
-					<div class="price-tier" style="color:#0a0a0a">Pro</div>
-					<div class="price-amount">
-						<span class="price-num" style="color:#0a0a0a">$29</span>
-						<span class="price-per" style="color:rgba(10,10,10,0.45)">/mo</span>
-					</div>
-					<p class="price-note" style="color:rgba(10,10,10,0.5)">Cancel anytime.</p>
-					<ul class="price-list price-list--dark">
-						{#each ['Unlimited carousels', '25 competitor tracks', 'Claude 3.5 Sonnet AI', 'News-to-Post (Vertex AI)', 'Full canvas + export', 'Style extraction'] as item}
-							<li><span class="price-check" style="color:#0a0a0a">✓</span>{item}</li>
-						{/each}
-					</ul>
-					<a href="/signup" class="btn-dark-solid">Start Pro free</a>
-				</div>
-
-				<div class="price-card reveal" style="--delay:0.16s">
-					<div class="price-tier">Agency</div>
-					<div class="price-amount">
-						<span class="price-num">$99</span>
-						<span class="price-per">/mo</span>
-					</div>
-					<p class="price-note">For teams managing multiple brands.</p>
-					<ul class="price-list">
-						{#each ['Everything in Pro', 'Unlimited accounts', 'Team workspace', 'White-label export', 'API access'] as item}
-							<li><span class="price-check">✓</span>{item}</li>
-						{/each}
-					</ul>
-					<a href="/signup" class="btn-outline-glass">Contact us</a>
-				</div>
-			</div>
-		</div>
-	</section>
-
 	<!-- FINAL CTA -->
 	<section class="cta-section">
 		<div class="cta-orb"></div>
@@ -355,14 +299,14 @@
 				<div class="footer-col">
 					<p class="footer-col-title">Product</p>
 					<a href="#features">Features</a>
-					<a href="#pricing">Pricing</a>
+					<a href="/pricing">Pricing</a>
 					<a href="/dashboard">Dashboard</a>
 				</div>
 				<div class="footer-col">
 					<p class="footer-col-title">Platforms</p>
-					<a href="#">Instagram</a>
-					<a href="#">TikTok</a>
-					<a href="#">LinkedIn</a>
+					<a href="https://instagram.com" rel="noreferrer" target="_blank">Instagram</a>
+					<a href="https://tiktok.com" rel="noreferrer" target="_blank">TikTok</a>
+					<a href="https://linkedin.com" rel="noreferrer" target="_blank">LinkedIn</a>
 				</div>
 				<div class="footer-col">
 					<p class="footer-col-title">Legal</p>
@@ -400,8 +344,8 @@
 	--l-muted:  rgba(10,5,5,0.5);
 	--l-dim:    rgba(10,5,5,0.28);
 
-	--font-display: 'Fraunces', Georgia, serif;
-	--font-body:    'DM Sans', sans-serif;
+	--font-display: 'Lexend', sans-serif;
+	--font-body:    'Lexend', sans-serif;
 	--font-mono:    'Space Mono', monospace;
 
 	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -424,7 +368,7 @@
 	background-size: 256px;
 }
 
-.container { max-width: 1160px; margin: 0 auto; padding: 0 48px; }
+.container { max-width: 1280px; margin: 0 auto; padding: 0 48px; }
 
 /* ════════════════════════════════════════════════════════════
    SCROLL REVEAL  — only on child elements, never section wrappers
@@ -489,8 +433,10 @@
 ════════════════════════════════════════════════════════════ */
 .hero-white {
 	background: #fff;
-	padding-top: 0;
-	overflow: visible;
+	/* Offset fixed nav + give hero breathing room */
+	padding-top: clamp(88px, 10vh, 124px);
+	padding-bottom: clamp(28px, 6vh, 72px);
+	overflow: hidden;
 	position: relative;
 }
 
@@ -552,16 +498,8 @@
 .section-dark    { background: var(--dark); color: var(--d-text); }
 .section-surface { background: var(--surface); color: var(--d-text); }
 .section-pad     { padding: 100px 48px; }
-.section-light { background: var(--light); color: var(--l-text); }
-
-/* Light section overrides (re-use shared typography safely) */
-.section-light .title-dark { color: var(--l-text); }
-.section-light .title-dark em { color: var(--l-muted); }
-.section-light .body-muted { color: var(--l-muted); }
-.section-light .eyebrow-mono { color: rgba(10,5,5,0.42); }
 .section-header { margin-bottom: 60px; }
 .section-header.center { text-align: center; }
-.section-header.center .body-muted { margin: 0 auto; }
 
 .eyebrow-lime {
 	display: inline-block; font-family: var(--font-mono);
@@ -580,15 +518,6 @@
 	letter-spacing: -0.03em; color: var(--d-text); margin: 0 0 20px;
 }
 .title-dark em { font-style: italic; color: var(--d-muted); }
-.body-muted { font-size: 16px; line-height: 1.65; color: var(--d-muted); max-width: 480px; }
-
-/* ════════════════════════════════════════════════════════════
-   PLATFORMS
-════════════════════════════════════════════════════════════ */
-.platforms-section { padding: 80px 48px; }
-
-/* Auto-moving platforms carousel */
-/* (Old auto-marquee carousel styles removed — section now uses MultiOrbitSemiCircle) */
 
 /* ════════════════════════════════════════════════════════════
    FEATURES BENTO
@@ -751,63 +680,6 @@
 .t-meta { font-size: 11px; color: var(--d-dim); font-family: var(--font-mono); margin: 0; }
 
 /* ════════════════════════════════════════════════════════════
-   PRICING
-════════════════════════════════════════════════════════════ */
-.pricing-grid {
-	display: grid; grid-template-columns: repeat(3,1fr);
-	gap: 16px; align-items: start;
-}
-.price-card {
-	padding: 36px; border-radius: 22px;
-	border: 1px solid var(--d-border);
-	background: rgba(255,255,255,0.03);
-	display: flex; flex-direction: column; gap: 20px;
-	position: relative; transition: box-shadow 0.25s, transform 0.25s;
-}
-.price-card:hover { transform: translateY(-4px); box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-.price-featured {
-	background: var(--lime); border-color: transparent;
-	box-shadow: 0 8px 40px rgba(232,255,72,0.25);
-}
-.price-badge {
-	position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
-	background: #0a0a0a; color: var(--lime);
-	font-size: 10px; font-family: var(--font-mono); font-weight: 700;
-	letter-spacing: 0.08em; text-transform: uppercase;
-	padding: 4px 14px; border-radius: 100px; white-space: nowrap;
-}
-.price-tier {
-	font-family: var(--font-mono); font-size: 11px;
-	letter-spacing: 0.1em; text-transform: uppercase; color: var(--d-muted);
-}
-.price-amount { display: flex; align-items: baseline; gap: 4px; }
-.price-num {
-	font-family: var(--font-display); font-size: 52px; font-weight: 900;
-	color: var(--d-text); letter-spacing: -0.03em;
-}
-.price-per { font-size: 16px; color: var(--d-dim); }
-.price-note { font-size: 12px; color: var(--d-dim); margin: 0; }
-.price-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; }
-.price-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--d-muted); }
-.price-list--dark li { color: rgba(10,10,10,0.75); }
-.price-check { font-size: 12px; font-weight: 700; color: var(--d-dim); flex-shrink: 0; }
-.btn-outline-glass {
-	display: block; text-align: center; padding: 13px 24px;
-	border: 1px solid var(--d-border); border-radius: 12px;
-	color: var(--d-muted); text-decoration: none;
-	font-size: 14px; font-weight: 600;
-	background: rgba(255,255,255,0.04); transition: all 0.2s;
-}
-.btn-outline-glass:hover { border-color: rgba(255,255,255,0.2); color: var(--d-text); }
-.btn-dark-solid {
-	display: block; text-align: center; padding: 13px 24px;
-	background: #0a0a0a; color: #fff;
-	border-radius: 12px; font-size: 14px; font-weight: 600;
-	text-decoration: none; transition: all 0.2s;
-}
-.btn-dark-solid:hover { background: #1a1a1a; }
-
-/* ════════════════════════════════════════════════════════════
    FINAL CTA
 ════════════════════════════════════════════════════════════ */
 .cta-section {
@@ -882,7 +754,6 @@
 	.nav-links { display: none; }
 	.container { padding: 0 24px; }
 	.section-pad { padding: 72px 24px; }
-	.platforms-section { padding: 60px 24px; }
 	.bento-features { grid-template-columns: 1fr; }
 	.bento-feat:nth-child(1) { grid-row: auto; }
 	.bento-feat:nth-child(4) { grid-column: auto; }
@@ -893,7 +764,6 @@
 	.step-card:last-child { border-bottom: 1px solid var(--d-border); }
 	.step-arrow { display: none; }
 	.testimonials-grid { grid-template-columns: 1fr; }
-	.pricing-grid { grid-template-columns: 1fr; }
 	.footer-inner { grid-template-columns: 1fr; gap: 40px; }
 }
 

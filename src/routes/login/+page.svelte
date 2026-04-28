@@ -30,7 +30,7 @@
 <svelte:head>
 	<title>Sign in — Carousel Studio</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+	<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 </svelte:head>
 
 <div class="root" class:mounted>
@@ -96,7 +96,7 @@
 			<div class="field">
 				<div class="field-row">
 					<label for="password" class="field-label">Password</label>
-					<a href="#" class="forgot">Forgot?</a>
+					<a href="/reset-password" class="forgot">Forgot?</a>
 				</div>
 				<input
 					id="password" type="password" bind:value={password} required
@@ -127,8 +127,8 @@
 	/* ── Tokens ───────────────────────────────────────────── */
 	:root {
 		--lime: #E8FF48;
-		--font-display: 'Fraunces', Georgia, serif;
-		--font-body:    'DM Sans', sans-serif;
+		--font-display: 'Lexend', sans-serif;
+		--font-body:    'Lexend', sans-serif;
 		--font-mono:    'Space Mono', monospace;
 	}
 

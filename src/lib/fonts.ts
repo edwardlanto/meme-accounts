@@ -31,7 +31,6 @@ export const GOOGLE_FONTS: GoogleFont[] = [
 	{ family: 'Anton', category: 'sans', weights: [400] },
 
 	// ── Serif (editorial + classic) ────────────────────────────────────
-	{ family: 'Fraunces', category: 'serif', weights: [400, 500, 700, 900], italic: true },
 	{ family: 'Playfair Display', category: 'serif', weights: [400, 500, 700, 900], italic: true },
 	{ family: 'Lora', category: 'serif', weights: [400, 500, 700], italic: true },
 	{ family: 'Merriweather', category: 'serif', weights: [400, 700, 900], italic: true },

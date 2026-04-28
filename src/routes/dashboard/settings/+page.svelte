@@ -593,7 +593,7 @@
 		display: flex; align-items: center; justify-content: center;
 		color: var(--t); flex-shrink: 0;
 	}
-	.page-title { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.2rem; }
+	.page-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.2rem; }
 	.page-sub   { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
 
 	/* ── Tab nav ───────────────────────────────────────────────── */
@@ -627,7 +627,7 @@
 	.settings-card--danger { border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.03); }
 	.settings-card--info   { border-color: rgba(232,255,72,0.1); background: rgba(232,255,72,0.02); }
 
-	.card-title { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
+	.card-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
 	.card-title--danger { color: #f87171; }
 	.card-desc  { font-size: 0.8125rem; line-height: 1.55; color: var(--t); margin: 0; }
 	.card-note  { font-size: 0.75rem; color: var(--t-muted); font-family: 'Space Mono', monospace; padding: 0.65rem 0.85rem; border-radius: 8px; background: var(--panel-bg); border: 1px solid var(--panel-border); }
@@ -796,7 +796,7 @@
 	.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 	.modal-title {
 		margin: 0;
-		font-family: 'Fraunces', serif;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
 		font-weight: 800;
 		font-size: 1.05rem;
 		letter-spacing: -0.02em;
@@ -864,7 +864,7 @@
 		color: #E8FF48; text-transform: uppercase; letter-spacing: 0.08em;
 	}
 	.plan-name  { font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; font-size: 0.9375rem; }
-	.plan-price { font-family: 'Fraunces', serif; font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
+	.plan-price { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
 	.plan-price span { font-size: 0.875rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; }
 
 	.plan-features { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
@@ -882,7 +882,7 @@
 	.btn-outline-sm:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
 
 	.upgrade-price {
-		font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 900;
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 2rem; font-weight: 900;
 		color: #fff; letter-spacing: -0.03em;
 	}
 	.upgrade-price span { font-size: 1rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; font-weight: 400; }
