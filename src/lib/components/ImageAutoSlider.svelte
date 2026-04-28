@@ -1,4 +1,16 @@
 <script lang="ts">
+	import {
+		Scissors,
+		VolumeX,
+		Sparkles,
+		Circle,
+		Type,
+		Image as ImageIcon,
+		Palette,
+		Undo2,
+		Redo2,
+	} from 'lucide-svelte';
+
 	type Props = {
 		images?: string[];
 		durationSec?: number;
@@ -23,6 +35,18 @@
 	}: Props = $props();
 
 	const duplicated = $derived([...(images ?? []), ...(images ?? [])]);
+
+	const dockItems = [
+		{ icon: Scissors, label: 'Trim' },
+		{ icon: VolumeX, label: 'Mute' },
+		{ icon: Sparkles, label: 'AI' },
+		{ icon: Circle, label: 'Shape' },
+		{ icon: Type, label: 'Text' },
+		{ icon: ImageIcon, label: 'Image' },
+		{ icon: Palette, label: 'Colors' },
+		{ icon: Undo2, label: 'Undo' },
+		{ icon: Redo2, label: 'Redo' },
+	] as const;
 </script>
 
 <section class="slider-wrap" style={`--duration:${Math.max(6, Number(durationSec) || 40)}s;`}>
@@ -30,6 +54,17 @@
 
 	<div class="slider-center">
 		<div class="slider-inner">
+			<div class="dock-shell" aria-label="Editor dock">
+				<div class="dock-float">
+					{#each dockItems as item (item.label)}
+						<button type="button" class="dock-btn" aria-label={item.label} title={item.label}>
+							<item.icon size={18} class="dock-ico" />
+							<span class="dock-tip" aria-hidden="true">{item.label}</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+
 			<div class="slider-copy">
 				<h2 class="slider-h">{heading}</h2>
 				<p class="slider-p">{paragraph}</p>
@@ -71,6 +106,12 @@
 </section>
 
 <style>
+	@keyframes dock-float {
+		0% { transform: translateY(0); }
+		50% { transform: translateY(4px); }
+		100% { transform: translateY(0); }
+	}
+
 	@keyframes scroll-right {
 		0% { transform: translateX(0); }
 		100% { transform: translateX(-50%); }
@@ -114,6 +155,71 @@
 		/* Almost full-width, but keep a small safe gutter */
 		max-width: min(1440px, calc(100vw - 48px));
 		padding: 0 16px;
+	}
+
+	.dock-shell {
+		width: 100%;
+		display: flex;
+		justify-content: center;
+		margin: 0 auto 18px;
+	}
+
+	.dock-float {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 8px;
+		border-radius: 16px;
+		background: rgba(255,255,255,0.78);
+		border: 1px solid rgba(10,10,10,0.08);
+		box-shadow: 0 14px 44px rgba(0,0,0,0.10);
+		backdrop-filter: blur(14px);
+		-webkit-backdrop-filter: blur(14px);
+		animation: dock-float 4s ease-in-out infinite;
+	}
+
+	.dock-btn {
+		position: relative;
+		border: none;
+		background: transparent;
+		padding: 10px;
+		border-radius: 12px;
+		cursor: pointer;
+		transition: transform 160ms ease, background-color 160ms ease;
+	}
+
+	.dock-btn:hover {
+		transform: translateY(-2px) scale(1.08);
+		background: rgba(10,10,10,0.06);
+	}
+
+	.dock-btn:active {
+		transform: translateY(-1px) scale(0.98);
+	}
+
+	.dock-btn :global(svg) {
+		color: rgba(10,10,10,0.9);
+	}
+
+	.dock-tip {
+		position: absolute;
+		left: 50%;
+		top: -8px;
+		transform: translate(-50%, -100%);
+		padding: 4px 8px;
+		border-radius: 10px;
+		font-size: 12px;
+		line-height: 1;
+		white-space: nowrap;
+		background: rgba(10,10,10,0.92);
+		color: rgba(255,255,255,0.92);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 160ms ease;
+	}
+
+	.dock-btn:hover .dock-tip {
+		opacity: 1;
 	}
 
 	.slider-copy {

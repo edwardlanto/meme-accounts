@@ -13,6 +13,7 @@ import JSZip from 'jszip';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
+	import DockToolbar from '$lib/components/DockToolbar.svelte';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils.js';
 	import { Input } from '$lib/components/ui/input';
@@ -40,7 +41,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Palette
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -340,6 +341,18 @@ import JSZip from 'jszip';
 		historyByTemplateBySlide = { ...historyByTemplateBySlide, [t]: historyByTemplateBySlide[t].map((r, i) => (i === s ? row : r)) };
 		applySnapshot(next);
 	}
+
+	const dockItems = $derived.by(() => ([
+		{ icon: Scissors, label: 'Trim' },
+		{ icon: VolumeX, label: 'Mute' },
+		{ icon: Sparkles, label: 'AI' },
+		{ icon: Circle, label: 'Shape' },
+		{ icon: Type, label: 'Text' },
+		{ icon: Image, label: 'Image' },
+		{ icon: Palette, label: 'Colors' },
+		{ icon: Undo2, label: 'Undo', onClick: undoActive, disabled: !canUndoActive() },
+		{ icon: Redo2, label: 'Redo', onClick: redoActive, disabled: !canRedoActive() },
+	]));
 
 	function resetActiveTemplateContent() {
 		const i = activeSlide;
@@ -3273,6 +3286,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		</div>
 
+		<!-- Dock (shared across templates) -->
+		<div class="flex justify-center w-full">
+			<DockToolbar items={dockItems} />
+		</div>
+
 		<!-- Slide indicator + nav arrows -->
 		<!-- Slide switcher removed (filmstrip below is the navigator) -->
 
@@ -3281,6 +3299,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<div style="width: {PREVIEW_WIDTH}px;" class="relative z-10">
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div style="height: {CANVAS_H * previewScale}px; background: var(--app-surface-2); border: 1px solid var(--app-border);" class="relative overflow-hidden rounded-2xl">
+
 			{#if studioBooting}
 				<!-- Initial boot overlay: avoid template "jump" while restoring draft -->
 				<div class="absolute inset-0 rounded-2xl z-20 flex items-center justify-center" style="background: var(--app-surface-2); border: 1px solid var(--app-border);">
