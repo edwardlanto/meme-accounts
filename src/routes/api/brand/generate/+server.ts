@@ -4,65 +4,31 @@ import type { RequestHandler } from './$types';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
-const SYSTEM_PROMPT = `You are a world-class Instagram carousel designer. Generate a fully self-contained HTML carousel that FAITHFULLY replicates the visual identity extracted from the user's reference images.
+/** Brand carousel instructions — `src/lib/prompts/carousel/*.md` (bundled at build time). */
+const CAROUSEL_PROMPT_FILES = import.meta.glob('../../../../lib/prompts/carousel/*.md', {
+	as: 'raw',
+	eager: true,
+}) as Record<string, string>;
 
-## CRITICAL: The brand style JSON is the law
-Every design choice must derive from the provided style object:
-- Colors: use the EXACT hex values from colorPalette — no substitutions, no invented colors
-- Typography: match the font character described precisely. Examples:
-  • "bold condensed heavy" → Bebas Neue, Anton, or Oswald Black
-  • "elegant serif" → Playfair Display, Lora, or Cormorant
-  • "clean humanist sans" → Inter, DM Sans, or Nunito Sans
-  • "display bold sans" → Space Grotesk, Syne, or Barlow Condensed
-  Load fonts via Google Fonts <link> tags.
-- Layout: mirror the layoutPatterns field exactly.
-  • "photo-heavy full-bleed with text overlay" → large image areas covering 50–100% of slide, text layered on top with gradient
-  • "single-column editorial" → structured text blocks, minimal images
-  • "split-photo" → two photo areas side by side or diagonal split
-- Mood: dark/dramatic → dark backgrounds + high contrast. Warm/editorial → warm neutrals + airy spacing.
-- Visual elements: implement every element listed (gradients, overlays, divider lines, shape cutouts, etc.)
+function loadCarouselSystemPrompt(): string {
+	const parts = Object.entries(CAROUSEL_PROMPT_FILES)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([, raw]) => String(raw).trim());
+	return parts.join('\n\n---\n\n');
+}
 
-## Technical Requirements
-- Canvas: 1080px × 1350px per slide (native Instagram 4:5 format)
-- Every slide: <div class="slide"> — exactly SLIDE_COUNT of them
-- All CSS in one <style> tag; all JS in one <script> tag at body end
-- Google Fonts via <link> tags in <head>
-- Navigation: ◀ ▶ arrow buttons + top progress bar
-- NO external CSS files. NO remote image URLs.
+type ReferenceImage = { data: string; mediaType?: string };
 
-## Image Placeholders — MANDATORY FORMAT
-For every photo/image area, use this exact structure (never use http:// or unsplash URLs):
-
-<div data-img-slot="N" data-img-label="Descriptive label" style="width:100%;height:100%;background:{dark_brand_color};display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">
-  <span style="color:rgba(255,255,255,0.2);font-size:18px;font-family:sans-serif;letter-spacing:3px;text-transform:uppercase;">▣  Photo {N+1}</span>
-</div>
-
-- Increment N starting from 0 across ALL slides (globally unique per carousel)
-- Use a brand dark color as placeholder background (not gray #888)
-- For split-photo layouts: create two side-by-side containers each with their own data-img-slot
-
-## Text Editability — Tag every text element
-<h1 data-text-slot="headline">…</h1>
-<h2 data-text-slot="subhead">…</h2>
-<p data-text-slot="body-0">…</p>
-<p data-text-slot="body-1">…</p>
-<span data-text-slot="tag">…</span>
-<span data-text-slot="handle">@handle</span>
-<span data-text-slot="cta">…</span>
-<li data-text-slot="li-0">…</li>
-
-## Slide Narrative Arc
-HERO → PROBLEM → PIVOT → LOGIC slides → PRO TIP → CTA
-
-Each slide layout should reflect the brand's visual language while serving its narrative role.
-- HERO: most visually impactful — for photo-heavy brands, 1-2 large image placeholders
-- PROBLEM / PIVOT / LOGIC: content-focused but using brand's color and layout language
-- CTA: strong brand identity, repeat handle/name, clear action
-
-Output ONLY raw HTML starting with <!DOCTYPE html>. No markdown. No explanation.`;
+const MAX_REFERENCE_IMAGES = 4;
 
 export const POST: RequestHandler = async ({ request }) => {
-	const { style, brandName, handle, primaryColor, content, slideCount } = await request.json();
+	const body = await request.json();
+	const { style, brandName, handle, primaryColor, content, slideCount, referenceImages } = body;
+	const refs: ReferenceImage[] = Array.isArray(referenceImages)
+		? referenceImages
+				.filter((r: unknown) => r && typeof r === 'object' && 'data' in (r as ReferenceImage))
+				.slice(0, MAX_REFERENCE_IMAGES)
+		: [];
 
 	if (!content) return json({ error: 'Content is required' }, { status: 400 });
 	const slideCountNum = Math.min(10, Math.max(3, Number.isFinite(+slideCount) ? Math.round(+slideCount) : 7));
@@ -74,29 +40,57 @@ export const POST: RequestHandler = async ({ request }) => {
 	const h = (handle || 'mybrand').replace(/^@/, '');
 	const color = primaryColor || (typeof style === 'object' && style?.primaryColor) || '#FF0000';
 
-	const userMessage = `## Brand Style (extracted from reference images — implement this exactly):
+	const systemPrompt = loadCarouselSystemPrompt();
+	if (!systemPrompt.trim()) {
+		return json(
+			{ error: 'Missing carousel prompts: add .md files under src/lib/prompts/carousel/' },
+			{ status: 500 }
+		);
+	}
+
+	const userMessage = `The user submitted this through the Brand Carousel UI. Do not ask clarifying questions — use the data below and follow the system instructions.
+
+## Extracted style (from uploaded reference images; may be empty object if skipped)
 ${styleBlock}
 
-## Brand Details
-Name: ${brandName || 'My Brand'}
-Handle: @${h}
-Primary color: ${color}
+## Brand details (form)
+- Brand name: ${brandName || '(not set — infer from content)'}
+- Instagram handle: @${h}
+- Primary color: ${color}
 
-## SLIDE_COUNT: ${slideCountNum}
+## Slide count
+Generate exactly **${slideCountNum}** slides (\`<div class="slide">\` each), each **1080px × 1350px**.
 
-## Content to turn into a ${slideCountNum}-slide Instagram carousel:
+## Topic / article / content to turn into the carousel
 ${content}
 
-## Design Instructions
-1. READ the designStyle, mood, visualElements, and layoutPatterns fields above carefully
-2. Build a carousel that looks like it CAME FROM THIS BRAND — not a generic template
-3. If layoutPatterns mentions photos/images, include prominent image placeholder areas using data-img-slot
-4. Use ONLY the colors from colorPalette — no other colors except pure black/white for contrast if needed
-5. Choose Google Fonts that closely match the font descriptions
-6. Generate exactly ${slideCountNum} slides with class="slide", each 1080px × 1350px
-7. Make the HERO slide visually striking and faithful to the reference aesthetic
+Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 
-Output raw HTML only. Start with <!DOCTYPE html>.`;
+	const imageParts: { type: 'image_url'; image_url: { url: string } }[] = [];
+	for (const img of refs) {
+		const mt = typeof img.mediaType === 'string' && img.mediaType.startsWith('image/')
+			? img.mediaType
+			: 'image/jpeg';
+		const data = typeof img.data === 'string' ? img.data.replace(/\s/g, '') : '';
+		if (!data) continue;
+		imageParts.push({
+			type: 'image_url',
+			image_url: { url: `data:${mt};base64,${data}` },
+		});
+	}
+
+	const userContent: Array<
+		| { type: 'text'; text: string }
+		| { type: 'image_url'; image_url: { url: string } }
+	> = [];
+	if (imageParts.length) {
+		userContent.push({
+			type: 'text',
+			text: `The next ${imageParts.length} message part(s) are reference image(s) the user uploaded for this brand. Study whitespace, image-to-text balance, grids, and margins — then produce HTML that feels similarly polished and intentional (while still following every slot and dimension rule in the following text).`,
+		});
+		userContent.push(...imageParts);
+	}
+	userContent.push({ type: 'text', text: userMessage });
 
 	if (!env.OPENROUTER_API_KEY) {
 		return json({ html: getDemoHtml(brandName, h, color, slideCountNum, style), demo: true });
@@ -114,8 +108,8 @@ Output raw HTML only. Start with <!DOCTYPE html>.`;
 			body: JSON.stringify({
 				model: 'anthropic/claude-3.7-sonnet',
 				max_tokens: 16000,
-				system: SYSTEM_PROMPT,
-				messages: [{ role: 'user', content: userMessage }],
+				system: systemPrompt,
+				messages: [{ role: 'user', content: userContent.length > 1 ? userContent : userMessage }],
 			}),
 		});
 

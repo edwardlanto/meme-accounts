@@ -128,7 +128,17 @@
 		try {
 			const res = await fetch('/api/brand/generate', {
 				method: 'POST', headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ style, brandName, handle, primaryColor, content, slideCount }),
+				body: JSON.stringify({
+					style,
+					brandName,
+					handle,
+					primaryColor,
+					content,
+					slideCount,
+					...(images.length
+						? { referenceImages: images.map((i) => ({ data: i.base64, mediaType: i.mediaType })) }
+						: {}),
+				}),
 			});
 			const data = await res.json();
 			if (!res.ok || data.error) throw new Error(data.error ?? 'Generation failed');
