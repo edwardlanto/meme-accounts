@@ -8,6 +8,9 @@
 		Pencil, Save, X, BookMarked, Music, Calendar, Type
 	} from 'lucide-svelte';
 
+	type Props = { title?: string };
+	let { title = 'Slideshows' }: Props = $props();
+
 	// ── Auth ──────────────────────────────────────────────────────────────────
 	let userId = $state('');
 	onMount(async () => {
@@ -602,7 +605,7 @@ ${inlineEditScript}
 	<div class="px-5 pt-5 pb-4 border-b border-white/[0.04] flex-shrink-0">
 		<div class="flex items-center gap-2 mb-5">
 			<Wand2 size={13} class="text-violet-400" />
-			<h1 class="font-display font-bold text-sm text-white">Slideshows</h1>
+			<h1 class="font-display font-bold text-sm text-white">{title}</h1>
 		</div>
 
 		<div class="flex items-start">

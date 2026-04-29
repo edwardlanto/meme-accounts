@@ -100,7 +100,7 @@
 	h1 {
 		font-family: var(--font-display, var(--font-sans, system-ui));
 		font-size: clamp(32px, 5vw, 44px);
-		font-weight: 900;
+		font-weight: 500;
 		letter-spacing: -0.02em;
 		margin: 0 0 8px;
 	}

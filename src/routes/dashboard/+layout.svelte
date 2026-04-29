@@ -24,7 +24,7 @@
 		{
 			label: 'Studios',
 			items: [
-				{ href: '/dashboard/slideshows',  label: 'Slideshows',   icon: Wand2 },
+				{ href: '/dashboard/brand-carousel',  label: 'Brand Carousel',   icon: Wand2 },
 				{ href: '/dashboard/studio?template=news',       label: 'News Studio',  icon: Layers },
 			]
 		},
@@ -51,7 +51,7 @@
 	}
 
 	let currentPath = $derived($page.url.pathname);
-	let sidebarCollapsed = $derived(
+	let sidebarRailOnly = $derived(
 		currentPath === '/dashboard/studio' || currentPath.startsWith('/dashboard/editor/')
 	);
 
@@ -71,11 +71,12 @@
 
 <div class="shell">
 	<!-- Sidebar -->
-	<div class="sidebar-shell" class:hidden={sidebarCollapsed}>
+	<div class="sidebar-shell">
 		<TwoLevelSidebar
 			navGroups={navGroups}
 			currentPath={currentPath}
 			theme={theme}
+			railOnly={sidebarRailOnly}
 			onThemeToggle={() => applyTheme(theme === 'dark' ? 'light' : 'dark')}
 			onSignOut={signOut}
 		/>

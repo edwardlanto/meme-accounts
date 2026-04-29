@@ -153,7 +153,7 @@
 		margin: 0 0 12px;
 		font-family: var(--font-display);
 		font-size: clamp(36px, 4vw, 56px);
-		font-weight: 900;
+		font-weight: 500;
 		letter-spacing: -0.03em;
 		line-height: 1.05;
 	}

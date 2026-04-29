@@ -342,14 +342,46 @@ import JSZip from 'jszip';
 		applySnapshot(next);
 	}
 
+	function toggleTrim() {
+		if (!backgroundVideo) return;
+		showVideoTrim = !showVideoTrim;
+		if (!showVideoTrim) videoSeekSec = NaN;
+	}
+
+	function toggleMute() {
+		if (!backgroundVideo) return;
+		const next = !activeVideoMuted;
+		videoMutedBySlide = Array.from(
+			{ length: slides.length },
+			(_, i) => (i === activeSlide ? next : (videoMutedBySlide[i] ?? true))
+		);
+		// When unmuting, ensure there is a sane volume.
+		if (!next) {
+			const cur = videoVolumeBySlide[activeSlide];
+			const vol = Number.isFinite(cur) ? cur : 0.8;
+			videoVolumeBySlide = Array.from(
+				{ length: slides.length },
+				(_, i) => {
+					if (i === activeSlide) return Math.max(0, Math.min(1, vol));
+					const v = videoVolumeBySlide[i];
+					return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+				}
+			);
+		}
+	}
+
+	function uploadOverlayImage() {
+		overlayQuickInput?.click();
+	}
+
 	const dockItems = $derived.by(() => ([
-		{ icon: Scissors, label: 'Trim' },
-		{ icon: VolumeX, label: 'Mute' },
-		{ icon: Sparkles, label: 'AI' },
-		{ icon: Circle, label: 'Shape' },
-		{ icon: Type, label: 'Text' },
-		{ icon: Image, label: 'Image' },
-		{ icon: Palette, label: 'Colors' },
+		{ icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !backgroundVideo },
+		{ icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !backgroundVideo },
+		{ icon: Sparkles, label: 'AI', onClick: activeTemplate === 'news' ? (() => void generateBackground(activeSlide)) : undefined, disabled: activeTemplate !== 'news' },
+		{ icon: Circle, label: 'Shape', onClick: activeTemplate === 'news' ? (() => (showCircle = !showCircle)) : undefined, disabled: activeTemplate !== 'news' },
+		{ icon: Type, label: 'Text', onClick: addTextOverlay },
+		{ icon: Image, label: 'Image', onClick: uploadOverlayImage },
+		{ icon: Palette, label: 'Colors', disabled: true },
 		{ icon: Undo2, label: 'Undo', onClick: undoActive, disabled: !canUndoActive() },
 		{ icon: Redo2, label: 'Redo', onClick: redoActive, disabled: !canRedoActive() },
 	]));
@@ -2660,88 +2692,102 @@ if (tweetTopImageHeightBySlide.length !== n) {
 <div class="flex h-full overflow-hidden">
 
 	<!-- ── Left panel: controls ──────────────────────────────────────────── -->
-	<div class="w-80 flex-shrink-0 border-r flex flex-col overflow-y-auto studio-left" style="background: var(--app-surface-2); border-color: var(--app-border);">
-		<div class="px-5 py-4 border-b" style="border-color: var(--app-border);">
-			<h1 class="font-display font-bold text-base" style="color: var(--app-text);">News Studio</h1>
-			<p class="font-body text-xs mt-0.5" style="color: var(--app-text-muted);">AI-powered Instagram news posts</p>
+	<div class="w-80 flex-shrink-0 border-r border-neutral-800 bg-black text-neutral-50 flex flex-col overflow-y-auto studio-left">
+		<div class="px-5 py-4 border-b border-neutral-800">
+			<h1 class="font-display font-bold text-base text-neutral-50">News Studio</h1>
 		</div>
 
-		<div class="flex flex-col gap-1 p-4">
+		<div class="flex flex-col gap-4 p-4">
 
 			<!-- Content type (News template generator) -->
-			<div class="mb-2">
-				<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Content</Label>
+			<div class="rounded-2xl bg-neutral-950 border border-neutral-800 p-3">
+				<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Content</Label>
 				<Tabs bind:value={newsContentMode} class="w-full">
-					<TabsList class="grid h-auto w-full grid-cols-3 gap-0.5 p-1">
-						<TabsTrigger value="news" class="px-1 py-2 text-[10px] font-semibold">News</TabsTrigger>
-						<TabsTrigger value="fact" class="px-1 py-2 text-[10px] font-semibold">Random fact</TabsTrigger>
-						<TabsTrigger value="story" class="px-1 py-2 text-[10px] font-semibold">Random story</TabsTrigger>
+					<TabsList class="grid h-auto w-full grid-cols-3 gap-1 p-1 rounded-lg bg-neutral-950 border border-neutral-800">
+						<TabsTrigger
+							value="news"
+							class="px-1 py-2 text-[10px] font-semibold rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-900 data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
+						>News</TabsTrigger>
+						<TabsTrigger
+							value="fact"
+							class="px-1 py-2 text-[10px] font-semibold rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-900 data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
+						>Random fact</TabsTrigger>
+						<TabsTrigger
+							value="story"
+							class="px-1 py-2 text-[10px] font-semibold rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-900 data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
+						>Random story</TabsTrigger>
 					</TabsList>
 				</Tabs>
+				<div class="mt-3">
+
+					{#if newsContentMode === 'news'}
+						<!-- News category -->
+						<div class="mb-3">
+							<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Category</Label>
+							<Select type="single" bind:value={category}>
+								<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50">
+									{categories.find((c) => c.id === category)?.label ?? 'Category'}
+								</SelectTrigger>
+								<SelectContent>
+									{#each categories as cat}
+										<SelectItem value={cat.id} label={cat.label}>{cat.label}</SelectItem>
+									{/each}
+								</SelectContent>
+							</Select>
+						</div>
+
+						<!-- Search -->
+						<div>
+							<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Search (optional)</Label>
+							<div class="relative">
+								<Search size={13} class="text-neutral-500 pointer-events-none absolute top-1/2 left-3 z-10 -translate-y-1/2" />
+								<Input
+									bind:value={search}
+									placeholder="e.g. interest rates, Tesla..."
+									class="rounded-xl py-2.5 pl-9 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50 placeholder:text-neutral-500"
+								/>
+							</div>
+						</div>
+					{:else if newsContentMode === 'story'}
+						<div>
+							<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Story theme</Label>
+							<Select type="single" bind:value={storyCategory}>
+								<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50">
+									{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
+								</SelectTrigger>
+								<SelectContent>
+									{#each storyThemes as th}
+										<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
+									{/each}
+								</SelectContent>
+							</Select>
+							<p class="text-neutral-400 mt-1.5 text-[10px] font-body leading-relaxed">Generate uses this theme for the micro-story hook and carousel context.</p>
+						</div>
+					{:else}
+						<p class="text-[10px] font-body text-neutral-400/80 leading-relaxed">
+							One surprising fact-style line plus context for follow-up slides. No news API required.
+						</p>
+					{/if}
+				</div>
 			</div>
 
-			{#if newsContentMode === 'news'}
-				<!-- News category -->
-				<div class="mb-1">
-					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Category</Label>
-					<Select type="single" bind:value={category}>
-						<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body">
-							{categories.find((c) => c.id === category)?.label ?? 'Category'}
-						</SelectTrigger>
-						<SelectContent>
-							{#each categories as cat}
-								<SelectItem value={cat.id} label={cat.label}>{cat.label}</SelectItem>
-							{/each}
-						</SelectContent>
-					</Select>
-				</div>
-
-				<!-- Search -->
-				<div class="mb-3">
-					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Search (optional)</Label>
-					<div class="relative">
-						<Search size={13} class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 -translate-y-1/2" />
-						<Input bind:value={search} placeholder="e.g. interest rates, Tesla..." class="rounded-xl py-2.5 pl-9 text-sm font-body" />
-					</div>
-				</div>
-			{:else if newsContentMode === 'story'}
-				<div class="mb-3">
-					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Story theme</Label>
-					<Select type="single" bind:value={storyCategory}>
-						<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body">
-							{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
-						</SelectTrigger>
-						<SelectContent>
-							{#each storyThemes as th}
-								<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
-							{/each}
-						</SelectContent>
-					</Select>
-					<p class="text-muted-foreground mt-1.5 text-[10px] font-body leading-relaxed">Generate uses this theme for the micro-story hook and carousel context.</p>
-				</div>
-			{:else}
-				<p class="text-[10px] font-body text-white/25 mb-3 leading-relaxed">
-					One surprising fact-style line plus context for follow-up slides. No news API required.
-				</p>
-			{/if}
-
 			<!-- Slide count -->
-			<div class="mb-1">
-				<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Number of slides</Label>
+			<div class="rounded-2xl bg-neutral-950 border border-neutral-800 p-3">
+				<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Number of slides</Label>
 				<div class="flex items-center gap-2">
 					<Button
 						type="button"
 						variant="outline"
 						size="icon-sm"
-						class="shrink-0 text-base font-bold"
+						class="shrink-0 text-base font-bold bg-neutral-950 border-neutral-800 text-neutral-50 hover:bg-neutral-900"
 						onclick={() => (slideCount = Math.max(1, slideCount - 1))}
 					>−</Button>
-					<span class="flex-1 text-center text-sm font-mono text-foreground">{slideCount} slide{slideCount !== 1 ? 's' : ''}</span>
+					<span class="flex-1 text-center text-sm font-mono text-neutral-200">{slideCount} slide{slideCount !== 1 ? 's' : ''}</span>
 					<Button
 						type="button"
 						variant="outline"
 						size="icon-sm"
-						class="shrink-0 text-base font-bold"
+						class="shrink-0 text-base font-bold bg-neutral-950 border-neutral-800 text-neutral-50 hover:bg-neutral-900"
 						onclick={() => (slideCount = Math.min(10, slideCount + 1))}
 					>+</Button>
 				</div>
@@ -2763,7 +2809,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			</div>
 
 			<!-- Data source toggle -->
-			<div class="mb-1 flex items-center justify-between rounded-xl border border-border bg-muted/30 p-3">
+			<div class="flex items-center justify-between rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
 				<div class="flex items-center gap-2">
 					{#if useTestData}
 						<FlaskConical size={12} class="text-amber-400" />
@@ -3437,19 +3483,6 @@ showSubjectCutout={activeShowCutout}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
 			{:else if activeTemplate === 'article'}
-				<!-- Shared text overlay layer for non-News templates -->
-				<TextOverlayLayer
-					w={CANVAS_W}
-					h={CANVAS_H}
-					scale={previewScale}
-					interactive={true}
-					highlightColor={highlightColor}
-					textOverlays={activeTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
-					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
-					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-				/>
 				<ArticleTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
@@ -3471,7 +3504,7 @@ showSubjectCutout={activeShowCutout}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
-			{:else if activeTemplate === 'tweet'}
+				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
 					h={CANVAS_H}
@@ -3484,6 +3517,7 @@ showSubjectCutout={activeShowCutout}
 					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
+			{:else if activeTemplate === 'tweet'}
 				<!-- Tweet: minimal integration for now (top tweet text = slide text). -->
 				<TweetTemplate
 					templateTheme={uiTheme}
@@ -3533,7 +3567,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 						showToolbar: false,
 					} as any)}
 				/>
-			{:else if activeTemplate === 'textCarousel'}
+				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
 					h={CANVAS_H}
@@ -3546,6 +3580,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
+			{:else if activeTemplate === 'textCarousel'}
 				<TextCarouselTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
@@ -3570,8 +3605,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
-			{:else if activeTemplate === 'imageQuote'}
-				<!-- Image Quote template removed from public UI. Keep a safe fallback. -->
+				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
 					h={CANVAS_H}
@@ -3584,6 +3618,8 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
+			{:else if activeTemplate === 'imageQuote'}
+				<!-- Image Quote template removed from public UI. Keep a safe fallback. -->
 				<NewsTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
@@ -3612,194 +3648,24 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
+				<!-- Shared text overlay layer (sits above the template) -->
+				<TextOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					highlightColor={highlightColor}
+					textOverlays={activeTextOverlays}
+					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					onRangeSelect={onTextOverlayRangeSelect}
+					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+				/>
 			{/if}
 				</div>
 			</div>
 
 			<!-- Quick actions column -->
-			<div class="flex flex-col gap-2 pt-1 relative z-50 pointer-events-auto">
-					<input
-						bind:this={circle2QuickInput}
-						type="file"
-						accept="image/*"
-						class="sr-only"
-						onchange={handleCircle2Upload}
-					/>
-					<input
-						bind:this={overlayQuickInput}
-						type="file"
-						accept="image/*"
-						class="sr-only"
-						onchange={handleOverlayUpload}
-					/>
-
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={() => { showVideoTrim = !showVideoTrim; if (!showVideoTrim) videoSeekSec = NaN; }}
-						disabled={!backgroundVideo}
-						class="rounded-2xl"
-						title={backgroundVideo ? 'Trim video' : 'Trim (add a video background first)'}
-					>
-						<Scissors size={16} />
-					</Button>
-
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={() => {
-							if (!backgroundVideo) return;
-							const next = !activeVideoMuted;
-							videoMutedBySlide = Array.from(
-								{ length: slides.length },
-								(_, i) => (i === activeSlide ? next : (videoMutedBySlide[i] ?? true))
-							);
-							// When unmuting, ensure there is a sane volume.
-							if (!next) {
-								const cur = videoVolumeBySlide[activeSlide];
-								const vol = Number.isFinite(cur) ? cur : 0.8;
-								videoVolumeBySlide = Array.from(
-									{ length: slides.length },
-									(_, i) => {
-										if (i === activeSlide) return Math.max(0, Math.min(1, vol));
-										const v = videoVolumeBySlide[i];
-										return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
-									}
-								);
-							}
-						}}
-						disabled={!backgroundVideo}
-						class="rounded-2xl"
-						title={backgroundVideo ? (activeVideoMuted ? 'Unmute video' : 'Mute video') : 'Volume (add a video background first)'}
-					>
-						{#if activeVideoMuted}
-							<VolumeX size={16} />
-						{:else}
-							<Volume2 size={16} />
-						{/if}
-					</Button>
-
-					{#if activeTemplate === 'news'}
-						<Button
-							variant="outline"
-							size="icon"
-							onclick={() => void generateBackground(activeSlide)}
-							disabled={(generatingImagesByTemplate.news ?? [])[activeSlide]}
-							class="rounded-2xl"
-							title="Regenerate background with AI (uses this slide’s headline; replaces photo or video)"
-							aria-label="Regenerate background with AI"
-						>
-							{#if (generatingImagesByTemplate.news ?? [])[activeSlide]}
-								<Loader size={16} class="animate-spin" />
-							{:else}
-								<Sparkles size={16} />
-							{/if}
-						</Button>
-						<Button
-							variant="outline"
-							size="icon"
-							onclick={openCircle2QuickPicker}
-							class="rounded-2xl"
-							title="Add another circle"
-						>
-							<span class="text-lg leading-none">◯</span>
-						</Button>
-					{/if}
-
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={addTextOverlay}
-						class="rounded-2xl"
-						title="Add text layer"
-					>
-						<Type size={16} />
-					</Button>
-
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={openOverlayQuickPicker}
-						class="rounded-2xl"
-						title="Add image overlay"
-					>
-						<Image size={16} />
-					</Button>
-
-					{#if activeTemplate === 'news'}
-						<Popover bind:open={solidBgPopoverOpen}>
-							<PopoverTrigger
-								class={cn(
-									buttonVariants({ variant: 'outline', size: 'icon' }),
-									'rounded-2xl ring-offset-background',
-									(newsSolidBgBySlide[activeSlide] ?? '').trim() ? 'ring-2 ring-violet-500/40' : ''
-								)}
-								title="Solid background (no photo or video)"
-								aria-label="Solid background color"
-							>
-								<Palette size={16} />
-							</PopoverTrigger>
-							<PopoverContent
-								class="w-60 gap-3 p-3"
-								side="left"
-								align="end"
-								sideOffset={10}
-							>
-								<p class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Solid fill</p>
-								<p class="text-[10px] text-muted-foreground leading-snug">
-									Removes the current slide’s photo/video and fills the canvas behind the story.
-								</p>
-								<div class="grid grid-cols-3 gap-1.5">
-									{#each NEWS_SOLID_PRESETS as p}
-										<button
-											type="button"
-											class="h-9 w-full rounded-lg border border-border transition-transform hover:scale-105"
-											style="background: {p};"
-											onclick={() => applyNewsSolidBg(p)}
-											aria-label="Use background {p}"
-											title={p}
-										></button>
-									{/each}
-								</div>
-								<div class="flex flex-col gap-1.5">
-									<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Custom</Label>
-									<Input
-										type="color"
-										class="h-10 w-full cursor-pointer p-1"
-										value={(newsSolidBgBySlide[activeSlide] ?? '').trim() || '#1a1a2e'}
-										oninput={(e) => applyNewsSolidBg((e.currentTarget as HTMLInputElement).value)}
-									/>
-								</div>
-								<Button variant="outline" size="sm" class="w-full font-mono text-xs" onclick={() => resetNewsSolidToGradient()}>
-									Default gradient
-								</Button>
-							</PopoverContent>
-						</Popover>
-					{/if}
-
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={undoActive}
-						disabled={!canUndoActive()}
-						class="mt-2 rounded-2xl"
-						title={canUndoActive() ? 'Undo last change' : 'Nothing to undo'}
-						aria-label="Undo last change"
-					>
-						<Undo2 size={16} />
-					</Button>
-
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={resetActiveTemplateContent}
-						class="rounded-2xl"
-						title="Reset this template"
-						aria-label="Reset this template"
-					>
-						<RefreshCw size={16} />
-					</Button>
-				</div>
 		</div>
 		<!-- Slide filmstrip: drag to reorder -->
 		{#if slideCount > 1}
@@ -4415,8 +4281,8 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 		100% { background-position: 100% 0%; }
 	}
 	:root:not([data-theme="dark"]) .studio-left {
-		background: var(--app-surface-2) !important;
-		border-right-color: var(--app-border) !important;
+		/* background: var(--app-surface-2) !important; */
+		/* border-right-color: var(--app-border) !important; */
 	}
 	:root:not([data-theme="dark"]) .studio-right {
 		background: var(--app-bg) !important;

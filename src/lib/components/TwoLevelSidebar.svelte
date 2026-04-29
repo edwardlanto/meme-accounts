@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { Search, Settings, User, ChevronDown, Sun, Moon, LogOut, Layers } from 'lucide-svelte';
 
 	type NavGroupItem = { href: string; label: string; icon: any };
@@ -9,6 +10,7 @@
 		navGroups: NavGroup[];
 		currentPath?: string;
 		theme?: 'light' | 'dark';
+		railOnly?: boolean;
 		onThemeToggle?: () => void;
 		onSignOut?: () => void;
 	};
@@ -17,6 +19,7 @@
 		navGroups,
 		currentPath = '',
 		theme = 'light',
+		railOnly = false,
 		onThemeToggle,
 		onSignOut,
 	}: Props = $props();
@@ -29,6 +32,7 @@
 	const softSpringEasing = 'cubic-bezier(0.25, 1.1, 0.4, 1)';
 
 	function toggleCollapse() {
+		if (railOnly) return;
 		isCollapsed = !isCollapsed;
 		if (isCollapsed) expandedItems = new Set();
 	}
@@ -64,8 +68,26 @@
 			id: g.id,
 			label: g.label,
 			icon: g.items?.[0]?.icon ?? Layers,
+			href: g.items?.[0]?.href ?? '/dashboard',
 		}));
 	});
+
+	// Keep rail highlight in sync with the current route.
+	$effect(() => {
+		const path = String(currentPath ?? '');
+		if (!path) return;
+		const match =
+			groups.find((g) => g.items?.some((it) => path === it.href || (it.href !== '/dashboard' && path.startsWith(it.href)))) ??
+			groups[0];
+		if (match?.id && match.id !== activeGroup) activeGroup = match.id;
+	});
+
+	function onRailClick(id: NavGroupId) {
+		activeGroup = id;
+		if (!railOnly) return;
+		const target = groups.find((g) => g.id === id)?.items?.[0]?.href;
+		if (target) goto(target);
+	}
 </script>
 
 <div class="flex h-screen">
@@ -88,7 +110,7 @@
 							: 'hover:bg-neutral-800 text-neutral-400 hover:text-neutral-300'
 					}`}
 					style={`transition-timing-function:${softSpringEasing}`}
-					onclick={() => (activeGroup = item.id)}
+					onclick={() => onRailClick(item.id)}
 					aria-label={item.label}
 					title={item.label}
 				>
@@ -107,7 +129,7 @@
 					: 'hover:bg-neutral-800 text-neutral-400 hover:text-neutral-300'
 			}`}
 			style={`transition-timing-function:${softSpringEasing}`}
-			onclick={() => (window.location.href = '/dashboard/settings')}
+			onclick={() => goto('/dashboard/settings')}
 			aria-label="Settings"
 			title="Settings"
 		>
@@ -119,13 +141,14 @@
 		</div>
 	</aside>
 
-	<!-- Right detail panel -->
-	<aside
-		class={`bg-black flex flex-col gap-4 items-start transition-all duration-500 h-screen ${
-			isCollapsed ? 'w-16 min-w-16 px-0 justify-center' : 'w-80 p-4'
-		}`}
-		style={`transition-timing-function:${softSpringEasing}`}
-	>
+	{#if !railOnly}
+		<!-- Right detail panel -->
+		<aside
+			class={`bg-black flex flex-col gap-4 items-start transition-all duration-500 h-screen ${
+				isCollapsed ? 'w-16 min-w-16 px-0 justify-center' : 'w-80 p-4'
+			}`}
+			style={`transition-timing-function:${softSpringEasing}`}
+		>
 		{#if !isCollapsed}
 			<div class="w-full">
 				<div class="flex items-center p-1 w-full">
@@ -241,15 +264,31 @@
 							{@const Icon = item.icon}
 							<a
 								href={item.href}
-								class={`rounded-lg cursor-pointer transition-all duration-500 flex items-center relative ${
-									isActive ? 'bg-neutral-800' : 'hover:bg-neutral-800'
-								} ${isCollapsed ? 'w-10 min-w-10 h-10 justify-center p-4' : 'w-full h-10 px-4 py-2'}`}
+								class={`group rounded-lg cursor-pointer transition-all duration-500 flex items-center relative border ${
+									isActive
+										? 'bg-neutral-800 border-neutral-700 text-neutral-50'
+										: 'bg-neutral-950 border-neutral-800 text-neutral-300 hover:bg-neutral-900 hover:border-neutral-700'
+								} focus:outline-none focus:ring-2 focus:ring-neutral-600/40 focus:ring-offset-0 ${
+									isCollapsed ? 'w-10 min-w-10 h-10 justify-center p-4' : 'w-full h-10 px-4 py-2'
+								}`}
 								style={`transition-timing-function:${softSpringEasing}`}
 								title={isCollapsed ? item.label : undefined}
 							>
-								<div class="flex items-center justify-center shrink-0">{#if Icon}<Icon size={16} class="text-neutral-50" />{/if}</div>
-								<div class={`flex-1 relative transition-opacity duration-500 overflow-hidden ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100 ml-3'}`} style={`transition-timing-function:${softSpringEasing}`}>
-									<div class="text-[14px] text-neutral-50 leading-[20px] truncate">{item.label}</div>
+								<div class="flex items-center justify-center shrink-0">
+									{#if Icon}
+										<Icon
+											size={16}
+											class={isActive ? 'text-neutral-50' : 'text-neutral-300 group-hover:text-neutral-100'}
+										/>
+									{/if}
+								</div>
+								<div
+									class={`flex-1 relative transition-opacity duration-500 overflow-hidden ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100 ml-3'}`}
+									style={`transition-timing-function:${softSpringEasing}`}
+								>
+									<div class={`text-[14px] leading-[20px] truncate ${isActive ? 'text-neutral-50' : 'text-neutral-200'}`}>
+										{item.label}
+									</div>
 								</div>
 							</a>
 						{/each}
@@ -290,5 +329,6 @@
 			</div>
 		{/if}
 	</aside>
+	{/if}
 </div>
 

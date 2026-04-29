@@ -70,9 +70,9 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 	},
 	{
 		id: 'brand',
-		name: 'Slideshows',
+		name: 'Brand Carousel',
 		description: 'Upload brand images → AI extracts style → 7-slide branded carousel',
-		href: '/dashboard/slideshows',
+		href: '/dashboard/brand-carousel',
 		previewBg: '',
 		previewText: '',
 		previewSource: '',

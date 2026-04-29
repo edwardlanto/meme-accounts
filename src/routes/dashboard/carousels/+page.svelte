@@ -133,7 +133,6 @@
 	<div class="page-header">
 		<div>
 			<h1 class="page-title">Carousels</h1>
-			<p class="page-sub">Your carousel library — drafts, published, and scheduled</p>
 		</div>
 		<button onclick={createNew} disabled={creating}
 			class="create-btn">
