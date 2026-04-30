@@ -103,6 +103,8 @@ import JSZip from 'jszip';
 	// Multi-slide state
 	let slides = $state<string[]>(['YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY']);
 	let activeSlide = $state(0);
+	/** When set, main canvas renders this slide for PNG capture without changing `activeSlide` (no UI “slide show”). */
+	let canvasRasterSlide = $state<number | null>(null);
 	let articleSnippet = $state(''); // full article text for variants call
 
 	// ── Per-slide template selection ──────────────────────────────────────
@@ -1515,6 +1517,30 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const CANVAS_W = $derived(format.w);
 	const CANVAS_H = $derived(format.h);
 
+	const paintSlide = $derived(canvasRasterSlide ?? activeSlide);
+	const previewTemplate = $derived(slideTemplates[paintSlide] ?? 'news');
+	const canvasInteractive = $derived(canvasRasterSlide === null);
+
+	const canvasOverlayText = $derived(slides[paintSlide] ?? '');
+	const canvasBackgroundImage = $derived((bgImagesByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
+	const canvasBackgroundVideo = $derived((bgVideosByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
+	const canvasVideoTrimStart = $derived(videoTrimStartSecBySlide[paintSlide] ?? 0);
+	const canvasVideoTrimEnd = $derived(videoTrimEndSecBySlide[paintSlide] ?? 0);
+	const canvasVideoDuration = $derived(videoDurationBySlide[paintSlide] ?? 0);
+	const canvasVideoMuted = $derived(videoMutedBySlide[paintSlide] ?? true);
+	const canvasVideoVolume = $derived(videoVolumeBySlide[paintSlide] ?? 0.8);
+	const canvasCutout = $derived(subjectCutouts[paintSlide] ?? '');
+	const canvasShowCutout = $derived(showCutout[paintSlide] ?? false);
+	const canvasCircleImg = $derived(circleImages[paintSlide] ?? '');
+	const canvasCircle2Img = $derived(circle2Images[paintSlide] ?? '');
+	const canvasShowCircle2 = $derived(showCircle2BySlide[paintSlide] ?? false);
+	const canvasOverlays = $derived((slideOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []);
+	const canvasTextOverlays = $derived((slideTextOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []);
+	const canvasStyleMap = $derived((stylesByTemplateBySlide[previewTemplate] ?? [])[paintSlide] ?? {});
+	const canvasHeadlineStyle = $derived(canvasStyleMap.headline ?? {});
+	const canvasSourceStyle = $derived(canvasStyleMap.source ?? {});
+	const canvasTweetStyles = $derived(tweetStylesBySlide[paintSlide] ?? {});
+
 	// ── Draft persistence (Supabase) ──────────────────────────────────────
 	type DraftRow = { id: string; kind: string; state: any; updated_at: string };
 	const DRAFT_KIND = 'news_studio';
@@ -2839,13 +2865,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (!exportRef) return;
 		if (!slides.length) return;
 		exporting = true;
-		const prev = activeSlide;
 		try {
 			const zip = new JSZip();
 			const folder = zip.folder(`slides-${formatId}`) ?? zip;
 
 			for (let i = 0; i < slides.length; i++) {
-				activeSlide = i;
+				canvasRasterSlide = i;
 				await tick();
 				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
@@ -2877,7 +2902,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			console.error('Export zip failed:', e);
 			alert('Export failed: ' + (e?.message ?? String(e)));
 		} finally {
-			activeSlide = prev;
+			canvasRasterSlide = null;
 			exporting = false;
 		}
 	}
@@ -2886,11 +2911,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (!exportRef) return 0;
 		if (!slides.length) return 0;
 		exportingAll = true;
-		const prev = activeSlide;
 		try {
 			const out: string[] = [];
 			for (let i = 0; i < slides.length; i++) {
-				activeSlide = i;
+				canvasRasterSlide = i;
 				// Let the DOM update before rasterizing (Svelte + next paint)
 				await tick();
 				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
@@ -2928,7 +2952,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			);
 			return 0;
 		} finally {
-			activeSlide = prev;
+			canvasRasterSlide = null;
 			exportingAll = false;
 		}
 	}
@@ -2944,8 +2968,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	let filmstripPreviewUrls = $state<string[]>([]);
 	let filmstripPreviewInFlight = $state(false);
 
+	/** Content fingerprint only — omit format/canvas size so Feed/Vertical/Wide toggles don’t re-raster filmstrip thumbs. */
 	const filmstripThumbDeps = $derived.by(() => {
-		let s = `${formatId}|${slides.length}|${uiTheme}|${activeTemplate}`;
+		let s = `${slides.length}|${uiTheme}`;
 		for (let i = 0; i < slides.length; i++) {
 			const t = slideTemplates[i] ?? 'news';
 			const imgLen = ((bgImagesByTemplate[t] ?? [])[i] ?? '').length;
@@ -2962,12 +2987,16 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	async function refreshFilmstripPreviews() {
 		if (!exportRef || studioBooting || slides.length === 0) return;
 		if (exporting || exportingAll || filmstripPreviewInFlight) return;
+		// Filmstrip UI only exists for 2+ slides.
+		if (slides.length < 2) {
+			filmstripPreviewUrls = [];
+			return;
+		}
 		filmstripPreviewInFlight = true;
-		const prevSlide = activeSlide;
 		const urls: string[] = [];
 		try {
 			for (let i = 0; i < slides.length; i++) {
-				activeSlide = i;
+				canvasRasterSlide = i;
 				await tick();
 				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 				const node = exportRef;
@@ -2996,7 +3025,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			}
 			filmstripPreviewUrls = urls;
 		} finally {
-			activeSlide = prevSlide;
+			canvasRasterSlide = null;
 			filmstripPreviewInFlight = false;
 			await tick();
 		}
@@ -3696,7 +3725,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<!-- Circle badge controls removed from sidebar (managed on-canvas) -->
 
 			<!-- Export -->
-			<Button
+			<!-- <Button
 				onclick={exportPng}
 				disabled={exporting || exportingAll}
 				class="h-auto w-full gap-2 rounded-xl bg-[#E8FF48] py-3 font-body text-sm font-semibold text-[#0a0a0a] hover:bg-[#f0ff70] hover:shadow-[0_6px_24px_rgba(232,255,72,0.25)]"
@@ -3706,7 +3735,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				{:else}
 					<Download size={13} /> Export {CANVAS_W}×{CANVAS_H} PNG
 				{/if}
-			</Button>
+			</Button> -->
 
 			<!-- Posting now automatically exports slides; no separate export button -->
 
@@ -3782,7 +3811,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</div>
 				</div>
 			{/if}
-			{#if (generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide]}
+			{#if (generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide]}
 				<!-- Image loading overlay -->
 				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
 					<Loader size={20} class="animate-spin text-violet-400" />
@@ -3794,7 +3823,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<p class="text-xs font-mono" style="color: var(--app-text-muted);">Writing slide {activeSlide + 1}…</p>
 				</div>
 			{/if}
-			{#if activeTemplate === 'news'}
+			{#if previewTemplate === 'news'}
 				<NewsTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
@@ -3814,68 +3843,71 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					bind:textPanelOffsetY
 					bind:shadowHeight
 					bind:shadowStrength
-					backgroundImage={backgroundImage}
-					backgroundVideo={backgroundVideo}
-					solidBackgroundColor={newsSolidBgBySlide[activeSlide] ?? ''}
-					videoTrimStartSec={activeVideoTrimStartSec}
-					videoTrimEndSec={activeVideoTrimEndSec || activeVideoDurationSec || 0}
+					backgroundImage={canvasBackgroundImage}
+					backgroundVideo={canvasBackgroundVideo}
+					solidBackgroundColor={newsSolidBgBySlide[paintSlide] ?? ''}
+					videoTrimStartSec={canvasVideoTrimStart}
+					videoTrimEndSec={canvasVideoTrimEnd || canvasVideoDuration || 0}
 					videoSeekSec={videoSeekSec}
-					videoMuted={activeVideoMuted}
-					videoVolume={activeVideoVolume}
+					videoMuted={canvasVideoMuted}
+					videoVolume={canvasVideoVolume}
 					onVideoDuration={(d) => {
 							const dur = Number(d);
 							if (!Number.isFinite(dur) || dur <= 0) return;
 							videoDurationBySlide = Array.from(
 								{ length: slides.length },
-								(_, i) => (i === activeSlide ? dur : (Number.isFinite(videoDurationBySlide[i]) ? Math.max(0, videoDurationBySlide[i]) : 0))
+								(_, i) => (i === paintSlide ? dur : (Number.isFinite(videoDurationBySlide[i]) ? Math.max(0, videoDurationBySlide[i]) : 0))
 							);
 							// If end is unset, default it to full duration.
-							const curEnd = videoTrimEndSecBySlide[activeSlide] ?? 0;
+							const curEnd = videoTrimEndSecBySlide[paintSlide] ?? 0;
 							if (!curEnd) {
 								videoTrimEndSecBySlide = Array.from(
 									{ length: slides.length },
-									(_, i) => (i === activeSlide ? dur : (Number.isFinite(videoTrimEndSecBySlide[i]) ? Math.max(0, videoTrimEndSecBySlide[i]) : 0))
+									(_, i) => (i === paintSlide ? dur : (Number.isFinite(videoTrimEndSecBySlide[i]) ? Math.max(0, videoTrimEndSecBySlide[i]) : 0))
 								);
 							}
 						}}
-					subjectCutout={activeCutout}
-showSubjectCutout={activeShowCutout}
+					subjectCutout={canvasCutout}
+showSubjectCutout={canvasShowCutout}
 					allowCircle={showCircle}
 					allowCircle2={true}
-					circleImage={showCircle ? activeCircleImage : ''}
-					showCircle2={activeShowCircle2}
-					circle2Image={activeShowCircle2 ? activeCircle2Image : ''}
-					text={overlayText}
+					circleImage={showCircle ? canvasCircleImg : ''}
+					showCircle2={canvasShowCircle2}
+					circle2Image={canvasShowCircle2 ? canvasCircle2Img : ''}
+					text={canvasOverlayText}
 					source={source}
 					highlightColor={highlightColor}
 					textColor={textColor}
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
-					overlays={activeOverlays}
+					interactive={canvasInteractive}
+					overlays={canvasOverlays}
 					textOverlays={[]}
-					headlineStyle={activeHeadlineStyle}
-					sourceStyle={activeSourceStyle}
+					headlineStyle={canvasHeadlineStyle}
+					sourceStyle={canvasSourceStyle}
 					selectedText={selectedText}
-					onTextChange={(t) => setActiveSlideText(t)}
-					onCircleMove={(x, y) => { circleX = x; circleY = y; }}
+					onTextChange={(t) => { if (!canvasInteractive) return; setActiveSlideText(t); }}
+					onCircleMove={(x, y) => { if (!canvasInteractive) return; circleX = x; circleY = y; }}
 					onCircleImageChange={(src) => {
-						circleImages = circleImages.map((v, i) => (i === activeSlide ? src : v));
+						if (!canvasInteractive) return;
+						circleImages = circleImages.map((v, i) => (i === paintSlide ? src : v));
 						if (String(src ?? '').trim()) showCircle = true;
 					}}
 					onCircleRemove={() => {
-						circleImages = circleImages.map((v, i) => (i === activeSlide ? '' : v));
+						if (!canvasInteractive) return;
+						circleImages = circleImages.map((v, i) => (i === paintSlide ? '' : v));
 						showCircle = false;
 					}}
-					onCircleAIClick={() => generateCircleFromPrompt(1)}
-					onCircle2Move={(x, y) => { circle2X = x; circle2Y = y; }}
+					onCircleAIClick={() => { if (!canvasInteractive) return; void generateCircleFromPrompt(1); }}
+					onCircle2Move={(x, y) => { if (!canvasInteractive) return; circle2X = x; circle2Y = y; }}
 					onCircle2ImageChange={(src) => {
-						circle2Images = circle2Images.map((v, i) => (i === activeSlide ? src : v));
-						showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === activeSlide ? !!src : v));
+						if (!canvasInteractive) return;
+						circle2Images = circle2Images.map((v, i) => (i === paintSlide ? src : v));
+						showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === paintSlide ? !!src : v));
 					}}
-					onCircle2AIClick={() => generateCircleFromPrompt(2)}
-					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					onCircle2AIClick={() => { if (!canvasInteractive) return; void generateCircleFromPrompt(2); }}
+					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -3884,33 +3916,33 @@ showSubjectCutout={activeShowCutout}
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
+					interactive={canvasInteractive}
 					highlightColor={highlightColor}
-					textOverlays={activeTextOverlays}
+					textOverlays={canvasTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
-			{:else if activeTemplate === 'article'}
+			{:else if previewTemplate === 'article'}
 				<ArticleTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
-					text={articleTextBySlide[activeSlide] ?? ''}
-					image={backgroundImage}
-					swipeText={articleSwipeTextBySlide[activeSlide] ?? '«« Swipe'}
-					onSwipeTextChange={(v) => { pushUndo('article', activeSlide); articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					textOffsets={offsetsForTemplate(activeSlide, 'article')}
-					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'article', String(kind), next)}
+					text={articleTextBySlide[paintSlide] ?? ''}
+					image={canvasBackgroundImage}
+					swipeText={articleSwipeTextBySlide[paintSlide] ?? '«« Swipe'}
+					onSwipeTextChange={(v) => { if (!canvasInteractive) return; pushUndo('article', paintSlide); articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					textOffsets={offsetsForTemplate(paintSlide, 'article')}
+					onTextOffsetChange={(kind, next) => { if (!canvasInteractive) return; setTemplateOffset(paintSlide, 'article', String(kind), next); }}
 					scale={previewScale}
-					interactive={true}
-					headlineStyle={activeStyleMap.articleBody ?? activeHeadlineStyle}
+					interactive={canvasInteractive}
+					headlineStyle={canvasStyleMap.articleBody ?? canvasHeadlineStyle}
 					articleStyles={{
-						articleBody: activeStyleMap.articleBody ?? {},
-						articleSwipeText: activeStyleMap.articleSwipeText ?? {},
+						articleBody: canvasStyleMap.articleBody ?? {},
+						articleSwipeText: canvasStyleMap.articleSwipeText ?? {},
 					}}
 					selectedText={selectedText}
-					onTextChange={(t) => { pushUndo('article', activeSlide); articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? t : x); }}
+					onTextChange={(t) => { if (!canvasInteractive) return; pushUndo('article', paintSlide); articleTextBySlide = articleTextBySlide.map((x, i) => i === paintSlide ? t : x); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -3918,67 +3950,67 @@ showSubjectCutout={activeShowCutout}
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
-					overlays={activeOverlays}
-					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					interactive={canvasInteractive}
+					overlays={canvasOverlays}
+					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
+					interactive={canvasInteractive}
 					highlightColor={highlightColor}
-					textOverlays={activeTextOverlays}
+					textOverlays={canvasTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
-			{:else if activeTemplate === 'tweet'}
+			{:else if previewTemplate === 'tweet'}
 				<!-- Tweet: minimal integration for now (top tweet text = slide text). -->
 				<TweetTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
-					topText={tweetTopTextBySlide[activeSlide] ?? ''}
-					onTopTextChange={(v) => { pushUndo('tweet', activeSlide); tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					topText={tweetTopTextBySlide[paintSlide] ?? ''}
+					onTopTextChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === paintSlide ? v : x); }}
 					/* Editable per-slide tweet fields */
-					topName={tweetTopNameBySlide[activeSlide] ?? 'Chef 👨‍🍳'}
-					topHandle={tweetTopHandleBySlide[activeSlide] ?? '@chefsevenn'}
-					bottomName={tweetBottomNameBySlide[activeSlide] ?? 'Mo Mohler'}
-					bottomHandle={tweetBottomHandleBySlide[activeSlide] ?? '@MoMohler'}
-					onTopNameChange={(v) => { pushUndo('tweet', activeSlide); tweetTopNameBySlide = tweetTopNameBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					onTopHandleChange={(v) => { pushUndo('tweet', activeSlide); tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					onBottomNameChange={(v) => { pushUndo('tweet', activeSlide); tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					onBottomHandleChange={(v) => { pushUndo('tweet', activeSlide); tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					bottomText={tweetBottomTextBySlide[activeSlide] ?? ''}
-					onBottomTextChange={(v) => { pushUndo('tweet', activeSlide); tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					replyCount={tweetReplyCountBySlide[activeSlide] ?? '4.2K'}
-					repostCount={tweetRepostCountBySlide[activeSlide] ?? '12.8K'}
-					likeCount={tweetLikeCountBySlide[activeSlide] ?? '89.4K'}
-					onReplyCountChange={(v) => { pushUndo('tweet', activeSlide); tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					onRepostCountChange={(v) => { pushUndo('tweet', activeSlide); tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					onLikeCountChange={(v) => { pushUndo('tweet', activeSlide); tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === activeSlide ? v : x); }}
-topImage={(bgImagesByTemplate.tweet ?? [])[activeSlide] || '/templates/tweet/demo-bg.jpg'}
-onTopImageChange={(v) => { pushUndo('tweet', activeSlide); setSlideImage(activeSlide, v, 'tweet'); }}
-topVideo={(bgVideosByTemplate.tweet ?? [])[activeSlide] ?? ''}
-onTopVideoChange={(v) => { pushUndo('tweet', activeSlide); setSlideVideo(activeSlide, v, 'tweet'); }}
-topImageHeight={tweetTopImageHeightBySlide[activeSlide] ?? 360}
-onTopImageHeightChange={(v) => { pushUndo('tweet', activeSlide); tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, i) => i === activeSlide ? v : x); }}
-topImageWidth={tweetTopImageWidthBySlide[activeSlide] ?? 920}
-onTopImageWidthChange={(v) => { pushUndo('tweet', activeSlide); tweetTopImageWidthBySlide = tweetTopImageWidthBySlide.map((x, i) => i === activeSlide ? v : x); }}
-topImageZoom={tweetTopImageZoomBySlide[activeSlide] ?? 1}
-onTopImageZoomChange={(v) => { pushUndo('tweet', activeSlide); tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, i) => i === activeSlide ? v : x); }}
-topImagePanX={tweetTopImagePanXBySlide[activeSlide] ?? 50}
-topImagePanY={tweetTopImagePanYBySlide[activeSlide] ?? 50}
-onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePanXBySlide = tweetTopImagePanXBySlide.map((v, i) => i === activeSlide ? x : v); tweetTopImagePanYBySlide = tweetTopImagePanYBySlide.map((v, i) => i === activeSlide ? y : v); }}
-					textOffsets={offsetsForTemplate(activeSlide, 'tweet')}
-					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'tweet', String(kind), next)}
+					topName={tweetTopNameBySlide[paintSlide] ?? 'Chef 👨‍🍳'}
+					topHandle={tweetTopHandleBySlide[paintSlide] ?? '@chefsevenn'}
+					bottomName={tweetBottomNameBySlide[paintSlide] ?? 'Mo Mohler'}
+					bottomHandle={tweetBottomHandleBySlide[paintSlide] ?? '@MoMohler'}
+					onTopNameChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopNameBySlide = tweetTopNameBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					onTopHandleChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					onBottomNameChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					onBottomHandleChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					bottomText={tweetBottomTextBySlide[paintSlide] ?? ''}
+					onBottomTextChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					replyCount={tweetReplyCountBySlide[paintSlide] ?? '4.2K'}
+					repostCount={tweetRepostCountBySlide[paintSlide] ?? '12.8K'}
+					likeCount={tweetLikeCountBySlide[paintSlide] ?? '89.4K'}
+					onReplyCountChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					onRepostCountChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					onLikeCountChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === paintSlide ? v : x); }}
+topImage={(bgImagesByTemplate.tweet ?? [])[paintSlide] || '/templates/tweet/demo-bg.jpg'}
+onTopImageChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideImage(paintSlide, v, 'tweet'); }}
+topVideo={(bgVideosByTemplate.tweet ?? [])[paintSlide] ?? ''}
+onTopVideoChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideVideo(paintSlide, v, 'tweet'); }}
+topImageHeight={tweetTopImageHeightBySlide[paintSlide] ?? 360}
+onTopImageHeightChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, i) => i === paintSlide ? v : x); }}
+topImageWidth={tweetTopImageWidthBySlide[paintSlide] ?? 920}
+onTopImageWidthChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopImageWidthBySlide = tweetTopImageWidthBySlide.map((x, i) => i === paintSlide ? v : x); }}
+topImageZoom={tweetTopImageZoomBySlide[paintSlide] ?? 1}
+onTopImageZoomChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, i) => i === paintSlide ? v : x); }}
+topImagePanX={tweetTopImagePanXBySlide[paintSlide] ?? 50}
+topImagePanY={tweetTopImagePanYBySlide[paintSlide] ?? 50}
+onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopImagePanXBySlide = tweetTopImagePanXBySlide.map((v, i) => i === paintSlide ? x : v); tweetTopImagePanYBySlide = tweetTopImagePanYBySlide.map((v, i) => i === paintSlide ? y : v); }}
+					textOffsets={offsetsForTemplate(paintSlide, 'tweet')}
+					onTextOffsetChange={(kind, next) => { if (!canvasInteractive) return; setTemplateOffset(paintSlide, 'tweet', String(kind), next); }}
 					scale={previewScale}
-					interactive={true}
-					tweetStyles={activeTweetStyles}
+					interactive={canvasInteractive}
+					tweetStyles={canvasTweetStyles}
 					{...({
-						headlineStyle: activeHeadlineStyle,
+						headlineStyle: canvasHeadlineStyle,
 						selectedText,
 						onTextSelect,
 						onHeadlineRangeSelect,
@@ -3989,45 +4021,45 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
-					overlays={activeOverlays}
-					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					interactive={canvasInteractive}
+					overlays={canvasOverlays}
+					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
+					interactive={canvasInteractive}
 					highlightColor={highlightColor}
-					textOverlays={activeTextOverlays}
+					textOverlays={canvasTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
-			{:else if activeTemplate === 'textCarousel'}
+			{:else if previewTemplate === 'textCarousel'}
 				<TextCarouselTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
-					text={textCarouselTextBySlide[activeSlide] ?? ''}
-					name={textCarouselNameBySlide[activeSlide] ?? 'Captains of industry'}
-					handle={textCarouselHandleBySlide[activeSlide] ?? '@captainsofindustryy'}
-					onNameChange={(v) => { pushUndo('textCarousel', activeSlide); textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) => i === activeSlide ? v : x); }}
-					onHandleChange={(v) => { pushUndo('textCarousel', activeSlide); textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === activeSlide ? v : x); }}
+					text={textCarouselTextBySlide[paintSlide] ?? ''}
+					name={textCarouselNameBySlide[paintSlide] ?? 'Captains of industry'}
+					handle={textCarouselHandleBySlide[paintSlide] ?? '@captainsofindustryy'}
+					onNameChange={(v) => { if (!canvasInteractive) return; pushUndo('textCarousel', paintSlide); textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					onHandleChange={(v) => { if (!canvasInteractive) return; pushUndo('textCarousel', paintSlide); textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === paintSlide ? v : x); }}
 					scale={previewScale}
-					interactive={true}
+					interactive={canvasInteractive}
 					showToolbar={false}
-					textOffsets={offsetsForTemplate(activeSlide, 'textCarousel')}
-					onTextOffsetChange={(kind, next) => setTemplateOffset(activeSlide, 'textCarousel', String(kind), next)}
-					headlineStyle={activeStyleMap.textCarouselBody ?? activeHeadlineStyle}
+					textOffsets={offsetsForTemplate(paintSlide, 'textCarousel')}
+					onTextOffsetChange={(kind, next) => { if (!canvasInteractive) return; setTemplateOffset(paintSlide, 'textCarousel', String(kind), next); }}
+					headlineStyle={canvasStyleMap.textCarouselBody ?? canvasHeadlineStyle}
 					textCarouselStyles={{
-						textCarouselName: activeStyleMap.textCarouselName ?? {},
-						textCarouselHandle: activeStyleMap.textCarouselHandle ?? {},
-						textCarouselBody: activeStyleMap.textCarouselBody ?? {},
+						textCarouselName: canvasStyleMap.textCarouselName ?? {},
+						textCarouselHandle: canvasStyleMap.textCarouselHandle ?? {},
+						textCarouselBody: canvasStyleMap.textCarouselBody ?? {},
 					}}
 					selectedText={selectedText}
-					onTextChange={(t) => { pushUndo('textCarousel', activeSlide); textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? t : x); }}
+					onTextChange={(t) => { if (!canvasInteractive) return; pushUndo('textCarousel', paintSlide); textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === paintSlide ? t : x); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -4035,50 +4067,50 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
-					overlays={activeOverlays}
-					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					interactive={canvasInteractive}
+					overlays={canvasOverlays}
+					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
+					interactive={canvasInteractive}
 					highlightColor={highlightColor}
-					textOverlays={activeTextOverlays}
+					textOverlays={canvasTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
-			{:else if activeTemplate === 'imageQuote'}
+			{:else if previewTemplate === 'imageQuote'}
 				<!-- Image Quote template removed from public UI. Keep a safe fallback. -->
 				<NewsTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
-					backgroundImage={backgroundImage}
-					backgroundVideo={backgroundVideo}
-					videoTrimStartSec={activeVideoTrimStartSec}
-					videoTrimEndSec={activeVideoTrimEndSec || activeVideoDurationSec || 0}
+					backgroundImage={canvasBackgroundImage}
+					backgroundVideo={canvasBackgroundVideo}
+					videoTrimStartSec={canvasVideoTrimStart}
+					videoTrimEndSec={canvasVideoTrimEnd || canvasVideoDuration || 0}
 					videoSeekSec={videoSeekSec}
-					videoMuted={activeVideoMuted}
-					videoVolume={activeVideoVolume}
-					text={overlayText}
+					videoMuted={canvasVideoMuted}
+					videoVolume={canvasVideoVolume}
+					text={canvasOverlayText}
 					source={source}
 					highlightColor={highlightColor}
 					textColor={textColor}
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
-					overlays={activeOverlays}
+					interactive={canvasInteractive}
+					overlays={canvasOverlays}
 					textOverlays={[]}
-					headlineStyle={activeHeadlineStyle}
-					sourceStyle={activeSourceStyle}
+					headlineStyle={canvasHeadlineStyle}
+					sourceStyle={canvasSourceStyle}
 					selectedText={selectedText}
-					onTextChange={(t) => setActiveSlideText(t)}
-					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+					onTextChange={(t) => { if (!canvasInteractive) return; setActiveSlideText(t); }}
+					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
@@ -4087,12 +4119,12 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
-					interactive={true}
+					interactive={canvasInteractive}
 					highlightColor={highlightColor}
-					textOverlays={activeTextOverlays}
+					textOverlays={canvasTextOverlays}
 					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
 					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o: any) => setSlideTextOverlays(activeSlide, o)}
+					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
 			{/if}
