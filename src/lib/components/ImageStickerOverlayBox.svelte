@@ -1,0 +1,263 @@
+<script lang="ts">
+	import type { Overlay } from '$lib/types';
+	import { removeBackground } from '$lib/backgroundRemoval';
+	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
+	import { Button } from '$lib/components/ui/button';
+	import { Pencil, Trash2, LoaderCircle, Eraser } from 'lucide-svelte';
+
+	interface Props {
+		overlay: Overlay;
+		overlays: Overlay[];
+		w: number;
+		h: number;
+		scale?: number;
+		interactive?: boolean;
+		onOverlaysChange?: (next: Overlay[]) => void;
+	}
+
+	let {
+		overlay,
+		overlays,
+		w,
+		h,
+		scale = 1,
+		interactive = true,
+		onOverlaysChange,
+	}: Props = $props();
+
+	const W = $derived(Math.max(1, Number(w) || 1080));
+	const H = $derived(Math.max(1, Number(h) || 1350));
+
+	let popoverOpen = $state(false);
+	let active = $state(false);
+	let overlayAction = $state<'drag' | 'resize' | null>(null);
+	let hovered = $state(false);
+	let ovLastMx = 0;
+	let ovLastMy = 0;
+	let removingBg = $state(false);
+	let fileEl = $state<HTMLInputElement | null>(null);
+
+	const showChrome = $derived(popoverOpen || active || hovered);
+
+	function apply(next: Overlay[]) {
+		onOverlaysChange?.(next);
+	}
+
+	function patch(p: Partial<Overlay>) {
+		apply(overlays.map((o) => (o.id === overlay.id ? { ...o, ...p } : o)));
+	}
+
+	function overlayDragDown(e: PointerEvent) {
+		if (!interactive) return;
+		active = true;
+		overlayAction = 'drag';
+		ovLastMx = e.clientX;
+		ovLastMy = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function overlayResizeDown(e: PointerEvent) {
+		if (!interactive) return;
+		active = true;
+		overlayAction = 'resize';
+		ovLastMx = e.clientX;
+		ovLastMy = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function overlayPointerMove(e: PointerEvent) {
+		if (!active) return;
+		const dx = (e.clientX - ovLastMx) / scale;
+		const dy = (e.clientY - ovLastMy) / scale;
+		ovLastMx = e.clientX;
+		ovLastMy = e.clientY;
+
+		const ov = overlays.find((o) => o.id === overlay.id);
+		if (!ov) return;
+
+		if (overlayAction === 'drag') {
+			const nx = Math.max(0, Math.min(W - ov.w, ov.x + dx));
+			const ny = Math.max(0, Math.min(H - ov.h, ov.y + dy));
+			apply(overlays.map((o) => (o.id === overlay.id ? { ...o, x: nx, y: ny } : o)));
+		} else if (overlayAction === 'resize') {
+			const aspect = ov.w / ov.h;
+			const newW = Math.max(60, Math.min(W - ov.x, ov.w + dx));
+			const newH = newW / aspect;
+			apply(overlays.map((o) => (o.id === overlay.id ? { ...o, w: newW, h: newH } : o)));
+		}
+	}
+
+	function overlayPointerUp() {
+		active = false;
+		overlayAction = null;
+	}
+
+	async function onRemoveBg() {
+		if (removingBg) return;
+		removingBg = true;
+		try {
+			const ov = overlays.find((o) => o.id === overlay.id);
+			if (!ov?.src) return;
+			const out = await removeBackground(ov.src);
+			patch({ src: out });
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : 'Background removal failed';
+			alert(msg);
+		} finally {
+			removingBg = false;
+		}
+	}
+
+	function onDelete(e: MouseEvent) {
+		e.stopPropagation();
+		apply(overlays.filter((o) => o.id !== overlay.id));
+		popoverOpen = false;
+	}
+
+	function openEdit() {
+		popoverOpen = false;
+		fileEl?.click();
+	}
+
+	function onStickerFile(e: Event) {
+		const inp = e.target as HTMLInputElement;
+		const f = inp.files?.[0];
+		inp.value = '';
+		if (!f?.type.startsWith('image/')) return;
+		const reader = new FileReader();
+		reader.onload = () => patch({ src: reader.result as string });
+		reader.readAsDataURL(f);
+	}
+</script>
+
+<input
+	bind:this={fileEl}
+	type="file"
+	accept="image/*"
+	class="hidden"
+	aria-hidden="true"
+	onchange={onStickerFile}
+/>
+
+{#snippet stickerTrigger({ props }: { props: Record<string, unknown> })}
+	<div
+		{...props}
+		style="
+			position: absolute;
+			left: {overlay.x}px; top: {overlay.y}px;
+			width: {overlay.w}px; height: {overlay.h}px;
+			z-index: 15;
+			pointer-events: auto;
+			cursor: {active && overlayAction === 'drag' ? 'grabbing' : interactive ? 'grab' : 'default'};
+			touch-action: none;
+			overflow: visible;
+		"
+		onpointerdown={overlayDragDown}
+		onpointermove={overlayPointerMove}
+		onpointerup={overlayPointerUp}
+		onpointercancel={overlayPointerUp}
+		onmouseenter={() => (hovered = true)}
+		onmouseleave={() => {
+			if (!active) hovered = false;
+		}}
+		role="presentation"
+	>
+		<img
+			src={overlay.src}
+			alt=""
+			style="
+				width: 100%; height: 100%;
+				object-fit: contain;
+				pointer-events: none;
+				display: block;
+			"
+		/>
+
+		{#if interactive && showChrome}
+			<div
+				style="
+					position: absolute; bottom: -10px; right: -10px;
+					width: 22px; height: 22px; border-radius: 4px;
+					background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.5);
+					cursor: nwse-resize; z-index: 1; touch-action: none;
+					display: flex; align-items: center; justify-content: center;
+					font-size: 11px; color: rgba(255,255,255,0.8);
+				"
+				onpointerdown={overlayResizeDown}
+				onpointermove={overlayPointerMove}
+				onpointerup={overlayPointerUp}
+				onpointercancel={overlayPointerUp}
+				role="presentation"
+			>
+				⤡
+			</div>
+
+			<div
+				style="
+					position: absolute; inset: -2px;
+					border: 2px dashed rgba(255,255,255,0.5);
+					border-radius: 4px; pointer-events: none;
+				"
+			></div>
+		{/if}
+	</div>
+{/snippet}
+
+<Popover bind:open={popoverOpen}>
+	<PopoverTrigger
+		openOnHover={!!interactive}
+		openDelay={0}
+		closeDelay={280}
+		child={stickerTrigger}
+	/>
+	{#if interactive}
+		<PopoverContent
+			side="top"
+			sideOffset={10}
+			align="center"
+			trapFocus={false}
+			class="border-border bg-popover/95 text-foreground z-[60] !flex !w-max max-w-[calc(100vw-2rem)] !flex-row flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border p-2 shadow-lg ring-1 ring-border/40 backdrop-blur-md duration-100 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 !gap-1.5 !p-2 [&_svg]:shrink-0 [&_svg]:text-foreground"
+		>
+			<Button
+				variant="secondary"
+				size="sm"
+				class="h-11 shrink-0 rounded-full px-3 font-semibold"
+				disabled={removingBg}
+				onclick={() => void onRemoveBg()}
+				title="Remove image background (AI)"
+				aria-label="Remove background"
+			>
+				{#if removingBg}
+					<LoaderCircle size={18} class="animate-spin" />
+				{:else}
+					<Eraser size={18} strokeWidth={2} />
+				{/if}
+				<span class="ml-1.5 hidden sm:inline">Remove BG</span>
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="h-11 w-11 shrink-0 rounded-full"
+				onclick={openEdit}
+				title="Replace image"
+				aria-label="Edit image"
+			>
+				<Pencil size={20} class="text-foreground" strokeWidth={2} />
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full"
+				onclick={onDelete}
+				title="Delete overlay"
+				aria-label="Delete overlay"
+			>
+				<Trash2 size={20} class="text-destructive" strokeWidth={2} />
+			</Button>
+		</PopoverContent>
+	{/if}
+</Popover>

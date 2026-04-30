@@ -16,6 +16,7 @@ import JSZip from 'jszip';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import DockToolbar from '$lib/components/DockToolbar.svelte';
 	import FormatDockToolbar from '$lib/components/FormatDockToolbar.svelte';
+	import TemplateDockToolbar from '$lib/components/TemplateDockToolbar.svelte';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils.js';
 	import { Input } from '$lib/components/ui/input';
@@ -37,7 +38,7 @@ import JSZip from 'jszip';
 	import { useSortable, isSortable } from '@dnd-kit-svelte/svelte/sortable';
 	import { RestrictToHorizontalAxis } from '@dnd-kit-svelte/svelte/modifiers';
 	import { move } from '@dnd-kit/helpers';
-	import { applyHighlight, type HighlightSpec } from '$lib/highlight';
+	import { applyHighlight, type HighlightSpec, plainRangeHasMixedForegroundPaint } from '$lib/highlight';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
@@ -117,12 +118,24 @@ import JSZip from 'jszip';
 		{ id: 'textCarousel', label: 'Text carousel' },
 		{ id: 'imageQuote', label: 'Image quote' },
 	];
+	/** Options for the floating template dock (dropdown). */
+	const templateDockTabs = $derived(
+		TEMPLATES.map((t) => ({
+			id: t.id,
+			label: t.label,
+			title: `${t.label} — this slide only`,
+		})),
+	);
 	let slideTemplates = $state<TemplateId[]>(['news']);
 	let lastTemplateUsed = $state<TemplateId>('news');
 	const activeTemplate = $derived(slideTemplates[activeSlide] ?? 'news');
 	function setActiveTemplate(t: TemplateId) {
 		lastTemplateUsed = t;
 		slideTemplates = slideTemplates.map((x, i) => (i === activeSlide ? t : x));
+		if (slides.length >= 2) {
+			const idx = activeSlide;
+			queueMicrotask(() => void refreshFilmstripPreviewSlice(idx));
+		}
 	}
 	function applyTemplateToAll(t: TemplateId) {
 		lastTemplateUsed = t;
@@ -1317,6 +1330,39 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const hasRangeSelection = $derived(
 		selectedText === 'textOverlay' ? textOverlayRange !== null : headlineRange !== null,
 	);
+
+	function toolbarHighlightableRaw(): string {
+		if (selectedText === 'headline') return slides[activeSlide] ?? '';
+		if (selectedText === 'articleBody') return articleTextBySlide[activeSlide] ?? '';
+		if (selectedText === 'textCarouselBody') return textCarouselTextBySlide[activeSlide] ?? '';
+		if (selectedText === 'tweetBottomText') return tweetBottomTextBySlide[activeSlide] ?? '';
+		if (selectedText === 'tweetTopText') return tweetTopTextBySlide[activeSlide] ?? '';
+		if (selectedText === 'textOverlay' && selectedTextOverlayId) {
+			const arr = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
+			return arr.find((o) => o.id === selectedTextOverlayId)?.text ?? '';
+		}
+		return '';
+	}
+
+	const toolbarTextColorMixed = $derived.by(() => {
+		if (!hasRangeSelection) return false;
+		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+		if (!range) return false;
+		if (
+			selectedText !== 'headline' &&
+			selectedText !== 'articleBody' &&
+			selectedText !== 'textCarouselBody' &&
+			selectedText !== 'tweetBottomText' &&
+			selectedText !== 'tweetTopText' &&
+			selectedText !== 'textOverlay'
+		) {
+			return false;
+		}
+		const raw = toolbarHighlightableRaw();
+		if (!raw) return false;
+		const base = getActiveStyleForSelection().color ?? textColor;
+		return plainRangeHasMixedForegroundPaint(raw, range.start, range.end, highlightColor, base);
+	});
 
 	function onHeadlineRangeSelect(start: number, end: number) {
 		if (start < 0 || end < 0 || start === end) {
@@ -2967,6 +3013,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	/** Raster snapshots for filmstrip (same pipeline as ZIP export, low pixel ratio). */
 	let filmstripPreviewUrls = $state<string[]>([]);
 	let filmstripPreviewInFlight = $state(false);
+	/** True only while capturing every slide for the filmstrip (hides rapid canvas switching). */
+	let filmstripBulkCapturing = $state(false);
 
 	/** Content fingerprint only — omit format/canvas size so Feed/Vertical/Wide toggles don’t re-raster filmstrip thumbs. */
 	const filmstripThumbDeps = $derived.by(() => {
@@ -2993,6 +3041,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			return;
 		}
 		filmstripPreviewInFlight = true;
+		filmstripBulkCapturing = true;
 		const urls: string[] = [];
 		try {
 			for (let i = 0; i < slides.length; i++) {
@@ -3025,10 +3074,104 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			}
 			filmstripPreviewUrls = urls;
 		} finally {
+			filmstripBulkCapturing = false;
 			canvasRasterSlide = null;
 			filmstripPreviewInFlight = false;
 			await tick();
 		}
+	}
+
+	/** Update one filmstrip thumbnail without iterating all slides (avoids “flickity” on template change). */
+	async function refreshFilmstripPreviewSlice(slideIdx: number) {
+		if (!exportRef || studioBooting || slides.length < 2) return;
+		if (exporting || exportingAll || filmstripPreviewInFlight) return;
+		if (slideIdx < 0 || slideIdx >= slides.length) return;
+
+		const prevRaster = canvasRasterSlide;
+		filmstripPreviewInFlight = true;
+		try {
+			canvasRasterSlide = slideIdx;
+			await tick();
+			await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+			const node = exportRef;
+			if (node) {
+				try {
+					await (document as any).fonts?.ready;
+				} catch {
+					/* ignore */
+				}
+				try {
+					const dataUrl = await toPng(node, {
+						width: CANVAS_W,
+						height: CANVAS_H,
+						pixelRatio: 0.2,
+						backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+						style: { transform: 'scale(1)', transformOrigin: 'top left' },
+						cacheBust: true,
+					} as any);
+					const base =
+						filmstripPreviewUrls.length === slides.length
+							? [...filmstripPreviewUrls]
+							: Array.from({ length: slides.length }, (_, i) => filmstripPreviewUrls[i] ?? '');
+					base[slideIdx] = dataUrl;
+					filmstripPreviewUrls = base;
+				} catch {
+					/* ignore */
+				}
+			}
+		} finally {
+			canvasRasterSlide = prevRaster ?? null;
+			filmstripPreviewInFlight = false;
+			await tick();
+		}
+	}
+
+	const BURN_MUSIC_STORAGE_KEY = 'burn-music-v1';
+
+	async function navigateToBurnMusicPage() {
+		const labels = slides.map((_, i) => `Slide ${i + 1}`);
+		const previews: string[] = [];
+		const node = exportRef;
+		if (node && slides.length > 0) {
+			const prevRaster = canvasRasterSlide;
+			try {
+				for (let i = 0; i < slides.length; i++) {
+					canvasRasterSlide = i;
+					await tick();
+					await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+					try {
+						await (document as any).fonts?.ready;
+					} catch {
+						/* ignore */
+					}
+					try {
+						const dataUrl = await toPng(node, {
+							width: CANVAS_W,
+							height: CANVAS_H,
+							pixelRatio: 0.22,
+							backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+							style: { transform: 'scale(1)', transformOrigin: 'top left' },
+							cacheBust: true,
+						} as any);
+						previews.push(dataUrl);
+					} catch {
+						previews.push('');
+					}
+				}
+			} finally {
+				canvasRasterSlide = prevRaster ?? null;
+				await tick();
+			}
+		}
+		try {
+			sessionStorage.setItem(
+				BURN_MUSIC_STORAGE_KEY,
+				JSON.stringify({ labels, previews, capturedAt: Date.now() }),
+			);
+		} catch {
+			/* quota / private mode */
+		}
+		await goto('/dashboard/studio/burn-music');
 	}
 
 	let filmstripThumbTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3053,6 +3196,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		posting: exportingAll,
 		exportingZip: exporting,
 		onExportZip: () => void exportPng(),
+		onBurnMusicClick: () => void navigateToBurnMusicPage(),
 		onPost: async () => {
 			const n = await exportAllSlidesToDraft();
 			if (!n) {
@@ -3302,92 +3446,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 			<Separator class="my-3" />
 
-			<!-- Slide tabs + overlay text -->
-			<div>
-				<div class="mb-2 flex items-center justify-between">
-					<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-						<Type size={9} class="shrink-0" />Slide Text
-					</Label>
-					{#if generatingVariants}
-						<span class="flex items-center gap-1 text-[10px] font-mono text-amber-400">
-							<Loader size={9} class="animate-spin" /> Writing slides…
-						</span>
-					{/if}
-				</div>
-
-				<!-- Per-slide template selector -->
-				<div class="mb-2 flex items-end gap-2">
-					<div class="min-w-0 flex-1">
-						<p class="mb-1.5 text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Template (this slide)</p>
-						<Select
-							type="single"
-							value={activeTemplate}
-							onValueChange={(v) => {
-								if (v) setActiveTemplate(v as TemplateId);
-							}}
-						>
-							<SelectTrigger class="w-full rounded-xl py-2 font-mono text-xs">
-								{TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Template'}
-							</SelectTrigger>
-							<SelectContent>
-								{#each TEMPLATES as t (t.id)}
-									<SelectItem value={t.id} label={t.label}>{t.label}</SelectItem>
-								{/each}
-							</SelectContent>
-						</Select>
-					</div>
-					<Button
-						variant="outline"
-						size="sm"
-						class="h-auto shrink-0 rounded-xl py-2 font-mono text-[10px]"
-						onclick={() => applyTemplateToAll(activeTemplate)}
-						title="Apply this template to all slides"
-					>
-						Apply all
-					</Button>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						class="h-auto shrink-0 rounded-xl py-2 font-mono text-[10px]"
-						onclick={resetActiveTemplateContent}
-						title="Reset this template to its default demo content"
-					>
-						Reset
-					</Button>
-				</div>
-
-				<!-- Slide tabs -->
-				{#if slides.length > 1}
-					<div class="mb-2 flex flex-wrap gap-1">
-						{#each slides as _, i}
-							<Button
-								type="button"
-								variant="outline"
-								size="xs"
-								class={cn(
-									'rounded-lg px-2.5 py-1 font-mono text-[10px]',
-									activeSlide === i &&
-										'border-violet-500/25 bg-violet-500/20 text-violet-300 hover:bg-violet-500/25 hover:text-violet-200'
-								)}
-								onclick={() => (activeSlide = i)}
-							>
-								{i === 0 ? '① Hook' : `${['②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'][i - 1] ?? i + 1} Slide ${i + 1}`}
-							</Button>
-						{/each}
-					</div>
-				{/if}
-
-				<!-- Headline/highlight editor removed from sidebar (use inline editing on canvas) -->
-
-				<!-- Word count warning -->
 				{#if overlayText.split(/\s+/).filter(Boolean).length > 28}
 					<p class="text-[10px] font-mono text-amber-400 mt-1">
 						⚠ {overlayText.split(/\s+/).filter(Boolean).length} words — keep under 28 for best results
 					</p>
 				{/if}
-			</div>
-
 			<!-- Source label -->
 			<div>
 				<Label for="source-label" class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Source Label</Label>
@@ -3767,6 +3830,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				onchange={handleOverlayUpload}
 			/>
 			<DockToolbar items={dockItems} inline />
+			<TemplateDockToolbar
+				templates={templateDockTabs}
+				selectedId={activeTemplate}
+				onSelect={(id) => setActiveTemplate(id as TemplateId)}
+				onApplyAll={() => applyTemplateToAll(activeTemplate)}
+			/>
 			<FormatDockToolbar
 				formats={FORMATS.map((f) => ({ id: f.id, label: f.label, title: `${f.w}×${f.h}` }))}
 				selectedId={formatId}
@@ -3785,6 +3854,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);" class="relative overflow-hidden rounded-2xl">
 
+			{#if filmstripBulkCapturing && slides.length >= 2}
+				<div
+					class="absolute inset-0 z-[19] flex flex-col items-center justify-center gap-2 rounded-2xl"
+					style="background: color-mix(in oklab, var(--app-surface-2) 92%, transparent); border: 1px solid var(--app-border);"
+					aria-live="polite"
+					aria-busy="true"
+				>
+					<Loader size={18} class="animate-spin text-violet-400" />
+					<p class="text-[10px] font-mono" style="color: var(--app-text-muted);">Updating filmstrip…</p>
+				</div>
+			{/if}
 			{#if studioBooting}
 				<!-- Initial boot overlay: avoid template "jump" while restoring draft -->
 				<div class="absolute inset-0 rounded-2xl z-20 flex items-center justify-center" style="background: var(--app-surface-2); border: 1px solid var(--app-border);">
@@ -4786,6 +4866,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		selectedText === 'tweetBottomHandle' ||
 		selectedText === 'tweetBottomText') || selectedText === 'textOverlay'}
 	hasRangeSelection={hasRangeSelection}
+	textColorMixed={toolbarTextColorMixed}
 	onChange={patchActiveStyle}
 	onHighlight={onHighlight}
 	onReset={resetActiveStyle}

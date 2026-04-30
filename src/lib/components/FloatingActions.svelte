@@ -13,6 +13,8 @@
 		/** Zip export all slides (same as Studio left-panel export). */
 		onExportZip?: () => void | Promise<void>;
 		exportingZip?: boolean;
+		/** When set, "Burn Music" opens this flow instead of the inline panel. */
+		onBurnMusicClick?: () => void | Promise<void>;
 	}
 
 	let {
@@ -25,6 +27,7 @@
 		posting = false,
 		onExportZip = undefined,
 		exportingZip = false,
+		onBurnMusicClick = undefined,
 	} = ($props() as $$Props);
 
 	interface SlideMusicSettings { song: string; seconds: number; }
@@ -200,9 +203,9 @@
 			</button>
 		</div>
 
-		<!-- BURN MUSIC button + panel -->
+		<!-- BURN MUSIC button + panel (inline panel only when no navigate handler) -->
 		<div class="relative">
-			{#if showMusicPanel}
+			{#if showMusicPanel && !onBurnMusicClick}
 				<div class="absolute bottom-full mb-2 right-0 w-[400px] rounded-2xl shadow-2xl overflow-hidden"
 					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
 				>
@@ -280,15 +283,19 @@
 			{/if}
 
 			<button
-				onclick={() => {
+				onclick={async () => {
+					if (onBurnMusicClick) {
+						await onBurnMusicClick();
+						return;
+					}
 					showMusicPanel = !showMusicPanel;
 					showPostPanel = false;
 				}}
 				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
 				style="
-					background: {showMusicPanel ? 'rgb(124 58 237)' : 'color-mix(in oklab, var(--app-text) 6%, transparent)'};
-					border-color: {showMusicPanel ? 'rgba(139,92,246,0.35)' : 'var(--app-border)'};
-					color: {showMusicPanel ? '#fff' : 'var(--app-text-2)'};
+					background: {showMusicPanel && !onBurnMusicClick ? 'rgb(124 58 237)' : 'color-mix(in oklab, var(--app-text) 6%, transparent)'};
+					border-color: {showMusicPanel && !onBurnMusicClick ? 'rgba(139,92,246,0.35)' : 'var(--app-border)'};
+					color: {showMusicPanel && !onBurnMusicClick ? '#fff' : 'var(--app-text-2)'};
 				"
 			>
 				<Music size={14} />

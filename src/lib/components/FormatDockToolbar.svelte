@@ -76,7 +76,6 @@
 		border-radius: 12px;
 		background: transparent;
 		cursor: pointer;
-		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 		font-size: 8.5px;
 		font-weight: 600;
 		line-height: 1.1;

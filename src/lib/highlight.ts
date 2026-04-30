@@ -316,3 +316,52 @@ function stripHighlightsInRange(raw: string, plainStart: number, plainEnd: numbe
 
 	return result;
 }
+
+function normalizePaintColorKey(c: string): string {
+	const s = c.trim().toLowerCase();
+	if (!s.startsWith('#')) return s;
+	if (s.length === 4) {
+		return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+	}
+	return s;
+}
+
+/**
+ * True when a plain-text range spans more than one distinct foreground fill
+ * (base body color vs [[...]] colors, multiple highlight colors, etc.).
+ * Gradient or pattern spans count as mixed.
+ */
+export function plainRangeHasMixedForegroundPaint(
+	raw: string,
+	plainStart: number,
+	plainEnd: number,
+	defaultHighlight: string,
+	baseTextColor: string,
+): boolean {
+	if (plainStart === plainEnd) return false;
+	let a = plainStart;
+	let b = plainEnd;
+	if (a > b) [a, b] = [b, a];
+	const parsed = parseHighlightMarkup(raw, defaultHighlight);
+	const segs = segmentText(parsed);
+	const paints = new Set<string>();
+	let pos = 0;
+	const base = normalizePaintColorKey(baseTextColor);
+	const defHi = normalizePaintColorKey(defaultHighlight);
+
+	for (const seg of segs) {
+		const segEnd = pos + seg.text.length;
+		const lo = Math.max(a, pos);
+		const hi = Math.min(b, segEnd);
+		if (lo < hi) {
+			if (seg.gradientFrom || seg.gradientTo || seg.patternImage) return true;
+			const fill = seg.highlighted
+				? normalizePaintColorKey(seg.color ?? defHi)
+				: base;
+			paints.add(fill);
+			if (paints.size > 1) return true;
+		}
+		pos = segEnd;
+	}
+	return false;
+}

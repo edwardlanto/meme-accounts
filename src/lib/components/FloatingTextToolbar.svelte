@@ -12,7 +12,7 @@
 	import {
 		Bold, Italic, Underline,
 		AlignLeft, AlignCenter, AlignRight,
-		ChevronDown, Type, Minus, Plus, RotateCcw, Highlighter,
+		ChevronDown, Type, Minus, Plus, RotateCcw, Highlighter, Blend,
 	} from 'lucide-svelte';
 
 	type PickerKind = 'font' | 'lh' | 'color' | 'bg' | 'highlight';
@@ -38,6 +38,8 @@
 		/** Whether the user currently has a range of text selected inside the element.
 		 *  Disables highlight buttons until they select something. */
 		hasRangeSelection?: boolean;
+		/** Selection spans multiple foreground colors (show mixed swatch instead of one color). */
+		textColorMixed?: boolean;
 		onChange: (patch: Partial<TextStyle>) => void;
 		onHighlight?: (spec: HighlightSpec) => void;
 		onReset: () => void;
@@ -50,6 +52,7 @@
 		autoFontSize = 72,
 		supportsHighlights = false,
 		hasRangeSelection = false,
+		textColorMixed = false,
 		onChange,
 		onHighlight,
 		onReset,
@@ -154,6 +157,25 @@
 
 	function setSize(v: number) {
 		if (Number.isFinite(v)) onChange({ fontSize: Math.max(12, Math.min(400, v)) });
+	}
+
+	/** Range + markup-aware fields: set [[#color: …]] on selection; otherwise block `color`. */
+	function pickTextColor(c: string) {
+		if (supportsHighlights && hasRangeSelection) {
+			applyHighlight({ kind: 'color', color: c });
+		} else {
+			onChange({ color: c });
+		}
+		colorPickerOpen = false;
+	}
+
+	function onTextColorCustomInput(e: Event) {
+		const v = (e.target as HTMLInputElement).value;
+		if (supportsHighlights && hasRangeSelection) {
+			applyHighlight({ kind: 'color', color: v });
+		} else {
+			onChange({ color: v });
+		}
 	}
 
 	// Preload top fonts once mounted so the picker previews render fast.
@@ -396,12 +418,21 @@
 		>
 			<PopoverTrigger
 				class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn"
-				title="Text color"
+				title={textColorMixed ? 'Multiple text colors in selection' : 'Text color'}
 			>
-				<span
-					class="ftb-chip h-5 w-5 rounded border"
-					style="background: {style.color ?? '#FFFFFF'};"
-				></span>
+				{#if textColorMixed}
+					<span
+						class="ftb-chip flex h-5 w-5 items-center justify-center rounded border bg-neutral-100"
+						aria-hidden="true"
+					>
+						<Blend size={14} class="text-neutral-600" strokeWidth={2.2} />
+					</span>
+				{:else}
+					<span
+						class="ftb-chip h-5 w-5 rounded border"
+						style="background: {style.color ?? '#FFFFFF'};"
+					></span>
+				{/if}
 				<ChevronDown size={11} class="ftb-muted" />
 			</PopoverTrigger>
 			<PopoverContent
@@ -415,12 +446,9 @@
 					{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#FFB347', '#B0A8B9'] as c}
 						<button
 							type="button"
-							onclick={() => {
-								onChange({ color: c });
-								colorPickerOpen = false;
-							}}
+							onclick={() => pickTextColor(c)}
 							class="h-7 w-7 rounded-lg border-2 transition-transform hover:scale-110
-								{style.color === c ? 'border-black/40' : 'border-black/10'}"
+								{!textColorMixed && style.color === c ? 'border-black/40' : 'border-black/10'}"
 							style="background: {c};"
 							aria-label="Set color {c}"
 						></button>
@@ -430,7 +458,7 @@
 				<input
 					type="color"
 					value={style.color ?? '#FFFFFF'}
-					oninput={(e) => onChange({ color: (e.target as HTMLInputElement).value })}
+					oninput={onTextColorCustomInput}
 					class="h-8 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent"
 				/>
 			</PopoverContent>

@@ -73,31 +73,29 @@
 	}
 
 	function getPlainSelectionRange(): { start: number; end: number } | null {
-		if (!displayRoot) return null;
-		if (domPlainDeep(displayRoot) !== expectedPlain) return null;
+		const root = displayRoot;
+		if (!root) return null;
+		if (domPlainDeep(root) !== expectedPlain) return null;
 
 		const sel = window.getSelection();
 		if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
 		const range = sel.getRangeAt(0);
-		if (
-			!displayRoot.contains(range.startContainer) ||
-			!displayRoot.contains(range.endContainer)
-		)
-			return null;
+		if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
 
-		const walker = document.createTreeWalker(displayRoot, NodeFilter.SHOW_TEXT);
-		let offset = 0;
-		let start = -1;
-		let end = -1;
-		let node: Node | null;
-		while ((node = walker.nextNode())) {
-			const len = node.nodeValue?.length ?? 0;
-			if (node === range.startContainer) start = offset + range.startOffset;
-			if (node === range.endContainer) end = offset + range.endOffset;
-			offset += len;
-			if (start !== -1 && end !== -1) break;
+		function boundaryPlainLen(headlineRoot: HTMLElement, container: Node, offset: number): number {
+			const r = document.createRange();
+			try {
+				r.selectNodeContents(headlineRoot);
+				r.setEnd(container, offset);
+				return r.toString().length;
+			} catch {
+				return -1;
+			}
 		}
-		if (start === -1 || end === -1) return null;
+
+		const start = boundaryPlainLen(root, range.startContainer, range.startOffset);
+		const end = boundaryPlainLen(root, range.endContainer, range.endOffset);
+		if (start < 0 || end < 0) return null;
 		if (start === end) return null;
 		return start < end ? { start, end } : { start: end, end: start };
 	}

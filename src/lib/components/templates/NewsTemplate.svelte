@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
+	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
+	import ImageStickerOverlayBox from '$lib/components/ImageStickerOverlayBox.svelte';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
 	import {
@@ -17,6 +19,8 @@
 		ZoomIn,
 		ZoomOut,
 		RotateCcw,
+		Eraser,
+		LoaderCircle,
 	} from 'lucide-svelte';
 
 	interface Props {
@@ -577,32 +581,31 @@
 	 * if selection is empty or outside the headline.
 	 */
 	function getPlainSelectionRange(): { start: number; end: number } | null {
-		if (!headlineEl) return null;
+		const root = headlineEl;
+		if (!root) return null;
 		const sel = window.getSelection();
 		if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
 		const range = sel.getRangeAt(0);
 
 		// Ensure the selection is actually inside our headline.
-		if (!headlineEl.contains(range.startContainer) || !headlineEl.contains(range.endContainer)) return null;
+		if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
 
-		// Walk text nodes under headlineEl in document order, accumulating
-		// character offsets until we hit the selection's start / end nodes.
-		const walker = document.createTreeWalker(headlineEl, NodeFilter.SHOW_TEXT);
-		let offset = 0;
-		let start = -1;
-		let end = -1;
-
-		let node = walker.nextNode();
-		while (node) {
-			const len = node.nodeValue?.length ?? 0;
-			if (node === range.startContainer) start = offset + range.startOffset;
-			if (node === range.endContainer)   end   = offset + range.endOffset;
-			offset += len;
-			if (start !== -1 && end !== -1) break;
-			node = walker.nextNode();
+		// Use Range boundaries so element-edge selections (e.g. inside <span>)
+		// map to correct plain offsets — matches visible text only (no [[ markup]]).
+		function boundaryPlainLen(headlineRoot: HTMLElement, container: Node, offset: number): number {
+			const r = document.createRange();
+			try {
+				r.selectNodeContents(headlineRoot);
+				r.setEnd(container, offset);
+				return r.toString().length;
+			} catch {
+				return -1;
+			}
 		}
 
-		if (start === -1 || end === -1) return null;
+		const start = boundaryPlainLen(root, range.startContainer, range.startOffset);
+		const end = boundaryPlainLen(root, range.endContainer, range.endOffset);
+		if (start < 0 || end < 0) return null;
 		if (start === end) return null;
 		return start < end ? { start, end } : { start: end, end: start };
 	}
@@ -661,6 +664,28 @@
 	let circleResizeStartMy = 0;
 	let circleFileEl = $state<HTMLInputElement | null>(null);
 	let circleBorderPickerEl = $state<HTMLInputElement | null>(null);
+	let circleRemovingBg = $state(false);
+	let circle2RemovingBg = $state(false);
+
+	async function runCircleBackgroundRemoval(which: 1 | 2) {
+		const src = which === 1 ? circleImage : circle2Image;
+		if (!String(src ?? '').trim()) return;
+		if (which === 1 && circleRemovingBg) return;
+		if (which === 2 && circle2RemovingBg) return;
+		if (which === 1) circleRemovingBg = true;
+		else circle2RemovingBg = true;
+		try {
+			const out = await removeBackground(src as string);
+			if (which === 1) onCircleImageChange?.(out);
+			else onCircle2ImageChange?.(out);
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : 'Background removal failed';
+			alert(msg);
+		} finally {
+			if (which === 1) circleRemovingBg = false;
+			else circle2RemovingBg = false;
+		}
+	}
 
 	function openCirclePicker(e: MouseEvent) {
 		if (!interactive) return;
@@ -1009,67 +1034,6 @@
 		bgDragging = false;
 	}
 
-	// ── Overlay drag + resize ──────────────────────────────────────────────
-	let activeOverlayId = $state<string | null>(null); // dragging or resizing
-	let overlayAction   = $state<'drag' | 'resize' | null>(null);
-	let hoveredOverlayId = $state<string | null>(null);
-	let ovLastMx = 0;
-	let ovLastMy = 0;
-
-	function overlayDragDown(e: PointerEvent, id: string) {
-		if (!interactive) return;
-		activeOverlayId = id;
-		overlayAction   = 'drag';
-		ovLastMx = e.clientX;
-		ovLastMy = e.clientY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-		e.stopPropagation();
-		e.preventDefault();
-	}
-
-	function overlayResizeDown(e: PointerEvent, id: string) {
-		if (!interactive) return;
-		activeOverlayId = id;
-		overlayAction   = 'resize';
-		ovLastMx = e.clientX;
-		ovLastMy = e.clientY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-		e.stopPropagation();
-		e.preventDefault();
-	}
-
-	function overlayPointerMove(e: PointerEvent, id: string) {
-		if (activeOverlayId !== id) return;
-		const dx = (e.clientX - ovLastMx) / scale;
-		const dy = (e.clientY - ovLastMy) / scale;
-		ovLastMx = e.clientX;
-		ovLastMy = e.clientY;
-
-		const ov = overlays.find(o => o.id === id);
-		if (!ov) return;
-
-		if (overlayAction === 'drag') {
-			const nx = Math.max(0, Math.min(W - ov.w, ov.x + dx));
-			const ny = Math.max(0, Math.min(H - ov.h, ov.y + dy));
-			onOverlaysChange?.(overlays.map(o => o.id === id ? { ...o, x: nx, y: ny } : o));
-		} else if (overlayAction === 'resize') {
-			const aspect = ov.w / ov.h;
-			const newW = Math.max(60, Math.min(W - ov.x, ov.w + dx));
-			const newH = newW / aspect;
-			onOverlaysChange?.(overlays.map(o => o.id === id ? { ...o, w: newW, h: newH } : o));
-		}
-	}
-
-	function overlayPointerUp() {
-		activeOverlayId = null;
-		overlayAction   = null;
-	}
-
-	function overlayDelete(e: MouseEvent, id: string) {
-		e.stopPropagation();
-		onOverlaysChange?.(overlays.filter(o => o.id !== id));
-	}
-
 	// ── Pattern rendering helpers ──────────────────────────────────────────
 	function patternStyle(patternImage: string | undefined): string {
 		if (!patternImage) return '';
@@ -1306,83 +1270,19 @@
 			></div>
 		{/if}
 
-		<!-- ── Image overlays (stickers / logos) ────────────────────────────── -->
+		<!-- ── Image overlays (stickers / logos) — hover popover like circle badge ─ -->
 		{#each overlays as overlay (overlay.id)}
-			{@const isActive  = activeOverlayId === overlay.id}
-			{@const isHovered = hoveredOverlayId === overlay.id}
-			{@const showControls = interactive && (isHovered || isActive)}
-			<div
-				style="
-					position: absolute;
-					left: {overlay.x}px; top: {overlay.y}px;
-					width: {overlay.w}px; height: {overlay.h}px;
-					z-index: 15;
-					cursor: {isActive && overlayAction === 'drag' ? 'grabbing' : (interactive ? 'grab' : 'default')};
-					touch-action: none;
-					overflow: visible;
-				"
-				onpointerdown={(e) => overlayDragDown(e, overlay.id)}
-				onpointermove={(e) => overlayPointerMove(e, overlay.id)}
-				onpointerup={overlayPointerUp}
-				onpointercancel={overlayPointerUp}
-				onmouseenter={() => hoveredOverlayId = overlay.id}
-				onmouseleave={() => { if (hoveredOverlayId === overlay.id) hoveredOverlayId = null; }}
-				role="presentation"
-			>
-				<img
-					src={overlay.src}
-					alt=""
-					style="
-						width: 100%; height: 100%;
-						object-fit: contain;
-						pointer-events: none;
-						display: block;
-					"
+			{#if overlay.kind !== 'grid'}
+				<ImageStickerOverlayBox
+					{overlay}
+					{overlays}
+					w={W}
+					h={H}
+					{scale}
+					{interactive}
+					onOverlaysChange={onOverlaysChange}
 				/>
-
-				{#if showControls}
-					<!-- Delete button — top-right corner -->
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={(e) => overlayDelete(e, overlay.id)}
-						style="
-							position: absolute; top: -14px; right: -14px;
-							width: 36px; height: 36px; border-radius: 50%;
-							background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.4);
-							color: #fff;
-							display: flex; align-items: center; justify-content: center;
-							cursor: pointer; z-index: 1; touch-action: none;
-						"
-						title="Remove overlay"
-						aria-label="Remove overlay"
-					><Trash2 size={18} /></button>
-
-					<!-- Resize handle — bottom-right corner -->
-					<div
-						style="
-							position: absolute; bottom: -10px; right: -10px;
-							width: 22px; height: 22px; border-radius: 4px;
-							background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.5);
-							cursor: nwse-resize; z-index: 1; touch-action: none;
-							display: flex; align-items: center; justify-content: center;
-							font-size: 11px; color: rgba(255,255,255,0.8);
-						"
-						onpointerdown={(e) => overlayResizeDown(e, overlay.id)}
-						onpointermove={(e) => overlayPointerMove(e, overlay.id)}
-						onpointerup={overlayPointerUp}
-						onpointercancel={overlayPointerUp}
-						role="presentation"
-					>⤡</div>
-
-					<!-- Selection outline -->
-					<div style="
-						position: absolute; inset: -2px;
-						border: 2px dashed rgba(255,255,255,0.5);
-						border-radius: 4px; pointer-events: none;
-					"></div>
-				{/if}
-			</div>
+			{/if}
 		{/each}
 
 		{#if snapGuide?.x != null}
@@ -1659,6 +1559,22 @@
 					>
 						<Button variant="secondary" size="sm" class="h-11 min-w-11 shrink-0 rounded-full px-3 font-semibold" onclick={() => onCircleAIClick?.()} title="Generate with AI" aria-label="Generate with AI">AI</Button>
 						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCirclePicker} title="Edit circle image" aria-label="Edit circle image"><Pencil size={20} class="text-foreground" strokeWidth={2} /></Button>
+						<Button
+							variant="secondary"
+							size="sm"
+							class="h-11 shrink-0 rounded-full px-2.5 font-semibold"
+							disabled={!circleImage || circleRemovingBg}
+							onclick={() => void runCircleBackgroundRemoval(1)}
+							title="Remove photo background (AI)"
+							aria-label="Remove circle background"
+						>
+							{#if circleRemovingBg}
+								<LoaderCircle size={18} class="animate-spin" />
+							{:else}
+								<Eraser size={18} strokeWidth={2} />
+							{/if}
+							<span class="ml-1 hidden sm:inline">Remove BG</span>
+						</Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2" role="group" aria-label="Border thickness in pixels" title="Border thickness">
 							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circleBorderWidth = Math.max(0, Math.round((circleBorderWidth ?? 8) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
 							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circleBorderWidth ?? 8)}</span>
@@ -1818,6 +1734,22 @@
 					>
 						<Button variant="secondary" size="sm" class="h-11 min-w-11 shrink-0 rounded-full px-3 font-semibold" onclick={() => onCircle2AIClick?.()} title="Generate with AI" aria-label="Generate with AI">AI</Button>
 						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCircle2Picker} title="Edit circle image" aria-label="Edit circle image"><Pencil size={20} class="text-foreground" strokeWidth={2} /></Button>
+						<Button
+							variant="secondary"
+							size="sm"
+							class="h-11 shrink-0 rounded-full px-2.5 font-semibold"
+							disabled={!circle2Image || circle2RemovingBg}
+							onclick={() => void runCircleBackgroundRemoval(2)}
+							title="Remove photo background (AI)"
+							aria-label="Remove circle 2 background"
+						>
+							{#if circle2RemovingBg}
+								<LoaderCircle size={18} class="animate-spin" />
+							{:else}
+								<Eraser size={18} strokeWidth={2} />
+							{/if}
+							<span class="ml-1 hidden sm:inline">Remove BG</span>
+						</Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2" role="group" aria-label="Border thickness in pixels" title="Border thickness">
 							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circle2BorderWidth = Math.max(0, Math.round((circle2BorderWidth ?? 8) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
 							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circle2BorderWidth ?? 8)}</span>
