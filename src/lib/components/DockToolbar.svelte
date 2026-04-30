@@ -9,12 +9,17 @@
 	type Props = {
 		items: DockItem[];
 		className?: string;
+		/** When true, the shell does not stretch full width — use beside another dock (e.g. format picker). */
+		inline?: boolean;
 	};
 
-	let { items, className = '' }: Props = $props();
+	let { items, className = '', inline = false }: Props = $props();
 </script>
 
-<div class={`dock-shell ${className}`} aria-label="Editor dock">
+<div
+	class={`dock-shell ${inline ? 'dock-shell--inline' : ''} ${className}`}
+	aria-label="Editor dock"
+>
 	<div class="dock-float">
 		{#each items as item (item.label)}
 			<button
@@ -43,6 +48,11 @@
 		width: 100%;
 		display: flex;
 		justify-content: center;
+	}
+
+	.dock-shell--inline {
+		width: auto;
+		flex: 0 0 auto;
 	}
 
 	.dock-float {

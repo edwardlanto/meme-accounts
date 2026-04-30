@@ -10,6 +10,7 @@ import JSZip from 'jszip';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import TextOverlayLayer from '$lib/components/TextOverlayLayer.svelte';
+	import ImageStickerOverlayLayer from '$lib/components/ImageStickerOverlayLayer.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
@@ -377,7 +378,12 @@ import JSZip from 'jszip';
 	const dockItems = $derived.by(() => ([
 		{ icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !backgroundVideo },
 		{ icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !backgroundVideo },
-		{ icon: Sparkles, label: 'AI', onClick: activeTemplate === 'news' ? (() => void generateBackground(activeSlide)) : undefined, disabled: activeTemplate !== 'news' },
+		{
+			icon: Sparkles,
+			label: 'AI',
+			onClick: () => void generateBackground(activeSlide, undefined, activeTemplate),
+			disabled: !!(generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide],
+		},
 		{ icon: Circle, label: 'Shape', onClick: activeTemplate === 'news' ? (() => (showCircle = !showCircle)) : undefined, disabled: activeTemplate !== 'news' },
 		{ icon: Type, label: 'Text', onClick: addTextOverlay },
 		{ icon: Image, label: 'Image', onClick: uploadOverlayImage },
@@ -2046,14 +2052,103 @@ tweetTopImagePanYBySlide,
 		],
 	};
 
+	/** Strip highlight markers for prompts / previews. */
+	function stripHighlightMarkers(s: string) {
+		return String(s ?? '').replace(/\[\[|\]\]/g, '').trim();
+	}
+
+	/** Primary on-slide copy per template (for Vertex prompts). */
+	function primarySlideTextForPrompt(template: TemplateId, i: number): string {
+		switch (template) {
+			case 'tweet':
+				return stripHighlightMarkers(tweetTopTextBySlide[i] ?? '');
+			case 'article':
+				return stripHighlightMarkers(articleTextBySlide[i] ?? '');
+			case 'textCarousel':
+				return stripHighlightMarkers(textCarouselTextBySlide[i] ?? '');
+			case 'imageQuote':
+				return stripHighlightMarkers(imageQuoteTextBySlide[i] ?? '');
+			default:
+				return stripHighlightMarkers(slides[i] ?? '');
+		}
+	}
+
+	/** Plain-text length caps for API/mock “load story” fills (fixed-size templates). */
+	const FETCH_TEXT_CLIP = {
+		news: 420,
+		/** Main tweet body above media (~3–4 lines at default size in a 9:16 card). */
+		tweetTop: 230,
+		article: 520,
+		textCarousel: 260,
+		imageQuote: 130,
+	} as const;
+
+	function clampFetchedPlainLength(text: string, maxLen: number): string {
+		const raw = String(text ?? '').trim();
+		if (!maxLen) return '';
+		const plain = stripHighlightMarkers(raw).replace(/\s+/g, ' ').trim();
+		if (plain.length <= maxLen) return raw;
+		return `${plain.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+	}
+
+	/** Tweet main post: keep short enough to sit above media without crowding the card. */
+	function clampTweetTopFetched(text: string): string {
+		return clampFetchedPlainLength(text, FETCH_TEXT_CLIP.tweetTop);
+	}
+
+	function clampFetchedPrimaryForTemplate(template: TemplateId, text: string): string {
+		const raw = String(text ?? '').trim();
+		switch (template) {
+			case 'tweet':
+				return clampTweetTopFetched(raw);
+			case 'article':
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.article);
+			case 'textCarousel':
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.textCarousel);
+			case 'imageQuote':
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.imageQuote);
+			default:
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.news);
+		}
+	}
+
+	function normalizeHeadlineVariants(variants: string[], hookText: string, count: number): string[] {
+		const n = Math.max(1, count);
+		if (!variants.length) {
+			return Array.from({ length: n }, (_, i) => (i === 0 ? hookText : ''));
+		}
+		if (variants.length >= n) return variants.slice(0, n);
+		const last = variants[variants.length - 1] ?? hookText;
+		const out = [...variants];
+		while (out.length < n) out.push(last);
+		return out.slice(0, n);
+	}
+
+	/** Apply carousel headline strings to the template the user had selected (not always News). */
+	function applyHeadlineStringsToTemplate(template: TemplateId, strings: string[]) {
+		const clipped = strings.map((s) => clampFetchedPrimaryForTemplate(template, s));
+		slides = [...clipped];
+		if (template === 'tweet') {
+			tweetTopTextBySlide = [...clipped];
+			// Bottom block is a tight “reply” slot under the image — full article blurbs overflow the card.
+			tweetBottomTextBySlide = Array.from({ length: clipped.length }, () => '');
+		} else if (template === 'article') {
+			articleTextBySlide = [...clipped];
+		} else if (template === 'textCarousel') {
+			textCarouselTextBySlide = [...clipped];
+		} else if (template === 'imageQuote') {
+			imageQuoteTextBySlide = [...clipped];
+		}
+	}
+
 	// ── Fetch news ────────────────────────────────────────────────────────
 	async function fetchNews() {
 		fetchingNews = true;
 		newsError = '';
 		activeSlide = 0;
-		// If we previously deep-linked into a non-news template (e.g. ?template=tweet),
-		// fetching news should always “take over” and show the News template.
-		forcedTemplateFromQuery = null;
+		const contentTemplate: TemplateId = slideTemplates[0] ?? lastTemplateUsed ?? 'news';
+		// Only clear starter deep-link when we are loading into News (News flow “owns” the deck).
+		if (contentTemplate === 'news') forcedTemplateFromQuery = null;
 		// Reset circle + background to defaults
 		circleX    = 772;
 		circleY    = 52;
@@ -2143,31 +2238,63 @@ tweetTopImagePanYBySlide,
 
 			articleSnippet = rawText;
 
-			// Show slide 1 immediately
-			slides = [hookText];
-			// News generator should always start from the News template.
-			// (Otherwise if your last template was Tweet/Article, fetching news “looks like” it routed wrong.)
-			lastTemplateUsed = 'news';
-			// Force ALL slides to News right away (and keep it stable as slides expand).
-			slideTemplates = Array.from({ length: Math.max(1, slideCount) }, () => 'news');
-			bgImagesByTemplate = { ...bgImagesByTemplate, news: [articleImageUrl] }; // slide 0 gets article image right away
-			bgVideosByTemplate = { ...bgVideosByTemplate, news: [''] }; // reset video
-			generatingImagesByTemplate = { ...generatingImagesByTemplate, news: [false] };
-			slideOverlaysByTemplate = { ...slideOverlaysByTemplate, news: [[]] };
-			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: [[]] };
+			const n = Math.max(1, slideCount);
+			lastTemplateUsed = contentTemplate;
+			slideTemplates = Array.from({ length: n }, () => contentTemplate);
 
-			// Generate supporting slide variants first (so we know all slide texts before imaging)
+			if (contentTemplate === 'news') {
+				bgImagesByTemplate = {
+					...bgImagesByTemplate,
+					news: Array.from({ length: n }, (_, i) => (i === 0 ? articleImageUrl : '')),
+				};
+				bgVideosByTemplate = { ...bgVideosByTemplate, news: Array(n).fill('') };
+				generatingImagesByTemplate = { ...generatingImagesByTemplate, news: Array(n).fill(false) };
+				slideOverlaysByTemplate = {
+					...slideOverlaysByTemplate,
+					news: Array.from({ length: n }, () => []),
+				};
+				slideTextOverlaysByTemplate = {
+					...slideTextOverlaysByTemplate,
+					news: Array.from({ length: n }, () => []),
+				};
+			} else {
+				bgImagesByTemplate = {
+					...bgImagesByTemplate,
+					[contentTemplate]: Array.from({ length: n }, (_, i) => (i === 0 ? articleImageUrl : '')),
+				};
+				bgVideosByTemplate = {
+					...bgVideosByTemplate,
+					[contentTemplate]: Array(n).fill(''),
+				};
+				generatingImagesByTemplate = {
+					...generatingImagesByTemplate,
+					[contentTemplate]: Array(n).fill(false),
+				};
+				slideOverlaysByTemplate = {
+					...slideOverlaysByTemplate,
+					[contentTemplate]: Array.from({ length: n }, () => []),
+				};
+				slideTextOverlaysByTemplate = {
+					...slideTextOverlaysByTemplate,
+					[contentTemplate]: Array.from({ length: n }, () => []),
+				};
+			}
+
+			// Prime every slide’s copy (template-specific clamps) so UI never briefly shows unclamped hooks.
+			applyHeadlineStringsToTemplate(contentTemplate, normalizeHeadlineVariants([], hookText, n));
+
+			// Generate supporting slide variants (refines slide 2+ when slideCount > 1)
 			if (slideCount > 1) {
 				fetchingNews = false;
 				generatingVariants = true;
-				await generateVariants(hookText, rawText);
+				await generateVariants(hookText, rawText, contentTemplate);
 				generatingVariants = false;
 			}
 
 			// Generate unique Vertex image per slide in parallel
 			// Slide 0: keep article image if available; otherwise generate from title
 			// Slides 1+: generate from their own text copy
-			const imagePromise = generateAllSlideImages(articleImageUrl);
+			const imagePromise = generateAllSlideImages(articleImageUrl, contentTemplate);
 
 			// Auto-generate circle badge if toggle is on
 			if (showCircle) generateCircleImage();
@@ -2183,7 +2310,7 @@ tweetTopImagePanYBySlide,
 	}
 
 	// ── Generate supporting slide variants ────────────────────────────────
-	async function generateVariants(hookText: string, rawText: string) {
+	async function generateVariants(hookText: string, rawText: string, template: TemplateId = 'news') {
 		try {
 			const res = await fetch('/api/news/variants', {
 				method: 'POST',
@@ -2199,36 +2326,32 @@ tweetTopImagePanYBySlide,
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Variant generation failed');
 
-			// Use hook as slide 1 if API returned generic; otherwise use all returned variants
 			const variants: string[] = data.variants ?? [];
-			if (variants.length > 0) {
-				// Replace slide 1 only if API returned something different AND hook already has content
-				slides = variants.length >= slideCount
-					? variants.slice(0, slideCount)
-					: [...variants, ...Array(slideCount - variants.length).fill(variants[variants.length - 1])];
-			}
+			const strings = normalizeHeadlineVariants(variants, hookText, slideCount);
+			applyHeadlineStringsToTemplate(template, strings);
 		} catch (e: any) {
-			// Don't overwrite the hook slide on variant error
 			console.error('[variants]', e.message);
 			newsError = `Slide variants: ${e.message}`;
+			// Still align slide text arrays to slideCount so imaging / filmstrip stay consistent.
+			applyHeadlineStringsToTemplate(template, normalizeHeadlineVariants([], hookText, slideCount));
 		}
 	}
 
 	// ── Generate background image for a single slide ─────────────────────
-	function setNewsGeneratingFlag(slideIdx: number, value: boolean) {
-		const { generating } = templateMediaArraysPadded('news', slideIdx);
+	function setBgGeneratingFlag(template: TemplateId, slideIdx: number, value: boolean) {
+		const { generating } = templateMediaArraysPadded(template, slideIdx);
 		generatingImagesByTemplate = {
 			...generatingImagesByTemplate,
-			news: generating.map((v, i) => (i === slideIdx ? value : v)),
+			[template]: generating.map((v, i) => (i === slideIdx ? value : v)),
 		};
 	}
 
-	async function generateBackground(slideIdx: number, promptOverride?: string) {
-		setNewsGeneratingFlag(slideIdx, true);
+	async function generateBackground(slideIdx: number, promptOverride?: string, template: TemplateId = 'news') {
+		setBgGeneratingFlag(template, slideIdx, true);
 		bgError = '';
 
 		try {
-			const slideText = (slides[slideIdx] ?? '').replace(/\[\[|\]\]/g, '').trim();
+			const slideText = primarySlideTextForPrompt(template, slideIdx);
 			const title = String(articleTitle ?? '').trim();
 			// `??` skips only null/undefined — an empty headline must still fall back, or /api/vertex returns 400 "Missing prompt".
 			const prompt =
@@ -2244,60 +2367,75 @@ tweetTopImagePanYBySlide,
 
 			const data = await res.json();
 			if (data.dataUrl) {
-				setSlideImage(slideIdx, data.dataUrl);
+				setSlideImage(slideIdx, data.dataUrl, template);
 			} else if (data.demo) {
 				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
-				setNewsGeneratingFlag(slideIdx, false);
+				setBgGeneratingFlag(template, slideIdx, false);
 			} else {
 				bgError = data.error ?? (res.ok ? 'Image generation failed' : `Request failed (${res.status})`);
-				setNewsGeneratingFlag(slideIdx, false);
+				setBgGeneratingFlag(template, slideIdx, false);
 			}
 		} catch (e: any) {
 			bgError = e.message;
-			setNewsGeneratingFlag(slideIdx, false);
+			setBgGeneratingFlag(template, slideIdx, false);
 		}
 	}
 
 	// ── Generate unique images for all slides in parallel ─────────────────
-	async function generateAllSlideImages(articleImageUrl?: string) {
-		// Reset image arrays to match current slide count
-		bgImagesByTemplate = { ...bgImagesByTemplate, news: new Array(slides.length).fill('') };
-		bgVideosByTemplate = { ...bgVideosByTemplate, news: new Array(slides.length).fill('') };
-		newsSolidBgBySlide = new Array(slides.length).fill('');
+	async function generateAllSlideImages(articleImageUrl?: string, template: TemplateId = 'news') {
+		bgImagesByTemplate = { ...bgImagesByTemplate, [template]: new Array(slides.length).fill('') };
+		bgVideosByTemplate = { ...bgVideosByTemplate, [template]: new Array(slides.length).fill('') };
+		if (template === 'news') {
+			newsSolidBgBySlide = new Array(slides.length).fill('');
+		}
 		videoTrimStartSecBySlide = new Array(slides.length).fill(0);
 		videoTrimEndSecBySlide = new Array(slides.length).fill(0);
 		videoDurationBySlide = new Array(slides.length).fill(0);
 		videoMutedBySlide = new Array(slides.length).fill(true);
 		videoVolumeBySlide = new Array(slides.length).fill(0.8);
-		generatingImagesByTemplate = { ...generatingImagesByTemplate, news: new Array(slides.length).fill(true) };
-		slideOverlaysByTemplate = (Object.fromEntries(
-			(Object.entries(slideOverlaysByTemplate) as [TemplateId, Overlay[][]][]).map(([k]) => [
-				k,
-				new Array(slides.length).fill(null).map(() => []),
-			]),
-		) as unknown) as Record<TemplateId, Overlay[][]>;
-		slideTextOverlaysByTemplate = (Object.fromEntries(
-			(Object.entries(slideTextOverlaysByTemplate) as [TemplateId, TextOverlay[][]][]).map(([k]) => [
-				k,
-				new Array(slides.length).fill(null).map(() => []),
-			]),
-		) as unknown) as Record<TemplateId, TextOverlay[][]>;
-		slideTemplates   = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
+		generatingImagesByTemplate = {
+			...generatingImagesByTemplate,
+			[template]: new Array(slides.length).fill(true),
+		};
+		if (template === 'news') {
+			slideOverlaysByTemplate = (Object.fromEntries(
+				(Object.entries(slideOverlaysByTemplate) as [TemplateId, Overlay[][]][]).map(([k]) => [
+					k,
+					new Array(slides.length).fill(null).map(() => []),
+				]),
+			) as unknown) as Record<TemplateId, Overlay[][]>;
+			slideTextOverlaysByTemplate = (Object.fromEntries(
+				(Object.entries(slideTextOverlaysByTemplate) as [TemplateId, TextOverlay[][]][]).map(([k]) => [
+					k,
+					new Array(slides.length).fill(null).map(() => []),
+				]),
+			) as unknown) as Record<TemplateId, TextOverlay[][]>;
+		} else {
+			slideOverlaysByTemplate = {
+				...slideOverlaysByTemplate,
+				[template]: new Array(slides.length).fill(null).map(() => []),
+			};
+			slideTextOverlaysByTemplate = {
+				...slideTextOverlaysByTemplate,
+				[template]: new Array(slides.length).fill(null).map(() => []),
+			};
+		}
+		slideTemplates = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
 		// Slide 0: use article image directly if available, otherwise Vertex
 		if (articleImageUrl) {
 			const safe = await toExportSafeImageUrl(articleImageUrl);
-			setSlideImage(0, safe);
+			setSlideImage(0, safe, template);
 		}
 
 		// Fire all Vertex requests in parallel (skip slide 0 if we have article image)
-		const promises = slides.map((slideText, i) => {
+		const promises = slides.map((_, i) => {
 			if (i === 0 && articleImageUrl) return Promise.resolve(); // already set
-			const cleanText = slideText.replace(/\[\[|\]\]/g, '').trim();
+			const cleanText = primarySlideTextForPrompt(template, i);
 			const prompt = i === 0
 				? (articleTitle || cleanText)
 				: cleanText; // supporting slides use their own copy as the image prompt
-			return generateBackground(i, prompt);
+			return generateBackground(i, prompt, template);
 		});
 
 		await Promise.all(promises);
@@ -3185,10 +3323,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<Button
 						variant="outline"
 						class="h-auto gap-1.5 rounded-xl border-violet-500/15 bg-violet-500/10 py-2 font-body text-xs font-semibold text-violet-300 hover:bg-violet-500/20"
-						onclick={() => generateBackground(activeSlide)}
-						disabled={(generatingImagesByTemplate.news ?? [])[activeSlide]}
+						onclick={() => generateBackground(activeSlide, undefined, activeTemplate)}
+						disabled={(generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide]}
 					>
-						{#if (generatingImagesByTemplate.news ?? [])[activeSlide]}
+						{#if (generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide]}
 							<Loader size={11} class="animate-spin" /> Generating...
 						{:else}
 							<Sparkles size={11} /> Regenerate with AI
@@ -3197,10 +3335,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<Button
 						variant="outline"
 						class="h-auto gap-1.5 rounded-xl border-cyan-500/15 bg-cyan-500/10 py-2 font-body text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20"
-						onclick={() => generateAllSlideImages()}
-						disabled={(generatingImagesByTemplate.news ?? []).some(Boolean)}
+						onclick={() => generateAllSlideImages(undefined, activeTemplate)}
+						disabled={(generatingImagesByTemplate[activeTemplate] ?? []).some(Boolean)}
 					>
-						{#if (generatingImagesByTemplate.news ?? []).some(Boolean)}
+						{#if (generatingImagesByTemplate[activeTemplate] ?? []).some(Boolean)}
 							<Loader size={11} class="animate-spin" /> Generating all…
 						{:else}
 							<Sparkles size={11} /> Regenerate all slides
@@ -3505,6 +3643,16 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		<!-- Dock (shared across templates) -->
 		<div class="flex justify-center w-full">
+			<!-- Hidden picker for dock “Image” (image stickers / logos) — must stay in DOM for bind:this -->
+			<input
+				type="file"
+				accept="image/*"
+				class="sr-only"
+				tabindex={-1}
+				aria-hidden="true"
+				bind:this={overlayQuickInput}
+				onchange={handleOverlayUpload}
+			/>
 			<DockToolbar items={dockItems} />
 		</div>
 
@@ -3675,6 +3823,14 @@ showSubjectCutout={activeShowCutout}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
+				<ImageStickerOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					overlays={activeOverlays}
+					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
@@ -3738,6 +3894,14 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 						showToolbar: false,
 					} as any)}
 				/>
+				<ImageStickerOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					overlays={activeOverlays}
+					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
+				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
 					w={CANVAS_W}
@@ -3775,6 +3939,14 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					onTextChange={(t) => { pushUndo('textCarousel', activeSlide); textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? t : x); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
+				/>
+				<ImageStickerOverlayLayer
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={true}
+					overlays={activeOverlays}
+					onOverlaysChange={(o) => setSlideOverlays(activeSlide, o)}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
