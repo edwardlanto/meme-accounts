@@ -44,7 +44,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -405,21 +405,69 @@ import JSZip from 'jszip';
 		{ icon: Image, label: 'Image', onClick: uploadOverlayImage },
 		{ icon: Palette, label: 'Colors', disabled: true },
 		{ icon: Trash2, label: 'Delete slide', onClick: deleteActiveSlide, disabled: slides.length <= 1 },
+		{ icon: RotateCcw, label: 'Reset slide', onClick: resetCurrentSlideToDefaults },
 		{ icon: Undo2, label: 'Undo', onClick: undoActive, disabled: !canUndoActive() },
 		{ icon: Redo2, label: 'Redo', onClick: redoActive, disabled: !canRedoActive() },
 	]));
 
-	function resetActiveTemplateContent() {
+	/** Restore the active slide’s starter copy, layout offsets, overlays, and background media for the current template. */
+	function resetCurrentSlideToDefaults() {
 		const i = activeSlide;
-		pushUndo(activeTemplate, i);
-		// Reset content (demo defaults) + clear style overrides for this template+slide.
-		if (activeTemplate === 'news') {
-			// Headline text for News lives in `slides` / `overlayText`.
+		const t = activeTemplate;
+		pushUndo(t, i);
+
+		const prevImg = (bgImagesByTemplate[t] ?? [])[i];
+		if (prevImg?.startsWith('blob:')) URL.revokeObjectURL(prevImg);
+		clearSlideBackground(i);
+		generatingImagesByTemplate = {
+			...generatingImagesByTemplate,
+			[t]: Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? false : (generatingImagesByTemplate[t]?.[idx] ?? false),
+			),
+		};
+		subjectCutouts = Array.from({ length: slides.length }, (_, idx) =>
+			idx === i ? '' : (subjectCutouts[idx] ?? ''),
+		);
+		showCutout = Array.from({ length: slides.length }, (_, idx) =>
+			idx === i ? false : (showCutout[idx] ?? false),
+		);
+		setSlideOverlays(i, [], t);
+		setSlideTextOverlays(i, [], t);
+		replaceTemplateOffsets(i, t, {});
+
+		if (t === 'news') {
 			const base = 'YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY';
 			slides = slides.map((x, idx) => (idx === i ? base : x));
-			setActiveSlideText(base);
 			source = 'Markets';
-		} else if (activeTemplate === 'tweet') {
+			circleImages = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? '' : (circleImages[idx] ?? ''),
+			);
+			circle2Images = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? '' : (circle2Images[idx] ?? ''),
+			);
+			showCircle2BySlide = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? false : (showCircle2BySlide[idx] ?? false),
+			);
+			showCircle = true;
+			circleX = 772;
+			circleY = 52;
+			circleSize = 300;
+			circle2X = 80;
+			circle2Y = 80;
+			circle2Size = 220;
+			bgOffsetX = 50;
+			bgOffsetY = 50;
+			bgZoom = 100;
+			bgFitMode = 'cover';
+			bgContainMagnify = 100;
+			textPanelOffsetY = 0;
+			shadowHeight = 75;
+			shadowStrength = 1;
+			cuttingOut = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? false : (cuttingOut[idx] ?? false),
+			);
+			cutoutError = '';
+		} else if (t === 'tweet') {
 			tweetTopNameBySlide = tweetTopNameBySlide.map((x, idx) => (idx === i ? 'Chef 👨‍🍳' : x));
 			tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, idx) => (idx === i ? '@chefsevenn' : x));
 			tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, idx) => (idx === i ? 'Mo Mohler' : x));
@@ -430,14 +478,19 @@ import JSZip from 'jszip';
 			tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, idx) => (idx === i ? '12.8K' : x));
 			tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, idx) => (idx === i ? '89.4K' : x));
 			tweetStylesBySlide = tweetStylesBySlide.map((s, idx) => (idx === i ? {} : s));
-		} else if (activeTemplate === 'article') {
+			tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, idx) => (idx === i ? 360 : x));
+			tweetTopImageWidthBySlide = tweetTopImageWidthBySlide.map((x, idx) => (idx === i ? 920 : x));
+			tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, idx) => (idx === i ? 1 : x));
+			tweetTopImagePanXBySlide = tweetTopImagePanXBySlide.map((x, idx) => (idx === i ? 50 : x));
+			tweetTopImagePanYBySlide = tweetTopImagePanYBySlide.map((x, idx) => (idx === i ? 50 : x));
+		} else if (t === 'article') {
 			articleTextBySlide = articleTextBySlide.map((x, idx) =>
 				idx === i
 					? "Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate."
 					: x,
 			);
 			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? '«« Swipe' : x));
-		} else if (activeTemplate === 'textCarousel') {
+		} else if (t === 'textCarousel') {
 			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) => (idx === i ? 'Captains of industry' : x));
 			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? '@captainsofindustryy' : x));
 			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) =>
@@ -445,14 +498,20 @@ import JSZip from 'jszip';
 					? 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.'
 					: x,
 			);
+		} else if (t === 'imageQuote') {
+			imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, idx) =>
+				idx === i ? 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.' : x,
+			);
+			imageQuoteFooterLeftBySlide = imageQuoteFooterLeftBySlide.map((x, idx) => (idx === i ? '$' : x));
+			imageQuoteFooterRightBySlide = imageQuoteFooterRightBySlide.map((x, idx) => (idx === i ? 'BRAND' : x));
 		}
 
-		// Clear style overrides for this template+slide.
 		stylesByTemplateBySlide = {
 			...stylesByTemplateBySlide,
-			[activeTemplate]: (stylesByTemplateBySlide[activeTemplate] ?? []).map((m, idx) => (idx === i ? {} : m)),
+			[t]: (stylesByTemplateBySlide[t] ?? []).map((m, idx) => (idx === i ? {} : m)),
 		};
-		// Close any floating toolbar selection.
+		slideMusic = slideMusic.map((m, idx) => (idx === i ? null : m));
+		musicPickerForSlide = null;
 		closeToolbar();
 	}
 
