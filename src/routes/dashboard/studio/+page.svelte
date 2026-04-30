@@ -39,9 +39,9 @@ import JSZip from 'jszip';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
-		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
+		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -382,6 +382,7 @@ import JSZip from 'jszip';
 		{ icon: Type, label: 'Text', onClick: addTextOverlay },
 		{ icon: Image, label: 'Image', onClick: uploadOverlayImage },
 		{ icon: Palette, label: 'Colors', disabled: true },
+		{ icon: Trash2, label: 'Delete slide', onClick: deleteActiveSlide, disabled: slides.length <= 1 },
 		{ icon: Undo2, label: 'Undo', onClick: undoActive, disabled: !canUndoActive() },
 		{ icon: Redo2, label: 'Redo', onClick: redoActive, disabled: !canRedoActive() },
 	]));
@@ -1138,6 +1139,54 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		reorderSlides(newOrder);
 	}
 
+	/** `reorderSlides` does not remap these; keep them aligned when removing a slide. */
+	function pickPerSlideArraysForOldIndices<T>(oldIndices: number[], arr: T[], fallback: T): T[] {
+		return oldIndices.map((i) => (i < arr.length ? arr[i] : fallback));
+	}
+
+	/** Remove the current slide (dock). Minimum one slide remains. */
+	function deleteActiveSlide() {
+		const n = slides.length;
+		if (n <= 1) return;
+		const del = activeSlide;
+		const cur = activeSlide;
+		const keep = slides.map((_, i) => i).filter((i) => i !== del);
+		let nextActive = 0;
+		if (cur < del) nextActive = cur;
+		else if (cur > del) nextActive = cur - 1;
+		else nextActive = Math.min(del, n - 2);
+
+		reorderSlides(keep);
+
+		activeSlide = Math.max(0, Math.min(slides.length - 1, nextActive));
+		slideCount = slides.length;
+
+		videoTrimStartSecBySlide = pickPerSlideArraysForOldIndices(keep, videoTrimStartSecBySlide, 0);
+		videoTrimEndSecBySlide = pickPerSlideArraysForOldIndices(keep, videoTrimEndSecBySlide, 0);
+		videoDurationBySlide = pickPerSlideArraysForOldIndices(keep, videoDurationBySlide, 0);
+		videoMutedBySlide = pickPerSlideArraysForOldIndices(keep, videoMutedBySlide, true);
+		videoVolumeBySlide = pickPerSlideArraysForOldIndices(keep, videoVolumeBySlide, 0.8);
+		tweetReplyCountBySlide = pickPerSlideArraysForOldIndices(keep, tweetReplyCountBySlide, '4.2K');
+		tweetRepostCountBySlide = pickPerSlideArraysForOldIndices(keep, tweetRepostCountBySlide, '12.8K');
+		tweetLikeCountBySlide = pickPerSlideArraysForOldIndices(keep, tweetLikeCountBySlide, '89.4K');
+		tweetStylesBySlide = pickPerSlideArraysForOldIndices(keep, tweetStylesBySlide, {} as Partial<Record<TweetKind, TextStyle>>);
+		circleImages = pickPerSlideArraysForOldIndices(keep, circleImages, '');
+		circle2Images = pickPerSlideArraysForOldIndices(keep, circle2Images, '');
+		showCircle2BySlide = pickPerSlideArraysForOldIndices(keep, showCircle2BySlide, false);
+		textOffsetsBySlide = pickPerSlideArraysForOldIndices(keep, textOffsetsBySlide, {} as Record<string, TextOffset>);
+		historyByTemplateBySlide = (Object.fromEntries(
+			(Object.entries(historyByTemplateBySlide) as [TemplateId, ScopedHistory[]][]).map(([k, arr]) => [
+				k,
+				pickPerSlideArraysForOldIndices(keep, arr, { undo: [], redo: [] } as ScopedHistory),
+			]),
+		) as unknown) as Record<TemplateId, ScopedHistory[]>;
+
+		showVideoTrim = false;
+		videoSeekSec = NaN;
+		closeToolbar();
+		void saveDraftNow?.();
+	}
+
 	// Filmstrip DnD (dnd-kit). Keep a temporary visual order while dragging
 	// so items animate smoothly out of the way (like the reference demo).
 	let filmstripIds = $state<string[]>([]);
@@ -1448,7 +1497,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	// ── Draft persistence (Supabase) ──────────────────────────────────────
 	type DraftRow = { id: string; kind: string; state: any; updated_at: string };
 	const DRAFT_KIND = 'news_studio';
+	/** Named snapshots from Studio — listed on the dashboard; open with `?saved=<id>`. */
+	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
 	let draftId = $state<string>('');
+	let showSaveTemplatePanel = $state(false);
+	let studioTemplateName = $state('');
+	let studioTemplateSaving = $state(false);
+	let studioTemplateFeedback = $state('');
 	let draftLoaded = $state(false);
 	let draftSaving = $state(false);
 	let draftError = $state('');
@@ -1457,45 +1512,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	const studioBooting = $derived(!initialTemplateParamApplied || draftRestoring || !userId);
 
-	async function loadLatestDraft() {
-		draftError = '';
-		const { data, error } = await (supabase as any)
-			.from('drafts')
-			.select('id,kind,state,updated_at')
-			.eq('user_id', userId)
-			.eq('kind', DRAFT_KIND)
-			.order('updated_at', { ascending: false })
-			.limit(1)
-			.maybeSingle();
-		if (error) {
-			draftError = error.message ?? 'Failed to load draft';
-			return;
-		}
-		if (!data) return;
-
-		const row = data as DraftRow;
-		draftId = row.id;
-		const s = row.state ?? {};
-		// If an older draft contains huge `exportedSlides` data URLs, prune it ASAP so
-		// subsequent loads are fast (don’t block initial render on this).
-		if (Array.isArray((s as any).exportedSlides) && (s as any).exportedSlides.length) {
-			const ex = (s as any).exportedSlides as unknown[];
-			const looksHuge = ex.some((v) => typeof v === 'string' && v.startsWith('data:') && v.length > 220_000);
-			if (looksHuge) {
-				queueMicrotask(() => {
-					try {
-						void (supabase as any)
-							.from('drafts')
-							.update({ state: { ...(s as any), exportedSlides: [] } })
-							.eq('id', row.id);
-					} catch {
-						// ignore
-					}
-				});
-			}
-		}
-
-		// Restore (best-effort)
+	function applyDraftState(s: Record<string, any>) {
+		// Restore (best-effort) — shared by autosave draft + saved templates.
 		if (typeof s.formatId === 'string') formatId = s.formatId as FormatId;
 		if (typeof s.lastTemplateUsed === 'string') lastTemplateUsed = s.lastTemplateUsed as TemplateId;
 		if (Array.isArray(s.slides)) slides = s.slides;
@@ -1600,12 +1618,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray(s.tweetBottomNameBySlide)) tweetBottomNameBySlide = s.tweetBottomNameBySlide;
 		if (Array.isArray(s.tweetBottomHandleBySlide)) tweetBottomHandleBySlide = s.tweetBottomHandleBySlide;
 		if (Array.isArray(s.tweetTopTextBySlide)) tweetTopTextBySlide = s.tweetTopTextBySlide;
-if (Array.isArray(s.tweetBottomTextBySlide)) tweetBottomTextBySlide = s.tweetBottomTextBySlide;
-if (Array.isArray((s as any).tweetTopImageHeightBySlide)) tweetTopImageHeightBySlide = (s as any).tweetTopImageHeightBySlide;
-if (Array.isArray((s as any).tweetTopImageWidthBySlide)) tweetTopImageWidthBySlide = (s as any).tweetTopImageWidthBySlide;
-if (Array.isArray((s as any).tweetTopImageZoomBySlide)) tweetTopImageZoomBySlide = (s as any).tweetTopImageZoomBySlide;
-if (Array.isArray((s as any).tweetTopImagePanXBySlide)) tweetTopImagePanXBySlide = (s as any).tweetTopImagePanXBySlide;
-if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide = (s as any).tweetTopImagePanYBySlide;
+		if (Array.isArray(s.tweetBottomTextBySlide)) tweetBottomTextBySlide = s.tweetBottomTextBySlide;
+		if (Array.isArray((s as any).tweetTopImageHeightBySlide)) tweetTopImageHeightBySlide = (s as any).tweetTopImageHeightBySlide;
+		if (Array.isArray((s as any).tweetTopImageWidthBySlide)) tweetTopImageWidthBySlide = (s as any).tweetTopImageWidthBySlide;
+		if (Array.isArray((s as any).tweetTopImageZoomBySlide)) tweetTopImageZoomBySlide = (s as any).tweetTopImageZoomBySlide;
+		if (Array.isArray((s as any).tweetTopImagePanXBySlide)) tweetTopImagePanXBySlide = (s as any).tweetTopImagePanXBySlide;
+		if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide = (s as any).tweetTopImagePanYBySlide;
 		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
 		if (Array.isArray(s.textCarouselTextBySlide)) textCarouselTextBySlide = s.textCarouselTextBySlide;
 		if (Array.isArray(s.imageQuoteTextBySlide)) imageQuoteTextBySlide = s.imageQuoteTextBySlide;
@@ -1664,6 +1682,94 @@ if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide
 		if (typeof s.textColor === 'string') textColor = s.textColor;
 		// Intentionally do NOT restore `exportedSlides` (huge data URLs) from drafts.
 		// slideCount is derived from slides.length; do not restore it directly.
+	}
+
+	async function loadLatestDraft() {
+		draftError = '';
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.select('id,kind,state,updated_at')
+			.eq('user_id', userId)
+			.eq('kind', DRAFT_KIND)
+			.order('updated_at', { ascending: false })
+			.limit(1)
+			.maybeSingle();
+		if (error) {
+			draftError = error.message ?? 'Failed to load draft';
+			return;
+		}
+		if (!data) return;
+
+		const row = data as DraftRow;
+		draftId = row.id;
+		const s = row.state ?? {};
+		// If an older draft contains huge `exportedSlides` data URLs, prune it ASAP so
+		// subsequent loads are fast (don’t block initial render on this).
+		if (Array.isArray((s as any).exportedSlides) && (s as any).exportedSlides.length) {
+			const ex = (s as any).exportedSlides as unknown[];
+			const looksHuge = ex.some((v) => typeof v === 'string' && v.startsWith('data:') && v.length > 220_000);
+			if (looksHuge) {
+				queueMicrotask(() => {
+					try {
+						void (supabase as any)
+							.from('drafts')
+							.update({ state: { ...(s as any), exportedSlides: [] } })
+							.eq('id', row.id);
+					} catch {
+						// ignore
+					}
+				});
+			}
+		}
+
+		applyDraftState(s as Record<string, any>);
+	}
+
+	async function loadSavedStudioTemplate(templateDraftId: string) {
+		draftError = '';
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.select('id,kind,state,updated_at')
+			.eq('user_id', userId)
+			.eq('id', templateDraftId)
+			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+			.maybeSingle();
+		if (error) {
+			draftError = error.message ?? 'Failed to load template';
+			return;
+		}
+		if (!data) {
+			draftError = 'Saved template not found';
+			return;
+		}
+		const raw = { ...(data.state ?? {}) } as Record<string, any>;
+		delete raw._templateName;
+		applyDraftState(raw);
+		// Next autosave should target the workspace draft, not overwrite the named template row.
+		draftId = '';
+		slideCount = slides.length;
+		exportedSlides = [];
+	}
+
+	async function saveStudioTemplateNamed() {
+		if (!userId) return;
+		const name = studioTemplateName.trim() || `Studio template ${new Date().toLocaleDateString()}`;
+		studioTemplateSaving = true;
+		studioTemplateFeedback = '';
+		const state = { ...buildDraftState(), _templateName: name };
+		const { error } = await (supabase as any).from('drafts').insert({
+			user_id: userId,
+			kind: STUDIO_SAVED_TEMPLATE_KIND,
+			state,
+		});
+		studioTemplateSaving = false;
+		if (error) {
+			studioTemplateFeedback = error.message ?? 'Save failed';
+			return;
+		}
+		studioTemplateFeedback = 'Saved to dashboard';
+		showSaveTemplatePanel = false;
+		studioTemplateName = '';
 	}
 
 	function buildDraftState() {
@@ -1804,9 +1910,14 @@ tweetTopImagePanYBySlide,
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
 		draftRestoring = true;
-		void loadLatestDraft()
+		const savedParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('saved') : null;
+		const loadPromise =
+			savedParam && /^[0-9a-f-]{36}$/i.test(savedParam)
+				? loadSavedStudioTemplate(savedParam)
+				: loadLatestDraft();
+		void loadPromise
 			.catch(() => {
-				// loadLatestDraft already sets draftError; swallow to keep UI responsive.
+				// loaders set draftError; swallow to keep UI responsive.
 			})
 			.finally(() => {
 				draftLoaded = true;
@@ -2693,8 +2804,68 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 	<!-- ── Left panel: controls ──────────────────────────────────────────── -->
 	<div class="w-80 flex-shrink-0 border-r border-neutral-800 bg-black text-neutral-50 flex flex-col overflow-y-auto studio-left">
-		<div class="px-5 py-4 border-b border-neutral-800">
-			<h1 class="font-display font-bold text-base text-neutral-50">News Studio</h1>
+		<div class="px-5 py-4 border-b border-neutral-800 space-y-3">
+			<div class="flex items-start justify-between gap-2">
+				<h1 class="font-display font-bold text-base text-neutral-50 leading-tight">News Studio</h1>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					class="shrink-0 h-8 gap-1.5 rounded-lg border-neutral-700 bg-neutral-950 text-[11px] font-semibold text-neutral-200 hover:bg-neutral-900"
+					onclick={() => {
+						showSaveTemplatePanel = true;
+						studioTemplateFeedback = '';
+						if (!studioTemplateName.trim()) {
+							studioTemplateName = `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`;
+						}
+					}}
+				>
+					<Bookmark size={12} /> Save template
+				</Button>
+			</div>
+			{#if showSaveTemplatePanel}
+				<div class="rounded-xl border border-neutral-800 bg-neutral-950 p-3 space-y-2">
+					<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Name</Label>
+					<Input
+						bind:value={studioTemplateName}
+						placeholder="My carousel layout"
+						class="rounded-lg bg-black border-neutral-800 text-sm text-neutral-100"
+					/>
+					{#if studioTemplateFeedback}
+						<p
+							class="text-[10px] font-body {studioTemplateFeedback.includes('Saved to')
+								? 'text-emerald-400/90'
+								: 'text-red-400/90'}"
+						>
+							{studioTemplateFeedback}
+						</p>
+					{/if}
+					<div class="flex gap-2 pt-1">
+						<Button
+							type="button"
+							size="sm"
+							class="flex-1 rounded-lg bg-violet-600 text-white hover:bg-violet-500"
+							disabled={studioTemplateSaving || !userId}
+							onclick={() => void saveStudioTemplateNamed()}
+						>
+							{#if studioTemplateSaving}<Loader size={12} class="animate-spin" />{:else}Save{/if}
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							class="text-neutral-400"
+							onclick={() => {
+								showSaveTemplatePanel = false;
+								studioTemplateFeedback = '';
+							}}
+						>Cancel</Button>
+					</div>
+					<p class="text-[9px] font-body text-neutral-500 leading-snug">
+						Saved templates appear on your dashboard. Open them anytime from there.
+					</p>
+				</div>
+			{/if}
 		</div>
 
 		<div class="flex flex-col gap-4 p-4">

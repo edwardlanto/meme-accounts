@@ -3,18 +3,66 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
+const ANTHROPIC_MESSAGES_API = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_VERSION = '2023-06-01';
+/** Direct Anthropic model (Brand Carousel only, when `CLAUDE_API_KEY` is set). */
+const ANTHROPIC_CAROUSEL_MODEL = 'claude-sonnet-4-5';
 
-/** Brand carousel instructions — `src/lib/prompts/carousel/*.md` (bundled at build time). */
-const CAROUSEL_PROMPT_FILES = import.meta.glob('../../../../lib/prompts/carousel/*.md', {
-	as: 'raw',
-	eager: true,
-}) as Record<string, string>;
+/** Brand carousel system prompt — `instagram-carousel-prompt2.md` only (see `instagram-carousel-generator.md` for legacy reference). */
+const CAROUSEL_PROMPT_FILES = import.meta.glob(
+	'../../../../lib/prompts/carousel/instagram-carousel-prompt2.md',
+	{ as: 'raw', eager: true },
+) as Record<string, string>;
 
 function loadCarouselSystemPrompt(): string {
 	const parts = Object.entries(CAROUSEL_PROMPT_FILES)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, raw]) => String(raw).trim());
 	return parts.join('\n\n---\n\n');
+}
+
+type OpenRouterContentPart =
+	| { type: 'text'; text: string }
+	| { type: 'image_url'; image_url: { url: string } };
+
+type AnthropicUserBlock =
+	| { type: 'text'; text: string }
+	| {
+			type: 'image';
+			source: { type: 'base64'; media_type: string; data: string };
+	  };
+
+function openRouterPartsToAnthropicBlocks(parts: OpenRouterContentPart[]): AnthropicUserBlock[] {
+	const out: AnthropicUserBlock[] = [];
+	for (const p of parts) {
+		if (p.type === 'text') {
+			out.push({ type: 'text', text: p.text });
+			continue;
+		}
+		const url = p.image_url?.url ?? '';
+		const m = /^data:([^;]+);base64,(.+)$/i.exec(url);
+		if (!m) continue;
+		let mediaType = m[1].trim().toLowerCase();
+		if (!mediaType.startsWith('image/')) mediaType = 'image/jpeg';
+		out.push({
+			type: 'image',
+			source: { type: 'base64', media_type: mediaType, data: m[2].replace(/\s/g, '') },
+		});
+	}
+	return out;
+}
+
+function extractAnthropicMessageText(data: { content?: Array<{ type?: string; text?: string }> }): string {
+	const blocks = data?.content;
+	if (!Array.isArray(blocks)) return '';
+	return blocks
+		.filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+		.map((b) => b.text as string)
+		.join('');
+}
+
+function normalizeCarouselHtml(raw: string): string {
+	return raw.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim();
 }
 
 type ReferenceImage = { data: string; mediaType?: string };
@@ -43,8 +91,11 @@ export const POST: RequestHandler = async ({ request }) => {
 	const systemPrompt = loadCarouselSystemPrompt();
 	if (!systemPrompt.trim()) {
 		return json(
-			{ error: 'Missing carousel prompts: add .md files under src/lib/prompts/carousel/' },
-			{ status: 500 }
+			{
+				error:
+					'Missing carousel prompt: add src/lib/prompts/carousel/instagram-carousel-prompt2.md',
+			},
+			{ status: 500 },
 		);
 	}
 
@@ -92,15 +143,65 @@ Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 	}
 	userContent.push({ type: 'text', text: userMessage });
 
-	if (!env.OPENROUTER_API_KEY) {
+	const claudeKey = env.CLAUDE_API_KEY;
+	const openRouterKey = env.OPENROUTER_API_KEY;
+
+	if (!claudeKey && !openRouterKey) {
 		return json({ html: getDemoHtml(brandName, h, color, slideCountNum, style), demo: true });
 	}
 
+	const openRouterUserContent: OpenRouterContentPart[] | string =
+		userContent.length > 1 ? userContent : userMessage;
+
 	try {
+		/** Brand Carousel: direct Anthropic API when `CLAUDE_API_KEY` is set. */
+		if (claudeKey) {
+			const anthropicUserBlocks = Array.isArray(openRouterUserContent)
+				? openRouterPartsToAnthropicBlocks(openRouterUserContent)
+				: [{ type: 'text' as const, text: openRouterUserContent }];
+
+			const res = await fetch(ANTHROPIC_MESSAGES_API, {
+				method: 'POST',
+				headers: {
+					'x-api-key': claudeKey,
+					'anthropic-version': ANTHROPIC_VERSION,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					model: ANTHROPIC_CAROUSEL_MODEL,
+					max_tokens: 16000,
+					system: systemPrompt,
+					messages: [{ role: 'user', content: anthropicUserBlocks }],
+				}),
+			});
+
+			const data = await res.json();
+			if (!res.ok) {
+				const msg =
+					typeof data?.error?.message === 'string'
+						? data.error.message
+						: typeof data?.error === 'string'
+							? data.error
+							: 'Anthropic request failed';
+				return json({ error: msg }, { status: 500 });
+			}
+
+			const raw = extractAnthropicMessageText(data);
+			const html = normalizeCarouselHtml(raw);
+			if (!html.includes('<html') && !html.includes('<!DOCTYPE')) {
+				return json({ error: 'No HTML returned', raw: html.slice(0, 2000) }, { status: 500 });
+			}
+			return json({ html, provider: 'anthropic', model: ANTHROPIC_CAROUSEL_MODEL });
+		}
+
+		if (!openRouterKey) {
+			return json({ error: 'OPENROUTER_API_KEY is not set' }, { status: 500 });
+		}
+
 		const res = await fetch(OPENROUTER_API, {
 			method: 'POST',
 			headers: {
-				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+				Authorization: `Bearer ${openRouterKey}`,
 				'Content-Type': 'application/json',
 				'HTTP-Referer': 'https://carousel-studio.app',
 				'X-Title': 'Carousel Studio',
@@ -109,7 +210,7 @@ Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 				model: 'anthropic/claude-3.7-sonnet',
 				max_tokens: 16000,
 				system: systemPrompt,
-				messages: [{ role: 'user', content: userContent.length > 1 ? userContent : userMessage }],
+				messages: [{ role: 'user', content: openRouterUserContent }],
 			}),
 		});
 
@@ -117,21 +218,19 @@ Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 		if (!res.ok) return json({ error: data.error?.message ?? 'Generation failed' }, { status: 500 });
 
 		let html: string = data.choices?.[0]?.message?.content ?? '';
-
-		// Strip markdown fences if the model wrapped the HTML
-		html = html.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim();
+		html = normalizeCarouselHtml(html);
 
 		if (!html.includes('<html') && !html.includes('<!DOCTYPE')) {
 			return json({ error: 'No HTML returned', raw: html }, { status: 500 });
 		}
 
-		return json({ html });
+		return json({ html, provider: 'openrouter', model: 'anthropic/claude-3.7-sonnet' });
 	} catch (e: any) {
 		return json({ error: e.message }, { status: 500 });
 	}
 };
 
-// ── Demo HTML (shown when OPENROUTER_API_KEY is not set) ──────────────────────
+// ── Demo HTML (when `CLAUDE_API_KEY` and `OPENROUTER_API_KEY` are both unset) ─
 function getDemoHtml(
 	brandName = 'My Brand',
 	handle = 'mybrand',
