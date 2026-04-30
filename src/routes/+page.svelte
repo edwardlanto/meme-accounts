@@ -1,170 +1,132 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ArrowRight, Check, Zap, TrendingUp, Globe, Sparkles } from 'lucide-svelte';
-	import ArcGalleryHero from '$lib/components/ArcGalleryHero.svelte';
-	import MultiOrbitSemiCircle from '../lib/components/MultiOrbitSemiCircle.svelte';
-	import CtaWithMarquee from '$lib/components/CtaWithMarquee.svelte';
-	import ImageAutoSlider from '$lib/components/ImageAutoSlider.svelte';
 
 	let mounted = $state(false);
 	let scrollY = $state(0);
-	const memoryImages = [
-		'https://images.unsplash.com/photo-1755004609214-c252674df1ca?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1750218537952-0ae056c7f53a?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1755038995605-038a7345658f?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1546238232-20216dec9f72?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1433086966358-54859d0ed716?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1753724223372-9a1df8eb5212?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1754079132860-5b37dab49daa?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1754079132962-2f6c62f14d33?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1754764987594-2236e7736115?q=80&w=400&auto=format&fit=crop',
-		'https://images.unsplash.com/photo-1755048796967-75a82d214846?q=80&w=400&auto=format&fit=crop',
+
+	const phoneScreens = [
+		'/placeholders/placeholder-vertical.jpeg',
+		'/placeholders/placeholder-vertical.jpeg',
+		'/placeholders/placeholder-vertical.jpeg',
+		'/placeholders/placeholder-vertical.jpeg',
+		'/placeholders/placeholder-vertical.jpeg',
 	];
 
-	const words = ['Schedule.', 'Analyze.', 'Discover.', 'Grow.', 'Repeat.'];
-	let wordIdx = $state(0);
-	let wordVisible = $state(true);
-
-	// (Hero now uses ArcGalleryHero)
-
-	const platforms = [
-		{ name: 'Instagram',   color: '#E1306C', icon: 'instagram' },
-		{ name: 'TikTok',      color: '#010101', icon: 'tiktok'    },
-		{ name: 'Facebook',    color: '#1877F2', icon: 'facebook'  },
-		{ name: 'LinkedIn',    color: '#0A66C2', icon: 'linkedin'  },
-		{ name: 'X / Twitter', color: '#000000', icon: 'x'         },
-		{ name: 'YouTube',     color: '#FF0000', icon: 'youtube'   },
-		{ name: 'Reddit',      color: '#FF4500', icon: 'reddit',    abbr: 'R'  },
-		{ name: 'Pinterest',   color: '#E60023', icon: 'pinterest', abbr: 'P'  },
-		{ name: 'Threads',     color: '#111111', icon: 'threads',   abbr: 'Th' },
-		{ name: 'Snapchat',    color: '#FFFC00', icon: 'snapchat',  abbr: 'Sc' },
-		{ name: 'Bluesky',     color: '#0085FF', icon: 'bluesky',   abbr: 'B'  },
-		{ name: 'Google Business', color: '#34A853', icon: 'gmb',   abbr: 'G'  },
+	const phoneLabels = [
+		{ tint: '#FFB4A2', tag: 'Carousel' },
+		{ tint: '#B5E48C', tag: 'Reel' },
+		{ tint: '#A0C4FF', tag: 'Story' },
+		{ tint: '#FFC8DD', tag: 'Post' },
+		{ tint: '#FFD6A5', tag: 'Schedule' },
 	];
 
-	const features = [
-		{ n: '01', title: 'Viral Discovery',    desc: 'Track any creator. AI reverse-engineers exactly what made each post explode.',  tag: 'Apify + Claude'      },
-		{ n: '02', title: 'News to Post',        desc: 'Pull breaking news, rewrite into punchy captions, generate images — one click.', tag: 'TheNewsAPI + Imagen' },
-		{ n: '03', title: 'AI Hook Generator',   desc: 'Claude analyzes viral hooks from your niche and generates 10 remixed versions.', tag: 'Claude 3.5 Sonnet'   },
-		{ n: '04', title: 'Carousel Editor',     desc: 'Build multi-slide carousels with a live canvas editor. Export 1080×1350 PNGs.',  tag: 'Export-ready'        },
+	const featured = [
+		{ title: 'Morning Hooks', creator: 'Maya Carter', initials: 'MC',
+		  bg: '#7B2D26', img: '/placeholders/placeholder-square.jpeg' },
+		{ title: 'Reel Lab',      creator: 'Avery James', initials: 'AJ',
+		  bg: '#D67862', img: '/placeholders/placeholder-square.jpeg' },
+		{ title: 'Story Boost',   creator: 'Sienna Cole', initials: 'SC',
+		  bg: '#3D6B8C', img: '/placeholders/placeholder-square.jpeg' },
+		{ title: 'Caption Co.',   creator: 'Devin Park',  initials: 'DP',
+		  bg: '#A6B4C4', img: '/placeholders/placeholder-square.jpeg' },
 	];
-
-	const testimonials = [
-		{ name: 'Mia Chen',      handle: '@mia.creates',  initials: 'MC', text: 'I went from 200 to 12k followers in 6 weeks. The hook generator alone is worth 10× the price.', niche: 'Finance Creator',     color: '#8B5CF6' },
-		{ name: 'Jordan Rivers', handle: '@jordanrivers', initials: 'JR', text: 'The news-to-post feature is insane. Fresh content every morning in under 2 minutes.',            niche: 'Fitness Coach',       color: '#06B6D4' },
-		{ name: 'Priya Sood',    handle: '@priyasood.co', initials: 'PS', text: 'My agency manages 40 accounts. Cut our production time from 3 hours to 20 minutes.',             niche: 'Social Media Agency', color: '#E8FF48' },
-	];
-
-	const marqueeItems = ['Schedule', 'Discover', 'Analyze', 'Create', 'Export', 'Grow', 'Repeat'];
-
-	const steps = [
-		{ n: '01', title: 'Track Competitors', desc: 'Add any Instagram handle. We scrape their top-performing posts and rank by engagement.' },
-		{ n: '02', title: 'AI Deconstruction', desc: 'Claude analyzes each viral post — hook type, emotional trigger, content structure.' },
-		{ n: '03', title: 'Create & Schedule', desc: 'Remix the winning formula for your brand and export or schedule directly from the app.' },
-	];
-
-	// (Hero visuals now handled by ArcGalleryHero)
 
 	onMount(() => {
 		mounted = true;
-		window.addEventListener('scroll', () => { scrollY = window.scrollY; }, { passive: true });
+		const onScroll = () => { scrollY = window.scrollY; };
+		window.addEventListener('scroll', onScroll, { passive: true });
 
-		const cycle = setInterval(() => {
-			wordVisible = false;
-			setTimeout(() => { wordIdx = (wordIdx + 1) % words.length; wordVisible = true; }, 350);
-		}, 2400);
-
-		// Scroll-reveal — only on .reveal elements, not section wrappers
 		const io = new IntersectionObserver((entries) => {
-			entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-		}, { threshold: 0.06, rootMargin: '0px 0px -20px 0px' });
+			entries.forEach((e) => {
+				if (e.isIntersecting) {
+					(e.target as HTMLElement).classList.add('in');
+					io.unobserve(e.target);
+				}
+			});
+		}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
 		const revealEls = Array.from(document.querySelectorAll<HTMLElement>('.reveal'));
 		revealEls.forEach((el) => io.observe(el));
-		// Ensure above-the-fold hero content is visible immediately even if
-		// IntersectionObserver callbacks are delayed (Safari/WebKit can be flaky on first paint).
+
+		// Above-the-fold fallback — show anything already in view immediately.
 		requestAnimationFrame(() => {
 			for (const el of revealEls) {
 				const r = el.getBoundingClientRect();
-				if (r.top < window.innerHeight * 0.92 && r.bottom > 0) el.classList.add('visible');
+				if (r.top < window.innerHeight * 0.95 && r.bottom > 0) {
+					el.classList.add('in');
+					io.unobserve(el);
+				}
 			}
 		});
 
-		return () => { clearInterval(cycle); io.disconnect(); };
+		return () => {
+			window.removeEventListener('scroll', onScroll);
+			io.disconnect();
+		};
 	});
 </script>
 
 <svelte:head>
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+	<title>Carousel Studio — Posting Made Easy</title>
+	<meta name="description" content="Pick a template. Connect your account. Auto-post on schedule." />
 </svelte:head>
 
-<div class="root" class:mounted>
-	<div class="noise"></div>
-
+<div class="page" class:mounted>
 	<!-- NAV -->
-	<nav class="nav" class:scrolled={scrollY > 40}>
-		<a href="/" class="logo">
-			<span class="logo-mark">CS</span>
-			<span class="logo-text">Carousel<em>Studio</em></span>
+	<nav class="nav" class:scrolled={scrollY > 24}>
+		<a href="/" class="brand">
+			<span class="brand-mark"></span>
+			<span class="brand-name">CarouselStudio</span>
 		</a>
-		<div class="nav-links">
-			<a href="#features">Features</a>
-			<a href="#how">How it works</a>
-			<a href="/pricing">Pricing</a>
-		</div>
 		<div class="nav-actions">
-			<a href="/login" class="nav-signin">Sign in</a>
-			<a href="/signup" class="btn-cta-nav">Start free →</a>
+			<a href="/dashboard" class="btn btn-ghost">Launch a Studio</a>
+			<a href="/signup" class="btn btn-dark">Get CarouselStudio</a>
 		</div>
 	</nav>
 
-	<!-- ═══════════════════════════════════════════════════════
-	     ACT 1 — HERO  (Rocket.com-style)
-	═══════════════════════════════════════════════════════ -->
-	<section class="hero-white">
-		<ArcGalleryHero images={memoryImages} className="hero-arc-gallery" />
-	</section>
-
-	<!-- MARQUEE — chapter break -->
-	<div class="marquee-wrap">
-		<div class="marquee-track">
-			{#each [...marqueeItems, ...marqueeItems, ...marqueeItems, ...marqueeItems] as item, i}
-				<span class="marquee-item">{item}</span>
-				{#if i % 2 === 0}<span class="marquee-sep"><span class="marquee-dot">✦</span></span>{/if}
-			{/each}
-		</div>
-	</div>
-
-	<!-- ═══════════════════════════════════════════════════════
-	     ACT 2 — DARK  (Krea.ai: glassmorphism, bento, depth)
-	═══════════════════════════════════════════════════════ -->
-
-	<!-- INTEGRATIONS (replaces old Supported Platforms section) -->
-	<MultiOrbitSemiCircle items={platforms} />
-	<CtaWithMarquee />
-	<ImageAutoSlider />
-
-	<!-- FEATURES BENTO -->
-	<section id="features" class="section-dark section-pad">
-		<div class="container">
-			<div class="section-header reveal">
-				<span class="eyebrow-lime">The Toolkit</span>
-				<h2 class="title-dark">Everything you need<br/><em>to dominate your niche.</em></h2>
+	<!-- HERO -->
+	<section class="hero">
+		<div class="hero-inner">
+			<div class="hero-app">
+				<div class="hero-icon" aria-hidden="true">
+					<svg viewBox="0 0 64 64" width="44" height="44" fill="none">
+						<rect x="14" y="10" width="36" height="44" rx="6" fill="#fff" opacity="0.18"/>
+						<rect x="10" y="14" width="36" height="44" rx="6" fill="#fff" opacity="0.55"/>
+						<rect x="6" y="18" width="36" height="44" rx="6" fill="#fff"/>
+						<circle cx="14" cy="28" r="3" fill="#0f0f10"/>
+						<rect x="22" y="26" width="14" height="3" rx="1.5" fill="#0f0f10"/>
+						<rect x="22" y="32" width="10" height="3" rx="1.5" fill="#0f0f10" opacity="0.5"/>
+					</svg>
+				</div>
+				<p class="hero-app-name">CarouselStudio</p>
 			</div>
-			<div class="bento-features">
-				{#each features as f, i}
-					<div class="bento-feat reveal" style="--delay:{i * 0.1}s">
-						<div class="bf-accent"></div>
-						<div class="bf-num">{f.n}</div>
-						<div class="bf-body">
-							<div class="bf-top">
-								<h3 class="bf-title">{f.title}</h3>
-								<span class="bf-tag">{f.tag}</span>
+			<h1 class="hero-title">Posting Made Easy</h1>
+			<p class="hero-sub">Pick a Template. Connect your Account. That's it.</p>
+			<div class="hero-ctas">
+				<a href="/signup" class="btn btn-dark btn-cta">
+					Explore Templates
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+						<line x1="5" y1="12" x2="19" y2="12"/>
+						<polyline points="12 5 19 12 12 19"/>
+					</svg>
+				</a>
+			</div>
+		</div>
+
+		<!-- Phone marquee -->
+		<div class="phone-stage">
+			<div class="phone-track">
+				{#each [...phoneLabels, ...phoneLabels] as p, i}
+					<div class="phone" style="--tint:{p.tint}; --i:{i}">
+						<div class="phone-frame">
+							<div class="phone-notch"></div>
+							<div class="phone-screen" style="background:{p.tint}">
+								<img src={phoneScreens[i % phoneScreens.length]} alt="" />
+								<div class="phone-overlay">
+									<div class="phone-pill">{p.tag}</div>
+								</div>
 							</div>
-							<p class="bf-desc">{f.desc}</p>
+							<div class="phone-bar"></div>
 						</div>
 					</div>
 				{/each}
@@ -172,607 +134,815 @@
 		</div>
 	</section>
 
-	<!-- STATS BENTO -->
-	<section class="section-surface section-pad">
+	<!-- FEATURED -->
+	<section class="featured">
 		<div class="container">
-			<div class="stats-bento">
-				<div class="stat-cell stat-big reveal">
-					<p class="stat-eyebrow">Posts analyzed by AI</p>
-					<span class="stat-num">2.3M+</span>
-					<p class="stat-sub">and counting, every week</p>
-				</div>
-				<div class="stat-cell reveal" style="--delay:0.08s">
-					<span class="stat-num stat-md">94%</span>
-					<p class="stat-label">avg engagement lift</p>
-				</div>
-				<div class="stat-cell reveal" style="--delay:0.16s">
-					<span class="stat-num stat-md">12×</span>
-					<p class="stat-label">faster than manual creation</p>
-				</div>
-				<div class="stat-cell stat-quote-cell reveal" style="--delay:0.1s">
-					<div class="stat-stars">★★★★★</div>
-					<p class="stat-quote">"The best investment I made for my content business this year."</p>
-					<div class="stat-author">
-						<div class="stat-avatar">JR</div>
-						<div>
-							<p class="stat-name">Jordan Rivers</p>
-							<p class="stat-handle">@jordanrivers · Fitness Coach</p>
+			<h2 class="featured-h reveal">Featured</h2>
+			<div class="featured-grid">
+				{#each featured as f, i}
+					<a href="/dashboard" class="feat-card reveal" style="background:{f.bg}; --d:{i * 0.08}s">
+						<img class="feat-img" src={f.img} alt="" />
+						<span class="feat-badge">Featured</span>
+						<div class="feat-info">
+							<h3 class="feat-title">{f.title}</h3>
+							<p class="feat-by">
+								by
+								<span class="feat-avatar">{f.initials}</span>
+								<span class="feat-creator">{f.creator}</span>
+							</p>
 						</div>
-					</div>
-				</div>
-				<div class="stat-cell stat-platforms-cell reveal" style="--delay:0.18s">
-					<p class="stat-label" style="margin-bottom:14px">Platforms supported</p>
-					<div class="stat-platform-pills">
-						{#each ['IG', 'TK', 'FB', 'LI', 'YT', 'X'] as p}
-							<span class="stat-pill">{p}</span>
-						{/each}
-					</div>
-				</div>
-			</div>
-		</div>
-	</section>
-
-	<!-- HOW IT WORKS -->
-	<section id="how" class="section-dark section-pad">
-		<div class="container">
-			<div class="section-header center reveal">
-				<span class="eyebrow-mono">The Process</span>
-				<h2 class="title-dark">From zero to viral<br/><em>in three steps.</em></h2>
-			</div>
-			<div class="steps-row">
-				{#each steps as step, i}
-					<div class="step-card reveal" style="--delay:{i * 0.12}s">
-						<div class="step-num-wrap">
-							<span class="step-num">{step.n}</span>
-						</div>
-						{#if i < steps.length - 1}
-							<div class="step-arrow">→</div>
-						{/if}
-						<h3 class="step-title">{step.title}</h3>
-						<p class="step-desc">{step.desc}</p>
-					</div>
+					</a>
 				{/each}
 			</div>
 		</div>
 	</section>
 
-	<!-- TESTIMONIALS -->
-	<section class="section-surface section-pad">
+	<!-- HOW IT WORKS (floating cards) -->
+	<section class="how">
 		<div class="container">
-			<div class="section-header center reveal">
-				<span class="eyebrow-lime">Social Proof</span>
-				<h2 class="title-dark">Creators are<br/><em>already winning.</em></h2>
-			</div>
-			<div class="testimonials-grid">
-				{#each testimonials as t, i}
-					<div class="t-card reveal" style="--color:{t.color}; --delay:{i * 0.1}s">
-						<div class="t-quote-glyph">"</div>
-						<p class="t-text">{t.text}</p>
-						<div class="t-author">
-							<div class="t-avatar" style="background:{t.color}22; border-color:{t.color}55; color:{t.color}">{t.initials}</div>
-							<div>
-								<p class="t-name">{t.name}</p>
-								<p class="t-meta">{t.niche} · {t.handle}</p>
+			<h2 class="how-title reveal">How it works.</h2>
+
+			<div class="how-row">
+				<!-- Step 1: pick a template card -->
+				<div class="how-col reveal" style="--d:0s">
+					<div class="float-card fc-template">
+						<div class="fc-thumb" aria-hidden="true">
+							<svg viewBox="0 0 40 40" width="22" height="22" fill="none">
+								<rect x="6" y="6" width="28" height="28" rx="6" fill="#0f0f10"/>
+								<rect x="11" y="11" width="18" height="3" rx="1.5" fill="#E8FF48"/>
+								<rect x="11" y="17" width="14" height="3" rx="1.5" fill="#fff" opacity=".55"/>
+								<rect x="11" y="23" width="10" height="3" rx="1.5" fill="#fff" opacity=".25"/>
+							</svg>
+						</div>
+						<div class="fc-text">
+							<p class="fc-title">Studio Pack</p>
+							<div class="fc-by">
+								<span class="fc-dot"></span>
+								<span>Maya Carter</span>
 							</div>
 						</div>
 					</div>
-				{/each}
+					<h3 class="how-step-title">Pick your Template</h3>
+					<p class="how-step-desc">Choose from any of our templates to post with.</p>
+				</div>
+
+				<!-- Step 2: connect account card -->
+				<div class="how-col reveal" style="--d:0.08s">
+					<div class="float-card fc-account">
+						<div class="fc-platform">
+							<svg viewBox="0 0 40 40" width="22" height="22" aria-hidden="true">
+								<circle cx="20" cy="20" r="20" fill="#0f0f10"/>
+								<path d="M14 26 L18 14 L20 22 L26 12 L26 26" stroke="#E8FF48" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+						</div>
+						<div class="fc-text">
+							<p class="fc-title">12,400 followers</p>
+							<p class="fc-handle">@yourbrand</p>
+						</div>
+					</div>
+					<h3 class="how-step-title">Connect your Account</h3>
+					<p class="how-step-desc">Link directly to your favorite social platform.</p>
+				</div>
+
+				<!-- Step 3: auto-post chips -->
+				<div class="how-col reveal" style="--d:0.16s">
+					<div class="float-card fc-chips">
+						<span class="chip" style="background:#0f0f10">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E8FF48" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+						</span>
+						<span class="chip" style="background:#3D6B8C">
+							<span class="chip-letter">IG</span>
+						</span>
+						<span class="chip" style="background:#E8B4B8">
+							<span class="chip-letter">TT</span>
+						</span>
+					</div>
+					<h3 class="how-step-title">Auto-Post Daily</h3>
+					<p class="how-step-desc">CarouselStudio automatically schedules posts across your accounts.</p>
+				</div>
 			</div>
 		</div>
 	</section>
 
-	<!-- FINAL CTA -->
-	<section class="cta-section">
-		<div class="cta-orb"></div>
-		<div class="cta-inner reveal">
-			<span class="eyebrow-lime">✦ Ready?</span>
-			<h2 class="cta-headline">
-				Stop watching others go viral.<br/>
-				<em>Start your free account today.</em>
-			</h2>
-			<a href="/signup" class="btn-lime-xl">
-				Get started free — no card needed
-				<ArrowRight size={20} />
-			</a>
-			<div class="cta-platforms">
-				<span class="cta-label">Works with</span>
-				<div class="cta-platform-tags">
-					{#each ['Instagram', 'TikTok', 'Facebook', 'LinkedIn', 'YouTube'] as name}
-						<span class="cta-tag">{name}</span>
-					{/each}
-				</div>
+	<!-- CTA STRIP -->
+	<section class="cta-strip">
+		<div class="container cta-row reveal">
+			<div>
+				<h3 class="cta-h">Ready to put posting on autopilot?</h3>
+				<p class="cta-p">Free to start. No credit card. Cancel anytime.</p>
 			</div>
+			<a href="/signup" class="btn btn-dark btn-lg">Get CarouselStudio</a>
 		</div>
 	</section>
 
 	<!-- FOOTER -->
 	<footer class="footer">
-		<div class="footer-inner">
+		<div class="container footer-grid">
 			<div class="footer-brand">
-				<a href="/" class="logo">
-					<span class="logo-mark">CS</span>
-					<span class="logo-text" style="color:var(--d-text)">Carousel<em style="color:var(--lime)">Studio</em></span>
+				<a href="/" class="brand">
+					<span class="brand-mark"></span>
+					<span class="brand-name">CarouselStudio</span>
 				</a>
-				<p class="footer-tag">AI-powered content for serious social creators.</p>
+				<p class="footer-tag">Schedule. Post. Grow. From one calm studio.</p>
 			</div>
-			<div class="footer-cols">
-				<div class="footer-col">
-					<p class="footer-col-title">Product</p>
-					<a href="#features">Features</a>
-					<a href="/pricing">Pricing</a>
-					<a href="/dashboard">Dashboard</a>
-				</div>
-				<div class="footer-col">
-					<p class="footer-col-title">Platforms</p>
-					<a href="https://instagram.com" rel="noreferrer" target="_blank">Instagram</a>
-					<a href="https://tiktok.com" rel="noreferrer" target="_blank">TikTok</a>
-					<a href="https://linkedin.com" rel="noreferrer" target="_blank">LinkedIn</a>
-				</div>
-				<div class="footer-col">
-					<p class="footer-col-title">Legal</p>
-					<a href="/privacy">Privacy</a>
-					<a href="/terms">Terms</a>
-				</div>
+
+			<div class="footer-col">
+				<p class="footer-h">Company</p>
+				<a href="/about">About</a>
+				<a href="/careers">Careers</a>
+				<a href="/contact">Contact</a>
+				<a href="/faq">FAQs</a>
+			</div>
+
+			<div class="footer-col">
+				<p class="footer-h">Legal</p>
+				<a href="/privacy">Privacy</a>
+				<a href="/terms">Terms</a>
+				<a href="/disclaimer">Disclaimer</a>
 			</div>
 		</div>
-		<div class="footer-bottom">
-			<p>© 2026 Carousel Studio. Built with SvelteKit + Claude AI.</p>
-			<p>Made with ♥ for creators worldwide.</p>
+
+		<div class="container footer-bottom">
+			<p>© 2026 CarouselStudio. All rights reserved.</p>
+			<p class="footer-fine">
+				CarouselStudio is a content scheduling tool. Brand names belong to their respective owners.
+			</p>
 		</div>
 	</footer>
 </div>
 
 <style>
-/* ════════════════════════════════════════════════════════════
-   TOKENS
-════════════════════════════════════════════════════════════ */
-:root {
-	--lime:    #E8FF48;
-	--orange:  #FF6B35;
-	--dark:    #080808;
-	--surface: #0f0f0f;
-	--s2:      #1a1a1a;
-	--cream:   #F5F0E6;
-	--light:   #ffffff;
+	/* ─── tokens ──────────────────────────────────────────── */
+	.page {
+		--ap-bg: #ffffff;
+		--ap-soft: #f6f5f1;
+		--ap-text: #0f0f10;
+		--ap-text-2: #5b5b62;
+		--ap-text-3: #9a9aa1;
+		--ap-line: rgba(15, 15, 16, 0.08);
+		--ap-line-2: rgba(15, 15, 16, 0.14);
+		--ap-accent: #0f0f10;
 
-	--d-text:   #F0EDE8;
-	--d-muted:  rgba(240,237,232,0.55);
-	--d-dim:    rgba(240,237,232,0.28);
-	--d-border: rgba(255,255,255,0.07);
+		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		color: var(--ap-text);
+		background: var(--ap-bg);
+		min-height: 100vh;
+		overflow-x: hidden;
+		-webkit-font-smoothing: antialiased;
+		letter-spacing: -0.01em;
+	}
 
-	--l-text:   #0a0505;
-	--l-muted:  rgba(10,5,5,0.5);
-	--l-dim:    rgba(10,5,5,0.28);
+	.container {
+		max-width: 1180px;
+		margin: 0 auto;
+		padding: 0 32px;
+	}
 
-	--font-display: 'Lexend', sans-serif;
-	--font-body:    'Lexend', sans-serif;
-	--font-mono:    'Space Mono', monospace;
+	/* ─── reveal animation ────────────────────────────────── */
+	.reveal {
+		opacity: 1;
+		transform: none;
+		transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s),
+		            transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
+		will-change: opacity, transform;
+	}
+	.page.mounted .reveal:not(.in) {
+		opacity: 0;
+		transform: translateY(24px);
+	}
+	.page.mounted .reveal.in {
+		opacity: 1;
+		transform: translateY(0);
+	}
 
-	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-}
+	/* ─── nav ─────────────────────────────────────────────── */
+	.nav {
+		position: fixed;
+		top: 0; left: 0; right: 0;
+		z-index: 50;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 20px 32px;
+		transition: background 0.35s ease, backdrop-filter 0.35s ease,
+		            border-color 0.35s ease, padding 0.35s ease;
+		border-bottom: 1px solid transparent;
+	}
+	.nav.scrolled {
+		background: rgba(255, 255, 255, 0.82);
+		backdrop-filter: saturate(180%) blur(18px);
+		-webkit-backdrop-filter: saturate(180%) blur(18px);
+		border-bottom-color: var(--ap-line);
+		padding: 14px 32px;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   BASE
-════════════════════════════════════════════════════════════ */
-.root {
-	font-family: var(--font-body);
-	overflow-x: hidden;
-	/* Don't hide the entire page before hydration. */
-	opacity: 1;
-}
-.root.mounted { opacity: 1; }
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		text-decoration: none;
+		color: inherit;
+	}
+	.brand-mark {
+		width: 28px;
+		height: 28px;
+		border-radius: 8px;
+		background:
+			radial-gradient(circle at 30% 30%, #fff 0%, #fff 30%, transparent 31%) 0 0/100% 100% no-repeat,
+			conic-gradient(from 220deg, #1c1c1c, #3a3a3a, #1c1c1c);
+		box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 1px 2px rgba(0, 0, 0, 0.15);
+	}
+	.brand-name {
+		font-weight: 700;
+		font-size: 17px;
+		letter-spacing: -0.02em;
+	}
 
-.noise {
-	position: fixed; inset: 0; pointer-events: none; z-index: 900; opacity: 0.02;
-	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-	background-size: 256px;
-}
+	.nav-actions {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
 
-.container { max-width: 1280px; margin: 0 auto; padding: 0 48px; }
+	/* ─── buttons ─────────────────────────────────────────── */
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 11px 22px;
+		border-radius: 999px;
+		font-family: inherit;
+		font-weight: 600;
+		font-size: 14px;
+		text-decoration: none;
+		border: 1px solid transparent;
+		transition: transform 0.25s ease, background 0.25s ease,
+		            border-color 0.25s ease, color 0.25s ease,
+		            box-shadow 0.25s ease;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.btn-ghost {
+		color: var(--ap-text);
+		background: transparent;
+		border-color: var(--ap-line-2);
+	}
+	.btn-ghost:hover {
+		background: rgba(0, 0, 0, 0.04);
+	}
+	.btn-light-outline {
+		color: var(--ap-text);
+		background: #fff;
+		border-color: var(--ap-line-2);
+	}
+	.btn-light-outline:hover {
+		border-color: var(--ap-text);
+		transform: translateY(-1px);
+	}
+	.btn-dark {
+		color: #fff;
+		background: var(--ap-accent);
+		border-color: var(--ap-accent);
+	}
+	.btn-dark:hover {
+		background: #2a2a2a;
+		border-color: #2a2a2a;
+		transform: translateY(-1px);
+		box-shadow: 0 8px 24px rgba(15, 15, 16, 0.18);
+	}
+	.btn-lg {
+		padding: 16px 32px;
+		font-size: 15px;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   SCROLL REVEAL  — only on child elements, never section wrappers
-════════════════════════════════════════════════════════════ */
-.reveal {
-	/* Never hide content by default (prevents blank page if IO/hydration misbehaves). */
-	opacity: 1;
-	transform: none;
-}
-/* Reveal no longer uses a hidden state, so `.visible` is redundant. */
+	/* ─── hero ────────────────────────────────────────────── */
+	.hero {
+		position: relative;
+		padding: clamp(110px, 14vh, 160px) 24px 60px;
+		text-align: center;
+		overflow: hidden;
+		background:
+			radial-gradient(ellipse 70% 50% at 50% 0%, rgba(15, 15, 16, 0.04) 0%, transparent 70%),
+			#fff;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   NAV
-════════════════════════════════════════════════════════════ */
-.nav {
-	position: fixed; top: 0; left: 0; right: 0; z-index: 200;
-	display: flex; align-items: center; justify-content: space-between;
-	padding: 20px 48px;
-	transition: all 0.3s ease;
-}
-.nav.scrolled {
-	background: rgba(255,255,255,0.88);
-	backdrop-filter: blur(24px);
-	-webkit-backdrop-filter: blur(24px);
-	border-bottom: 1px solid rgba(0,0,0,0.07);
-	padding: 14px 48px;
-	box-shadow: 0 1px 0 rgba(0,0,0,0.04);
-}
+	.hero-inner {
+		max-width: 880px;
+		margin: 0 auto;
+	}
 
-.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-.logo-mark {
-	width: 32px; height: 32px; background: var(--dark); color: #fff;
-	border-radius: 8px; display: flex; align-items: center; justify-content: center;
-	font-family: var(--font-mono); font-size: 11px; font-weight: 700; flex-shrink: 0;
-}
-.logo-text {
-	font-family: var(--font-display); font-size: 17px; font-weight: 700;
-	color: var(--l-text); letter-spacing: -0.02em;
-}
-.logo-text em { font-style: italic; color: var(--orange); }
+	/* App icon block + brand name (above title) */
+	.hero-app {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 36px;
+	}
+	.hero-icon {
+		width: 76px;
+		height: 76px;
+		border-radius: 18px;
+		background: linear-gradient(180deg, #1f1f22 0%, #0a0a0c 100%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.08) inset,
+			0 0 0 1px rgba(0, 0, 0, 0.5),
+			0 18px 40px -12px rgba(15, 15, 16, 0.45),
+			0 6px 14px -6px rgba(15, 15, 16, 0.3);
+		transform-origin: center;
+		animation: hero-icon-pop 1100ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+		will-change: transform, opacity;
+	}
+	.hero-app-name {
+		font-weight: 700;
+		font-size: 16px;
+		letter-spacing: -0.01em;
+		color: var(--ap-text);
+		margin: 0;
+		opacity: 0;
+		animation: hero-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 380ms both;
+	}
 
-.nav-links { display: flex; gap: 36px; }
-.nav-links a {
-	font-size: 14px; color: var(--l-muted); text-decoration: none;
-	font-weight: 500; transition: color 0.2s;
-}
-.nav-links a:hover { color: var(--l-text); }
+	@keyframes hero-icon-pop {
+		0%   { opacity: 0; transform: scale(0.4) rotate(-14deg) translateY(8px); }
+		55%  { opacity: 1; transform: scale(1.08) rotate(3deg) translateY(0); }
+		78%  { transform: scale(0.97) rotate(-1deg); }
+		100% { opacity: 1; transform: scale(1) rotate(0deg); }
+	}
+	@keyframes hero-fade-up {
+		from { opacity: 0; transform: translateY(14px); }
+		to   { opacity: 1; transform: translateY(0); }
+	}
 
-.nav-actions { display: flex; align-items: center; gap: 16px; }
-.nav-signin { font-size: 14px; color: var(--l-muted); text-decoration: none; transition: color 0.2s; }
-.nav-signin:hover { color: var(--l-text); }
-.btn-cta-nav {
-	display: inline-flex; align-items: center;
-	padding: 9px 22px; background: var(--dark); color: #fff;
-	border-radius: 100px; font-size: 13px; font-weight: 600;
-	font-family: var(--font-body); text-decoration: none; transition: all 0.2s;
-}
-.btn-cta-nav:hover { background: #222; transform: translateY(-1px); }
+	.hero-title {
+		font-family: 'Satoshi', sans-serif;
+		font-weight: 900;
+		font-size: clamp(44px, 7.4vw, 92px);
+		line-height: 0.98;
+		letter-spacing: -0.04em;
+		margin: 0 0 22px;
+		color: var(--ap-text);
+		opacity: 0;
+		animation: hero-fade-up 800ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both;
+	}
+	.hero-sub {
+		font-size: clamp(17px, 1.6vw, 21px);
+		line-height: 1.5;
+		color: var(--ap-text-2);
+		margin: 0 auto 36px;
+		max-width: 620px;
+		font-weight: 400;
+		opacity: 0;
+		animation: hero-fade-up 800ms cubic-bezier(0.16, 1, 0.3, 1) 660ms both;
+	}
+	.hero-ctas {
+		display: inline-flex;
+		gap: 12px;
+		flex-wrap: wrap;
+		justify-content: center;
+		opacity: 0;
+		animation: hero-fade-up 800ms cubic-bezier(0.16, 1, 0.3, 1) 800ms both;
+	}
+	.btn-cta {
+		padding: 14px 26px;
+		font-size: 15px;
+	}
+	.btn-cta svg {
+		transition: transform 0.25s ease;
+	}
+	.btn-cta:hover svg {
+		transform: translateX(3px);
+	}
 
-/* ════════════════════════════════════════════════════════════
-   ACT 1 — WHITE HERO  (Arc gallery)
-════════════════════════════════════════════════════════════ */
-.hero-white {
-	background: #fff;
-	/* Offset fixed nav + give hero breathing room */
-	padding-top: clamp(88px, 10vh, 124px);
-	padding-bottom: clamp(28px, 6vh, 72px);
-	overflow: hidden;
-	position: relative;
-}
+	/* ─── phone marquee ───────────────────────────────────── */
+	.phone-stage {
+		margin-top: 80px;
+		padding: 20px 0;
+		mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+		-webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+	}
+	.phone-track {
+		display: flex;
+		gap: 28px;
+		width: max-content;
+		animation: phone-scroll 38s linear infinite;
+		padding: 0 14px;
+	}
+	@keyframes phone-scroll {
+		0%   { transform: translateX(0); }
+		100% { transform: translateX(-50%); }
+	}
+	.phone-stage:hover .phone-track { animation-play-state: paused; }
 
-/* Subtle grid texture */
-.hero-white::before {
-	content: '';
-	position: absolute; inset: 0; pointer-events: none; z-index: 0;
-	background-image:
-		linear-gradient(rgba(0,0,0,0.022) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(0,0,0,0.022) 1px, transparent 1px);
-	background-size: 40px 40px;
-	mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 100%);
-}
+	.phone {
+		flex: 0 0 auto;
+		transform: translateY(calc(sin(var(--i) * 1.1) * 12px));
+		transition: transform 0.4s ease;
+	}
+	.phone:nth-child(odd)  { transform: translateY(8px); }
+	.phone:nth-child(even) { transform: translateY(-8px); }
+	.phone:hover { transform: translateY(-14px) scale(1.02); }
 
-/* ════════════════════════════════════════════════════════════
-   MARQUEE — chapter break
-════════════════════════════════════════════════════════════ */
-.marquee-wrap {
-	overflow: hidden; background: var(--dark);
-	border-top: 1px solid rgba(255,255,255,0.05);
-	border-bottom: 1px solid rgba(255,255,255,0.05);
-	padding: 18px 0;
-}
-.marquee-track {
-	display: flex; width: max-content;
-	animation: marquee 28s linear infinite;
-}
-@keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-25%)} }
-.marquee-item {
-	display: flex; align-items: center; gap: 18px;
-	padding: 0 18px;
-	font-family: var(--font-display); font-size: 18px;
-	font-weight: 700; font-style: italic;
-	color: #fff;
-	white-space: nowrap;
-}
-.marquee-sep {
-	width: 64px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 auto;
-}
-.marquee-dot {
-	color: var(--lime);
-	font-style: normal;
-	font-size: 11px;
-	/* Center the ✦ within the line box */
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	line-height: 1;
-	transform: translateY(-0.03em);
-}
+	.phone-frame {
+		position: relative;
+		width: 220px;
+		height: 460px;
+		background: #0f0f10;
+		border-radius: 38px;
+		padding: 10px;
+		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.18) inset,
+			0 0 0 1px rgba(0, 0, 0, 0.2),
+			0 30px 60px -20px rgba(15, 15, 16, 0.35),
+			0 12px 24px -10px rgba(15, 15, 16, 0.25);
+	}
+	.phone-notch {
+		position: absolute;
+		top: 18px; left: 50%;
+		width: 70px; height: 18px;
+		background: #0f0f10;
+		border-radius: 12px;
+		transform: translateX(-50%);
+		z-index: 2;
+	}
+	.phone-screen {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		border-radius: 30px;
+		overflow: hidden;
+		background: var(--tint);
+	}
+	.phone-screen img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+		mix-blend-mode: luminosity;
+		opacity: 0.92;
+	}
+	.phone-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		padding: 18px;
+		background: linear-gradient(180deg, transparent 50%, rgba(0, 0, 0, 0.35) 100%);
+	}
+	.phone-pill {
+		align-self: flex-start;
+		padding: 6px 12px;
+		background: rgba(255, 255, 255, 0.92);
+		color: #111;
+		border-radius: 999px;
+		font-weight: 700;
+		font-size: 11px;
+		letter-spacing: 0.02em;
+		backdrop-filter: blur(8px);
+	}
+	.phone-bar {
+		position: absolute;
+		bottom: 6px; left: 50%;
+		width: 110px; height: 4px;
+		background: rgba(255, 255, 255, 0.55);
+		border-radius: 2px;
+		transform: translateX(-50%);
+	}
 
-/* ════════════════════════════════════════════════════════════
-   SHARED DARK UTILITIES
-════════════════════════════════════════════════════════════ */
-.section-dark    { background: var(--dark); color: var(--d-text); }
-.section-surface { background: var(--surface); color: var(--d-text); }
-.section-pad     { padding: 100px 48px; }
-.section-header { margin-bottom: 60px; }
-.section-header.center { text-align: center; }
+	/* ─── featured ────────────────────────────────────────── */
+	.featured {
+		padding: 100px 24px 40px;
+	}
+	.featured-h {
+		font-weight: 800;
+		font-size: clamp(28px, 3vw, 36px);
+		letter-spacing: -0.025em;
+		margin: 0 0 28px;
+	}
+	.featured-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 18px;
+	}
+	.feat-card {
+		position: relative;
+		display: block;
+		aspect-ratio: 1 / 1;
+		border-radius: 22px;
+		overflow: hidden;
+		text-decoration: none;
+		color: #fff;
+		isolation: isolate;
+		transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+		            box-shadow 0.45s ease;
+	}
+	.feat-card:hover {
+		transform: translateY(-6px);
+		box-shadow: 0 24px 50px -20px rgba(15, 15, 16, 0.35);
+	}
+	.feat-img {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		mix-blend-mode: overlay;
+		opacity: 0.85;
+		z-index: -1;
+	}
+	.feat-card::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(180deg, transparent 35%, rgba(0, 0, 0, 0.55) 100%);
+		pointer-events: none;
+	}
+	.feat-badge {
+		position: absolute;
+		top: 16px;
+		left: 16px;
+		padding: 5px 12px;
+		border-radius: 6px;
+		background: rgba(15, 15, 16, 0.78);
+		color: #fff;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		backdrop-filter: blur(8px);
+		z-index: 2;
+	}
+	.feat-info {
+		position: absolute;
+		left: 22px;
+		right: 22px;
+		bottom: 18px;
+		z-index: 2;
+	}
+	.feat-title {
+		font-weight: 800;
+		font-size: 22px;
+		letter-spacing: -0.02em;
+		margin: 0 0 8px;
+		color: #fff;
+		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+	}
+	.feat-by {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		color: rgba(255, 255, 255, 0.85);
+		margin: 0;
+	}
+	.feat-avatar {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		background: rgba(255, 255, 255, 0.92);
+		color: #0f0f10;
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+	}
+	.feat-creator { font-weight: 600; }
 
-.eyebrow-lime {
-	display: inline-block; font-family: var(--font-mono);
-	font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-	color: var(--lime); margin-bottom: 14px;
-}
-.eyebrow-mono {
-	display: inline-block; font-family: var(--font-mono);
-	font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-	color: var(--d-dim); margin-bottom: 14px;
-}
-.title-dark {
-	font-family: var(--font-display);
-	font-size: clamp(36px, 4.2vw, 56px);
-	font-weight: 900; line-height: 1.05;
-	letter-spacing: -0.03em; color: var(--d-text); margin: 0 0 20px;
-}
-.title-dark em { font-style: italic; color: var(--d-muted); }
+	/* ─── how it works (floating cards) ───────────────────── */
+	.how {
+		padding: 100px 24px 110px;
+		background: var(--ap-bg);
+	}
+	.how-title {
+		font-weight: 900;
+		font-size: clamp(40px, 5.4vw, 72px);
+		line-height: 1;
+		letter-spacing: -0.035em;
+		text-align: center;
+		margin: 0 0 80px;
+	}
+	.how-row {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 40px;
+	}
+	.how-col {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+	}
+	.how-col .float-card {
+		margin-bottom: 28px;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   FEATURES BENTO
-════════════════════════════════════════════════════════════ */
-.bento-features {
-	display: grid;
-	grid-template-columns: 1.15fr 1fr;
-	grid-template-rows: 1fr 1fr;
-	gap: 14px;
-}
-.bento-feat:nth-child(1) { grid-row: span 2; }
-.bento-feat:nth-child(4) { grid-column: span 2; }
+	.float-card {
+		display: inline-flex;
+		align-items: center;
+		gap: 12px;
+		padding: 14px 18px 14px 14px;
+		background: #fff;
+		border-radius: 18px;
+		box-shadow:
+			0 1px 0 rgba(15, 15, 16, 0.04) inset,
+			0 1px 2px rgba(15, 15, 16, 0.05),
+			0 22px 44px -16px rgba(15, 15, 16, 0.18),
+			0 8px 16px -8px rgba(15, 15, 16, 0.10);
+		transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+		            box-shadow 0.4s ease;
+	}
+	.how-col:hover .float-card {
+		transform: translateY(-4px);
+	}
 
-.bento-feat {
-	padding: 40px; border-radius: 22px;
-	background: rgba(255,255,255,0.03);
-	border: 1px solid rgba(255,255,255,0.07);
-	display: flex; gap: 24px; align-items: flex-start;
-	position: relative; overflow: hidden;
-	transition: background 0.25s, border-color 0.25s;
-}
-.bento-feat:hover { background: rgba(255,255,255,0.055); border-color: rgba(255,255,255,0.12); }
+	.fc-thumb,
+	.fc-platform {
+		width: 44px;
+		height: 44px;
+		border-radius: 12px;
+		background:
+			conic-gradient(from 220deg, #1c1c1c, #3a3a3a, #1c1c1c);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		overflow: hidden;
+	}
+	.fc-platform { background: #E8FF48; }
 
-.bf-accent {
-	position: absolute; top: -60px; right: -60px;
-	width: 160px; height: 160px; border-radius: 50%;
-	background: radial-gradient(circle, rgba(232,255,72,0.06) 0%, transparent 70%);
-	pointer-events: none;
-}
-.bf-num {
-	font-family: var(--font-display); font-size: 56px; font-weight: 900; font-style: italic;
-	color: rgba(232,255,72,0.07); line-height: 1; min-width: 68px;
-	transition: color 0.2s; flex-shrink: 0;
-}
-.bento-feat:hover .bf-num { color: rgba(232,255,72,0.3); }
-.bf-body { flex: 1; }
-.bf-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-.bf-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--d-text); }
-.bf-tag {
-	font-family: var(--font-mono); font-size: 10px;
-	padding: 3px 10px; border-radius: 100px;
-	border: 1px solid var(--d-border); color: var(--d-dim);
-}
-.bf-desc { font-size: 14px; line-height: 1.7; color: var(--d-muted); margin: 0; }
+	.fc-text { display: flex; flex-direction: column; gap: 3px; }
+	.fc-title {
+		font-weight: 800;
+		font-size: 15px;
+		letter-spacing: -0.01em;
+		margin: 0;
+		color: var(--ap-text);
+	}
+	.fc-by {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--ap-text-2);
+	}
+	.fc-dot {
+		width: 14px; height: 14px;
+		border-radius: 50%;
+		background: linear-gradient(135deg, #E8B4B8, #A6B4C4);
+	}
+	.fc-handle {
+		font-size: 12px;
+		color: var(--ap-text-2);
+		margin: 0;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   STATS BENTO
-════════════════════════════════════════════════════════════ */
-.stats-bento {
-	display: grid;
-	grid-template-columns: 2fr 1fr 1fr;
-	grid-template-rows: auto auto;
-	gap: 14px;
-}
-.stat-cell {
-	padding: 40px; border-radius: 22px;
-	border: 1px solid var(--d-border);
-	background: rgba(255,255,255,0.02);
-	display: flex; flex-direction: column; gap: 8px;
-}
-.stat-big { background: rgba(255,255,255,0.04); }
-.stat-quote-cell { grid-column: span 2; }
+	.fc-chips {
+		gap: 10px;
+		padding: 16px 18px;
+	}
+	.chip {
+		width: 38px;
+		height: 38px;
+		border-radius: 50%;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		color: #fff;
+	}
+	.chip-letter {
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+	}
 
-.stat-eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--d-dim); margin: 0; }
-.stat-num {
-	font-family: var(--font-display); font-size: 72px; font-weight: 900;
-	color: var(--lime); line-height: 1; display: block;
-}
-.stat-md { font-size: 56px; }
-.stat-sub { font-size: 12px; color: var(--d-dim); font-family: var(--font-mono); margin: 0; }
-.stat-label { font-size: 14px; color: var(--d-muted); margin: 0; }
-.stat-stars { font-size: 14px; color: #FBBF24; letter-spacing: 2px; margin-bottom: 12px; }
-.stat-quote {
-	font-family: var(--font-display); font-size: 20px; font-style: italic;
-	font-weight: 700; color: var(--d-text); line-height: 1.45; margin: 0 0 24px;
-}
-.stat-author { display: flex; align-items: center; gap: 12px; }
-.stat-avatar {
-	width: 36px; height: 36px; border-radius: 50%;
-	background: var(--s2); display: flex; align-items: center; justify-content: center;
-	font-family: var(--font-mono); font-size: 11px; color: var(--d-dim);
-	border: 1px solid var(--d-border); flex-shrink: 0;
-}
-.stat-name { font-size: 13px; font-weight: 600; color: var(--d-muted); margin: 0 0 2px; }
-.stat-handle { font-size: 11px; color: var(--d-dim); margin: 0; font-family: var(--font-mono); }
-.stat-platform-pills { display: flex; flex-wrap: wrap; gap: 8px; }
-.stat-pill {
-	padding: 4px 10px; border-radius: 6px;
-	background: rgba(255,255,255,0.04); border: 1px solid var(--d-border);
-	font-family: var(--font-mono); font-size: 10px; color: var(--d-dim);
-}
+	.how-step-title {
+		font-weight: 800;
+		font-size: 17px;
+		letter-spacing: -0.01em;
+		margin: 0 0 10px;
+		color: var(--ap-text);
+	}
+	.how-step-desc {
+		font-size: 14px;
+		line-height: 1.55;
+		color: var(--ap-text-2);
+		margin: 0;
+		max-width: 280px;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   HOW IT WORKS
-════════════════════════════════════════════════════════════ */
-.steps-row {
-	display: grid; grid-template-columns: repeat(3,1fr);
-	gap: 0; position: relative;
-}
-.step-card {
-	padding: 48px 36px 48px 40px;
-	border: 1px solid var(--d-border);
-	border-right: none; position: relative;
-	transition: background 0.2s;
-}
-.step-card:last-child { border-right: 1px solid var(--d-border); }
-.step-card:hover { background: rgba(255,255,255,0.03); }
-.step-arrow {
-	position: absolute; top: 50%; right: -16px;
-	font-size: 20px; color: var(--d-dim);
-	transform: translateY(-50%); z-index: 2;
-}
-.step-num-wrap {
-	width: 48px; height: 48px; border-radius: 12px;
-	background: rgba(255,255,255,0.06); border: 1px solid var(--d-border);
-	display: flex; align-items: center; justify-content: center;
-	margin-bottom: 24px;
-}
-.step-num { font-family: var(--font-display); font-size: 16px; font-weight: 900; color: var(--d-muted); }
-.step-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--d-text); margin-bottom: 12px; }
-.step-desc { font-size: 14px; line-height: 1.7; color: var(--d-muted); margin: 0; }
+	/* ─── cta strip ───────────────────────────────────────── */
+	.cta-strip {
+		padding: 60px 24px 100px;
+	}
+	.cta-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 32px;
+		padding: 40px 48px;
+		background: var(--ap-soft);
+		border: 1px solid var(--ap-line);
+		border-radius: 28px;
+	}
+	.cta-h {
+		font-weight: 800;
+		font-size: clamp(22px, 2.4vw, 30px);
+		letter-spacing: -0.02em;
+		margin: 0 0 6px;
+	}
+	.cta-p {
+		font-size: 15px;
+		color: var(--ap-text-2);
+		margin: 0;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   TESTIMONIALS
-════════════════════════════════════════════════════════════ */
-.testimonials-grid {
-	display: grid; grid-template-columns: repeat(3,1fr); gap: 16px;
-}
-.t-card {
-	padding: 40px; border-radius: 22px;
-	border: 1px solid var(--d-border);
-	background: rgba(255,255,255,0.025);
-	display: flex; flex-direction: column; gap: 20px;
-	transition: border-color 0.25s, transform 0.25s, background 0.25s;
-	position: relative; overflow: hidden;
-}
-.t-card::before {
-	content: ''; position: absolute; top: -50px; right: -50px;
-	width: 120px; height: 120px; border-radius: 50%;
-	background: var(--color, transparent); opacity: 0.08;
-}
-.t-card:hover {
-	border-color: color-mix(in srgb, var(--color) 30%, transparent);
-	transform: translateY(-4px); background: rgba(255,255,255,0.04);
-}
-.t-quote-glyph {
-	font-family: var(--font-display); font-size: 64px;
-	font-weight: 900; line-height: 1; color: var(--color, var(--d-border));
-	opacity: 0.35; height: 36px; display: block; margin-bottom: -14px;
-}
-.t-text { font-size: 15px; line-height: 1.7; color: var(--d-muted); flex: 1; margin: 0; }
-.t-author { display: flex; align-items: center; gap: 12px; }
-.t-avatar {
-	width: 40px; height: 40px; border-radius: 50%;
-	display: flex; align-items: center; justify-content: center;
-	font-family: var(--font-mono); font-size: 12px; font-weight: 700;
-	flex-shrink: 0; border: 1px solid;
-}
-.t-name { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--d-text); margin: 0 0 2px; }
-.t-meta { font-size: 11px; color: var(--d-dim); font-family: var(--font-mono); margin: 0; }
+	/* ─── footer ──────────────────────────────────────────── */
+	.footer {
+		background: var(--ap-bg);
+		padding: 64px 0 40px;
+		border-top: 1px solid var(--ap-line);
+	}
+	.footer-grid {
+		display: grid;
+		grid-template-columns: 2fr 1fr 1fr;
+		gap: 48px;
+		padding-bottom: 48px;
+	}
+	.footer-brand .brand { margin-bottom: 14px; }
+	.footer-tag {
+		font-size: 14px;
+		color: var(--ap-text-2);
+		max-width: 280px;
+		line-height: 1.55;
+		margin: 0;
+	}
+	.footer-col { display: flex; flex-direction: column; gap: 10px; }
+	.footer-h {
+		font-size: 12px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ap-text-3);
+		margin: 0 0 6px;
+	}
+	.footer-col a {
+		font-size: 14px;
+		color: var(--ap-text-2);
+		text-decoration: none;
+		transition: color 0.2s;
+	}
+	.footer-col a:hover { color: var(--ap-text); }
 
-/* ════════════════════════════════════════════════════════════
-   FINAL CTA
-════════════════════════════════════════════════════════════ */
-.cta-section {
-	background: var(--dark); padding: 140px 48px;
-	position: relative; overflow: hidden; text-align: center;
-}
-.cta-orb {
-	position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-	width: 800px; height: 420px; border-radius: 50%;
-	background: radial-gradient(ellipse, rgba(232,255,72,0.07), transparent 65%);
-	pointer-events: none;
-}
-.cta-inner {
-	max-width: 760px; margin: 0 auto; position: relative; z-index: 1;
-	display: flex; flex-direction: column; align-items: center; gap: 32px;
-}
-.cta-headline {
-	font-family: var(--font-display);
-	font-size: clamp(36px, 4.5vw, 64px);
-	font-weight: 900; letter-spacing: -0.03em; line-height: 1.05;
-	color: var(--d-text); margin: 0;
-}
-.cta-headline em { font-style: italic; color: var(--lime); }
-.btn-lime-xl {
-	display: inline-flex; align-items: center; gap: 10px;
-	padding: 20px 40px; background: var(--lime); color: #0a0a0a;
-	border-radius: 16px; font-size: 17px; font-weight: 700;
-	font-family: var(--font-body); text-decoration: none; transition: all 0.2s;
-}
-.btn-lime-xl:hover { background: #f0ff70; transform: translateY(-2px); box-shadow: 0 16px 48px rgba(232,255,72,0.3); }
-.cta-platforms { display: flex; align-items: center; gap: 12px; }
-.cta-label { font-size: 12px; color: var(--d-dim); font-family: var(--font-mono); }
-.cta-platform-tags { display: flex; gap: 8px; flex-wrap: wrap; }
-.cta-tag {
-	font-size: 11px; font-family: var(--font-mono); padding: 4px 10px;
-	border-radius: 6px; border: 1px solid var(--d-border); color: var(--d-dim);
-}
+	.footer-bottom {
+		padding-top: 24px;
+		border-top: 1px solid var(--ap-line);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 16px;
+		flex-wrap: wrap;
+	}
+	.footer-bottom p {
+		font-size: 12px;
+		color: var(--ap-text-3);
+		margin: 0;
+	}
+	.footer-fine {
+		max-width: 520px;
+		text-align: right;
+	}
 
-/* ════════════════════════════════════════════════════════════
-   FOOTER
-════════════════════════════════════════════════════════════ */
-.footer {
-	background: var(--dark); border-top: 1px solid var(--d-border);
-	padding: 64px 48px 32px;
-}
-.footer-inner {
-	max-width: 1160px; margin: 0 auto;
-	display: grid; grid-template-columns: 1.4fr 1fr;
-	gap: 80px; margin-bottom: 48px;
-}
-.footer-brand { display: flex; flex-direction: column; gap: 16px; }
-.footer-tag { font-size: 14px; color: var(--d-muted); max-width: 280px; line-height: 1.6; }
-.footer-cols { display: grid; grid-template-columns: repeat(3,1fr); gap: 40px; }
-.footer-col { display: flex; flex-direction: column; gap: 12px; }
-.footer-col-title {
-	font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
-	text-transform: uppercase; color: var(--d-dim); margin-bottom: 4px;
-}
-.footer-col a { font-size: 14px; color: var(--d-muted); text-decoration: none; transition: color 0.2s; }
-.footer-col a:hover { color: var(--d-text); }
-.footer-bottom {
-	max-width: 1160px; margin: 0 auto;
-	display: flex; justify-content: space-between; align-items: center;
-	padding-top: 24px; border-top: 1px solid var(--d-border);
-	font-size: 12px; color: var(--d-dim); font-family: var(--font-mono);
-}
+	/* ─── responsive ──────────────────────────────────────── */
+	@media (max-width: 880px) {
+		.nav { padding: 16px 20px; }
+		.nav.scrolled { padding: 12px 20px; }
+		.btn-ghost { display: none; }
 
-/* ════════════════════════════════════════════════════════════
-   RESPONSIVE
-════════════════════════════════════════════════════════════ */
-@media (max-width: 900px) {
-	.nav-links { display: none; }
-	.container { padding: 0 24px; }
-	.section-pad { padding: 72px 24px; }
-	.bento-features { grid-template-columns: 1fr; }
-	.bento-feat:nth-child(1) { grid-row: auto; }
-	.bento-feat:nth-child(4) { grid-column: auto; }
-	.stats-bento { grid-template-columns: 1fr 1fr; }
-	.stat-quote-cell { grid-column: span 2; }
-	.steps-row { grid-template-columns: 1fr; }
-	.step-card { border-right: 1px solid var(--d-border); border-bottom: none; }
-	.step-card:last-child { border-bottom: 1px solid var(--d-border); }
-	.step-arrow { display: none; }
-	.testimonials-grid { grid-template-columns: 1fr; }
-	.footer-inner { grid-template-columns: 1fr; gap: 40px; }
-}
+		.hero { padding-top: 100px; }
+		.phone-stage { margin-top: 56px; }
+		.phone-frame { width: 180px; height: 380px; border-radius: 32px; }
 
-@media (max-width: 600px) {
-	.nav { padding: 16px 24px; }
-	.btn-cta-nav { display: none; }
-	.hero-white { padding-top: 60px; }
-	.stats-bento { grid-template-columns: 1fr; }
-	.stat-quote-cell { grid-column: auto; }
-	.footer-bottom { flex-direction: column; gap: 8px; text-align: center; }
-}
+		.featured { padding: 80px 20px 20px; }
+		.featured-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+
+		.how { padding: 80px 20px; }
+		.how-title { margin-bottom: 56px; }
+		.how-row { grid-template-columns: 1fr; gap: 48px; }
+
+		.cta-row { flex-direction: column; text-align: center; padding: 32px 28px; }
+
+		.footer-grid { grid-template-columns: 1fr; gap: 32px; }
+		.footer-bottom { flex-direction: column; }
+		.footer-fine { text-align: center; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.reveal { opacity: 1; transform: none; transition: none; }
+		.phone-track { animation: none; }
+	}
 </style>
