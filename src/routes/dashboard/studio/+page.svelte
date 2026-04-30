@@ -42,6 +42,27 @@ import JSZip from 'jszip';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
+		STUDIO_TEMPLATES,
+		mapQueryParamToTemplateId,
+		type TemplateId,
+		type StudioTemplateDef,
+	} from '$lib/studio/template-ids';
+	import {
+		NEWS_PLACEHOLDER_HEADLINE,
+		NEWS_DEFAULT_SOURCE,
+		NEWS_DEFAULT_LAYOUT,
+		TWEET_DEFAULTS,
+		ARTICLE_DEFAULT_BODY,
+		ARTICLE_DEFAULT_SWIPE,
+		TEXT_CAROUSEL_DEFAULTS,
+		IMAGE_QUOTE_DEFAULTS,
+	} from '$lib/studio/slide-content-defaults';
+	import {
+		parseExternalSlideBlocksJson,
+		computeStudioSlideMergePatches,
+		type ExternalSlideMergeMode,
+	} from '$lib/studio/external-slide-merge';
+	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw
@@ -102,22 +123,15 @@ import JSZip from 'jszip';
 	let newsError = $state('');
 
 	// Multi-slide state
-	let slides = $state<string[]>(['YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY']);
+	let slides = $state<string[]>([NEWS_PLACEHOLDER_HEADLINE]);
 	let activeSlide = $state(0);
 	/** When set, main canvas renders this slide for PNG capture without changing `activeSlide` (no UI “slide show”). */
 	let canvasRasterSlide = $state<number | null>(null);
 	let articleSnippet = $state(''); // full article text for variants call
 
-	// ── Per-slide template selection ──────────────────────────────────────
-	type TemplateId = 'news' | 'tweet' | 'article' | 'textCarousel' | 'imageQuote';
-	type TemplateDef = { id: TemplateId; label: string };
-	const TEMPLATES: TemplateDef[] = [
-		{ id: 'news', label: 'News' },
-		{ id: 'tweet', label: 'Tweet' },
-		{ id: 'article', label: 'Article' },
-		{ id: 'textCarousel', label: 'Text carousel' },
-		{ id: 'imageQuote', label: 'Image quote' },
-	];
+	// ── Per-slide template selection (ids + labels live in `$lib/studio`) ──
+	type TemplateDef = StudioTemplateDef;
+	const TEMPLATES: TemplateDef[] = STUDIO_TEMPLATES;
 	/** Options for the floating template dock (dropdown). */
 	const templateDockTabs = $derived(
 		TEMPLATES.map((t) => ({
@@ -436,9 +450,8 @@ import JSZip from 'jszip';
 		replaceTemplateOffsets(i, t, {});
 
 		if (t === 'news') {
-			const base = 'YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY';
-			slides = slides.map((x, idx) => (idx === i ? base : x));
-			source = 'Markets';
+			slides = slides.map((x, idx) => (idx === i ? NEWS_PLACEHOLDER_HEADLINE : x));
+			source = NEWS_DEFAULT_SOURCE;
 			circleImages = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (circleImages[idx] ?? ''),
 			);
@@ -449,61 +462,51 @@ import JSZip from 'jszip';
 				idx === i ? false : (showCircle2BySlide[idx] ?? false),
 			);
 			showCircle = true;
-			circleX = 772;
-			circleY = 52;
-			circleSize = 300;
-			circle2X = 80;
-			circle2Y = 80;
-			circle2Size = 220;
-			bgOffsetX = 50;
-			bgOffsetY = 50;
-			bgZoom = 100;
-			bgFitMode = 'cover';
-			bgContainMagnify = 100;
-			textPanelOffsetY = 0;
-			shadowHeight = 75;
-			shadowStrength = 1;
+			circleX = NEWS_DEFAULT_LAYOUT.circleX;
+			circleY = NEWS_DEFAULT_LAYOUT.circleY;
+			circleSize = NEWS_DEFAULT_LAYOUT.circleSize;
+			circle2X = NEWS_DEFAULT_LAYOUT.circle2X;
+			circle2Y = NEWS_DEFAULT_LAYOUT.circle2Y;
+			circle2Size = NEWS_DEFAULT_LAYOUT.circle2Size;
+			bgOffsetX = NEWS_DEFAULT_LAYOUT.bgOffsetX;
+			bgOffsetY = NEWS_DEFAULT_LAYOUT.bgOffsetY;
+			bgZoom = NEWS_DEFAULT_LAYOUT.bgZoom;
+			bgFitMode = NEWS_DEFAULT_LAYOUT.bgFitMode;
+			bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
+			textPanelOffsetY = NEWS_DEFAULT_LAYOUT.textPanelOffsetY;
+			shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
+			shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
 			cuttingOut = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? false : (cuttingOut[idx] ?? false),
 			);
 			cutoutError = '';
 		} else if (t === 'tweet') {
-			tweetTopNameBySlide = tweetTopNameBySlide.map((x, idx) => (idx === i ? 'Chef 👨‍🍳' : x));
-			tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, idx) => (idx === i ? '@chefsevenn' : x));
-			tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, idx) => (idx === i ? 'Mo Mohler' : x));
-			tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, idx) => (idx === i ? '@MoMohler' : x));
-			tweetTopTextBySlide = tweetTopTextBySlide.map((x, idx) => (idx === i ? 'Ketchup or mayo or mustard?' : x));
-			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, idx) => (idx === i ? '' : x));
-			tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, idx) => (idx === i ? '4.2K' : x));
-			tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, idx) => (idx === i ? '12.8K' : x));
-			tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, idx) => (idx === i ? '89.4K' : x));
+			tweetTopNameBySlide = tweetTopNameBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topName : x));
+			tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topHandle : x));
+			tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.bottomName : x));
+			tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.bottomHandle : x));
+			tweetTopTextBySlide = tweetTopTextBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topText : x));
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.bottomText : x));
+			tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.replyCount : x));
+			tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.repostCount : x));
+			tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.likeCount : x));
 			tweetStylesBySlide = tweetStylesBySlide.map((s, idx) => (idx === i ? {} : s));
-			tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, idx) => (idx === i ? 360 : x));
-			tweetTopImageWidthBySlide = tweetTopImageWidthBySlide.map((x, idx) => (idx === i ? 920 : x));
-			tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, idx) => (idx === i ? 1 : x));
-			tweetTopImagePanXBySlide = tweetTopImagePanXBySlide.map((x, idx) => (idx === i ? 50 : x));
-			tweetTopImagePanYBySlide = tweetTopImagePanYBySlide.map((x, idx) => (idx === i ? 50 : x));
+			tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImageHeight : x));
+			tweetTopImageWidthBySlide = tweetTopImageWidthBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImageWidth : x));
+			tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImageZoom : x));
+			tweetTopImagePanXBySlide = tweetTopImagePanXBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImagePanX : x));
+			tweetTopImagePanYBySlide = tweetTopImagePanYBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImagePanY : x));
 		} else if (t === 'article') {
-			articleTextBySlide = articleTextBySlide.map((x, idx) =>
-				idx === i
-					? "Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate."
-					: x,
-			);
-			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? '«« Swipe' : x));
+			articleTextBySlide = articleTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_BODY : x));
+			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_SWIPE : x));
 		} else if (t === 'textCarousel') {
-			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) => (idx === i ? 'Captains of industry' : x));
-			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? '@captainsofindustryy' : x));
-			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) =>
-				idx === i
-					? 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.'
-					: x,
-			);
+			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) => (idx === i ? TEXT_CAROUSEL_DEFAULTS.name : x));
+			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? TEXT_CAROUSEL_DEFAULTS.handle : x));
+			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) => (idx === i ? TEXT_CAROUSEL_DEFAULTS.body : x));
 		} else if (t === 'imageQuote') {
-			imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, idx) =>
-				idx === i ? 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.' : x,
-			);
-			imageQuoteFooterLeftBySlide = imageQuoteFooterLeftBySlide.map((x, idx) => (idx === i ? '$' : x));
-			imageQuoteFooterRightBySlide = imageQuoteFooterRightBySlide.map((x, idx) => (idx === i ? 'BRAND' : x));
+			imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, idx) => (idx === i ? IMAGE_QUOTE_DEFAULTS.body : x));
+			imageQuoteFooterLeftBySlide = imageQuoteFooterLeftBySlide.map((x, idx) => (idx === i ? IMAGE_QUOTE_DEFAULTS.footerLeft : x));
+			imageQuoteFooterRightBySlide = imageQuoteFooterRightBySlide.map((x, idx) => (idx === i ? IMAGE_QUOTE_DEFAULTS.footerRight : x));
 		}
 
 		stylesByTemplateBySlide = {
@@ -521,17 +524,7 @@ import JSZip from 'jszip';
 		initialTemplateParamApplied = true;
 		if (typeof window === 'undefined') return;
 		const raw = new URLSearchParams(window.location.search).get('template') ?? '';
-		const map: Record<string, TemplateId> = {
-			news: 'news',
-			tweet: 'tweet',
-			article: 'article',
-			text: 'textCarousel',
-			textCarousel: 'textCarousel',
-			'image-quote': 'imageQuote',
-			imageQuote: 'imageQuote',
-		};
-		// Unknown / removed templates should fall back safely to News.
-		const next = map[raw] ?? (raw ? 'news' : undefined);
+		const next = mapQueryParamToTemplateId(raw) ?? (raw ? 'news' : undefined);
 		if (!next) return;
 		forcedTemplateFromQuery = next;
 		applyTemplateToAll(next);
@@ -1653,6 +1646,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
 	let draftId = $state<string>('');
 	let showSaveTemplatePanel = $state(false);
+	let showImportJsonPanel = $state(false);
+	let importJsonText = $state('');
+	let importJsonError = $state('');
+	let importJsonFeedback = $state('');
+	let importMergeMode = $state<ExternalSlideMergeMode>('mix');
 	let studioTemplateName = $state('');
 	let studioTemplateSaving = $state(false);
 	let studioTemplateFeedback = $state('');
@@ -2285,6 +2283,62 @@ tweetTopImagePanYBySlide,
 		} else if (template === 'imageQuote') {
 			imageQuoteTextBySlide = [...clipped];
 		}
+	}
+
+	function applyPrimaryClampedToSlide(i: number, template: TemplateId, raw: string) {
+		const clipped = clampFetchedPrimaryForTemplate(template, raw);
+		slides = slides.map((s, idx) => (idx === i ? clipped : s));
+		if (template === 'tweet') {
+			tweetTopTextBySlide = tweetTopTextBySlide.map((s, idx) => (idx === i ? clipped : s));
+		} else if (template === 'article') {
+			articleTextBySlide = articleTextBySlide.map((s, idx) => (idx === i ? clipped : s));
+		} else if (template === 'textCarousel') {
+			textCarouselTextBySlide = textCarouselTextBySlide.map((s, idx) => (idx === i ? clipped : s));
+		} else if (template === 'imageQuote') {
+			imageQuoteTextBySlide = imageQuoteTextBySlide.map((s, idx) => (idx === i ? clipped : s));
+		}
+	}
+
+	/**
+	 * Merge JSON from Claude, `/api/generate-slides`, or your own template into the current Studio template.
+	 * Extend field mapping in `$lib/studio/external-slide-merge.ts` when you add new Claude shapes.
+	 */
+	function applyExternalSlideMergeFromPanelJson(mode: ExternalSlideMergeMode = importMergeMode) {
+		importJsonError = '';
+		importJsonFeedback = '';
+		const parsed = parseExternalSlideBlocksJson(importJsonText.trim());
+		if (!parsed.ok) {
+			importJsonError = parsed.error;
+			return;
+		}
+		const t = activeTemplate;
+		const patches = computeStudioSlideMergePatches(t, parsed.blocks, slides.length, mode);
+		if (!patches.length) {
+			importJsonError =
+				mode === 'mix'
+					? 'Nothing to merge — add headline/body, https image, or source fields.'
+					: 'Nothing to apply from this payload for the current deck length.';
+			return;
+		}
+		for (const p of patches) {
+			const i = p.slideIndex;
+			pushUndo(t, i);
+			if (p.primary !== undefined && p.primary !== '') {
+				applyPrimaryClampedToSlide(i, t, p.primary);
+			}
+			if (p.tweetBottom !== undefined && p.tweetBottom !== '' && t === 'tweet') {
+				const btm = clampTweetTopFetched(p.tweetBottom);
+				tweetBottomTextBySlide = tweetBottomTextBySlide.map((s, idx) => (idx === i ? btm : s));
+			}
+			if (p.source !== undefined && p.source !== '' && t === 'news') {
+				source = p.source;
+			}
+			if (p.imageUrl) {
+				setSlideImage(i, p.imageUrl, t);
+			}
+		}
+		closeToolbar();
+		importJsonFeedback = `Applied ${patches.length} slide update(s).`;
 	}
 
 	// ── Fetch news ────────────────────────────────────────────────────────
@@ -3274,21 +3328,36 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		<div class="px-5 py-4 border-b border-neutral-800 space-y-3">
 			<div class="flex items-start justify-between gap-2">
 				<h1 class="font-display font-bold text-base text-neutral-50 leading-tight">News Studio</h1>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					class="shrink-0 h-8 gap-1.5 rounded-lg border-neutral-700 bg-neutral-950 text-[11px] font-semibold text-neutral-200 hover:bg-neutral-900"
-					onclick={() => {
-						showSaveTemplatePanel = true;
-						studioTemplateFeedback = '';
-						if (!studioTemplateName.trim()) {
-							studioTemplateName = `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`;
-						}
-					}}
-				>
-					<Bookmark size={12} /> Save template
-				</Button>
+				<div class="flex flex-col items-end gap-1.5">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="shrink-0 h-8 gap-1.5 rounded-lg border-neutral-700 bg-neutral-950 text-[11px] font-semibold text-neutral-200 hover:bg-neutral-900"
+						onclick={() => {
+							showSaveTemplatePanel = true;
+							studioTemplateFeedback = '';
+							if (!studioTemplateName.trim()) {
+								studioTemplateName = `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`;
+							}
+						}}
+					>
+						<Bookmark size={12} /> Save template
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="h-7 gap-1 rounded-md px-2 text-[10px] font-semibold text-violet-300/90 hover:bg-violet-950/50 hover:text-violet-200"
+						onclick={() => {
+							showImportJsonPanel = !showImportJsonPanel;
+							importJsonError = '';
+							importJsonFeedback = '';
+						}}
+					>
+						<Layers size={11} /> Merge JSON
+					</Button>
+				</div>
 			</div>
 			{#if showSaveTemplatePanel}
 				<div class="rounded-xl border border-neutral-800 bg-neutral-950 p-3 space-y-2">
@@ -3332,6 +3401,64 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<p class="text-[9px] font-body text-neutral-500 leading-snug">
 						Saved templates appear on your dashboard. Open them anytime from there.
 					</p>
+				</div>
+			{/if}
+			{#if showImportJsonPanel}
+				<div class="rounded-xl border border-violet-900/40 bg-neutral-950/90 p-3 space-y-2">
+					<p class="text-[10px] font-body text-neutral-400 leading-snug">
+						Paste JSON from Claude or <span class="font-mono text-neutral-500">/api/generate-slides</span> (array or
+						<code class="text-neutral-500">&#123; slides: [] &#125;</code>). Only fields present are written — layout
+						and overlays stay unless you reset the slide.
+					</p>
+					<div class="flex gap-2 flex-wrap">
+						<Button
+							type="button"
+							size="sm"
+							class="h-7 rounded-md px-2 text-[10px] {importMergeMode === 'mix'
+								? 'bg-violet-600 text-white'
+								: 'bg-neutral-900 text-neutral-400'}"
+							onclick={() => (importMergeMode = 'mix')}
+						>Mix</Button>
+						<Button
+							type="button"
+							size="sm"
+							class="h-7 rounded-md px-2 text-[10px] {importMergeMode === 'replace'
+								? 'bg-violet-600 text-white'
+								: 'bg-neutral-900 text-neutral-400'}"
+							onclick={() => (importMergeMode = 'replace')}
+						>Replace</Button>
+					</div>
+					<textarea
+						bind:value={importJsonText}
+						rows="6"
+						placeholder={`[{"headline":"Hook","body":"..."}]`}
+						class="w-full resize-y rounded-lg border border-neutral-700 bg-neutral-950 p-2 font-mono text-[11px] text-neutral-200 placeholder:text-neutral-600 focus-visible:border-violet-500/50 focus-visible:outline-none"
+					></textarea>
+					{#if importJsonError}
+						<p class="text-[10px] text-red-400/90" role="alert">{importJsonError}</p>
+					{/if}
+					{#if importJsonFeedback}
+						<p class="text-[10px] text-emerald-400/90">{importJsonFeedback}</p>
+					{/if}
+					<div class="flex gap-2">
+						<Button
+							type="button"
+							size="sm"
+							class="flex-1 rounded-lg bg-violet-600 text-white hover:bg-violet-500"
+							onclick={() => applyExternalSlideMergeFromPanelJson(importMergeMode)}
+						>Apply to deck</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							class="text-neutral-500"
+							onclick={() => {
+								showImportJsonPanel = false;
+								importJsonError = '';
+								importJsonFeedback = '';
+							}}
+						>Close</Button>
+					</div>
 				</div>
 			{/if}
 		</div>
