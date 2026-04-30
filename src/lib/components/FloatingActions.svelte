@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Music, Calendar, X, Send, LoaderCircle } from 'lucide-svelte';
+	import { Music, Calendar, X, Send, LoaderCircle, Download } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 
 	interface $$Props {
@@ -10,6 +10,9 @@
 		postUrl?: string;
 		onPost?: () => void | Promise<void>;
 		posting?: boolean;
+		/** Zip export all slides (same as Studio left-panel export). */
+		onExportZip?: () => void | Promise<void>;
+		exportingZip?: boolean;
 	}
 
 	let {
@@ -20,6 +23,8 @@
 		postUrl = '/dashboard/post-scheduler',
 		onPost = undefined,
 		posting = false,
+		onExportZip = undefined,
+		exportingZip = false,
 	} = ($props() as $$Props);
 
 	interface SlideMusicSettings { song: string; seconds: number; }
@@ -290,6 +295,30 @@
 				Burn Music
 			</button>
 		</div>
+
+		{#if typeof onExportZip === 'function'}
+			<button
+				type="button"
+				onclick={() => void onExportZip?.()}
+				disabled={!!exportingZip || !!posting}
+				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
+				style="
+					background: color-mix(in oklab, var(--app-text) 6%, transparent);
+					border-color: var(--app-border);
+					color: var(--app-text-2);
+					{exportingZip || posting ? 'opacity: 0.65; cursor: wait;' : 'cursor: pointer;'}
+				"
+				title="Export all slides as PNG (ZIP)"
+			>
+				{#if exportingZip}
+					<LoaderCircle size={14} class="animate-spin" />
+					Export…
+				{:else}
+					<Download size={14} />
+					Export
+				{/if}
+			</button>
+		{/if}
 	</div>
 {/if}
 

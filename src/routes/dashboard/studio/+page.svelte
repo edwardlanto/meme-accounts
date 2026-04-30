@@ -15,6 +15,7 @@ import JSZip from 'jszip';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import DockToolbar from '$lib/components/DockToolbar.svelte';
+	import FormatDockToolbar from '$lib/components/FormatDockToolbar.svelte';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils.js';
 	import { Input } from '$lib/components/ui/input';
@@ -1487,15 +1488,29 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let exportRef: HTMLElement | null = $state(null);
 
 	// ── Output format (canvas size) ───────────────────────────────────────
-	type FormatId = 'post' | 'reel' | 'story' | 'square';
+	type FormatId = 'feed' | 'vertical' | 'wide' | 'square';
 	type Format = { id: FormatId; label: string; w: number; h: number; igType: 'post' | 'reel' | 'story' };
 	const FORMATS: Format[] = [
-		{ id: 'post', label: 'Post', w: 1080, h: 1350, igType: 'post' },     // 4:5
-		{ id: 'reel', label: 'Reel', w: 1080, h: 1920, igType: 'reel' },     // 9:16
-		{ id: 'story', label: 'Story', w: 1080, h: 1920, igType: 'story' },  // 9:16
-		{ id: 'square', label: 'Square', w: 1080, h: 1080, igType: 'post' }, // 1:1
+		{ id: 'feed', label: 'FEED (4:5)', w: 1080, h: 1350, igType: 'post' },
+		{ id: 'vertical', label: 'VERTICAL (9:16)', w: 1080, h: 1920, igType: 'reel' },
+		{ id: 'wide', label: 'WIDE (16:9)', w: 1920, h: 1080, igType: 'post' },
+		{ id: 'square', label: 'SQUARE (1:1)', w: 1080, h: 1080, igType: 'post' },
 	];
-	let formatId = $state<FormatId>('post');
+	let formatId = $state<FormatId>('feed');
+
+	function normalizeStudioFormatId(raw: unknown): FormatId {
+		const s = String(raw ?? '').trim();
+		const legacy: Record<string, FormatId> = {
+			post: 'feed',
+			reel: 'vertical',
+			story: 'vertical',
+			square: 'square',
+			feed: 'feed',
+			vertical: 'vertical',
+			wide: 'wide',
+		};
+		return legacy[s] ?? 'feed';
+	}
 	const format = $derived(FORMATS.find((f) => f.id === formatId) ?? FORMATS[0]);
 	const CANVAS_W = $derived(format.w);
 	const CANVAS_H = $derived(format.h);
@@ -1520,7 +1535,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function applyDraftState(s: Record<string, any>) {
 		// Restore (best-effort) — shared by autosave draft + saved templates.
-		if (typeof s.formatId === 'string') formatId = s.formatId as FormatId;
+		if (typeof s.formatId === 'string') formatId = normalizeStudioFormatId(s.formatId);
 		if (typeof s.lastTemplateUsed === 'string') lastTemplateUsed = s.lastTemplateUsed as TemplateId;
 		if (Array.isArray(s.slides)) slides = s.slides;
 		if (typeof s.activeSlide === 'number') activeSlide = Math.max(0, Math.min((s.slides?.length ?? slides.length) - 1, s.activeSlide));
@@ -2918,15 +2933,97 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
-	// Preview scale — fit within container
-	const PREVIEW_WIDTH = 520;
-	const previewScale = $derived(PREVIEW_WIDTH / CANVAS_W);
+	// Preview scale — cap width and height so tall formats (9:16) never cover the docks
+	const PREVIEW_MAX_W = 520;
+	const PREVIEW_MAX_H = 560;
+	const previewScale = $derived(Math.min(PREVIEW_MAX_W / CANVAS_W, PREVIEW_MAX_H / CANVAS_H));
+	const previewDisplayW = $derived(CANVAS_W * previewScale);
+	const previewDisplayH = $derived(CANVAS_H * previewScale);
+
+	/** Raster snapshots for filmstrip (same pipeline as ZIP export, low pixel ratio). */
+	let filmstripPreviewUrls = $state<string[]>([]);
+	let filmstripPreviewInFlight = $state(false);
+
+	const filmstripThumbDeps = $derived.by(() => {
+		let s = `${formatId}|${slides.length}|${uiTheme}|${activeTemplate}`;
+		for (let i = 0; i < slides.length; i++) {
+			const t = slideTemplates[i] ?? 'news';
+			const imgLen = ((bgImagesByTemplate[t] ?? [])[i] ?? '').length;
+			const vidLen = ((bgVideosByTemplate[t] ?? [])[i] ?? '').length;
+			s += `;${i}:${t}:${imgLen}:${vidLen}`;
+		}
+		s += `|sl:${slides.map((x) => x.length).join(',')}`;
+		s += `|tw:${tweetTopTextBySlide.map((x) => x.length).join(',')}`;
+		s += `|ar:${articleTextBySlide.map((x) => x.length).join(',')}`;
+		s += `|tc:${textCarouselTextBySlide.map((x) => x.length).join(',')}`;
+		return s;
+	});
+
+	async function refreshFilmstripPreviews() {
+		if (!exportRef || studioBooting || slides.length === 0) return;
+		if (exporting || exportingAll || filmstripPreviewInFlight) return;
+		filmstripPreviewInFlight = true;
+		const prevSlide = activeSlide;
+		const urls: string[] = [];
+		try {
+			for (let i = 0; i < slides.length; i++) {
+				activeSlide = i;
+				await tick();
+				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+				const node = exportRef;
+				if (!node) {
+					urls.push('');
+					continue;
+				}
+				try {
+					await (document as any).fonts?.ready;
+				} catch {
+					/* ignore */
+				}
+				try {
+					const dataUrl = await toPng(node, {
+						width: CANVAS_W,
+						height: CANVAS_H,
+						pixelRatio: 0.2,
+						backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+						style: { transform: 'scale(1)', transformOrigin: 'top left' },
+						cacheBust: true,
+					} as any);
+					urls.push(dataUrl);
+				} catch {
+					urls.push('');
+				}
+			}
+			filmstripPreviewUrls = urls;
+		} finally {
+			activeSlide = prevSlide;
+			filmstripPreviewInFlight = false;
+			await tick();
+		}
+	}
+
+	let filmstripThumbTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		void filmstripThumbDeps;
+		void studioBooting;
+		if (studioBooting) return;
+		if (filmstripThumbTimer) clearTimeout(filmstripThumbTimer);
+		filmstripThumbTimer = setTimeout(() => {
+			filmstripThumbTimer = null;
+			void refreshFilmstripPreviews();
+		}, 900);
+		return () => {
+			if (filmstripThumbTimer) clearTimeout(filmstripThumbTimer);
+		};
+	});
 </script>
 
 <FloatingActions
 	{...({
 		slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
 		posting: exportingAll,
+		exportingZip: exporting,
+		onExportZip: () => void exportPng(),
 		onPost: async () => {
 			const n = await exportAllSlidesToDraft();
 			if (!n) {
@@ -2967,7 +3064,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<Input
 						bind:value={studioTemplateName}
 						placeholder="My carousel layout"
-						class="rounded-lg bg-black border-neutral-800 text-sm text-neutral-100"
+						autocomplete="off"
+						class="rounded-lg border border-neutral-700 bg-neutral-950 text-sm !text-neutral-50 placeholder:text-neutral-500 caret-neutral-200 selection:bg-violet-500/40 selection:!text-white focus-visible:border-violet-500/50"
 					/>
 					{#if studioTemplateFeedback}
 						<p
@@ -3622,27 +3720,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	</div>
 
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
-	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-hidden p-6 gap-4 studio-right" style="background: var(--app-bg);">
+	<div
+		class="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#080808] p-6 gap-3 studio-right"
+		style="background: var(--app-bg);"
+	>
 
-		<!-- Format tabs + view mode -->
-		<div class="flex items-center gap-3">
-			<div class="flex items-center rounded-2xl bg-white/2 border border-white/6 overflow-hidden">
-				{#each FORMATS as f (f.id)}
-					<button
-						onclick={() => (formatId = f.id)}
-						class="px-3 py-2 text-[10px] font-mono transition-colors
-							{formatId === f.id ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}"
-						title={`${f.w}×${f.h}`}
-					>
-						{f.label}
-					</button>
-				{/each}
-			</div>
-
-		</div>
-
-		<!-- Dock (shared across templates) -->
-		<div class="flex justify-center w-full">
+		<!-- Editor dock + format dock — in document flow so the canvas never stacks over them -->
+		<div class="relative z-30 flex w-full max-w-full shrink-0 flex-wrap items-center justify-center gap-3 px-1 py-1">
 			<!-- Hidden picker for dock “Image” (image stickers / logos) — must stay in DOM for bind:this -->
 			<input
 				type="file"
@@ -3653,17 +3737,24 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				bind:this={overlayQuickInput}
 				onchange={handleOverlayUpload}
 			/>
-			<DockToolbar items={dockItems} />
+			<DockToolbar items={dockItems} inline />
+			<FormatDockToolbar
+				formats={FORMATS.map((f) => ({ id: f.id, label: f.label, title: `${f.w}×${f.h}` }))}
+				selectedId={formatId}
+				onSelect={(id) => (formatId = id as FormatId)}
+			/>
 		</div>
 
 		<!-- Slide indicator + nav arrows -->
 		<!-- Slide switcher removed (filmstrip below is the navigator) -->
 
+		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 		<!-- Main preview + quick actions (next to canvas) -->
-		<div class="flex items-start gap-3 relative">
-			<div style="width: {PREVIEW_WIDTH}px;" class="relative z-10">
+		<div class="flex min-h-0 flex-1 items-center justify-center overflow-auto">
+		<div class="flex shrink-0 items-start gap-3 py-2">
+			<div style="width: {previewDisplayW}px;" class="relative z-10 shrink-0">
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
-				<div style="height: {CANVAS_H * previewScale}px; background: var(--app-surface-2); border: 1px solid var(--app-border);" class="relative overflow-hidden rounded-2xl">
+				<div style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);" class="relative overflow-hidden rounded-2xl">
 
 			{#if studioBooting}
 				<!-- Initial boot overlay: avoid template "jump" while restoring draft -->
@@ -4007,9 +4098,9 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 			{/if}
 				</div>
 			</div>
-
-			<!-- Quick actions column -->
 		</div>
+		</div>
+
 		<!-- Slide filmstrip: drag to reorder -->
 		{#if slideCount > 1}
 			{@const orderIds = filmstripIds.length ? filmstripIds : slideIds}
@@ -4019,7 +4110,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 				const t = slideTemplates[i] ?? 'news';
 				const rawThumbText =
 					t === 'tweet'
-						? `${tweetTopNameBySlide[i] ?? ''}\n${tweetTopTextBySlide[i] ?? ''}`.trim()
+						? (tweetTopTextBySlide[i] ?? '').trim()
 						: t === 'article'
 							? (articleTextBySlide[i] ?? '')
 							: t === 'textCarousel'
@@ -4053,11 +4144,19 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 				onDragOver={filmstripOver}
 				onDragEnd={endFilmstripDrag}
 			>
-				<div class="no-scrollbar flex gap-2 overflow-x-auto max-w-full pb-1 px-1">
+				<div class="no-scrollbar flex gap-2 overflow-x-auto max-w-full pb-1 px-1 mx-auto">
 				{#each dndItems as item, i (item.id)}
+					{@const tplate = slideTemplates[item.slideIndex] ?? 'news'}
 					{@const isPlaceholder = !item.text}
 					{@const hasMusic = !!item.music}
 					{@const isVideo = !!item.vid || hasMusic}
+					{@const thumbFontFamily =
+						tplate === 'news'
+							? `'Bebas Neue', ui-sans-serif, system-ui, sans-serif`
+							: `'Lexend', ui-sans-serif, system-ui, sans-serif`}
+					{@const thumbFontSize = tplate === 'news' ? '8px' : '7.5px'}
+					{@const thumbImgOpacity = tplate === 'tweet' && item.img ? '0.92' : '0.78'}
+					{@const rasterThumb = filmstripPreviewUrls[item.slideIndex] ?? ''}
 					{@const sortable = useSortable({
 						id: item.id,
 						get index() { return i; },
@@ -4076,7 +4175,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 						<button
 							type="button"
 							onclick={() => activeSlide = item.slideIndex}
-							class="w-14 h-[70px] rounded-lg overflow-hidden border-2 transition-all relative
+							class="w-16 h-20 rounded-lg overflow-hidden border-2 transition-all relative
 								{activeSlide === item.slideIndex ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
 							aria-label={`Focus slide ${i + 1}`}
 							style="touch-action: none; background: var(--app-surface-3);"
@@ -4089,12 +4188,29 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 									<div class="absolute inset-0 flex items-center justify-center text-white/15">
 										<span class="text-[10px] font-mono">#{i + 1}</span>
 									</div>
+								{:else if rasterThumb}
+									<img
+										src={rasterThumb}
+										alt=""
+										class="w-full h-full object-cover"
+										draggable="false"
+									/>
+								{:else if filmstripPreviewInFlight && !isPlaceholder}
+									<div class="absolute inset-0 flex items-center justify-center" style="background: var(--app-surface-3);">
+										<Loader size={12} class="animate-spin text-violet-400 opacity-50" />
+									</div>
 								{:else if item.vid}
 									<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
 										<Play size={14} class="text-cyan-400 opacity-80" fill="currentColor" />
 									</div>
 								{:else if item.img}
-									<img src={item.img} alt="" class="w-full h-full object-cover opacity-70" draggable="false" />
+									<img
+										src={item.img}
+										alt=""
+										class="w-full h-full object-cover"
+										style="opacity: {thumbImgOpacity};"
+										draggable="false"
+									/>
 								{:else}
 									<div
 										class="absolute inset-0"
@@ -4105,10 +4221,16 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 									></div>
 								{/if}
 
-								{#if !isPlaceholder}
-									<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
-										<p class="text-white leading-tight line-clamp-3"
-											style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
+								{#if !isPlaceholder && !rasterThumb}
+									<div
+										class="absolute inset-0 flex items-end p-1.5 bg-gradient-to-t to-transparent {tplate === 'tweet' && item.img
+											? 'from-black/55 via-black/20'
+											: 'from-black/75'}"
+									>
+										<p
+											class="text-white leading-snug line-clamp-3 [overflow-wrap:anywhere] drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]"
+											style="font-family: {thumbFontFamily}; font-size: {thumbFontSize}; font-weight: {tplate === 'news' ? 700 : 600};"
+										>
 											{item.text.replace(/\[\[|\]\]/g, '')}
 										</p>
 									</div>
@@ -4154,7 +4276,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<div
 									data-music-popover
-									class="absolute top-[74px] left-1/2 -translate-x-1/2 z-40 w-52 p-2 rounded-xl bg-[#1a1a1a] border border-white/10 shadow-2xl"
+									class="absolute top-[92px] left-1/2 -translate-x-1/2 z-40 w-52 p-2 rounded-xl bg-[#1a1a1a] border border-white/10 shadow-2xl"
 									onclick={(e) => e.stopPropagation()}
 								>
 									<div class="flex items-center justify-between mb-1.5">
@@ -4214,7 +4336,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 				<button
 					type="button"
 					onclick={addSlide}
-					class="flex-shrink-0 w-14 h-[70px] rounded-lg border-2 border-dashed border-white/[0.10] hover:border-violet-500/50 bg-white/[0.02] hover:bg-white/[0.04] transition-all flex items-center justify-center text-white/35 hover:text-white"
+					class="flex-shrink-0 w-16 h-20 rounded-lg border-2 border-dashed border-white/[0.10] hover:border-violet-500/50 bg-white/[0.02] hover:bg-white/[0.04] transition-all flex items-center justify-center text-white/35 hover:text-white"
 					aria-label="Add slide"
 					title="Add slide"
 				>
@@ -4227,10 +4349,18 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 					{#if filmstripDraggingId}
 						{@const di = dndItems.find((x) => x.id === filmstripDraggingId)}
 						{#if di}
+							{@const tDrag = slideTemplates[di.slideIndex] ?? 'news'}
+							{@const dragFont =
+								tDrag === 'news'
+									? `'Bebas Neue', ui-sans-serif, system-ui, sans-serif`
+									: `'Lexend', ui-sans-serif, system-ui, sans-serif`}
+							{@const dragFs = tDrag === 'news' ? '8px' : '7.5px'}
+							{@const dragImgOp = tDrag === 'tweet' && di.img ? '0.92' : '0.78'}
+							{@const dragRaster = filmstripPreviewUrls[di.slideIndex] ?? ''}
 							<div class="flex flex-col items-center gap-1">
 								<div class="relative">
 									<div
-										class="w-14 h-[70px] rounded-lg overflow-hidden border-2 border-white/15 bg-[#111] relative"
+										class="w-16 h-20 rounded-lg overflow-hidden border-2 border-white/15 bg-[#111] relative"
 										style="box-shadow: 0 20px 60px rgba(0,0,0,0.55);"
 									>
 										{#if di.loading}
@@ -4241,18 +4371,36 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 											<div class="absolute inset-0 flex items-center justify-center text-white/15">
 												<span class="text-[10px] font-mono">…</span>
 											</div>
+										{:else if dragRaster}
+											<img src={dragRaster} alt="" class="w-full h-full object-cover" draggable="false" />
+										{:else if filmstripPreviewInFlight}
+											<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
+												<Loader size={12} class="animate-spin text-violet-400 opacity-50" />
+											</div>
 										{:else if di.vid}
 											<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
 												<Play size={14} class="text-cyan-400 opacity-80" fill="currentColor" />
 											</div>
 										{:else if di.img}
-											<img src={di.img} alt="" class="w-full h-full object-cover opacity-80" draggable="false" />
+											<img
+												src={di.img}
+												alt=""
+												class="w-full h-full object-cover"
+												style="opacity: {dragImgOp};"
+												draggable="false"
+											/>
 										{/if}
 
-										{#if di.text}
-											<div class="absolute inset-0 flex items-end p-1 bg-gradient-to-t from-black/70 to-transparent">
-												<p class="text-white leading-tight line-clamp-3"
-													style="font-family: 'Bebas Neue', sans-serif; font-size: 6px;">
+										{#if di.text && !dragRaster}
+											<div
+												class="absolute inset-0 flex items-end p-1.5 bg-gradient-to-t to-transparent {tDrag === 'tweet' && di.img
+													? 'from-black/55 via-black/20'
+													: 'from-black/75'}"
+											>
+												<p
+													class="text-white leading-snug line-clamp-3 [overflow-wrap:anywhere] drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]"
+													style="font-family: {dragFont}; font-size: {dragFs}; font-weight: {tDrag === 'news' ? 700 : 600};"
+												>
 													{di.text.replace(/\[\[|\]\]/g, '')}
 												</p>
 											</div>
@@ -4493,6 +4641,7 @@ onTopImagePanChange={(x, y) => { pushUndo('tweet', activeSlide); tweetTopImagePa
 			</DragDropProvider>
 			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder · Click <Flame size={9} class="inline text-orange-400/70" /> to burn music and publish as video</p>
 		{/if}
+		</div>
 	</div>
 
 </div>
