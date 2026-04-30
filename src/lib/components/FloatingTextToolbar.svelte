@@ -70,8 +70,9 @@
 	const TOOLBAR_W = 740;
 	const TOOLBAR_H = 48;
 
+	/** App default highlight / `[[WORD]]` parse color is #F5A623 — not first in grid so it isn’t mistaken for “primary”. */
 	const HIGHLIGHT_PRESETS = [
-		'#F5A623', '#08EBFF', '#FF3B5C', '#A855F7',
+		'#08EBFF', '#FF3B5C', '#F5A623', '#A855F7',
 		'#10B981', '#FFD700', '#FF6B6B', '#4ECDC4',
 	];
 	const GRADIENT_PRESETS: [string, string][] = [
@@ -83,35 +84,22 @@
 
 	function applyHighlight(spec: HighlightSpec) {
 		onHighlight?.(spec);
-		highlightPickerOpen = false;
+		// Keep the highlight popover open so you can try several swatches (close by clicking away).
 	}
 
-	/** BG chip: with markup + selection → inline `[[marker(...)]]`; else block `bgColor`. */
+	/** BG chip: Studio routes selection → `[[marker(...)]]` vs block `bgColor`. */
 	function pickBackgroundPreset(c: string) {
-		if (supportsHighlights && hasRangeSelection) {
-			if (c === 'transparent') applyHighlight({ kind: 'clear' });
-			else applyHighlight({ kind: 'marker', color: c });
-		} else {
-			onChange({ bgColor: c === 'transparent' ? undefined : c });
-		}
+		onChange({ bgColor: c === 'transparent' ? undefined : c });
 		bgPickerOpen = false;
 	}
 
 	function onBgCustomColorInput(e: Event) {
 		const v = (e.target as HTMLInputElement).value;
-		if (supportsHighlights && hasRangeSelection) {
-			applyHighlight({ kind: 'marker', color: v });
-		} else {
-			onChange({ bgColor: v });
-		}
+		onChange({ bgColor: v });
 	}
 
 	function clearBackgroundFill() {
-		if (supportsHighlights && hasRangeSelection) {
-			applyHighlight({ kind: 'clear' });
-		} else {
-			onChange({ bgColor: undefined });
-		}
+		onChange({ bgColor: undefined });
 		bgPickerOpen = false;
 	}
 
@@ -159,23 +147,15 @@
 		if (Number.isFinite(v)) onChange({ fontSize: Math.max(12, Math.min(400, v)) });
 	}
 
-	/** Range + markup-aware fields: set [[#color: …]] on selection; otherwise block `color`. */
+	/** Always route through `onChange` so Studio can sync selection from the DOM / last range before applying block vs [[…]] color. */
 	function pickTextColor(c: string) {
-		if (supportsHighlights && hasRangeSelection) {
-			applyHighlight({ kind: 'color', color: c });
-		} else {
-			onChange({ color: c });
-		}
+		onChange({ color: c });
 		colorPickerOpen = false;
 	}
 
 	function onTextColorCustomInput(e: Event) {
 		const v = (e.target as HTMLInputElement).value;
-		if (supportsHighlights && hasRangeSelection) {
-			applyHighlight({ kind: 'color', color: v });
-		} else {
-			onChange({ color: v });
-		}
+		onChange({ color: v });
 	}
 
 	// Preload top fonts once mounted so the picker previews render fast.
@@ -199,6 +179,25 @@
 			document.addEventListener('mousedown', handleDocumentClick);
 			return () => document.removeEventListener('mousedown', handleDocumentClick);
 		}
+	});
+
+	/** Keep native text selection when clicking toolbar / popovers (otherwise block color applies to the whole headline). */
+	$effect(() => {
+		if (!pos.show) return;
+		const preserve = (e: PointerEvent | MouseEvent) => {
+			const el = e.target as HTMLElement | null;
+			if (!el) return;
+			if (!el.closest('[data-floating-toolbar]') && !el.closest('[data-slot="popover-content"]')) return;
+			const tag = el.tagName;
+			if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return;
+			e.preventDefault();
+		};
+		document.addEventListener('pointerdown', preserve, true);
+		document.addEventListener('mousedown', preserve, true);
+		return () => {
+			document.removeEventListener('pointerdown', preserve, true);
+			document.removeEventListener('mousedown', preserve, true);
+		};
 	});
 
 	$effect(() => {

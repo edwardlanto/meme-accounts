@@ -1,8 +1,9 @@
 <script lang="ts">
 	/**
 	 * Hold-to-drag wrapper for template text elements.
-	 * - Click still selects/edits inside the child.
-	 * - Hold (or move) begins dragging and updates dx/dy (template px).
+	 * - Pointer down on markup text (`data-draggable-no-pan`, etc.) does not start a drag
+	 *   so the user can highlight; hold **Alt** while pressing to drag from inside text.
+	 * - Pointer down on chrome: hold (or small move) begins dragging dx/dy (template px).
 	 */
 	import type { Snippet } from 'svelte';
 
@@ -51,6 +52,16 @@
 		if (!interactive) return;
 		// Only left mouse / primary touch.
 		if ((e as any).button != null && (e as any).button !== 0) return;
+
+		const t = e.target as HTMLElement | null;
+		const onSelectableText = !!t?.closest?.(
+			'[data-draggable-no-pan],[contenteditable="true"],[data-text-selectable="true"]',
+		);
+		// Let the inner markup layer own the gesture for selection/editing.
+		// Hold-to-drag on body text steals the pointer after ~300ms (broken highlights).
+		// Hold Alt while pressing to drag-reposition from inside text.
+		if (onSelectableText && !e.altKey) return;
+
 		dragging = false;
 		armed = true;
 		pointerId = e.pointerId;
@@ -72,8 +83,8 @@
 		const my = e.clientY;
 		const dpx = mx - downX;
 		const dpy = my - downY;
-		// If user moves enough, treat it as drag even before hold completes.
-		if (!dragging && armed && (Math.abs(dpx) + Math.abs(dpy) > 6)) beginDrag();
+		// Fast “nudge to drag” when the pointer started on chrome (not on markup text).
+		if (!dragging && armed && Math.abs(dpx) + Math.abs(dpy) > 6) beginDrag();
 		if (!dragging) return;
 		const nx = baseDx + dpx / Math.max(0.0001, scale);
 		const ny = baseDy + dpy / Math.max(0.0001, scale);

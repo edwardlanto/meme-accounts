@@ -365,3 +365,122 @@ export function plainRangeHasMixedForegroundPaint(
 	}
 	return false;
 }
+
+/**
+ * Single color for the floating toolbar text swatch when the plain range is one uniform solid:
+ * unmarked text uses `blockInk`, `[[#hex:]]` / default highlight use segment color,
+ * `[[marker(...)]]` chips use `markerChipInk` (template body, not block headline color).
+ * Returns undefined if the range is mixed, empty, or only gradients/patterns.
+ */
+export function rangeForegroundSwatchColor(
+	raw: string,
+	plainStart: number,
+	plainEnd: number,
+	defaultHighlight: string,
+	blockInk: string,
+	markerChipInk: string,
+): string | undefined {
+	if (plainStart === plainEnd) return undefined;
+	let a = plainStart;
+	let b = plainEnd;
+	if (a > b) [a, b] = [b, a];
+
+	const parsed = parseHighlightMarkup(raw, defaultHighlight);
+	const segs = segmentText(parsed);
+	const samples: string[] = [];
+	let pos = 0;
+
+	for (const seg of segs) {
+		const segEnd = pos + seg.text.length;
+		const lo = Math.max(a, pos);
+		const hi = Math.min(b, segEnd);
+		if (lo < hi) {
+			if (seg.gradientFrom || seg.gradientTo || seg.patternImage) return undefined;
+			if (seg.markerBg) samples.push(markerChipInk);
+			else if (seg.highlighted) samples.push(seg.color ?? defaultHighlight);
+			else samples.push(blockInk);
+		}
+		pos = segEnd;
+	}
+
+	if (samples.length === 0) return undefined;
+	const norms = samples.map(normalizePaintColorKey);
+	const first = norms[0];
+	if (!norms.every((n) => n === first)) return undefined;
+	return samples[0];
+}
+
+// ── DOM selection ↔ plain headline offsets (for floating toolbar) ───────
+
+function boundaryPlainOffset(headlineRoot: HTMLElement, container: Node, offset: number): number {
+	const r = document.createRange();
+	try {
+		r.selectNodeContents(headlineRoot);
+		r.setEnd(container, offset);
+		return r.toString().length;
+	} catch {
+		return -1;
+	}
+}
+
+/** Plain-text offsets of the current Selection inside `root` (visible text only, no `[[` markup). */
+export function plainRangeFromSelection(root: HTMLElement): { start: number; end: number } | null {
+	const sel = window.getSelection();
+	if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+	const range = sel.getRangeAt(0);
+	if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+
+	const start = boundaryPlainOffset(root, range.startContainer, range.startOffset);
+	const end = boundaryPlainOffset(root, range.endContainer, range.endOffset);
+	if (start < 0 || end < 0) return null;
+	if (start === end) return null;
+	return start < end ? { start, end } : { start: end, end: start };
+}
+
+/** Re-create the browser selection from plain offsets under `root` (inverse of `plainRangeFromSelection`). */
+export function restorePlainSelection(root: HTMLElement, plainStart: number, plainEnd: number): boolean {
+	if (plainStart >= plainEnd) return false;
+	let acc = 0;
+	let startN: Text | null = null;
+	let startO = 0;
+	let endN: Text | null = null;
+	let endO = 0;
+
+	const walk = (node: Node): void => {
+		if (startN && endN) return;
+		if (node.nodeType === Node.TEXT_NODE) {
+			const t = node as Text;
+			const len = t.length;
+			const next = acc + len;
+			if (!startN && plainStart < next) {
+				startN = t;
+				startO = plainStart - acc;
+			}
+			if (!endN && plainEnd <= next) {
+				endN = t;
+				endO = plainEnd - acc;
+			}
+			acc = next;
+			return;
+		}
+		for (const c of Array.from(node.childNodes)) walk(c);
+	};
+
+	walk(root);
+	if (!startN || !endN) return false;
+
+	const sn = startN as Text;
+	const en = endN as Text;
+	try {
+		const r = document.createRange();
+		r.setStart(sn, Math.max(0, Math.min(startO, sn.length)));
+		r.setEnd(en, Math.max(0, Math.min(endO, en.length)));
+		const sel = window.getSelection();
+		if (!sel) return false;
+		sel.removeAllRanges();
+		sel.addRange(r);
+		return true;
+	} catch {
+		return false;
+	}
+}

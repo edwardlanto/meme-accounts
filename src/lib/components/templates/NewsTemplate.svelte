@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
+	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
@@ -132,6 +132,9 @@
 		/** Fired when the user selects a range of PLAIN text inside the headline.
 		 *  Offsets are into the visible (unmarked-up) text, suitable for applyHighlight(). */
 		onHeadlineRangeSelect?: (plainStart: number, plainEnd: number) => void;
+		/** Parent bumps after applying `[[...]]` markup so we can re-select the same plain range. */
+		headlineSelectionRestoreNonce?: number;
+		headlineSelectionRestoreRange?: { start: number; end: number } | null;
 	}
 
 	let {
@@ -205,6 +208,8 @@
 		onTextOverlaysChange,
 		onTextSelect,
 		onHeadlineRangeSelect,
+		headlineSelectionRestoreNonce = 0,
+		headlineSelectionRestoreRange = null,
 	}: Props = $props();
 
 	const isLight = $derived(templateTheme === 'light');
@@ -387,6 +392,20 @@
 
 	let headlineEl = $state<HTMLElement | null>(null);
 	let sourceEl = $state<HTMLElement | null>(null);
+	let lastHeadlineRestoreNonce = $state(-1);
+
+	/** After parent applies highlight markup, re-show the blue selection so editing feels continuous. */
+	$effect(() => {
+		const n = headlineSelectionRestoreNonce;
+		const range = headlineSelectionRestoreRange;
+		if (!interactive || editing || !headlineEl || n <= 0 || !range || range.start >= range.end) return;
+		if (n === lastHeadlineRestoreNonce) return;
+		lastHeadlineRestoreNonce = n;
+		const { start, end } = range;
+		void tick().then(() => {
+			if (headlineEl) restorePlainSelection(headlineEl, start, end);
+		});
+	});
 
 	function selectHeadline(e: MouseEvent) {
 		if (!interactive) return;
@@ -474,8 +493,11 @@
 	let textPointerId = 0;
 	let textCaptureEl: HTMLElement | null = null;
 	let textStartY = 0;
+	let textStartX = 0;
 	let textStartOffset = 0;
 	let textMoved = false;
+	/** Pointer down began on headline/source (selectable) — avoid treating small moves as panel drag. */
+	let textGestureBeganOnSelectable = false;
 
 	function startEdit(e: MouseEvent) {
 		if (!interactive) return;
@@ -519,10 +541,12 @@
 		if (editing) return;
 		const target = e.target as HTMLElement;
 		const startedOnSelectable = !!target.closest('[data-text-selectable]');
+		textGestureBeganOnSelectable = startedOnSelectable;
 		textArmed = true;
 		textDragging = !startedOnSelectable; // if on text, only start drag after threshold move
 		textMoved = false;
 		textStartY = e.clientY;
+		textStartX = e.clientX;
 		textStartOffset = textPanelOffsetY;
 		textPointerId = e.pointerId;
 		textCaptureEl = e.currentTarget as HTMLElement;
@@ -537,10 +561,17 @@
 	function textPointerMove(e: PointerEvent) {
 		if (!textArmed) return;
 		const dy = (e.clientY - textStartY) / scale;
+		const dx = (e.clientX - textStartX) / scale;
 		if (!textDragging) {
-			// Arm drag when the user actually moves, so clicks on headline/source
-			// still work to select those elements.
-			if (Math.abs(dy) <= 4) return;
+			// When the gesture began on headline/source, require a clear vertical panel-drag
+			// (not a slight wobble while selecting text horizontally).
+			if (textGestureBeganOnSelectable) {
+				if (Math.abs(dx) + Math.abs(dy) <= 10) return;
+				if (Math.abs(dy) < 40) return;
+				if (Math.abs(dy) < Math.abs(dx) * 1.15) return;
+			} else if (Math.abs(dy) <= 4) {
+				return;
+			}
 			textDragging = true;
 			textMoved = true;
 			// Capture once we commit to dragging (safe for dblclick).
@@ -566,6 +597,7 @@
 		textDragging = false;
 		textPointerId = 0;
 		textCaptureEl = null;
+		textGestureBeganOnSelectable = false;
 		// No-op when click ends without drag — selection is handled by the
 		// individual headline / source elements' own click handlers.
 	}
@@ -583,31 +615,7 @@
 	function getPlainSelectionRange(): { start: number; end: number } | null {
 		const root = headlineEl;
 		if (!root) return null;
-		const sel = window.getSelection();
-		if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-		const range = sel.getRangeAt(0);
-
-		// Ensure the selection is actually inside our headline.
-		if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
-
-		// Use Range boundaries so element-edge selections (e.g. inside <span>)
-		// map to correct plain offsets — matches visible text only (no [[ markup]]).
-		function boundaryPlainLen(headlineRoot: HTMLElement, container: Node, offset: number): number {
-			const r = document.createRange();
-			try {
-				r.selectNodeContents(headlineRoot);
-				r.setEnd(container, offset);
-				return r.toString().length;
-			} catch {
-				return -1;
-			}
-		}
-
-		const start = boundaryPlainLen(root, range.startContainer, range.startOffset);
-		const end = boundaryPlainLen(root, range.endContainer, range.endOffset);
-		if (start < 0 || end < 0) return null;
-		if (start === end) return null;
-		return start < end ? { start, end } : { start: end, end: start };
+		return plainRangeFromSelection(root);
 	}
 
 	function onHeadlineMouseUp() {
@@ -1073,7 +1081,6 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;
-			{interactive ? 'user-select: none;' : ''}
 		"
 	>
 		<!-- Background: video takes priority over image.
@@ -1523,10 +1530,10 @@
 							bottom: -14px; right: -14px;
 							width: 52px; height: 52px;
 							border-radius: 999px;
-							background: rgba(0,0,0,0.85);
+							background: #fff;
 							border: 2px solid rgba(255,255,255,0.30);
 							display: flex; align-items: center; justify-content: center;
-							color: rgba(255,255,255,0.90);
+							color: rgba(0,0,0,0.90);
 							cursor: nwse-resize;
 							touch-action: none;
 						"
@@ -1860,7 +1867,8 @@
 			onpointermove={textPointerMove}
 			onpointerup={textPointerUp}
 			onpointercancel={textPointerUp}
-			role={interactive ? 'button' : undefined}
+			role={interactive ? 'group' : undefined}
+			aria-label={interactive ? 'News headline area' : undefined}
 			onmouseenter={() => hoveringText = true}
 			onmouseleave={() => hoveringText = false}
 		>
@@ -1902,7 +1910,7 @@
 						style="
 							{sourceCss}
 							white-space: nowrap;
-							{interactive ? 'cursor: pointer;' : ''}
+							{interactive ? 'cursor: pointer; user-select: text !important; -webkit-user-select: text !important;' : ''}
 							{selectedText === 'source' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 2px;' : ''}
 						"
 					>
@@ -1958,14 +1966,15 @@
 					bind:this={headlineEl}
 					data-text-selectable="headline"
 					ondblclick={onHeadlineDblClick}
-					onmouseup={onHeadlineMouseUp}
+					onpointerup={onHeadlineMouseUp}
 					style="
 						margin: 0; padding: 0;
 						{headlineCss}
 						text-transform: uppercase;
 						word-break: break-word;
+						touch-action: pan-x;
 						{selectedText === 'headline' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 4px;' : ''}
-						{interactive ? 'user-select: text; -webkit-user-select: text;' : ''}
+						{interactive ? 'user-select: text !important; -webkit-user-select: text !important;' : ''}
 					"
 				>
 					{#each segments as seg}
@@ -1979,6 +1988,17 @@
 									-webkit-text-fill-color: transparent;
 									background-clip: text;
 								">{seg.text}</span>
+							{:else if seg.markerBg}
+								<span
+									style="
+										background: {seg.markerBg};
+										color: {textColor};
+										padding: 0.08em 0.16em;
+										border-radius: 0.14em;
+										box-decoration-break: clone;
+										-webkit-box-decoration-break: clone;
+									"
+								>{seg.text}</span>
 							{:else}
 								<span style="color: {seg.color};">{seg.text}</span>
 							{/if}

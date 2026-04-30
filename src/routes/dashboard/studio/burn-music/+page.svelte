@@ -118,12 +118,12 @@
 			</p>
 
 			<div
-				class="flex gap-3 overflow-x-auto pb-4 pt-1 [scrollbar-width:thin]"
+				class="flex justify-between gap-3 overflow-x-auto pb-4 pt-1 [scrollbar-width:thin]"
 				style="scrollbar-color: rgba(255,255,255,0.12) transparent"
 			>
 				{#each slides as row, i (i)}
 					<div
-						class="group relative w-[200px] flex-shrink-0 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/80 shadow-lg transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl"
+						class="group relative w-[33%] flex-shrink-0 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/80 shadow-lg transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl"
 					>
 						<div class="relative aspect-[9/16] w-full bg-black">
 							{#if row.preview}

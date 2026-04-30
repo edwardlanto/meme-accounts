@@ -5,7 +5,7 @@
 	 */
 	import type { Snippet } from 'svelte';
 	import type { TextElementKind } from '$lib/types';
-	import { parseHighlightMarkup } from '$lib/highlight';
+	import { parseHighlightMarkup, plainRangeFromSelection } from '$lib/highlight';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 
 	interface Props {
@@ -55,16 +55,6 @@
 	let editableEl = $state<HTMLElement | null>(null);
 	let editTextColor = $state<string | null>(null);
 
-	const expectedPlain = $derived(parseHighlightMarkup(value, defaultColor).plain);
-
-	function domPlainDeep(root: HTMLElement): string {
-		const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-		let s = '';
-		let n: Node | null;
-		while ((n = w.nextNode())) s += n.nodeValue ?? '';
-		return s;
-	}
-
 	function wrapRectAsAnchor(rect: DOMRect): HTMLElement {
 		const ghost = document.createElement('div');
 		(ghost as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect =
@@ -75,29 +65,9 @@
 	function getPlainSelectionRange(): { start: number; end: number } | null {
 		const root = displayRoot;
 		if (!root) return null;
-		if (domPlainDeep(root) !== expectedPlain) return null;
-
-		const sel = window.getSelection();
-		if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-		const range = sel.getRangeAt(0);
-		if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
-
-		function boundaryPlainLen(headlineRoot: HTMLElement, container: Node, offset: number): number {
-			const r = document.createRange();
-			try {
-				r.selectNodeContents(headlineRoot);
-				r.setEnd(container, offset);
-				return r.toString().length;
-			} catch {
-				return -1;
-			}
-		}
-
-		const start = boundaryPlainLen(root, range.startContainer, range.startOffset);
-		const end = boundaryPlainLen(root, range.endContainer, range.endOffset);
-		if (start < 0 || end < 0) return null;
-		if (start === end) return null;
-		return start < end ? { start, end } : { start: end, end: start };
+		// Use shared mapping with News template (no strict DOM-vs-parser equality — that
+		// blocked second-pass highlights after markup/CSS subtle differences).
+		return plainRangeFromSelection(root);
 	}
 
 	function onDisplayMouseUp() {
@@ -176,10 +146,11 @@
 	<div
 		bind:this={editableEl}
 		data-text-selectable="true"
+		data-draggable-no-pan
 		onkeydown={onEditKeydown}
 		onclick={(e) => e.stopPropagation()}
 		onmousedown={(e) => e.stopPropagation()}
-		style="margin: 0; padding: 0; color: {editTextColor ?? 'inherit'}; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55); border-radius: 4px; cursor: text;"
+		style="margin: 0; padding: 0; color: {editTextColor ?? 'inherit'}; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55); border-radius: 4px; cursor: text; touch-action: manipulation;"
 	>
 		<HighlightEditor
 			value={value}
@@ -203,9 +174,13 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={displayRoot}
+		data-draggable-no-pan
+		data-text-selectable={toolbarKind}
 		ondblclick={startEdit}
 		onmouseup={onDisplayMouseUp}
+		onpointerup={onDisplayMouseUp}
 		role="button"
+		aria-label={ariaLabel}
 		tabindex="0"
 		onkeydown={(e) => {
 			if (e.key === 'Enter' || e.key === ' ') {
@@ -217,7 +192,9 @@
 			position: relative;
 			{selected ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6);' : ''}
 			border-radius: 4px;
-			{canEdit ? 'cursor: text; user-select: text; -webkit-user-select: text;' : ''}
+			{canEdit
+				? 'cursor: text; user-select: text !important; -webkit-user-select: text !important; touch-action: pan-x pan-y;'
+				: ''}
 		"
 		title={canEdit ? 'Double-click to edit text' : undefined}
 	>

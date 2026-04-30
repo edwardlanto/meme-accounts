@@ -38,7 +38,14 @@ import JSZip from 'jszip';
 	import { useSortable, isSortable } from '@dnd-kit-svelte/svelte/sortable';
 	import { RestrictToHorizontalAxis } from '@dnd-kit-svelte/svelte/modifiers';
 	import { move } from '@dnd-kit/helpers';
-	import { applyHighlight, type HighlightSpec, plainRangeHasMixedForegroundPaint } from '$lib/highlight';
+	import {
+		applyHighlight,
+		type HighlightSpec,
+		plainRangeFromSelection,
+		plainRangeHasMixedForegroundPaint,
+		rangeForegroundSwatchColor,
+		stripMarkup,
+	} from '$lib/highlight';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
@@ -146,10 +153,6 @@ import JSZip from 'jszip';
 	function setActiveTemplate(t: TemplateId) {
 		lastTemplateUsed = t;
 		slideTemplates = slideTemplates.map((x, i) => (i === activeSlide ? t : x));
-		if (slides.length >= 2) {
-			const idx = activeSlide;
-			queueMicrotask(() => void refreshFilmstripPreviewSlice(idx));
-		}
 	}
 	function applyTemplateToAll(t: TemplateId) {
 		lastTemplateUsed = t;
@@ -320,6 +323,29 @@ import JSZip from 'jszip';
 			articleTextBySlide = articleTextBySlide.map((x, idx) => (idx === i ? d.text : x));
 			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? d.swipeText : x));
 			bgImagesByTemplate = { ...bgImagesByTemplate, article: (bgImagesByTemplate.article ?? []).map((x, idx) => (idx === i ? d.image : x)) };
+			return;
+		}
+		if (t === 'news') {
+			const d = snap.data;
+			slides = slides.map((x, idx) => (idx === i ? d.headline : x));
+			source = d.source;
+			bgImagesByTemplate = {
+				...bgImagesByTemplate,
+				news: (bgImagesByTemplate.news ?? []).map((x, idx) => (idx === i ? d.image : x)),
+			};
+			bgVideosByTemplate = {
+				...bgVideosByTemplate,
+				news: (bgVideosByTemplate.news ?? []).map((x, idx) => (idx === i ? d.video : x)),
+			};
+			return;
+		}
+		if (t === 'imageQuote') {
+			const d = snap.data;
+			imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, idx) => (idx === i ? d.text : x));
+			bgImagesByTemplate = {
+				...bgImagesByTemplate,
+				imageQuote: (bgImagesByTemplate.imageQuote ?? []).map((x, idx) => (idx === i ? d.image : x)),
+			};
 			return;
 		}
 	}
@@ -1378,6 +1404,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	// Plain-text selection inside the headline (for applyHighlight).
 	// null when no active word/range selection.
 	let headlineRange = $state<{ start: number; end: number } | null>(null);
+	/** Last good plain range (survives brief DOM selection collapse when opening toolbar pickers). */
+	let lastCommittedPlainRange = $state<{ start: number; end: number } | null>(null);
+	/** Bumped after inline headline markup changes so the canvas can re-select the same plain range. */
+	let headlineSelectionRestoreNonce = $state(0);
 	let textOverlayRange = $state<{ start: number; end: number } | null>(null);
 	const hasRangeSelection = $derived(
 		selectedText === 'textOverlay' ? textOverlayRange !== null : headlineRange !== null,
@@ -1416,12 +1446,60 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return plainRangeHasMixedForegroundPaint(raw, range.start, range.end, highlightColor, base);
 	});
 
+	/** Text swatch reflects the selected range’s actual ink (not stale block `headlineStyle.color`, often #F5A623). */
+	const toolbarFloatingStyle = $derived.by(() => {
+		const base = getActiveStyleForSelection();
+		if (!hasRangeSelection || toolbarTextColorMixed) return base;
+		const raw = toolbarHighlightableRaw();
+		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+		if (!raw || !range || range.end <= range.start) return base;
+		const blockInk = getActiveStyleForSelection().color ?? textColor;
+		const sw = rangeForegroundSwatchColor(
+			raw,
+			range.start,
+			range.end,
+			highlightColor,
+			blockInk,
+			textColor,
+		);
+		if (sw === undefined) return base;
+		return { ...base, color: sw };
+	});
+
 	function onHeadlineRangeSelect(start: number, end: number) {
 		if (start < 0 || end < 0 || start === end) {
 			headlineRange = null;
+			lastCommittedPlainRange = null;
 		} else {
 			headlineRange = { start, end };
+			lastCommittedPlainRange = { start, end };
 		}
+	}
+
+	// Ranges are plain offsets into the *current* slide's string — never reuse after changing slide.
+	$effect(() => {
+		void activeSlide;
+		headlineRange = null;
+		textOverlayRange = null;
+		lastCommittedPlainRange = null;
+	});
+
+	function tryRestorePlainRangeFromLastCommit(raw: string): void {
+		const r = lastCommittedPlainRange;
+		if (!r || r.end <= r.start) return;
+		const plainLen = stripMarkup(raw).length;
+		if (r.start >= 0 && r.end <= plainLen && r.start < r.end) {
+			headlineRange = r;
+		} else {
+			lastCommittedPlainRange = null;
+		}
+	}
+
+	/** Prefer live DOM selection; then last committed range if the browser collapsed the highlight. */
+	function ensurePlainRangeForMarkupTools(raw: string): void {
+		if (!raw) return;
+		syncHighlightRangeFromDomIfPossible();
+		if (!headlineRange) tryRestorePlainRangeFromLastCommit(raw);
 	}
 
 	function onTextOverlayRangeSelect(start: number, end: number) {
@@ -1433,15 +1511,27 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	}
 
 	function onHighlight(spec: HighlightSpec) {
+		if (selectedText !== 'textOverlay') {
+			const raw = toolbarHighlightableRaw();
+			ensurePlainRangeForMarkupTools(raw);
+		}
 		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
 		if (!range) return;
-		pushUndo(activeTemplate, activeSlide);
-		// Apply highlight to the currently-selected editable text field (not always News headline).
 		const start = range.start;
 		const end = range.end;
 		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start)) return;
 
-		// Highlightable fields
+		const appliesMarkup =
+			selectedText === 'headline' ||
+			selectedText === 'articleBody' ||
+			selectedText === 'textCarouselBody' ||
+			selectedText === 'tweetBottomText' ||
+			selectedText === 'tweetTopText' ||
+			(selectedText === 'textOverlay' && !!selectedTextOverlayId);
+		if (!appliesMarkup) return;
+
+		pushUndo(activeTemplate, activeSlide);
+
 		if (selectedText === 'headline') {
 			const current = slides[activeSlide] ?? '';
 			setActiveSlideText(applyHighlight(current, start, end, spec));
@@ -1465,9 +1555,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				activeTemplate,
 			);
 		}
-		// Keep the range so the user can try a different highlight without reselecting.
-		// Clear any native selection since the DOM just rerendered.
-		window.getSelection()?.removeAllRanges();
+
+		if (selectedText === 'headline' && headlineRange) headlineSelectionRestoreNonce++;
+
+		// After DOM updates (+ optional selection restore), sync plain offsets so the next
+		// toolbar action applies to the same visible phrase without forcing a re-drag.
+		void tick().then(() => {
+			if (selectedText === 'textOverlay') return;
+			syncHighlightRangeFromDomIfPossible();
+		});
 	}
 
 	function onTextSelect(kind: TextElementKind, el: HTMLElement) {
@@ -1506,6 +1602,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		toolbarAutoFontSize = undefined;
 		headlineRange = null;
 		textOverlayRange = null;
+		lastCommittedPlainRange = null;
 	}
 
 	// Recompute toolbar anchor on scroll / resize so it stays glued to the text.
@@ -1521,6 +1618,53 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			window.removeEventListener('resize', update);
 		};
 	});
+
+	function studioMarkupFieldRoot(kind: TextElementKind): HTMLElement | null {
+		if (typeof document === 'undefined') return null;
+		if (kind === 'headline') {
+			return document.querySelector(
+				'[data-studio-canvas-root] p[data-text-selectable="headline"]',
+			);
+		}
+		return document.querySelector(
+			`[data-studio-canvas-root] [data-text-selectable="${kind}"]`,
+		);
+	}
+
+	function syncHighlightRangeFromDomIfPossible(): boolean {
+		if (!selectedText || selectedText === 'textOverlay') return false;
+		if (!toolbarHighlightableRaw()) return false;
+		const root = studioMarkupFieldRoot(selectedText);
+		if (!root) return false;
+		const r = plainRangeFromSelection(root);
+		if (!r || r.end <= r.start) return false;
+		headlineRange = r;
+		return true;
+	}
+
+	/** Routes text/BG color to `[[…]]` markup when a phrase is selected in the DOM (even if state lost the range). */
+	function onFloatingToolbarChange(patch: Partial<TextStyle>) {
+		const raw = toolbarHighlightableRaw();
+		if (raw && selectedText && selectedText !== 'textOverlay') {
+			if ('color' in patch && patch.color !== undefined) {
+				ensurePlainRangeForMarkupTools(raw);
+				if (headlineRange) {
+					onHighlight({ kind: 'color', color: patch.color });
+					return;
+				}
+			}
+			if ('bgColor' in patch) {
+				ensurePlainRangeForMarkupTools(raw);
+				if (headlineRange) {
+					const bg = patch.bgColor;
+					if (bg === undefined || bg === 'transparent') onHighlight({ kind: 'clear' });
+					else onHighlight({ kind: 'marker', color: bg });
+					return;
+				}
+			}
+		}
+		patchActiveStyle(patch);
+	}
 
 	function patchActiveStyle(patch: Partial<TextStyle>) {
 		if (isTweetKind(selectedText)) {
@@ -3129,19 +3273,25 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	/** True only while capturing every slide for the filmstrip (hides rapid canvas switching). */
 	let filmstripBulkCapturing = $state(false);
 
+	/** Last signatures we successfully rasterized to the filmstrip (avoids full-deck capture on single-slide edits). */
+	let prevFilmstripSigs: string[] = [];
+
+	/** One filmstrip cell: template + media + primary copy lengths (used for invalidation + diff). */
+	function slideThumbSignature(i: number): string {
+		const t = slideTemplates[i] ?? 'news';
+		const imgLen = ((bgImagesByTemplate[t] ?? [])[i] ?? '').length;
+		const vidLen = ((bgVideosByTemplate[t] ?? [])[i] ?? '').length;
+		return `${t}:${imgLen}:${vidLen}:${(slides[i] ?? '').length}:${(tweetTopTextBySlide[i] ?? '').length}:${(articleTextBySlide[i] ?? '').length}:${(textCarouselTextBySlide[i] ?? '').length}:${(imageQuoteTextBySlide[i] ?? '').length}`;
+	}
+
+	function syncFilmstripSigCacheAfterCapture() {
+		prevFilmstripSigs = slides.map((_, i) => slideThumbSignature(i));
+	}
+
 	/** Content fingerprint only — omit format/canvas size so Feed/Vertical/Wide toggles don’t re-raster filmstrip thumbs. */
 	const filmstripThumbDeps = $derived.by(() => {
 		let s = `${slides.length}|${uiTheme}`;
-		for (let i = 0; i < slides.length; i++) {
-			const t = slideTemplates[i] ?? 'news';
-			const imgLen = ((bgImagesByTemplate[t] ?? [])[i] ?? '').length;
-			const vidLen = ((bgVideosByTemplate[t] ?? [])[i] ?? '').length;
-			s += `;${i}:${t}:${imgLen}:${vidLen}`;
-		}
-		s += `|sl:${slides.map((x) => x.length).join(',')}`;
-		s += `|tw:${tweetTopTextBySlide.map((x) => x.length).join(',')}`;
-		s += `|ar:${articleTextBySlide.map((x) => x.length).join(',')}`;
-		s += `|tc:${textCarouselTextBySlide.map((x) => x.length).join(',')}`;
+		for (let i = 0; i < slides.length; i++) s += `;${slideThumbSignature(i)}`;
 		return s;
 	});
 
@@ -3151,6 +3301,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		// Filmstrip UI only exists for 2+ slides.
 		if (slides.length < 2) {
 			filmstripPreviewUrls = [];
+			prevFilmstripSigs = [];
 			return;
 		}
 		filmstripPreviewInFlight = true;
@@ -3190,6 +3341,58 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			filmstripBulkCapturing = false;
 			canvasRasterSlide = null;
 			filmstripPreviewInFlight = false;
+			syncFilmstripSigCacheAfterCapture();
+			await tick();
+		}
+	}
+
+	/** Re-raster only the given slide indices under one overlay (no “cycle every slide” on the main canvas). */
+	async function refreshFilmstripPreviewSlices(indices: number[]) {
+		const uniq = [...new Set(indices)]
+			.filter((i) => Number.isInteger(i) && i >= 0 && i < slides.length)
+			.sort((a, b) => a - b);
+		if (!uniq.length || !exportRef || studioBooting || slides.length < 2) return;
+		if (exporting || exportingAll || filmstripPreviewInFlight) return;
+
+		filmstripPreviewInFlight = true;
+		filmstripBulkCapturing = true;
+		const prevRaster = canvasRasterSlide;
+		let base =
+			filmstripPreviewUrls.length === slides.length
+				? [...filmstripPreviewUrls]
+				: Array.from({ length: slides.length }, (_, i) => filmstripPreviewUrls[i] ?? '');
+		try {
+			for (const i of uniq) {
+				canvasRasterSlide = i;
+				await tick();
+				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+				const node = exportRef;
+				if (!node) continue;
+				try {
+					await (document as any).fonts?.ready;
+				} catch {
+					/* ignore */
+				}
+				try {
+					const dataUrl = await toPng(node, {
+						width: CANVAS_W,
+						height: CANVAS_H,
+						pixelRatio: 0.2,
+						backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+						style: { transform: 'scale(1)', transformOrigin: 'top left' },
+						cacheBust: true,
+					} as any);
+					base[i] = dataUrl;
+				} catch {
+					base[i] = '';
+				}
+			}
+			filmstripPreviewUrls = base;
+		} finally {
+			canvasRasterSlide = prevRaster ?? null;
+			filmstripBulkCapturing = false;
+			filmstripPreviewInFlight = false;
+			syncFilmstripSigCacheAfterCapture();
 			await tick();
 		}
 	}
@@ -3202,6 +3405,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		const prevRaster = canvasRasterSlide;
 		filmstripPreviewInFlight = true;
+		filmstripBulkCapturing = true;
 		try {
 			canvasRasterSlide = slideIdx;
 			await tick();
@@ -3234,7 +3438,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			}
 		} finally {
 			canvasRasterSlide = prevRaster ?? null;
+			filmstripBulkCapturing = false;
 			filmstripPreviewInFlight = false;
+			syncFilmstripSigCacheAfterCapture();
 			await tick();
 		}
 	}
@@ -3293,10 +3499,36 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		void studioBooting;
 		if (studioBooting) return;
 		if (filmstripThumbTimer) clearTimeout(filmstripThumbTimer);
+
+		const n = slides.length;
+		const nextSigs = n > 0 ? Array.from({ length: n }, (_, i) => slideThumbSignature(i)) : [];
+
+		if (n < 2) {
+			prevFilmstripSigs = nextSigs;
+			return;
+		}
+
+		let changed: number[] = [];
+		if (prevFilmstripSigs.length !== n) {
+			changed = Array.from({ length: n }, (_, i) => i);
+		} else {
+			for (let i = 0; i < n; i++) {
+				if (prevFilmstripSigs[i] !== nextSigs[i]) changed.push(i);
+			}
+		}
+
+		if (!changed.length) return;
+
+		const useFullDeckCapture =
+			changed.length === n || changed.length > Math.max(3, Math.ceil(n * 0.55));
+		const delayMs = useFullDeckCapture ? 900 : 400;
+
 		filmstripThumbTimer = setTimeout(() => {
 			filmstripThumbTimer = null;
-			void refreshFilmstripPreviews();
-		}, 900);
+			const run = useFullDeckCapture ? refreshFilmstripPreviews() : refreshFilmstripPreviewSlices(changed);
+			void run;
+		}, delayMs);
+
 		return () => {
 			if (filmstripThumbTimer) clearTimeout(filmstripThumbTimer);
 		};
@@ -4038,12 +4270,16 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		<div class="flex shrink-0 items-start gap-3 py-2">
 			<div style="width: {previewDisplayW}px;" class="relative z-10 shrink-0">
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
-				<div style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);" class="relative overflow-hidden rounded-2xl">
+				<div
+					data-studio-canvas-root
+					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
+					class="relative overflow-hidden rounded-2xl"
+				>
 
 			{#if filmstripBulkCapturing && slides.length >= 2}
 				<div
 					class="absolute inset-0 z-[19] flex flex-col items-center justify-center gap-2 rounded-2xl"
-					style="background: color-mix(in oklab, var(--app-surface-2) 92%, transparent); border: 1px solid var(--app-border);"
+					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
 					aria-live="polite"
 					aria-busy="true"
 				>
@@ -4176,6 +4412,8 @@ showSubjectCutout={canvasShowCutout}
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
+					headlineSelectionRestoreNonce={headlineSelectionRestoreNonce}
+					headlineSelectionRestoreRange={headlineRange}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
@@ -4379,6 +4617,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
+					headlineSelectionRestoreNonce={headlineSelectionRestoreNonce}
+					headlineSelectionRestoreRange={headlineRange}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
@@ -5040,7 +5280,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 <!-- Canva-style floating toolbar for text formatting -->
 <FloatingTextToolbar
 	anchor={toolbarAnchor}
-	style={getActiveStyleForSelection()}
+	style={toolbarFloatingStyle}
 	autoFontSize={toolbarAutoFontSize ?? (selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined)}
 	supportsHighlights={(selectedText === 'headline' ||
 		selectedText === 'articleBody' ||
@@ -5053,7 +5293,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		selectedText === 'tweetBottomText') || selectedText === 'textOverlay'}
 	hasRangeSelection={hasRangeSelection}
 	textColorMixed={toolbarTextColorMixed}
-	onChange={patchActiveStyle}
+	onChange={onFloatingToolbarChange}
 	onHighlight={onHighlight}
 	onReset={resetActiveStyle}
 	onClose={closeToolbar}
