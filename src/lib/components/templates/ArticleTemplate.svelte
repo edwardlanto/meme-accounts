@@ -15,6 +15,8 @@
 		// Bottom bar
 		logoSrc?: string;
 		logoRingColor?: string;
+		/** Clear custom logo image (Studio); empty shows default icon. */
+		onLogoSrcChange?: (v: string) => void;
 		showSwipe?: boolean;
 		swipeText?: string;
 		onSwipeTextChange?: (v: string) => void;
@@ -47,6 +49,7 @@
 		templateTheme = 'light',
 		logoSrc      = '',
 		logoRingColor = '#c9b97a',
+		onLogoSrcChange,
 		showSwipe    = true,
 		swipeText    = '«« Swipe',
 		onSwipeTextChange,
@@ -211,18 +214,37 @@
 					onChange={(x, y) => onTextOffsetChange?.('articleImage', { x, y })}
 				>
 					{#snippet children()}
-						<div style="
-							flex: 1;
-							min-height: 0;
-							border-radius: 20px;
-							overflow: hidden;
-							flex-shrink: 0;
-							max-height: 620px;
-						">
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							data-text-selectable="articleImage"
+							role="button"
+							tabindex="0"
+							onclick={(e) => {
+								e.stopPropagation();
+								onTextSelect?.('articleImage', e.currentTarget as HTMLElement);
+							}}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									onTextSelect?.('articleImage', e.currentTarget as HTMLElement);
+								}
+							}}
+							style="
+								flex: 1;
+								min-height: 0;
+								border-radius: 20px;
+								overflow: hidden;
+								flex-shrink: 0;
+								max-height: 620px;
+								cursor: {interactive ? 'pointer' : 'default'};
+								{selectedText === 'articleImage' ? 'box-shadow: 0 0 0 3px rgba(139,92,246,0.7);' : ''}
+							"
+						>
 							<img
 								src={image}
 								alt=""
-								style="width: 100%; height: 100%; object-fit: cover; display: block;"
+								draggable="false"
+								style="width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;"
 							/>
 						</div>
 					{/snippet}
@@ -249,17 +271,35 @@
 				onChange={(x, y) => onTextOffsetChange?.('articleLogo', { x, y })}
 			>
 				{#snippet children()}
-					<div style="
-						position: absolute;
-						left: 50%;
-						transform: translateX(-50%);
-						width: 80px;
-						height: 80px;
-						border-radius: 50%;
-						padding: 3.5px;
-						background: linear-gradient(135deg, {logoRingColor}, color-mix(in srgb, {logoRingColor} 55%, white));
-						box-sizing: border-box;
-					">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						data-text-selectable="articleLogo"
+						role="button"
+						tabindex="0"
+						onclick={(e) => {
+							e.stopPropagation();
+							onTextSelect?.('articleLogo', e.currentTarget as HTMLElement);
+						}}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								onTextSelect?.('articleLogo', e.currentTarget as HTMLElement);
+							}
+						}}
+						style="
+							position: absolute;
+							left: 50%;
+							transform: translateX(-50%);
+							width: 80px;
+							height: 80px;
+							border-radius: 50%;
+							padding: 3.5px;
+							background: linear-gradient(135deg, {logoRingColor}, color-mix(in srgb, {logoRingColor} 55%, white));
+							box-sizing: border-box;
+							cursor: {interactive ? 'pointer' : 'default'};
+							{selectedText === 'articleLogo' ? 'box-shadow: 0 0 0 3px rgba(139,92,246,0.85);' : ''}
+						"
+					>
 						<div style="
 							width: 100%;
 							height: 100%;
@@ -272,10 +312,10 @@
 							box-sizing: border-box;
 						">
 							{#if logoSrc}
-								<img src={logoSrc} alt="" style="width: 100%; height: 100%; object-fit: cover;" />
+								<img src={logoSrc} alt="" style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;" />
 							{:else}
 								<!-- Default lightning bolt -->
-								<svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+								<svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 									<path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z"
 										fill="{logoRingColor}" stroke="{logoRingColor}" stroke-width="0.5"
 										stroke-linejoin="round"/>
@@ -308,6 +348,7 @@
 								fontSize={articleStyles.articleSwipeText?.fontSize ?? 28}
 								onTextChange={onSwipeTextChange}
 								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
 									<div style="

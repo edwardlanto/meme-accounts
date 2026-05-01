@@ -210,8 +210,8 @@
 							padding: 6px 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
-							background: rgba(0,0,0,0.14);
-							border: 1px solid rgba(255,255,255,0.25);
+							background: transparent;
+							border: 1px solid rgba(255,255,255,0.22);
 							color: {css.color ?? '#FFFFFF'};
 							font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;
@@ -257,8 +257,8 @@
 							padding: 6px 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
-							background: {isSelected ? 'color-mix(in oklab, var(--app-selection-bg) 42%, rgba(0,0,0,0.10))' : 'rgba(0,0,0,0.10)'};
-							border: 1px dashed rgba(255,255,255,0.25);
+							background: transparent;
+							border: 1px dashed rgba(255,255,255,0.28);
 							/* Use outline so selection styling never shifts layout/position. */
 							outline: {isSelected ? '2px solid color-mix(in oklab, var(--app-selection-bg) 70%, rgba(255,255,255,0.18))' : '2px solid transparent'};
 							outline-offset: 0px;

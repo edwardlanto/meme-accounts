@@ -4,7 +4,7 @@
 	 * single click / text drag for floating toolbar (when callbacks are wired).
 	 */
 	import type { Snippet } from 'svelte';
-	import type { TextElementKind } from '$lib/types';
+	import type { TextElementKind, TypographySnapshot } from '$lib/types';
 	import { parseHighlightMarkup, plainRangeFromSelection } from '$lib/highlight';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 
@@ -54,6 +54,7 @@
 	let displayRoot = $state<HTMLElement | null>(null);
 	let editableEl = $state<HTMLElement | null>(null);
 	let editTextColor = $state<string | null>(null);
+	let editTypography = $state<TypographySnapshot | null>(null);
 
 	function wrapRectAsAnchor(rect: DOMRect): HTMLElement {
 		const ghost = document.createElement('div');
@@ -96,12 +97,34 @@
 	function startEdit(e: MouseEvent) {
 		if (!canEdit) return;
 		e.stopPropagation();
-		// Match the visible template text color while editing (each template is independent).
-		// This avoids inheriting an unrelated outer color (e.g. white UI chrome).
+		// Match visible canvas typography (weight, size, line-height) — the editor wrapper
+		// does not repeat template CSS, so without this the contenteditable inherits from
+		// outer frames and looks bolder/lighter than the display layer.
 		try {
-			if (displayRoot) editTextColor = getComputedStyle(displayRoot).color;
+			if (displayRoot) {
+				const typoEl =
+					(displayRoot.querySelector('[data-canvas-typography-root]') as HTMLElement | null) ??
+					(displayRoot.firstElementChild as HTMLElement | null) ??
+					displayRoot;
+				const cs = getComputedStyle(typoEl);
+				editTextColor = cs.color;
+				editTypography = {
+					fontWeight: cs.fontWeight,
+					fontFamily: cs.fontFamily,
+					fontSize: cs.fontSize,
+					lineHeight: cs.lineHeight,
+					letterSpacing: cs.letterSpacing,
+					fontStyle: cs.fontStyle,
+					textDecoration: cs.textDecoration,
+					textAlign: cs.textAlign,
+				};
+			} else {
+				editTextColor = null;
+				editTypography = null;
+			}
 		} catch {
 			editTextColor = null;
+			editTypography = null;
 		}
 		editing = true;
 		setTimeout(() => {
@@ -127,6 +150,7 @@
 
 	function exitEditMode() {
 		editing = false;
+		editTypography = null;
 	}
 
 	function finishEdit(e?: FocusEvent) {
@@ -142,6 +166,7 @@
 				if (ae instanceof Element && ae.closest('[data-floating-toolbar], [data-slot="popover-content"]'))
 					return;
 				editing = false;
+				editTypography = null;
 			});
 		});
 	}
@@ -175,6 +200,7 @@
 			{uppercase}
 			{fontFamily}
 			{fontSize}
+			typographySnapshot={editTypography}
 			{showToolbar}
 			{ariaLabel}
 			{minHeight}

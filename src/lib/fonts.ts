@@ -12,8 +12,10 @@ export type GoogleFont = {
 
 export const GOOGLE_FONTS: GoogleFont[] = [
 	// ── Sans (workhorse UI + body) ─────────────────────────────────────
+	/** App / studio default sans — variable weight axis (see `buildCssUrl`). */
+	{ family: 'Lexend', category: 'sans', weights: [400] },
 	{ family: 'Inter', category: 'sans', weights: [400, 500, 600, 700, 900], italic: true },
-	{ family: 'DM Sans', category: 'sans', weights: [400, 500, 700], italic: true },
+	{ family: 'DM Sans', category: 'sans', weights: [400, 500, 600, 700, 800, 900], italic: true },
 	{ family: 'Manrope', category: 'sans', weights: [400, 600, 700, 800] },
 	{ family: 'Work Sans', category: 'sans', weights: [400, 500, 700, 900], italic: true },
 	{ family: 'Plus Jakarta Sans', category: 'sans', weights: [400, 500, 700, 800] },
@@ -87,6 +89,10 @@ const loadPromises = new Map<string, Promise<void>>();
 /** Build the Google Fonts CSS2 URL for a font. */
 function buildCssUrl(font: GoogleFont): string {
 	const family = font.family.replace(/\s+/g, '+');
+	/* Variable Lexend — single axis covers 100–900 (matches `app.html` preload). */
+	if (font.family === 'Lexend') {
+		return `https://fonts.googleapis.com/css2?family=${family}:wght@100..900&display=swap`;
+	}
 	const weights = font.weights.length ? font.weights : [400];
 	if (font.italic) {
 		const axis = weights.flatMap((w) => [`0,${w}`, `1,${w}`]).join(';');
@@ -96,18 +102,49 @@ function buildCssUrl(font: GoogleFont): string {
 	return `https://fonts.googleapis.com/css2?family=${family}:wght@${axis}&display=swap`;
 }
 
+async function ensureFontFaceReady(family: string, weight: number): Promise<void> {
+	try {
+		if ((document as any).fonts?.load) {
+			await (document as any).fonts.load(`${weight} 72px "${family}"`);
+		}
+	} catch {
+		/* ignore */
+	}
+}
+
+/** Hint the browser after layout — avoids competing with the same turn as inline style updates. */
+function scheduleFontFaceHint(family: string, weight: number): void {
+	queueMicrotask(() => void ensureFontFaceReady(family, weight));
+}
+
 /**
  * Lazy-load a Google Font by injecting a <link> into the document head.
  * Safe to call repeatedly — same font only loads once.
- * Resolves once the browser has finished fetching the webfont.
+ * After the stylesheet is present, `weightHint` is applied via `document.fonts.load` so the correct
+ * weight is available (calling again with a new weight still resolves the matching face).
  */
-export function loadGoogleFont(family: string): Promise<void> {
+export function loadGoogleFont(family: string, weightHint?: number): Promise<void> {
 	if (typeof document === 'undefined') return Promise.resolve();
-	if (loadedFonts.has(family)) return Promise.resolve();
-	if (loadPromises.has(family)) return loadPromises.get(family)!;
+	const w = weightHint ?? 400;
+	/** Variable Lexend is preloaded in `app.html` (wght 100–900). CSS `font-weight` updates instantly; `fonts.load` per tick only delays paint. */
+	if (family === 'Lexend') return Promise.resolve();
 
 	const font = GOOGLE_FONTS.find((f) => f.family === family);
-	if (!font) return Promise.resolve();
+	/** Still resolve `document.fonts.load` for faces linked elsewhere (e.g. custom CSS). */
+	if (!font) {
+		scheduleFontFaceHint(family, w);
+		return Promise.resolve();
+	}
+
+	if (loadedFonts.has(family)) {
+		scheduleFontFaceHint(family, w);
+		return Promise.resolve();
+	}
+	if (loadPromises.has(family)) {
+		return loadPromises.get(family)!.then(() => {
+			scheduleFontFaceHint(family, w);
+		});
+	}
 
 	const p = new Promise<void>((resolve) => {
 		const link = document.createElement('link');
@@ -116,14 +153,7 @@ export function loadGoogleFont(family: string): Promise<void> {
 		link.setAttribute('data-gfont', family);
 		link.onload = async () => {
 			loadedFonts.add(family);
-			// Wait until the actual font face is ready (not just the CSS file).
-			try {
-				if ((document as any).fonts?.load) {
-					await (document as any).fonts.load(`400 16px "${family}"`);
-				}
-			} catch {
-				/* ignore */
-			}
+			scheduleFontFaceHint(family, w);
 			resolve();
 		};
 		link.onerror = () => resolve(); // fail open — fall back to system font

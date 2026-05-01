@@ -148,10 +148,6 @@
 
 	<!-- ── Starter Templates ───────────────────────────────────────────────── -->
 	<div class="templates-section">
-		<div class="templates-header">
-			<h2 class="templates-title">Start from a template</h2>
-			<a href="/dashboard/carousels/new" class="templates-see-all">See all templates →</a>
-		</div>
 
 		<div
 			bind:this={templatesWrapEl}
@@ -160,13 +156,15 @@
 		>
 			{#each STARTER_TEMPLATES.filter((t) => t.id !== 'image-quote') as tmpl}
 				{@const hoverClass =
-						tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
+						tmpl.id === 'empty'   ? 'hover:border-neutral-400/35 hover:shadow-[0_0_24px_rgba(115,115,115,0.10)]'
+						: tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
 						: tmpl.id === 'text'  ? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
 						: tmpl.id === 'article' ? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
 						: tmpl.id === 'brand' ? 'hover:border-violet-500/40 hover:shadow-[0_0_28px_rgba(139,92,246,0.15)]'
 						: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}
 				{@const arrowColor =
-						tmpl.id === 'tweet'   ? 'group-hover:text-sky-400'
+						tmpl.id === 'empty'   ? 'group-hover:text-neutral-400'
+						: tmpl.id === 'tweet'   ? 'group-hover:text-sky-400'
 						: tmpl.id === 'text'  ? 'group-hover:text-white/70'
 						: tmpl.id === 'article' ? 'group-hover:text-emerald-400'
 						: tmpl.id === 'brand' ? 'group-hover:text-violet-400'
@@ -178,7 +176,21 @@
 				>
 					<!-- Preview area -->
 					<div style="width: 100%; height: {Math.round(templateCardW * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;">
-						{#if tmpl.id === 'news'}
+						{#if tmpl.id === 'empty'}
+							<div
+								class="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none select-none"
+								style="background: {uiTheme === 'dark' ? 'rgba(23,23,23,0.92)' : '#fafafa'}; border: 2px dashed {uiTheme === 'dark' ? 'rgba(163,163,163,0.35)' : 'rgba(163,163,163,0.55)'};"
+							>
+								<span
+									class="text-[9px] font-mono uppercase tracking-[0.2em]"
+									style="color: {uiTheme === 'dark' ? 'rgba(163,163,163,0.65)' : 'rgba(115,115,115,0.85)'};"
+								>Blank canvas</span>
+								<span
+									class="text-[8px] font-body max-w-[75%] text-center leading-snug"
+									style="color: {uiTheme === 'dark' ? 'rgba(163,163,163,0.45)' : 'rgba(115,115,115,0.55)'};"
+								>Opens Studio with no placeholder copy or media</span>
+							</div>
+						{:else if tmpl.id === 'news'}
 							<img
 								src={tmpl.previewBg}
 								alt=""
@@ -200,15 +212,25 @@
 								scale={templateScale}
 							/>
 						{:else if tmpl.id === 'text'}
-							<TextCarouselTemplate
-								templateTheme={uiTheme}
-								name="Captains of industry"
-								handle="@captainsofindustryy"
-								text={"Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable."}
-								showSwipe={true}
-								scale={templateScale}
-								interactive={false}
-							/>
+							{#if tmpl.previewBg}
+								<img
+									src={tmpl.previewBg}
+									alt=""
+									class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
+									loading="lazy"
+									draggable="false"
+								/>
+							{:else}
+								<TextCarouselTemplate
+									templateTheme={uiTheme}
+									name="Captains of industry"
+									handle="@captainsofindustryy"
+									text={"Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable."}
+									showSwipe={false}
+									scale={templateScale}
+									interactive={false}
+								/>
+							{/if}
 						{:else if tmpl.id === 'article'}
 							<ArticleTemplate
 								templateTheme={uiTheme}
@@ -502,7 +524,7 @@
 	:root:not([data-theme="dark"]) .tmpl-card:hover { box-shadow: 0 14px 44px rgba(2, 6, 23, 0.08); }
 	:root[data-theme="dark"] .tmpl-card:hover { box-shadow: 0 14px 44px rgba(0, 0, 0, 0.34); }
 
-	.tmpl-footer { background: var(--panel-bg); border-color: var(--panel-border); }
+	.tmpl-footer { background: #fff; border-color: var(--panel-border); }
 	.tmpl-title { color: var(--t-strong); }
 	.tmpl-desc { color: var(--t-muted); }
 	.tmpl-arrow { color: color-mix(in oklab, var(--t-muted) 55%, transparent); }

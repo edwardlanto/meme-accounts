@@ -1365,8 +1365,8 @@
 							padding: 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
-							background: rgba(0,0,0,0.14);
-							border: 1px solid rgba(255,255,255,0.25);
+							background: transparent;
+							border: 1px solid rgba(255,255,255,0.22);
 						"
 						onclick={(e) => e.stopPropagation()}
 						role="presentation"
@@ -1390,8 +1390,8 @@
 							padding: 8px;
 							box-sizing: border-box;
 							border-radius: 10px;
-							background: rgba(0,0,0,0.10);
-							border: 1px dashed rgba(255,255,255,0.25);
+							background: transparent;
+							border: 1px dashed rgba(255,255,255,0.28);
 							color: {css.color ?? '#FFFFFF'};
 							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;

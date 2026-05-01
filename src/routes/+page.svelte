@@ -4,13 +4,9 @@
 	let mounted = $state(false);
 	let scrollY = $state(0);
 
-	const phoneScreens = [
-		'/placeholders/placeholder-vertical.jpeg',
-		'/placeholders/placeholder-vertical.jpeg',
-		'/placeholders/placeholder-vertical.jpeg',
-		'/placeholders/placeholder-vertical.jpeg',
-		'/placeholders/placeholder-vertical.jpeg',
-	];
+	/** Phone marquee — replace with your own image/video assets when ready. */
+	const phoneMarqueePlaceholder = '/placeholders/marquee/news-template-placeholder.png';
+	const phoneScreens = [phoneMarqueePlaceholder];
 
 	const phoneLabels = [
 		{ tint: '#FFB4A2', tag: 'Carousel' },

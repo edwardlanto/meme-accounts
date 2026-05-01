@@ -58,6 +58,14 @@ export const IMAGE_QUOTE_DEFAULTS = {
 	footerRight: 'BRAND',
 } as const;
 
+/** Vertical short-form layout: headline + full-bleed video + watermark. */
+export const VIDEO_STORY_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	watermark: 'BUSINESS FOUNDERS',
+	headline:
+		'[[#22c55e: He messed up, but ]] [[#ef4444: the Boss]]\n[[#ffffff: taught him a ]] [[#eab308: Lesson]] [[#ffffff: instead 🙌]]',
+} as const;
+
 /** Labels for docs / error messages when extending templates. */
 export function templateLabel(id: TemplateId): string {
 	return STUDIO_TEMPLATES.find((t) => t.id === id)?.label ?? id;

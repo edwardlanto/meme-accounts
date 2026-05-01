@@ -18,6 +18,7 @@
 		type HighlightSpec,
 	} from '$lib/highlight';
 	import { tick } from 'svelte';
+	import type { TypographySnapshot } from '$lib/types';
 
 	interface Props {
 		value: string;
@@ -30,6 +31,8 @@
 		/** Font used for the editor content. */
 		fontFamily?: string;
 		fontSize?: number;
+		/** When set (e.g. CanvasMarkupTextBlock entering edit), overrides fontFamily/fontSize and default line-height so weight/layout match the canvas. */
+		typographySnapshot?: TypographySnapshot | null;
 		/** If true, renders uppercase (does NOT modify underlying text). */
 		uppercase?: boolean;
 		/** If true, show a compact built-in highlight toolbar above the field. */
@@ -51,6 +54,7 @@
 		minHeight,
 		fontFamily,
 		fontSize,
+		typographySnapshot = null,
 		uppercase = false,
 		showToolbar = false,
 		class: klass = '',
@@ -500,10 +504,23 @@
 				/* Use line-based min-height so large font sizes don't create huge empty gaps. */
 				min-height: {minHeight ?? `${Math.max(1, rows)}lh`};
 				color: currentColor;
-				line-height: 1.12;
 				padding: 0;
-				{fontFamily ? `font-family: ${fontFamily};` : ''}
-				{fontSize ? `font-size: ${fontSize}px;` : ''}
+				{typographySnapshot
+					? `
+						line-height: ${typographySnapshot.lineHeight};
+						font-weight: ${typographySnapshot.fontWeight};
+						font-family: ${typographySnapshot.fontFamily};
+						font-size: ${typographySnapshot.fontSize};
+						letter-spacing: ${typographySnapshot.letterSpacing};
+						font-style: ${typographySnapshot.fontStyle};
+						text-decoration: ${typographySnapshot.textDecoration};
+						text-align: ${typographySnapshot.textAlign};
+					`
+					: `
+						line-height: 1.12;
+						${fontFamily ? `font-family: ${fontFamily};` : ''}
+						${fontSize ? `font-size: ${fontSize}px;` : ''}
+					`}
 				{uppercase ? 'text-transform: uppercase;' : ''}
 			"
 		></div>
@@ -511,8 +528,18 @@
 			<span
 				class="pointer-events-none absolute top-0 left-0 text-white/20"
 				style="
-					{fontFamily ? `font-family: ${fontFamily};` : ''}
-					{fontSize ? `font-size: ${fontSize}px;` : ''}
+					{typographySnapshot
+						? `
+							font-family: ${typographySnapshot.fontFamily};
+							font-size: ${typographySnapshot.fontSize};
+							font-weight: ${typographySnapshot.fontWeight};
+							line-height: ${typographySnapshot.lineHeight};
+							letter-spacing: ${typographySnapshot.letterSpacing};
+						`
+						: `
+							${fontFamily ? `font-family: ${fontFamily};` : ''}
+							${fontSize ? `font-size: ${fontSize}px;` : ''}
+						`}
 				"
 			>{placeholder}</span>
 		{/if}

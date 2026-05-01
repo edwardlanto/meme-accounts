@@ -12,10 +12,10 @@
 	import {
 		Bold, Italic, Underline,
 		AlignLeft, AlignCenter, AlignRight,
-		ChevronDown, Type, Minus, Plus, RotateCcw, Highlighter, Blend, Trash2,
+		ChevronDown, Type, Minus, Plus, Highlighter, Blend, Trash2,
 	} from 'lucide-svelte';
 
-	type PickerKind = 'font' | 'lh' | 'color' | 'bg' | 'highlight';
+	type PickerKind = 'font' | 'lh' | 'color' | 'bg' | 'highlight' | 'fw';
 
 	function closeOtherPickers(except: PickerKind) {
 		if (except !== 'font') fontPickerOpen = false;
@@ -23,6 +23,7 @@
 		if (except !== 'color') colorPickerOpen = false;
 		if (except !== 'bg') bgPickerOpen = false;
 		if (except !== 'highlight') highlightPickerOpen = false;
+		if (except !== 'fw') fontWeightOpen = false;
 	}
 
 	interface Props {
@@ -42,10 +43,11 @@
 		textColorMixed?: boolean;
 		onChange: (patch: Partial<TextStyle>) => void;
 		onHighlight?: (spec: HighlightSpec) => void;
-		/** When set (e.g. text overlay selected), show delete control in the toolbar. */
-		onDeleteOverlay?: () => void;
-		onReset: () => void;
+		/** When set, show delete: remove text overlays or clear the active template text field. */
+		onDelete?: () => void;
 		onClose: () => void;
+		/** Article image/logo: single delete control, no typography chrome. */
+		deleteOnly?: boolean;
 	}
 
 	let {
@@ -57,9 +59,9 @@
 		textColorMixed = false,
 		onChange,
 		onHighlight,
-		onDeleteOverlay,
-		onReset,
+		onDelete,
 		onClose,
+		deleteOnly = false,
 	}: Props = $props();
 
 	let fontPickerOpen = $state(false);
@@ -68,10 +70,16 @@
 	let highlightPickerOpen = $state(false);
 	let bgPickerOpen = $state(false);
 	let lineHeightOpen = $state(false);
+	let fontWeightOpen = $state(false);
+
+	const FONT_WEIGHT_PRESETS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
 	// Position the toolbar above the anchored element, clamped to the viewport.
-	const TOOLBAR_W = 740;
+	const TOOLBAR_W_FULL = 740;
+	const TOOLBAR_W_DELETE = 52;
 	const TOOLBAR_H = 48;
+
+	const toolbarWidth = $derived(deleteOnly ? TOOLBAR_W_DELETE : TOOLBAR_W_FULL);
 
 	/** App default highlight / `[[WORD]]` parse color is #F5A623 — not first in grid so it isn’t mistaken for “primary”. */
 	const HIGHLIGHT_PRESETS = [
@@ -109,10 +117,11 @@
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
 		const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
+		const w = toolbarWidth;
 		let top = anchor.top - TOOLBAR_H - 12;
 		if (top < 12) top = anchor.bottom + 12; // flip below if no room above
-		let left = anchor.left + anchor.width / 2 - TOOLBAR_W / 2;
-		left = Math.max(12, Math.min(left, vw - TOOLBAR_W - 12));
+		let left = anchor.left + anchor.width / 2 - w / 2;
+		left = Math.max(12, Math.min(left, vw - w - 12));
 		return { top, left, show: true };
 	});
 
@@ -226,10 +235,21 @@
 	<div
 		data-floating-toolbar
 		class="fixed z-50 flex items-center gap-1 px-1.5 py-1.5 rounded-xl backdrop-blur-md shadow-2xl ftb-shell"
-		style="top: {pos.top}px; left: {pos.left}px; width: {TOOLBAR_W}px; height: {TOOLBAR_H}px;"
+		style="top: {pos.top}px; left: {pos.left}px; width: {toolbarWidth}px; height: {TOOLBAR_H}px;"
 		role="toolbar"
-		aria-label="Text formatting"
+		aria-label={deleteOnly ? 'Delete' : 'Text formatting'}
 	>
+		{#if deleteOnly && onDelete}
+			<button
+				type="button"
+				onclick={() => onDelete()}
+				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted mx-auto"
+				title="Delete"
+				aria-label="Delete"
+			>
+				<Trash2 size={13} />
+			</button>
+		{:else}
 		<!-- Font family -->
 		<Popover
 			bind:open={fontPickerOpen}
@@ -376,15 +396,59 @@
 
 		<div class="w-px h-6 ftb-div"></div>
 
-		<!-- Weight toggle (Bold) -->
-		<button
-			onclick={() => onChange({ fontWeight: (style.fontWeight ?? 400) >= 700 ? 400 : 700 })}
-			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn
-				{(style.fontWeight ?? 400) >= 700 ? 'ftb-on' : 'ftb-muted'}"
-			title="Bold"
+		<!-- Font weight (100–900) -->
+		<Popover
+			bind:open={fontWeightOpen}
+			onOpenChange={(o) => {
+				if (o) closeOtherPickers('fw');
+			}}
 		>
-			<Bold size={14} />
-		</button>
+			<PopoverTrigger
+				class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn"
+				title="Font weight"
+			>
+				<Bold size={14} class="ftb-muted" />
+				<span class="ftb-strong min-w-[30px] text-center text-xs tabular-nums">
+					{style.fontWeight ?? 400}
+				</span>
+				<ChevronDown size={11} class="ftb-muted" />
+			</PopoverTrigger>
+			<PopoverContent
+				class="z-[70] ftb-pop w-[13.5rem] gap-0 rounded-xl p-2 shadow-2xl"
+				align="start"
+				side="bottom"
+				sideOffset={6}
+			>
+				<div class="grid grid-cols-3 gap-1.5">
+					{#each FONT_WEIGHT_PRESETS as w}
+						<button
+							type="button"
+							onclick={() => {
+								onChange({ fontWeight: w });
+								fontWeightOpen = false;
+							}}
+							class="ftb-btn h-8 rounded-lg border font-mono text-[11px] transition-colors
+								{(style.fontWeight ?? 400) === w ? 'ftb-on' : 'ftb-muted'}"
+							title={`Weight ${w}`}
+						>
+							{w}
+						</button>
+					{/each}
+				</div>
+
+				<button
+					type="button"
+					onclick={() => {
+						onChange({ fontWeight: undefined });
+						fontWeightOpen = false;
+					}}
+					class="ftb-btn ftb-muted mt-2 w-full rounded-lg border py-2 font-mono text-[11px] transition-colors"
+					title="Clear weight override (use template default)"
+				>
+					Reset
+				</button>
+			</PopoverContent>
+		</Popover>
 
 		<!-- Italic -->
 		<button
@@ -634,28 +698,19 @@
 			</Popover>
 		{/if}
 
-		<div class="flex-1"></div>
-
-		{#if onDeleteOverlay}
+		{#if onDelete && !deleteOnly}
+			<div class="w-px h-6 shrink-0 ftb-div"></div>
 			<button
 				type="button"
-				onclick={() => onDeleteOverlay()}
-				class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted"
-				title="Delete text overlay"
-				aria-label="Delete text overlay"
+				onclick={() => onDelete()}
+				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted"
+				title="Delete"
+				aria-label="Delete"
 			>
 				<Trash2 size={13} />
 			</button>
 		{/if}
-
-		<!-- Reset -->
-		<button
-			onclick={onReset}
-			class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted"
-			title="Reset to template defaults"
-		>
-			<RotateCcw size={13} />
-		</button>
+		{/if}
 	</div>
 {/if}
 

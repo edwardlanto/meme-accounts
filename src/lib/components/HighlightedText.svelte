@@ -55,7 +55,7 @@
 </script>
 
 {#if as === 'div'}
-	<div {style} class={klass}>
+	<div {style} class={klass} data-canvas-typography-root>
 		{#each segments as seg}
 			{#if seg.highlighted}
 				{#if seg.markerBg}
@@ -73,7 +73,7 @@
 		{/each}
 	</div>
 {:else if as === 'p'}
-	<p {style} class={klass}>
+	<p {style} class={klass} data-canvas-typography-root>
 		{#each segments as seg}
 			{#if seg.highlighted}
 				{#if seg.markerBg}
@@ -91,7 +91,7 @@
 		{/each}
 	</p>
 {:else}
-	<span {style} class={klass}>
+	<span {style} class={klass} data-canvas-typography-root>
 		{#each segments as seg}
 			{#if seg.highlighted}
 				{#if seg.markerBg}

@@ -32,7 +32,7 @@ export interface TextOverlay {
 export interface TextStyle {
 	fontFamily?: string;     // Google Fonts family name, e.g. "Bebas Neue"
 	fontSize?: number;       // template px; overrides auto-sizing when set
-	fontWeight?: number;     // 400 / 500 / 700 / 900
+	fontWeight?: number;     // CSS weight 100–900
 	italic?: boolean;
 	underline?: boolean;
 	color?: string;          // hex
@@ -40,6 +40,18 @@ export interface TextStyle {
 	align?: 'left' | 'center' | 'right';
 	letterSpacing?: number;  // em
 	lineHeight?: number;     // unitless multiplier
+}
+
+/** Typography sampled from the canvas display layer so inline markup editors match view mode. */
+export interface TypographySnapshot {
+	fontWeight: string;
+	fontFamily: string;
+	fontSize: string;
+	lineHeight: string;
+	letterSpacing: string;
+	fontStyle: string;
+	textDecoration: string;
+	textAlign: string;
 }
 
 /** A text element that can be edited/styled via the floating toolbar. */
@@ -58,11 +70,16 @@ export type TextElementKind =
 	| 'tweetLikeCount'
 	| 'textCarouselName'
 	| 'textCarouselHandle'
+	| 'textCarouselAvatar'
 	| 'textCarouselBody'
 	| 'articleBody'
 	| 'articleSwipeText'
+	| 'articleImage'
+	| 'articleLogo'
 	| 'imageQuoteFooterLeft'
-	| 'imageQuoteFooterRight';
+	| 'imageQuoteFooterRight'
+	| 'videoStoryHeadline'
+	| 'videoStoryWatermark';
 
 export interface TextSelection {
 	slideIndex: number;
