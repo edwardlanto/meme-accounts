@@ -85,8 +85,8 @@ let {
 	topText      = 'Ketchup or mayo or mustard?',
 	topImage     = '/templates/tweet/demo-bg.jpg',
 	topVideo     = '',
-	topImageHeight = 560,
-	topImageWidth = 1048,
+	topImageHeight = 720,
+	topImageWidth = 920,
 	topImageZoom = 1,
 	topImagePanX = 50,
 	topImagePanY = 50,
@@ -127,23 +127,6 @@ let {
 	onTextOffsetChange,
 }: TweetProps = $props();
 
-	/** Export canvas — tweet column math uses these everywhere. */
-	const W = 1080;
-	const H = 1350;
-	/** Slightly tighter horizontal padding so media + type read larger on-card. */
-	const TW_PAD_X = 16;
-	const TW_PAD_TOP = 24;
-	const TW_PAD_BOTTOM = 28;
-	const TW_MAX_MEDIA_W = W - 2 * TW_PAD_X;
-	/** X-style sans + scaled-up thread typography (readable at 1080× export). */
-	const TWITTER_FONT =
-		'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-	const TW_AVATAR = 56;
-	const TW_GAP = 14;
-	const TW_NAME_PX = 40;
-	const TW_HANDLE_PX = 32;
-	const TW_BODY_PX = 46;
-
 	const topEditable = $derived(!!interactive && typeof onTopTextChange === 'function');
 	const bottomEditable = $derived(!!interactive && typeof onBottomTextChange === 'function');
 	const topNameEditable = $derived(!!interactive && typeof onTopNameChange === 'function');
@@ -163,7 +146,7 @@ let {
 		onTopImageHeightChange?.(v);
 	}
 	function setTopImageWidth(next: number) {
-		const v = clamp(Math.round(next), 520, TW_MAX_MEDIA_W);
+		const v = clamp(Math.round(next), 520, 920);
 		onTopImageWidthChange?.(v);
 	}
 	/** Inner media zoom (object-fit cover + transform scale). */
@@ -196,8 +179,8 @@ let {
 		topImageStart = {
 			x: e.clientX,
 			y: e.clientY,
-			h: Number(topImageHeight) || 560,
-			w: Number(topImageWidth) || TW_MAX_MEDIA_W,
+			h: Number(topImageHeight) || 360,
+			w: Number(topImageWidth) || 920,
 			panX: Number(topImagePanX) || 50,
 			panY: Number(topImagePanY) || 50,
 		};
@@ -212,8 +195,8 @@ let {
 		topImageStart = {
 			x: e.clientX,
 			y: e.clientY,
-			h: Number(topImageHeight) || 560,
-			w: Number(topImageWidth) || TW_MAX_MEDIA_W,
+			h: Number(topImageHeight) || 360,
+			w: Number(topImageWidth) || 920,
 			panX: Number(topImagePanX) || 50,
 			panY: Number(topImagePanY) || 50,
 		};
@@ -355,19 +338,18 @@ let {
 		})();
 	}
 	const tweetHighlightDefault = '#1D9BF0';
-
 	const isLight = $derived(templateTheme === 'light');
 	const card = $derived(isLight ? '#FFFFFF' : '#111111');
 	const card2 = $derived(isLight ? '#F0F3F4' : '#0f0f10');
 	const divider = $derived(isLight ? '#EFF3F4' : 'rgba(255,255,255,0.10)');
-	/** Media frame — subtle edge like X timeline cards */
-	const mediaBorder = $derived(isLight ? '#EFF3F4' : 'rgba(255,255,255,0.14)');
-	const textPrimary = $derived(isLight ? '#000000' : '#F3F5F7');
+	/** Media frame border (X / screenshot style). */
+	const mediaBorder = $derived(isLight ? '#CFD9DE' : 'rgba(255,255,255,0.14)');
+	const textPrimary = $derived(isLight ? '#0F1419' : '#F3F5F7');
 	const textSecondary = $derived(isLight ? '#536471' : 'rgba(243,245,247,0.62)');
 
 	function styleCss(s: TextStyle) {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', ${TWITTER_FONT};`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Lexend', system-ui, sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -385,6 +367,8 @@ let {
 	const bottomNameCss = $derived(styleCss(tweetStyles.tweetBottomName ?? {}));
 	const bottomHandleCss = $derived(styleCss(tweetStyles.tweetBottomHandle ?? {}));
 	const bottomTextCss = $derived(styleCss(tweetStyles.tweetBottomText ?? {}));
+	const W = 1080;
+	const H = 1350;
 
 	/** Initials fallback for missing avatar */
 	function initials(name: string) {
@@ -418,12 +402,12 @@ let {
 			background: {card};
 			transform: scale({scale});
 			transform-origin: top left;
-			font-family: {TWITTER_FONT};
+			font-family: 'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 			display: flex;
 			flex-direction: column;
 			box-sizing: border-box;
 			overflow: hidden;
-			padding: {TW_PAD_TOP}px {TW_PAD_X}px {TW_PAD_BOTTOM}px;
+			padding: 56px 72px 72px;
 		"
 	>
 			<!-- OP: avatar + name + badge + handle (classic tweet header) -->
@@ -435,10 +419,10 @@ let {
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopProfile', { x, y })}
 			>
 				{#snippet children()}
-					<div style="display:flex;align-items:center;gap:{TW_GAP}px;margin:0 0 12px;">
+					<div style="display:flex;align-items:flex-start;gap:16px;margin:0 0 20px;">
 						<div
 							style="
-								width:{TW_AVATAR}px;height:{TW_AVATAR}px;border-radius:50%;flex-shrink:0;overflow:hidden;
+								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
 								{topAvatar ? '' : `background: hsl(${nameHue(topName)}, 60%, 50%);`}
 								display:flex;align-items:center;justify-content:center;
 							"
@@ -446,11 +430,11 @@ let {
 							{#if topAvatar}
 								<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
 							{:else}
-								<span style="color:#fff;font-size:20px;font-weight:700;letter-spacing:-0.02em;">{initials(topName)}</span>
+								<span style="color:#fff;font-size:26px;font-weight:700;letter-spacing:-0.5px;">{initials(topName)}</span>
 							{/if}
 						</div>
-						<div style="flex:1;min-width:0;">
-							<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;line-height:1.2;">
+						<div style="flex:1;min-width:0;padding-top:2px;">
+							<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
 								<CanvasMarkupTextBlock
 									value={topName}
 									interactive={topNameEditable}
@@ -462,16 +446,16 @@ let {
 									rows={1}
 									{showToolbar}
 									ariaLabel="Top name"
-									fontFamily={TWITTER_FONT}
-									fontSize={tweetStyles.tweetTopName?.fontSize ?? TW_NAME_PX}
+									fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+									fontSize={tweetStyles.tweetTopName?.fontSize ?? 38}
 									onTextChange={onTopNameChange}
 								>
 									{#snippet display()}
-										<span style="font-size:{TW_NAME_PX}px;font-weight:700;color:{textPrimary};letter-spacing:-0.02em;line-height:1.2; {topNameCss}">{topName}</span>
+										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {topNameCss}">{topName}</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
 								{#if topVerified}
-									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink:0;margin-top:0px;">
+									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px;">
 										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
 										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
 									</svg>
@@ -488,12 +472,12 @@ let {
 								rows={1}
 								{showToolbar}
 								ariaLabel="Top handle"
-								fontFamily={TWITTER_FONT}
-								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? TW_HANDLE_PX}
+								fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 30}
 								onTextChange={onTopHandleChange}
 							>
 								{#snippet display()}
-									<span style="display:block;margin-top:1px;font-size:{TW_HANDLE_PX}px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandle}</span>
+									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandle}</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -510,7 +494,7 @@ let {
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopText', { x, y })}
 			>
 				{#snippet children()}
-					<div style="margin: 0 0 20px;">
+					<div style="margin: 0 0 22px;">
 				<CanvasMarkupTextBlock
 					value={topText}
 					interactive={topEditable}
@@ -523,8 +507,8 @@ let {
 					minHeight="0px"
 					{showToolbar}
 					ariaLabel="Tweet text"
-					fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? TWITTER_FONT}
-					fontSize={tweetStyles.tweetTopText?.fontSize ?? TW_BODY_PX}
+					fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+					fontSize={tweetStyles.tweetTopText?.fontSize ?? 44}
 					onTextChange={onTopTextChange}
 				>
 					{#snippet display()}
@@ -532,7 +516,7 @@ let {
 							as="p"
 							text={topText}
 							defaultColor={tweetHighlightDefault}
-							style="font-size:{TW_BODY_PX}px; font-weight:400; color:{textPrimary}; line-height:1.36; margin:0; letter-spacing:-0.015em; word-break:break-word; flex-shrink: 0; {topTextCss}"
+							style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
 						/>
 					{/snippet}
 				</CanvasMarkupTextBlock>
@@ -558,7 +542,7 @@ let {
 				>
 					{#snippet children()}
 						<div
-style="border-radius:18px;overflow:hidden;margin:0 0 32px;border:1px solid {mediaBorder};flex-shrink:0;position:relative;height:{Math.max(220, Number(topImageHeight) || 560)}px;width:{clamp(Number(topImageWidth) || TW_MAX_MEDIA_W, 520, TW_MAX_MEDIA_W)}px;max-width:100%;"
+style="border-radius:16px;overflow:hidden;margin:0 0 40px;border:1px solid {mediaBorder};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;"
 							onmouseenter={() => (topImageHovering = true)}
 							onmouseleave={() => {
 								if (!topImagePanning && !topImageResizing) topImageHovering = false;
@@ -745,10 +729,10 @@ onwheel={onTopImageWheel}
 				onChange={(x, y) => onTextOffsetChange?.('tweetBottomProfile', { x, y })}
 			>
 				{#snippet children()}
-					<div style="display:flex;align-items:center;gap:{TW_GAP}px;margin:0 0 12px;">
+					<div style="display:flex;align-items:flex-start;gap:16px;margin:8px 0 14px;">
 						<div
 							style="
-								width:{TW_AVATAR}px;height:{TW_AVATAR}px;border-radius:50%;flex-shrink:0;overflow:hidden;
+								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
 								{bottomAvatar ? '' : `background:hsl(${nameHue(bottomName)},60%,45%);`}
 								display:flex;align-items:center;justify-content:center;
 							"
@@ -756,11 +740,11 @@ onwheel={onTopImageWheel}
 							{#if bottomAvatar}
 								<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
 							{:else}
-								<span style="color:#fff;font-size:20px;font-weight:700;">{initials(bottomName)}</span>
+								<span style="color:#fff;font-size:26px;font-weight:700;">{initials(bottomName)}</span>
 							{/if}
 						</div>
-						<div style="flex:1;min-width:0;">
-							<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;line-height:1.2;">
+						<div style="flex:1;min-width:0;padding-top:2px;">
+							<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
 								<CanvasMarkupTextBlock
 									value={bottomName}
 									interactive={bottomNameEditable}
@@ -772,16 +756,16 @@ onwheel={onTopImageWheel}
 									rows={1}
 									{showToolbar}
 									ariaLabel="Bottom name"
-									fontFamily={TWITTER_FONT}
-									fontSize={tweetStyles.tweetBottomName?.fontSize ?? TW_NAME_PX}
+							fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 38}
 									onTextChange={onBottomNameChange}
 								>
 									{#snippet display()}
-										<span style="font-size:{TW_NAME_PX}px;font-weight:700;color:{textPrimary};letter-spacing:-0.02em;line-height:1.2; {bottomNameCss}">{bottomName}</span>
+										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {bottomNameCss}">{bottomName}</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
 								{#if bottomVerified}
-									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink:0;margin-top:0px;">
+									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px;">
 										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
 										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
 									</svg>
@@ -798,12 +782,12 @@ onwheel={onTopImageWheel}
 								rows={1}
 								{showToolbar}
 								ariaLabel="Bottom handle"
-								fontFamily={TWITTER_FONT}
-								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? TW_HANDLE_PX}
+						fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 30}
 								onTextChange={onBottomHandleChange}
 							>
 								{#snippet display()}
-									<span style="display:block;margin-top:1px;font-size:{TW_HANDLE_PX}px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandle}</span>
+									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandle}</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -832,8 +816,8 @@ onwheel={onTopImageWheel}
 						minHeight="0px"
 						{showToolbar}
 						ariaLabel="Reply text"
-						fontFamily={(tweetStyles.tweetBottomText?.fontFamily ?? headlineStyle.fontFamily) ?? TWITTER_FONT}
-						fontSize={tweetStyles.tweetBottomText?.fontSize ?? TW_BODY_PX}
+						fontFamily={headlineStyle.fontFamily ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 44}
 						onTextChange={onBottomTextChange}
 					>
 						{#snippet display()}
@@ -841,7 +825,7 @@ onwheel={onTopImageWheel}
 								as="p"
 								text={bottomText}
 								defaultColor={tweetHighlightDefault}
-								style="font-size:{TW_BODY_PX}px; font-weight:400; color:{textPrimary}; line-height:1.36; margin:0; letter-spacing:-0.015em; word-break:break-word; {bottomTextCss}"
+								style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; {bottomTextCss}"
 							/>
 						{/snippet}
 					</CanvasMarkupTextBlock>
@@ -849,5 +833,12 @@ onwheel={onTopImageWheel}
 			</DraggableBlock>
 
 			<div style="flex:1;min-height:0;"></div>
+
+			<!-- X watermark -->
+			<div style="
+				position:absolute;bottom:32px;right:64px;
+				font-size:22px;font-weight:600;color:{textSecondary};opacity:0.28;
+				letter-spacing:0;font-family:inherit;
+			">𝕏</div>
 	</div>
 </div>
