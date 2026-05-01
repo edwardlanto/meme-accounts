@@ -1037,8 +1037,8 @@ import JSZip from 'jszip';
 		tweetReplyCountBySlide = [...tweetReplyCountBySlide, tweetReplyCountBySlide[tweetReplyCountBySlide.length - 1] ?? '4.2K'];
 		tweetRepostCountBySlide = [...tweetRepostCountBySlide, tweetRepostCountBySlide[tweetRepostCountBySlide.length - 1] ?? '12.8K'];
 tweetLikeCountBySlide = [...tweetLikeCountBySlide, tweetLikeCountBySlide[tweetLikeCountBySlide.length - 1] ?? '89.4K'];
-tweetTopImageHeightBySlide = [...tweetTopImageHeightBySlide, tweetTopImageHeightBySlide[tweetTopImageHeightBySlide.length - 1] ?? 360];
-tweetTopImageWidthBySlide = [...tweetTopImageWidthBySlide, tweetTopImageWidthBySlide[tweetTopImageWidthBySlide.length - 1] ?? 920];
+tweetTopImageHeightBySlide = [...tweetTopImageHeightBySlide, tweetTopImageHeightBySlide[tweetTopImageHeightBySlide.length - 1] ?? TWEET_DEFAULTS.topImageHeight];
+		tweetTopImageWidthBySlide = [...tweetTopImageWidthBySlide, tweetTopImageWidthBySlide[tweetTopImageWidthBySlide.length - 1] ?? TWEET_DEFAULTS.topImageWidth];
 tweetTopImageZoomBySlide = [...tweetTopImageZoomBySlide, tweetTopImageZoomBySlide[tweetTopImageZoomBySlide.length - 1] ?? 1];
 tweetTopImagePanXBySlide = [...tweetTopImagePanXBySlide, tweetTopImagePanXBySlide[tweetTopImagePanXBySlide.length - 1] ?? 50];
 tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlide[tweetTopImagePanYBySlide.length - 1] ?? 50];
@@ -1097,13 +1097,13 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 	let tweetBottomNameBySlide = $state<string[]>(['Mo Mohler']);
 	let tweetBottomHandleBySlide = $state<string[]>(['@MoMohler']);
 	let tweetTopTextBySlide = $state<string[]>(['Ketchup or mayo or mustard?']);
-	let tweetBottomTextBySlide = $state<string[]>(['']);
+	let tweetBottomTextBySlide = $state<string[]>([TWEET_DEFAULTS.bottomText]);
 	let tweetReplyCountBySlide = $state<string[]>(['4.2K']);
 	let tweetRepostCountBySlide = $state<string[]>(['12.8K']);
 	let tweetLikeCountBySlide = $state<string[]>(['89.4K']);
 	// Tweet attached image frame controls (per slide)
-	let tweetTopImageHeightBySlide = $state<number[]>([360]);
-	let tweetTopImageWidthBySlide = $state<number[]>([920]);
+	let tweetTopImageHeightBySlide = $state<number[]>([TWEET_DEFAULTS.topImageHeight]);
+	let tweetTopImageWidthBySlide = $state<number[]>([TWEET_DEFAULTS.topImageWidth]);
 	let tweetTopImageZoomBySlide = $state<number[]>([1]);
 	let tweetTopImagePanXBySlide = $state<number[]>([50]);
 	let tweetTopImagePanYBySlide = $state<number[]>([50]);
@@ -1202,8 +1202,8 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 		tweetBottomHandleBySlide = pickOr(tweetBottomHandleBySlide, '@MoMohler');
 		tweetTopTextBySlide = pickOr(tweetTopTextBySlide, 'Ketchup or mayo or mustard?');
 tweetBottomTextBySlide = pickOr(tweetBottomTextBySlide, '');
-tweetTopImageHeightBySlide = pickOr(tweetTopImageHeightBySlide, 360);
-tweetTopImageWidthBySlide = pickOr(tweetTopImageWidthBySlide, 920);
+tweetTopImageHeightBySlide = pickOr(tweetTopImageHeightBySlide, TWEET_DEFAULTS.topImageHeight);
+		tweetTopImageWidthBySlide = pickOr(tweetTopImageWidthBySlide, TWEET_DEFAULTS.topImageWidth);
 tweetTopImageZoomBySlide = pickOr(tweetTopImageZoomBySlide, 1);
 tweetTopImagePanXBySlide = pickOr(tweetTopImagePanXBySlide, 50);
 tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
@@ -1387,12 +1387,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			// headline kind is used for the quote body in that template; leave undefined here.
 
 			// Tweet
-			case 'tweetTopName': return 44;
-			case 'tweetTopHandle': return 36;
-			case 'tweetTopText': return 58;
-			case 'tweetBottomName': return 42;
-			case 'tweetBottomHandle': return 34;
-			case 'tweetBottomText': return 56;
+			case 'tweetTopName': return 40;
+			case 'tweetTopHandle': return 32;
+			case 'tweetTopText': return 46;
+			case 'tweetBottomName': return 40;
+			case 'tweetBottomHandle': return 32;
+			case 'tweetBottomText': return 46;
 			case 'tweetReplyCount': return 32;
 			case 'tweetRepostCount': return 32;
 			case 'tweetLikeCount': return 32;
@@ -2970,10 +2970,10 @@ tweetTopImagePanYBySlide,
 			tweetBottomTextBySlide = Array.from({ length: n }, (_, i) => tweetBottomTextBySlide[i] ?? '');
 		}
 if (tweetTopImageHeightBySlide.length !== n) {
-			tweetTopImageHeightBySlide = Array.from({ length: n }, (_, i) => tweetTopImageHeightBySlide[i] ?? 360);
+			tweetTopImageHeightBySlide = Array.from({ length: n }, (_, i) => tweetTopImageHeightBySlide[i] ?? TWEET_DEFAULTS.topImageHeight);
 		}
 		if (tweetTopImageWidthBySlide.length !== n) {
-			tweetTopImageWidthBySlide = Array.from({ length: n }, (_, i) => tweetTopImageWidthBySlide[i] ?? 920);
+			tweetTopImageWidthBySlide = Array.from({ length: n }, (_, i) => tweetTopImageWidthBySlide[i] ?? TWEET_DEFAULTS.topImageWidth);
 		}
 		if (tweetTopImageZoomBySlide.length !== n) {
 			tweetTopImageZoomBySlide = Array.from({ length: n }, (_, i) => tweetTopImageZoomBySlide[i] ?? 1);
@@ -4583,9 +4583,9 @@ topImage={(bgImagesByTemplate.tweet ?? [])[paintSlide] || '/templates/tweet/demo
 onTopImageChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideImage(paintSlide, v, 'tweet'); }}
 topVideo={(bgVideosByTemplate.tweet ?? [])[paintSlide] ?? ''}
 onTopVideoChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideVideo(paintSlide, v, 'tweet'); }}
-topImageHeight={tweetTopImageHeightBySlide[paintSlide] ?? 360}
+topImageHeight={tweetTopImageHeightBySlide[paintSlide] ?? TWEET_DEFAULTS.topImageHeight}
 onTopImageHeightChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopImageHeightBySlide = tweetTopImageHeightBySlide.map((x, i) => i === paintSlide ? v : x); }}
-topImageWidth={tweetTopImageWidthBySlide[paintSlide] ?? 920}
+topImageWidth={tweetTopImageWidthBySlide[paintSlide] ?? TWEET_DEFAULTS.topImageWidth}
 onTopImageWidthChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopImageWidthBySlide = tweetTopImageWidthBySlide.map((x, i) => i === paintSlide ? v : x); }}
 topImageZoom={tweetTopImageZoomBySlide[paintSlide] ?? 1}
 onTopImageZoomChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, i) => i === paintSlide ? v : x); }}
