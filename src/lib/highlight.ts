@@ -16,6 +16,12 @@ export const AVAILABLE_PATTERNS = Object.entries(PATTERN_IMAGES).map(([name, url
 	url,
 }));
 
+/** `[[grad(#a,#b): phrase]]` — flexible hex (models vary in digit count). */
+const HIGHLIGHT_GRAD_INNER_RE =
+	/^\s*grad\(\s*(#[0-9a-fA-F]{3,8})\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
+/** `[[#hex: phrase]]` */
+const HIGHLIGHT_HEX_PREFIX_RE = /^\s*(#[0-9a-fA-F]{3,8})\s*:\s*(.*)$/is;
+
 export interface HighlightRange {
 	start: number;
 	end: number;
@@ -86,9 +92,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		}
 
 		// grad(#from, #to): phrase
-		const gradRe =
-			/^\s*grad\(\s*(#[0-9a-fA-F]{6})\s*,\s*(#[0-9a-fA-F]{6})\s*\)\s*:\s*(.+)$/is;
-		const gm = !pm ? inner.match(gradRe) : null;
+		const gm = !pm ? inner.match(HIGHLIGHT_GRAD_INNER_RE) : null;
 		if (gm) {
 			gradientFrom = gm[1];
 			gradientTo = gm[2];
@@ -106,8 +110,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		}
 
 		// #hex: phrase — phrase capture keeps leading/trailing spaces (boundary chars between splits).
-		const colorRe = /^\s*(#[0-9a-fA-F]{6})\s*:\s*(.*)$/is;
-		const cm = !pm && !gm && !mm ? inner.match(colorRe) : null;
+		const cm = !pm && !gm && !mm ? inner.match(HIGHLIGHT_HEX_PREFIX_RE) : null;
 		if (cm) {
 			color = cm[1];
 			phrase = cm[2];
@@ -158,6 +161,60 @@ export function stripMarkup(raw: string): string {
 	return parseHighlightMarkup(raw).plain;
 }
 
+/**
+ * Collapses [[…]] tokens to simple [[phrase]] form — drops grad(), marker(), #hex:, pattern()
+ * so rendered slides use default headline color + toolbar highlight color (e.g. white + orange).
+ * Uses token walking (not only parse ranges) so odd AI formatting still collapses.
+ */
+export function stripAdvancedHighlightMarkup(raw: string): string {
+	if (!raw?.includes('[[')) return raw;
+	let out = '';
+	let i = 0;
+	while (i < raw.length) {
+		const open = raw.indexOf('[[', i);
+		if (open === -1) {
+			out += raw.slice(i);
+			break;
+		}
+		out += raw.slice(i, open);
+		const close = raw.indexOf(']]', open + 2);
+		if (close === -1) {
+			out += raw.slice(open);
+			break;
+		}
+		const inner = raw.slice(open + 2, close);
+		let phrase = phraseFromHighlightInner(inner);
+		if (
+			phrase === inner &&
+			(/\bgrad\s*\(/i.test(inner) || /\bmarker\s*\(/i.test(inner) || /\bpattern\s*\(/i.test(inner))
+		) {
+			const idx = inner.lastIndexOf(':');
+			if (idx !== -1) {
+				const tail = inner.slice(idx + 1);
+				if (tail.trim()) phrase = tail;
+			}
+		}
+		out += '[[' + phrase + ']]';
+		i = close + 2;
+	}
+	return out;
+}
+
+/** Visible phrase inside a [[…]] token (must stay aligned with parseHighlightMarkup). */
+export function phraseFromHighlightInner(inner: string): string {
+	const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/is;
+	const pm = inner.match(patternRe);
+	if (pm) return pm[2];
+	const gm = inner.match(HIGHLIGHT_GRAD_INNER_RE);
+	if (gm) return gm[3];
+	const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
+	const mm = inner.match(markerRe);
+	if (mm) return mm[2];
+	const cm = inner.match(HIGHLIGHT_HEX_PREFIX_RE);
+	if (cm) return cm[2];
+	return inner;
+}
+
 // ── Raw-markup <-> plain-text offset mapping ──────────────────────────────
 /**
  * Given raw markup (with `[[...]]`) and an offset in the PLAIN text,
@@ -194,7 +251,7 @@ function plainOffsetToRaw(raw: string, plainOffset: number): number {
 			const inner = raw.slice(i + 2, close);
 
 			// Strip markup prefix to get the phrase that actually shows up in plain.
-			const phrase = extractPhraseFromInner(inner);
+			const phrase = phraseFromHighlightInner(inner);
 			const prefixLen = inner.length - phrase.length; // how many chars inside the [[...]] are metadata
 			const tokenPlainLen = phrase.length;
 
@@ -219,24 +276,6 @@ function plainOffsetToRaw(raw: string, plainOffset: number): number {
 	}
 
 	return raw.length;
-}
-
-/** Extract just the visible phrase from the inside of a [[...]] token (must match parseHighlightMarkup). */
-function extractPhraseFromInner(inner: string): string {
-	const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/is;
-	const pm = inner.match(patternRe);
-	if (pm) return pm[2];
-	const gradRe =
-		/^\s*grad\(\s*(#[0-9a-fA-F]{6})\s*,\s*(#[0-9a-fA-F]{6})\s*\)\s*:\s*(.+)$/is;
-	const gm = inner.match(gradRe);
-	if (gm) return gm[3];
-	const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
-	const mm = inner.match(markerRe);
-	if (mm) return mm[2];
-	const colorRe = /^\s*(#[0-9a-fA-F]{6})\s*:\s*(.*)$/is;
-	const cm = inner.match(colorRe);
-	if (cm) return cm[2];
-	return inner;
 }
 
 export type HighlightSpec =
@@ -331,7 +370,10 @@ function emitMarkupFromRanges(
 		if (r.start >= r.end) continue;
 		if (r.start > cursor) result += plain.slice(cursor, r.start);
 		const phrase = plain.slice(r.start, r.end);
-		if (phrase.length === 0) continue;
+		if (phrase.length === 0) {
+			cursor = r.end;
+			continue;
+		}
 		result += emitRangeMarkup(r, phrase, defaultHighlight);
 		cursor = r.end;
 	}
@@ -353,7 +395,7 @@ function stripHighlightsInRange(raw: string, plainStart: number, plainEnd: numbe
 			const close = raw.indexOf(']]', i + 2);
 			if (close !== -1) {
 				const inner = raw.slice(i + 2, close);
-				const phrase = extractPhraseFromInner(inner);
+				const phrase = phraseFromHighlightInner(inner);
 				const tokenStart = plain;
 				const tokenEnd = plain + phrase.length;
 				const overlaps = !(tokenEnd <= plainStart || tokenStart >= plainEnd);
@@ -470,15 +512,59 @@ export function rangeForegroundSwatchColor(
 
 // ── DOM selection ↔ plain headline offsets (for floating toolbar) ───────
 
+/**
+ * Plain offset from root start to (container, offset). Must match the same DFS text order as
+ * `restorePlainSelection`; Range#toString() can disagree at span/text boundaries and breaks highlights.
+ */
 function boundaryPlainOffset(headlineRoot: HTMLElement, container: Node, offset: number): number {
-	const r = document.createRange();
+	let total = 0;
+	let found = false;
+
+	const countSubtree = (node: Node) => {
+		if (node.nodeType === Node.TEXT_NODE) {
+			total += (node.textContent ?? '').length;
+			return;
+		}
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			for (const child of Array.from(node.childNodes)) countSubtree(child);
+		}
+	};
+
+	const walk = (node: Node): void => {
+		if (found) return;
+		if (node === container) {
+			if (node.nodeType === Node.TEXT_NODE) {
+				total += Math.max(0, Math.min(offset, (node as Text).length));
+				found = true;
+				return;
+			}
+			if (node.nodeType === Node.ELEMENT_NODE) {
+				for (let i = 0; i < offset; i++) {
+					const ch = node.childNodes[i];
+					if (ch) countSubtree(ch);
+				}
+				found = true;
+				return;
+			}
+		}
+		if (node.nodeType === Node.TEXT_NODE) {
+			total += (node.textContent ?? '').length;
+			return;
+		}
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			for (const child of Array.from(node.childNodes)) {
+				if (found) return;
+				walk(child);
+			}
+		}
+	};
+
 	try {
-		r.selectNodeContents(headlineRoot);
-		r.setEnd(container, offset);
-		return r.toString().length;
+		walk(headlineRoot);
 	} catch {
 		return -1;
 	}
+	return found ? total : -1;
 }
 
 /** Plain-text offsets of the current Selection inside `root` (visible text only, no `[[` markup). */

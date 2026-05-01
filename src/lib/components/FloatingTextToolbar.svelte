@@ -12,7 +12,7 @@
 	import {
 		Bold, Italic, Underline,
 		AlignLeft, AlignCenter, AlignRight,
-		ChevronDown, Type, Minus, Plus, RotateCcw, Highlighter, Blend,
+		ChevronDown, Type, Minus, Plus, RotateCcw, Highlighter, Blend, Trash2,
 	} from 'lucide-svelte';
 
 	type PickerKind = 'font' | 'lh' | 'color' | 'bg' | 'highlight';
@@ -42,6 +42,8 @@
 		textColorMixed?: boolean;
 		onChange: (patch: Partial<TextStyle>) => void;
 		onHighlight?: (spec: HighlightSpec) => void;
+		/** When set (e.g. text overlay selected), show delete control in the toolbar. */
+		onDeleteOverlay?: () => void;
 		onReset: () => void;
 		onClose: () => void;
 	}
@@ -55,6 +57,7 @@
 		textColorMixed = false,
 		onChange,
 		onHighlight,
+		onDeleteOverlay,
 		onReset,
 		onClose,
 	}: Props = $props();
@@ -76,10 +79,10 @@
 		'#10B981', '#FFD700', '#FF6B6B', '#4ECDC4',
 	];
 	const GRADIENT_PRESETS: [string, string][] = [
-		['#F5A623', '#FF3B5C'],
+		['#FFFFFF', '#F5A623'],
+		['#F5A623', '#FFB347'],
 		['#08EBFF', '#A855F7'],
 		['#10B981', '#08EBFF'],
-		['#FFFFFF', '#F5A623'],
 	];
 
 	function applyHighlight(spec: HighlightSpec) {
@@ -626,6 +629,18 @@
 		{/if}
 
 		<div class="flex-1"></div>
+
+		{#if onDeleteOverlay}
+			<button
+				type="button"
+				onclick={() => onDeleteOverlay()}
+				class="w-9 h-9 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted"
+				title="Delete text overlay"
+				aria-label="Delete text overlay"
+			>
+				<Trash2 size={13} />
+			</button>
+		{/if}
 
 		<!-- Reset -->
 		<button

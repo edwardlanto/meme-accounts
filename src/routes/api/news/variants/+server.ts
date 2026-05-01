@@ -97,11 +97,12 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 async function addHighlights(slides: string[], title: string): Promise<string[]> {
-	const system =
-		`You add emphasis markers to Instagram slide overlay text. Output ONLY a JSON array of strings — one per slide — with emphasis added. ` +
-		`Rules: wrap 1–3 short phrases per slide in [[double brackets]], e.g. [[key idea]] or [[33%]]. ` +
-		`Those spans render in the accent color. Preserve wording and line breaks. ` +
-		`Keep word count ≤ ${MAX_WORDS} per slide. No hashtags, emojis, or other markdown. No nested brackets.`;
+		const system =
+			`You add emphasis markers to Instagram slide overlay text. Output ONLY a JSON array of strings — one per slide — with emphasis added. ` +
+			`Rules: wrap 1–3 short phrases per slide in [[double brackets]], e.g. [[key idea]] or [[33%]]. ` +
+			`Use ONLY plain [[phrase]] markers — never grad(, marker(, pattern(, or #hex: inside brackets. ` +
+			`Those spans render in the accent color. Preserve wording and line breaks. ` +
+			`Keep word count ≤ ${MAX_WORDS} per slide. No hashtags, emojis, or other markdown. No nested brackets.`;
 
 	const user = `Article title: ${title}\n\nSlides:\n${JSON.stringify(slides, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases.`;
 

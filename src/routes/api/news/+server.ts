@@ -43,7 +43,7 @@ Rules:
 - Wrap ONLY nouns, numbers, proper nouns, or the most impactful words
 - Never wrap: articles (the, a, an), prepositions, conjunctions
 - Max 3 wrapped phrases
-- Keep the original text exactly — only add [[ and ]]
+- Keep the original text exactly — only add [[ and ]] around phrases — NEVER use grad(, marker(, pattern(, or #hex: inside brackets
 - Example: "TESLA RAISES [[PRICES BY 12%]] ACROSS ALL MODELS"
 
 Text: "${overlayText}"

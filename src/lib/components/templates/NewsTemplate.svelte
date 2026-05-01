@@ -336,12 +336,6 @@
 		snapGuide = null;
 	}
 
-	function textOverlayDelete(e: MouseEvent, id: string) {
-		e.stopPropagation();
-		onTextOverlaysChange?.(textOverlays.filter((o) => o.id !== id));
-		if (editingTextOverlayId === id) editingTextOverlayId = null;
-	}
-
 	function startTextOverlayEdit(e: MouseEvent, id: string) {
 		if (!interactive) return;
 		e.stopPropagation();
@@ -1403,27 +1397,6 @@
 							return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
 						}).join('')}
 					</div>
-				{/if}
-
-				{#if interactive && !isEditing}
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button
-						type="button"
-						onpointerdown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-						onclick={(e) => textOverlayDelete(e, t.id)}
-						style="
-							position: absolute; top: -12px; right: -12px;
-							width: 26px; height: 26px; border-radius: 50%;
-							background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.35);
-							color: #fff; font-size: 12px;
-							display: flex; align-items: center; justify-content: center;
-							cursor: pointer;
-						"
-						title="Remove text"
-						aria-label="Remove text overlay"
-					>✕</button>
-
-					<!-- Text overlays are draggable-only (no resize handle) -->
 				{/if}
 			</div>
 		{/each}

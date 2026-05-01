@@ -44,6 +44,7 @@ import JSZip from 'jszip';
 		plainRangeFromSelection,
 		plainRangeHasMixedForegroundPaint,
 		rangeForegroundSwatchColor,
+		stripAdvancedHighlightMarkup,
 		stripMarkup,
 	} from '$lib/highlight';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
@@ -1619,6 +1620,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		lastCommittedPlainRange = null;
 	}
 
+	function deleteSelectedTextOverlay() {
+		if (selectedText !== 'textOverlay' || !selectedTextOverlayId) return;
+		pushUndo(activeTemplate, activeSlide);
+		const cur = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
+		setSlideTextOverlays(activeSlide, cur.filter((o) => o.id !== selectedTextOverlayId), activeTemplate);
+		closeToolbar();
+	}
+
 	// Recompute toolbar anchor on scroll / resize so it stays glued to the text.
 	$effect(() => {
 		if (!toolbarTarget) return;
@@ -1836,7 +1845,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		// Restore (best-effort) — shared by autosave draft + saved templates.
 		if (typeof s.formatId === 'string') formatId = normalizeStudioFormatId(s.formatId);
 		if (typeof s.lastTemplateUsed === 'string') lastTemplateUsed = s.lastTemplateUsed as TemplateId;
-		if (Array.isArray(s.slides)) slides = s.slides;
+		if (Array.isArray(s.slides)) {
+			slides = s.slides.map((x) => stripAdvancedHighlightMarkup(String(x ?? '')));
+		}
 		if (typeof s.activeSlide === 'number') activeSlide = Math.max(0, Math.min((s.slides?.length ?? slides.length) - 1, s.activeSlide));
 		if (typeof s.category === 'string') category = s.category;
 		if (s.newsContentMode === 'news' || s.newsContentMode === 'fact' || s.newsContentMode === 'story') {
@@ -1937,16 +1948,26 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray(s.tweetTopHandleBySlide)) tweetTopHandleBySlide = s.tweetTopHandleBySlide;
 		if (Array.isArray(s.tweetBottomNameBySlide)) tweetBottomNameBySlide = s.tweetBottomNameBySlide;
 		if (Array.isArray(s.tweetBottomHandleBySlide)) tweetBottomHandleBySlide = s.tweetBottomHandleBySlide;
-		if (Array.isArray(s.tweetTopTextBySlide)) tweetTopTextBySlide = s.tweetTopTextBySlide;
-		if (Array.isArray(s.tweetBottomTextBySlide)) tweetBottomTextBySlide = s.tweetBottomTextBySlide;
+		if (Array.isArray(s.tweetTopTextBySlide)) {
+			tweetTopTextBySlide = s.tweetTopTextBySlide.map((x) => stripAdvancedHighlightMarkup(String(x ?? '')));
+		}
+		if (Array.isArray(s.tweetBottomTextBySlide)) {
+			tweetBottomTextBySlide = s.tweetBottomTextBySlide.map((x) => stripAdvancedHighlightMarkup(String(x ?? '')));
+		}
 		if (Array.isArray((s as any).tweetTopImageHeightBySlide)) tweetTopImageHeightBySlide = (s as any).tweetTopImageHeightBySlide;
 		if (Array.isArray((s as any).tweetTopImageWidthBySlide)) tweetTopImageWidthBySlide = (s as any).tweetTopImageWidthBySlide;
 		if (Array.isArray((s as any).tweetTopImageZoomBySlide)) tweetTopImageZoomBySlide = (s as any).tweetTopImageZoomBySlide;
 		if (Array.isArray((s as any).tweetTopImagePanXBySlide)) tweetTopImagePanXBySlide = (s as any).tweetTopImagePanXBySlide;
 		if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide = (s as any).tweetTopImagePanYBySlide;
-		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
-		if (Array.isArray(s.textCarouselTextBySlide)) textCarouselTextBySlide = s.textCarouselTextBySlide;
-		if (Array.isArray(s.imageQuoteTextBySlide)) imageQuoteTextBySlide = s.imageQuoteTextBySlide;
+		if (Array.isArray(s.articleTextBySlide)) {
+			articleTextBySlide = s.articleTextBySlide.map((x) => stripAdvancedHighlightMarkup(String(x ?? '')));
+		}
+		if (Array.isArray(s.textCarouselTextBySlide)) {
+			textCarouselTextBySlide = s.textCarouselTextBySlide.map((x) => stripAdvancedHighlightMarkup(String(x ?? '')));
+		}
+		if (Array.isArray(s.imageQuoteTextBySlide)) {
+			imageQuoteTextBySlide = s.imageQuoteTextBySlide.map((x) => stripAdvancedHighlightMarkup(String(x ?? '')));
+		}
 		if (Array.isArray(s.textCarouselNameBySlide)) textCarouselNameBySlide = s.textCarouselNameBySlide;
 		if (Array.isArray(s.textCarouselHandleBySlide)) textCarouselHandleBySlide = s.textCarouselHandleBySlide;
 		if (Array.isArray(s.imageQuoteFooterLeftBySlide)) imageQuoteFooterLeftBySlide = s.imageQuoteFooterLeftBySlide;
@@ -2411,7 +2432,7 @@ tweetTopImagePanYBySlide,
 	}
 
 	function clampFetchedPrimaryForTemplate(template: TemplateId, text: string): string {
-		const raw = String(text ?? '').trim();
+		const raw = stripAdvancedHighlightMarkup(String(text ?? '').trim());
 		switch (template) {
 			case 'tweet':
 				return clampTweetTopFetched(raw);
@@ -2436,6 +2457,39 @@ tweetTopImagePanYBySlide,
 		const out = [...variants];
 		while (out.length < n) out.push(last);
 		return out.slice(0, n);
+	}
+
+	/** After a fresh fetch, drop per-element `color` so globals (`textColor`, `highlightColor`) control ink. */
+	function stripBlockInkColorsForFetchedCarousel(template: TemplateId, slideLen: number) {
+		stylesByTemplateBySlide = {
+			...stylesByTemplateBySlide,
+			[template]: Array.from({ length: slideLen }, (_, i) => {
+				const prev = { ...((stylesByTemplateBySlide[template] ?? [])[i] ?? {}) } as Partial<
+					Record<TextElementKind, TextStyle>
+				>;
+				for (const key of Object.keys(prev) as TextElementKind[]) {
+					const st = prev[key];
+					if (!st || typeof st !== 'object') continue;
+					const { color: _c, ...rest } = st;
+					if (Object.keys(rest).length) prev[key] = rest as TextStyle;
+					else delete prev[key];
+				}
+				return prev;
+			}),
+		};
+		if (template === 'tweet') {
+			tweetStylesBySlide = Array.from({ length: slideLen }, (_, i) => {
+				const row: Partial<Record<TweetKind, TextStyle>> = { ...(tweetStylesBySlide[i] ?? {}) };
+				for (const key of Object.keys(row) as TweetKind[]) {
+					const st = row[key];
+					if (!st || typeof st !== 'object') continue;
+					const { color: _c, ...rest } = st;
+					if (Object.keys(rest).length) row[key] = rest as TextStyle;
+					else delete row[key];
+				}
+				return row;
+			});
+		}
 	}
 
 	/** Apply carousel headline strings to the template the user had selected (not always News). */
@@ -2516,6 +2570,10 @@ tweetTopImagePanYBySlide,
 		fetchingNews = true;
 		newsError = '';
 		activeSlide = 0;
+		// Fresh story: AI sometimes emits grad()/marker()/hex — stripped on ingest; carousel ink = white + #F5A623 accents.
+		textColorTouched = false;
+		highlightColor = '#F5A623';
+		textColor = '#FFFFFF';
 		const contentTemplate: TemplateId = slideTemplates[0] ?? lastTemplateUsed ?? 'news';
 		// Only clear starter deep-link when we are loading into News (News flow “owns” the deck).
 		if (contentTemplate === 'news') forcedTemplateFromQuery = null;
@@ -2649,6 +2707,8 @@ tweetTopImagePanYBySlide,
 					[contentTemplate]: Array.from({ length: n }, () => []),
 				};
 			}
+
+			stripBlockInkColorsForFetchedCarousel(contentTemplate, n);
 
 			// Prime every slide’s copy (template-specific clamps) so UI never briefly shows unclamped hooks.
 			applyHeadlineStringsToTemplate(contentTemplate, normalizeHeadlineVariants([], hookText, n));
@@ -5319,6 +5379,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	textColorMixed={toolbarTextColorMixed}
 	onChange={onFloatingToolbarChange}
 	onHighlight={onHighlight}
+	onDeleteOverlay={
+		selectedText === 'textOverlay' && selectedTextOverlayId ? deleteSelectedTextOverlay : undefined
+	}
 	onReset={resetActiveStyle}
 	onClose={closeToolbar}
 />

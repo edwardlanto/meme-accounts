@@ -64,10 +64,10 @@
 		'#F59E0B', '#3B82F6', '#EF4444', '#A855F7', '#10B981', '#EC4899', '#FFFFFF',
 	];
 	const GRADIENT_PRESETS: [string, string][] = [
-		['#F5A623', '#FF3B5C'],
+		['#FFFFFF', '#F5A623'],
+		['#F5A623', '#FFB347'],
 		['#08EBFF', '#A855F7'],
 		['#10B981', '#08EBFF'],
-		['#FFFFFF', '#F5A623'],
 	];
 	let patternOpen = $state(false);
 	let gradientOpen = $state(false);
@@ -391,7 +391,7 @@
 					onclick={() => { gradientOpen = !gradientOpen; patternOpen = false; }}
 					disabled={!hasRange}
 					class="w-5 h-5 rounded-md border border-white/20 {hasRange ? 'hover:scale-110' : 'opacity-30 cursor-not-allowed'}"
-					style="background: linear-gradient(90deg, #F5A623, #FF3B5C);"
+					style="background: linear-gradient(90deg, #FFFFFF, #F5A623);"
 					title="Gradient highlight"
 					aria-label="Apply gradient highlight"
 				></button>
