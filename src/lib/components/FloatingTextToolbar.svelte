@@ -166,7 +166,12 @@
 	});
 
 	function handleDocumentClick(e: MouseEvent) {
-		const target = e.target as HTMLElement;
+		const node = e.target;
+		if (node == null) return;
+		// Text nodes don't have .closest — clicks on preset labels would wrongly fall through and close the toolbar.
+		const target =
+			node instanceof Element ? node : (node as Node).parentElement;
+		if (!target) return;
 		if (target.closest('[data-floating-toolbar]')) return;
 		if (target.closest('[data-text-selectable]')) return;
 		/* Popover panels render in a portal — keep toolbar open while using them */
@@ -185,11 +190,14 @@
 	$effect(() => {
 		if (!pos.show) return;
 		const preserve = (e: PointerEvent | MouseEvent) => {
-			const el = e.target as HTMLElement | null;
+			const raw = e.target;
+			if (raw == null) return;
+			const el =
+				raw instanceof Element ? raw : (raw as Node).parentElement;
 			if (!el) return;
 			if (!el.closest('[data-floating-toolbar]') && !el.closest('[data-slot="popover-content"]')) return;
 			const tag = el.tagName;
-			if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return;
+			if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el instanceof HTMLElement && el.isContentEditable) return;
 			e.preventDefault();
 		};
 		document.addEventListener('pointerdown', preserve, true);
@@ -200,12 +208,9 @@
 		};
 	});
 
-	$effect(() => {
-		if (!hasRangeSelection) {
-			highlightPickerOpen = false;
-			bgPickerOpen = false;
-		}
-	});
+	/* Don’t force-close highlight/bg popovers when range state flickers — that was closing the
+	   highlight menu as soon as you picked a swatch (or when lastCommitted briefly cleared).
+	   Bits-ui already closes on outside pointer; disabled triggers handle “no selection”. */
 </script>
 
 {#if pos.show}

@@ -1410,8 +1410,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let headlineSelectionRestoreNonce = $state(0);
 	let textOverlayRange = $state<{ start: number; end: number } | null>(null);
 	const hasRangeSelection = $derived(
-		selectedText === 'textOverlay' ? textOverlayRange !== null : headlineRange !== null,
+		selectedText === 'textOverlay'
+			? textOverlayRange !== null
+			: (headlineRange !== null || lastCommittedPlainRange !== null),
 	);
+	/** For NewsTemplate selection restore after [[…]] markup — survives collapsed DOM selection. */
+	const headlineSelectionRestoreRangeMerged = $derived(headlineRange ?? lastCommittedPlainRange);
 
 	function toolbarHighlightableRaw(): string {
 		if (selectedText === 'headline') return slides[activeSlide] ?? '';
@@ -1468,8 +1472,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function onHeadlineRangeSelect(start: number, end: number) {
 		if (start < 0 || end < 0 || start === end) {
+			// Collapsed click inside the headline → forget the live range, but KEEP the last
+			// committed range so re-opening the highlight popover still has a target
+			// (Word/Canva-style: clicking doesn’t lose your last selection until you make a new one).
 			headlineRange = null;
-			lastCommittedPlainRange = null;
 		} else {
 			headlineRange = { start, end };
 			lastCommittedPlainRange = { start, end };
@@ -1488,11 +1494,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const r = lastCommittedPlainRange;
 		if (!r || r.end <= r.start) return;
 		const plainLen = stripMarkup(raw).length;
-		if (r.start >= 0 && r.end <= plainLen && r.start < r.end) {
-			headlineRange = r;
-		} else {
-			lastCommittedPlainRange = null;
-		}
+		if (plainLen <= 0) return;
+		/* Clamp instead of clearing — avoids wiping selection after markup edits shift length slightly. */
+		const start = Math.max(0, Math.min(r.start, plainLen));
+		const end = Math.max(start, Math.min(r.end, plainLen));
+		if (end <= start) return;
+		const clamped = { start, end };
+		headlineRange = clamped;
+		lastCommittedPlainRange = clamped;
 	}
 
 	/** Prefer live DOM selection; then last committed range if the browser collapsed the highlight. */
@@ -1534,34 +1543,37 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		if (selectedText === 'headline') {
 			const current = slides[activeSlide] ?? '';
-			setActiveSlideText(applyHighlight(current, start, end, spec));
+			setActiveSlideText(applyHighlight(current, start, end, spec, highlightColor));
 		} else if (selectedText === 'articleBody') {
 			const current = articleTextBySlide[activeSlide] ?? '';
-			articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+			articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec, highlightColor) : x);
 		} else if (selectedText === 'textCarouselBody') {
 			const current = textCarouselTextBySlide[activeSlide] ?? '';
-			textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+			textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec, highlightColor) : x);
 		} else if (selectedText === 'tweetBottomText') {
 			const current = tweetBottomTextBySlide[activeSlide] ?? '';
-			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec, highlightColor) : x);
 		} else if (selectedText === 'tweetTopText') {
 			const current = tweetTopTextBySlide[activeSlide] ?? '';
-			tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
+			tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec, highlightColor) : x);
 		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
 			const current = (slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? [];
 			setSlideTextOverlays(
 				activeSlide,
-				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, text: applyHighlight(o.text ?? '', start, end, spec) } : o)),
+				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, text: applyHighlight(o.text ?? '', start, end, spec, highlightColor) } : o)),
 				activeTemplate,
 			);
 		}
 
-		if (selectedText === 'headline' && headlineRange) headlineSelectionRestoreNonce++;
+		if (selectedText === 'headline' && (headlineRange || lastCommittedPlainRange)) {
+			headlineSelectionRestoreNonce++;
+		}
 
 		// After DOM updates (+ optional selection restore), sync plain offsets so the next
 		// toolbar action applies to the same visible phrase without forcing a re-drag.
 		void tick().then(() => {
 			if (selectedText === 'textOverlay') return;
+			reanchorFloatingToolbarToMarkupRoot();
 			syncHighlightRangeFromDomIfPossible();
 		});
 	}
@@ -1589,8 +1601,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			kind !== 'articleBody' &&
 			kind !== 'textCarouselBody' &&
 			!isTweetKind(kind)
-		)
+		) {
 			headlineRange = null;
+			lastCommittedPlainRange = null;
+		}
 		if (kind !== 'textOverlay') textOverlayRange = null;
 	}
 
@@ -1629,6 +1643,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return document.querySelector(
 			`[data-studio-canvas-root] [data-text-selectable="${kind}"]`,
 		);
+	}
+
+	/** Replace ghost/wrapper anchors with the live selectable node after markup/DOM updates (highlight, undo, etc.). */
+	function reanchorFloatingToolbarToMarkupRoot() {
+		if (!selectedText || selectedText === 'textOverlay') return;
+		const root = studioMarkupFieldRoot(selectedText);
+		if (!root) return;
+		toolbarTarget = root;
+		toolbarAnchor = root.getBoundingClientRect();
 	}
 
 	function syncHighlightRangeFromDomIfPossible(): boolean {
@@ -1761,7 +1784,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	const paintSlide = $derived(canvasRasterSlide ?? activeSlide);
 	const previewTemplate = $derived(slideTemplates[paintSlide] ?? 'news');
-	const canvasInteractive = $derived(canvasRasterSlide === null);
+	/** Keep the editor usable while filmstrip captures the active slide; block only when rasterizing another slide. */
+	const canvasInteractive = $derived(
+		canvasRasterSlide === null || canvasRasterSlide === activeSlide,
+	);
 
 	const canvasOverlayText = $derived(slides[paintSlide] ?? '');
 	const canvasBackgroundImage = $derived((bgImagesByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
@@ -2947,11 +2973,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		didSeedSlideDefaults = true;
 	});
 
-	// Clear toolbar selection when user switches slides or template.
+	// Clear toolbar only when slide or template *actually* changes. A blanket `closeToolbar()`
+	// on every effect flush was firing after headline markup edits and nuking the purple selection.
+	let lastToolbarSlideTemplateKey = '';
 	$effect(() => {
-		activeSlide;
-		activeTemplate;
-		closeToolbar();
+		const key = `${activeSlide}:${activeTemplate}`;
+		if (lastToolbarSlideTemplateKey !== '' && lastToolbarSlideTemplateKey !== key) closeToolbar();
+		lastToolbarSlideTemplateKey = key;
 	});
 
 	// Auto-save draft (debounced). This will persist editor state across reloads.
@@ -3270,7 +3298,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	/** Raster snapshots for filmstrip (same pipeline as ZIP export, low pixel ratio). */
 	let filmstripPreviewUrls = $state<string[]>([]);
 	let filmstripPreviewInFlight = $state(false);
-	/** True only while capturing every slide for the filmstrip (hides rapid canvas switching). */
+	/** True only during full-deck `refreshFilmstripPreviews` (not per-slide slice updates). */
 	let filmstripBulkCapturing = $state(false);
 
 	/** Last signatures we successfully rasterized to the filmstrip (avoids full-deck capture on single-slide edits). */
@@ -3355,7 +3383,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (exporting || exportingAll || filmstripPreviewInFlight) return;
 
 		filmstripPreviewInFlight = true;
-		filmstripBulkCapturing = true;
 		const prevRaster = canvasRasterSlide;
 		let base =
 			filmstripPreviewUrls.length === slides.length
@@ -3390,7 +3417,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			filmstripPreviewUrls = base;
 		} finally {
 			canvasRasterSlide = prevRaster ?? null;
-			filmstripBulkCapturing = false;
 			filmstripPreviewInFlight = false;
 			syncFilmstripSigCacheAfterCapture();
 			await tick();
@@ -3405,7 +3431,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		const prevRaster = canvasRasterSlide;
 		filmstripPreviewInFlight = true;
-		filmstripBulkCapturing = true;
 		try {
 			canvasRasterSlide = slideIdx;
 			await tick();
@@ -3438,7 +3463,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			}
 		} finally {
 			canvasRasterSlide = prevRaster ?? null;
-			filmstripBulkCapturing = false;
 			filmstripPreviewInFlight = false;
 			syncFilmstripSigCacheAfterCapture();
 			await tick();
@@ -4413,7 +4437,7 @@ showSubjectCutout={canvasShowCutout}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 					headlineSelectionRestoreNonce={headlineSelectionRestoreNonce}
-					headlineSelectionRestoreRange={headlineRange}
+					headlineSelectionRestoreRange={headlineSelectionRestoreRangeMerged}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
@@ -4618,7 +4642,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 					headlineSelectionRestoreNonce={headlineSelectionRestoreNonce}
-					headlineSelectionRestoreRange={headlineRange}
+					headlineSelectionRestoreRange={headlineSelectionRestoreRangeMerged}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer

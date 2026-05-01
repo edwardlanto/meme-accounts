@@ -323,7 +323,7 @@
 	export function applyHighlightToSelection(spec: HighlightSpec): boolean {
 		const r = getPlainSelectionRange();
 		if (!r) return false;
-		const next = applyHighlight(serializeDomToMarkup(), r.start, r.end, spec);
+		const next = applyHighlight(serializeDomToMarkup(), r.start, r.end, spec, defaultColor);
 		onChange(next);
 		// Re-render from the new markup on next tick so styled spans appear.
 		void tick().then(() => {

@@ -461,9 +461,9 @@ input[type="reset"]:disabled,
 :root:not([data-theme="dark"]) [class*="bg-white/["] {
   background-color: color-mix(in oklab, var(--app-text) 3%, transparent) !important;
 }
-:root:not([data-theme="dark"]) [class*="bg-black/["] {
+/* :root:not([data-theme="dark"]) [class*="bg-black/["] {
   background-color: color-mix(in oklab, var(--app-text) 4%, transparent) !important;
-}
+} */
 
 /* Additional remaps for arbitrary hex “dark surfaces” used in some pages */
 :root:not([data-theme="dark"]) [class*="bg-\\[#0"] { background-color: var(--app-bg) !important; }

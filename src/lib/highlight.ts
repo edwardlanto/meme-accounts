@@ -65,7 +65,9 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		const close = raw.indexOf(']]', open + 2);
 		if (close === -1) { plain += raw.slice(open); break; }
 
-		const inner = raw.slice(open + 2, close).trim();
+		// Do NOT trim inner — trailing/leading spaces belong to the visible phrase (e.g. after
+		// splitting one highlight into [[… WILL ]][[… APPEAR]] the space must survive parse).
+		const inner = raw.slice(open + 2, close);
 		let phrase = inner;
 		let color = defaultColor;
 		let gradientFrom: string | undefined;
@@ -75,39 +77,40 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		let markerBg: string | undefined;
 
 		// pattern(name): phrase  — any name, optional ,#hex suffix ignored (image-based)
-		const patternRe = /^pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/i;
+		const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/is;
 		const pm = inner.match(patternRe);
 		if (pm) {
 			pattern = pm[1].toLowerCase();
-			phrase = pm[2].trim();
+			phrase = pm[2];
 			patternImage = getPatternImage(pattern);
 		}
 
 		// grad(#from, #to): phrase
-		const gradRe = /^grad\(\s*(#[0-9a-fA-F]{6})\s*,\s*(#[0-9a-fA-F]{6})\s*\)\s*:\s*(.+)$/i;
+		const gradRe =
+			/^\s*grad\(\s*(#[0-9a-fA-F]{6})\s*,\s*(#[0-9a-fA-F]{6})\s*\)\s*:\s*(.+)$/is;
 		const gm = !pm ? inner.match(gradRe) : null;
 		if (gm) {
 			gradientFrom = gm[1];
 			gradientTo = gm[2];
 			color = gm[1];
-			phrase = gm[3].trim();
+			phrase = gm[3];
 		}
 
 		// marker(#hex): phrase — background chip (toolbar BG)
-		const markerRe = /^marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/i;
+		const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
 		const mm = !pm && !gm ? inner.match(markerRe) : null;
 		if (mm) {
 			markerBg = mm[1];
-			phrase = mm[2].trim();
+			phrase = mm[2];
 			color = defaultColor;
 		}
 
-		// #hex: phrase
-		const colorRe = /^(#[0-9a-fA-F]{6})\s*:\s*(.+)$/i;
+		// #hex: phrase — phrase capture keeps leading/trailing spaces (boundary chars between splits).
+		const colorRe = /^\s*(#[0-9a-fA-F]{6})\s*:\s*(.*)$/is;
 		const cm = !pm && !gm && !mm ? inner.match(colorRe) : null;
 		if (cm) {
 			color = cm[1];
-			phrase = cm[2].trim();
+			phrase = cm[2];
 		}
 
 		const start = plain.length;
@@ -218,19 +221,22 @@ function plainOffsetToRaw(raw: string, plainOffset: number): number {
 	return raw.length;
 }
 
-/** Extract just the visible phrase from the inside of a [[...]] token. */
+/** Extract just the visible phrase from the inside of a [[...]] token (must match parseHighlightMarkup). */
 function extractPhraseFromInner(inner: string): string {
-	const trimmed = inner.trim();
-	const patternRe = /^pattern\(\s*[\w-]+\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/i;
-	const gradRe = /^grad\(\s*#[0-9a-fA-F]{6}\s*,\s*#[0-9a-fA-F]{6}\s*\)\s*:\s*(.+)$/i;
-	const markerRe = /^marker\(\s*#[0-9a-fA-F]{3,8}\s*\)\s*:\s*(.+)$/i;
-	const colorRe = /^#[0-9a-fA-F]{3,8}\s*:\s*(.+)$/i;
-	const m =
-		trimmed.match(patternRe) ??
-		trimmed.match(gradRe) ??
-		trimmed.match(markerRe) ??
-		trimmed.match(colorRe);
-	return m ? m[1].trim() : trimmed;
+	const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/is;
+	const pm = inner.match(patternRe);
+	if (pm) return pm[2];
+	const gradRe =
+		/^\s*grad\(\s*(#[0-9a-fA-F]{6})\s*,\s*(#[0-9a-fA-F]{6})\s*\)\s*:\s*(.+)$/is;
+	const gm = inner.match(gradRe);
+	if (gm) return gm[3];
+	const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
+	const mm = inner.match(markerRe);
+	if (mm) return mm[2];
+	const colorRe = /^\s*(#[0-9a-fA-F]{6})\s*:\s*(.*)$/is;
+	const cm = inner.match(colorRe);
+	if (cm) return cm[2];
+	return inner;
 }
 
 export type HighlightSpec =
@@ -243,42 +249,94 @@ export type HighlightSpec =
 
 /**
  * Apply a highlight to a plain-text range within raw markup.
- * The function first strips any existing `[[...]]` wrapping that overlaps the
- * range (so switching highlight types is clean), then inserts the new wrapper.
+ *
+ * Word/Canva-style behavior: when `[plainStart, plainEnd]` only partially
+ * overlaps an existing `[[...]]` token, the parts of that token outside the
+ * selection are PRESERVED (with their original color / gradient / marker / pattern).
+ * Only the overlapping middle is replaced with the new spec (or removed for `clear`).
  */
 export function applyHighlight(
 	raw: string,
 	plainStart: number,
 	plainEnd: number,
 	spec: HighlightSpec,
+	defaultHighlight: string = '#F59E0B',
 ): string {
 	if (plainStart > plainEnd) [plainStart, plainEnd] = [plainEnd, plainStart];
 
-	// Step 1: strip existing highlights that overlap [plainStart, plainEnd].
-	const stripped = stripHighlightsInRange(raw, plainStart, plainEnd);
+	const parsed = parseHighlightMarkup(raw, defaultHighlight);
+	const plain = parsed.plain;
+	plainStart = Math.max(0, Math.min(plain.length, plainStart));
+	plainEnd = Math.max(0, Math.min(plain.length, plainEnd));
+	if (plainStart >= plainEnd) return raw;
 
-	// Step 2: compute raw offsets in the stripped string (now fewer markup chars).
-	const rawStart = plainOffsetToRaw(stripped, plainStart);
-	const rawEnd = plainOffsetToRaw(stripped, plainEnd);
+	const kept: HighlightRange[] = [];
+	for (const r of parsed.ranges) {
+		// Token fully outside selection — keep as-is.
+		if (r.end <= plainStart || r.start >= plainEnd) {
+			kept.push(r);
+			continue;
+		}
+		// Token fully inside selection — drop (will be replaced by the new spec).
+		if (r.start >= plainStart && r.end <= plainEnd) continue;
+		// Partial overlap — keep the non-overlapping side(s) with the original spec.
+		if (r.start < plainStart) kept.push({ ...r, end: plainStart });
+		if (r.end > plainEnd) kept.push({ ...r, start: plainEnd });
+	}
 
-	if (rawStart >= rawEnd) return stripped;
+	if (spec.kind !== 'clear') {
+		kept.push(rangeFromSpec(plainStart, plainEnd, spec, defaultHighlight));
+	}
 
-	if (spec.kind === 'clear') return stripped;
-
-	const phrase = stripped.slice(rawStart, rawEnd);
-	const wrapped = wrapPhrase(phrase, spec);
-	return stripped.slice(0, rawStart) + wrapped + stripped.slice(rawEnd);
+	kept.sort((a, b) => a.start - b.start || a.end - b.end);
+	return emitMarkupFromRanges(plain, kept, defaultHighlight);
 }
 
-function wrapPhrase(phrase: string, spec: HighlightSpec): string {
+function rangeFromSpec(
+	start: number,
+	end: number,
+	spec: HighlightSpec,
+	defaultHighlight: string,
+): HighlightRange {
 	switch (spec.kind) {
-		case 'default':  return `[[${phrase}]]`;
-		case 'color':    return `[[${spec.color}: ${phrase}]]`;
-		case 'gradient': return `[[grad(${spec.from},${spec.to}): ${phrase}]]`;
-		case 'pattern':  return `[[pattern(${spec.name}): ${phrase}]]`;
-		case 'marker':   return `[[marker(${spec.color}): ${phrase}]]`;
-		case 'clear':    return phrase;
+		case 'color':    return { start, end, color: spec.color };
+		case 'gradient': return { start, end, color: spec.from, gradientFrom: spec.from, gradientTo: spec.to };
+		case 'pattern':  return { start, end, color: defaultHighlight, pattern: spec.name, patternImage: getPatternImage(spec.name) };
+		case 'marker':   return { start, end, color: defaultHighlight, markerBg: spec.color };
+		case 'default':
+		case 'clear':
+		default:         return { start, end, color: defaultHighlight };
 	}
+}
+
+/** Re-emit a parsed range as `[[…]]` markup, picking the right spec form (marker / grad / pattern / #hex / default). */
+function emitRangeMarkup(range: HighlightRange, phrase: string, defaultHighlight: string): string {
+	if (range.markerBg) return `[[marker(${range.markerBg}): ${phrase}]]`;
+	if (range.gradientFrom && range.gradientTo) return `[[grad(${range.gradientFrom},${range.gradientTo}): ${phrase}]]`;
+	if (range.pattern) return `[[pattern(${range.pattern}): ${phrase}]]`;
+	if (range.color && normalizePaintColorKey(range.color) !== normalizePaintColorKey(defaultHighlight)) {
+		return `[[${range.color}: ${phrase}]]`;
+	}
+	return `[[${phrase}]]`;
+}
+
+function emitMarkupFromRanges(
+	plain: string,
+	ranges: HighlightRange[],
+	defaultHighlight: string,
+): string {
+	let result = '';
+	let cursor = 0;
+	for (const r of ranges) {
+		if (r.start >= r.end) continue;
+		if (r.start > cursor) result += plain.slice(cursor, r.start);
+		const phrase = plain.slice(r.start, r.end);
+		if (phrase.length === 0) continue;
+		result += emitRangeMarkup(r, phrase, defaultHighlight);
+		cursor = r.end;
+	}
+	if (cursor < plain.length) result += plain.slice(cursor);
+	return result;
 }
 
 /**
