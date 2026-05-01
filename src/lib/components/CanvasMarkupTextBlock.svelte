@@ -125,16 +125,32 @@
 		}, 10);
 	}
 
-	function finishEdit() {
-		if (!editing) return;
+	function exitEditMode() {
 		editing = false;
 	}
 
+	function finishEdit(e?: FocusEvent) {
+		if (!editing) return;
+		const rt = e?.relatedTarget;
+		if (rt instanceof Element) {
+			if (rt.closest('[data-floating-toolbar], [data-slot="popover-content"]')) return;
+		}
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!editing) return;
+				const ae = document.activeElement;
+				if (ae instanceof Element && ae.closest('[data-floating-toolbar], [data-slot="popover-content"]'))
+					return;
+				editing = false;
+			});
+		});
+	}
+
 	function onEditKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') finishEdit();
+		if (e.key === 'Escape') exitEditMode();
 		if (e.key === 'Enter' && e.shiftKey) {
 			e.preventDefault();
-			finishEdit();
+			exitEditMode();
 		}
 	}
 </script>

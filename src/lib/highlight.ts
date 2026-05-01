@@ -18,9 +18,9 @@ export const AVAILABLE_PATTERNS = Object.entries(PATTERN_IMAGES).map(([name, url
 
 /** `[[grad(#a,#b): phrase]]` — flexible hex (models vary in digit count). */
 const HIGHLIGHT_GRAD_INNER_RE =
-	/^\s*grad\(\s*(#[0-9a-fA-F]{3,8})\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
-/** `[[#hex: phrase]]` */
-const HIGHLIGHT_HEX_PREFIX_RE = /^\s*(#[0-9a-fA-F]{3,8})\s*:\s*(.*)$/is;
+	/^\s*grad\(\s*(#[0-9a-fA-F]{3,8})\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s?(.*)$/is;
+/** `[[#hex: phrase]]` — only one whitespace after `:` is delimiter; phrase may start with spaces (split tokens). */
+const HIGHLIGHT_HEX_PREFIX_RE = /^\s*(#[0-9a-fA-F]{3,8})\s*:\s?(.*)$/is;
 
 export interface HighlightRange {
 	start: number;
@@ -83,7 +83,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		let markerBg: string | undefined;
 
 		// pattern(name): phrase  — any name, optional ,#hex suffix ignored (image-based)
-		const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/is;
+		const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s?(.*)$/is;
 		const pm = inner.match(patternRe);
 		if (pm) {
 			pattern = pm[1].toLowerCase();
@@ -101,7 +101,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		}
 
 		// marker(#hex): phrase — background chip (toolbar BG)
-		const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
+		const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s?(.*)$/is;
 		const mm = !pm && !gm ? inner.match(markerRe) : null;
 		if (mm) {
 			markerBg = mm[1];
@@ -202,12 +202,12 @@ export function stripAdvancedHighlightMarkup(raw: string): string {
 
 /** Visible phrase inside a [[…]] token (must stay aligned with parseHighlightMarkup). */
 export function phraseFromHighlightInner(inner: string): string {
-	const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s*(.+)$/is;
+	const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s?(.*)$/is;
 	const pm = inner.match(patternRe);
 	if (pm) return pm[2];
 	const gm = inner.match(HIGHLIGHT_GRAD_INNER_RE);
 	if (gm) return gm[3];
-	const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s*(.+)$/is;
+	const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s?(.*)$/is;
 	const mm = inner.match(markerRe);
 	if (mm) return mm[2];
 	const cm = inner.match(HIGHLIGHT_HEX_PREFIX_RE);

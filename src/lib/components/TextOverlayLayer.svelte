@@ -129,9 +129,26 @@
 		editingId = id;
 	}
 
-	function finishEdit(id: string) {
+	function exitOverlayEdit(id: string) {
 		if (editingId !== id) return;
 		editingId = null;
+	}
+
+	function finishEdit(id: string, e?: FocusEvent) {
+		if (editingId !== id) return;
+		const rt = e?.relatedTarget;
+		if (rt instanceof Element) {
+			if (rt.closest('[data-floating-toolbar], [data-slot="popover-content"]')) return;
+		}
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (editingId !== id) return;
+				const ae = document.activeElement;
+				if (ae instanceof Element && ae.closest('[data-floating-toolbar], [data-slot="popover-content"]'))
+					return;
+				editingId = null;
+			});
+		});
 	}
 </script>
 
@@ -229,7 +246,7 @@
 								}
 							}}
 							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
-							onBlur={() => finishEdit(t.id)}
+							onBlur={(e) => finishEdit(t.id, e)}
 						/>
 					</div>
 				{:else}

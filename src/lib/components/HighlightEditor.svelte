@@ -9,7 +9,14 @@
 	 * - On every input, serializes the DOM back to raw markup and emits `onChange`.
 	 * - Exposes `applyHighlightToSelection(spec)` for the parent toolbar.
 	 */
-	import { parseHighlightMarkup, segmentText, applyHighlight, AVAILABLE_PATTERNS, type HighlightSpec } from '$lib/highlight';
+	import {
+		parseHighlightMarkup,
+		segmentText,
+		applyHighlight,
+		AVAILABLE_PATTERNS,
+		restorePlainSelection,
+		type HighlightSpec,
+	} from '$lib/highlight';
 	import { tick } from 'svelte';
 
 	interface Props {
@@ -33,7 +40,7 @@
 		onChange: (next: string) => void;
 		onSelectionChange?: (hasRange: boolean, range?: { start: number; end: number } | null) => void;
 		onFocus?: () => void;
-		onBlur?: () => void;
+		onBlur?: (e: FocusEvent) => void;
 	}
 
 	let {
@@ -242,8 +249,22 @@
 	$effect(() => {
 		if (!editorEl) return;
 		if (value === lastSyncedValue) return;
+		const ae = document.activeElement;
+		const hadFocus = ae === editorEl || (ae instanceof Node && editorEl.contains(ae));
+		let restore: { start: number; end: number } | null = null;
+		if (hadFocus) {
+			const r = getPlainSelectionRange();
+			if (r && r.end > r.start) restore = r;
+		}
 		renderMarkupToDom(value);
 		lastSyncedValue = value;
+		if (hadFocus) {
+			void tick().then(() => {
+				if (!editorEl) return;
+				editorEl.focus();
+				if (restore) restorePlainSelection(editorEl, restore.start, restore.end);
+			});
+		}
 	});
 
 	function handleInput() {
@@ -473,7 +494,7 @@
 			onselect={refreshSelectionState}
 			onpaste={onPaste}
 			onfocus={() => onFocus?.()}
-			onblur={() => onBlur?.()}
+			onblur={(e) => onBlur?.(e)}
 			class="hl-editor w-full outline-none whitespace-pre-wrap break-words"
 			style="
 				/* Use line-based min-height so large font sizes don't create huge empty gaps. */

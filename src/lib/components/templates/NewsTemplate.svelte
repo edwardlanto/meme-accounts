@@ -518,16 +518,34 @@
 		}, 10);
 	}
 
-	function finishEdit() {
-		if (!editing) return;
+	function exitHeadlineEditMode() {
 		editing = false;
-		// HighlightEditor has already emitted onChange(markup) through the edits,
-		// so `text` prop is already up-to-date in the parent.
+	}
+
+	/** Blur away from the contenteditable — unless focus moved to the floating toolbar / popovers. */
+	function finishHeadlineEdit(e?: FocusEvent) {
+		if (!editing) return;
+		const rt = e?.relatedTarget;
+		if (rt instanceof Element) {
+			if (rt.closest('[data-floating-toolbar], [data-slot="popover-content"]')) return;
+		}
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!editing) return;
+				const ae = document.activeElement;
+				if (ae instanceof Element && ae.closest('[data-floating-toolbar], [data-slot="popover-content"]'))
+					return;
+				editing = false;
+			});
+		});
 	}
 
 	function onEditKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') { finishEdit(); }
-		if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); finishEdit(); }
+		if (e.key === 'Escape') exitHeadlineEditMode();
+		if (e.key === 'Enter' && e.shiftKey) {
+			e.preventDefault();
+			exitHeadlineEditMode();
+		}
 	}
 
 	function textPointerDown(e: PointerEvent) {
@@ -1923,7 +1941,7 @@
 						showToolbar={false}
 						defaultColor={highlightColor}
 						onChange={(v) => onTextChange?.(v)}
-						onBlur={finishEdit}
+						onBlur={finishHeadlineEdit}
 						onSelectionChange={(has, r) => {
 							if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
 							else onHeadlineRangeSelect?.(-1, -1);

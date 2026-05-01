@@ -199,8 +199,14 @@
 				raw instanceof Element ? raw : (raw as Node).parentElement;
 			if (!el) return;
 			if (!el.closest('[data-floating-toolbar]') && !el.closest('[data-slot="popover-content"]')) return;
+			/* Portaled popover: never suppress default pointer behavior. Gaps, labels, and wrappers are not
+			   buttons — preventDefault made relatedTarget null and kept activeElement off toolbar UI. */
+			if (el.closest('[data-slot="popover-content"]')) return;
 			const tag = el.tagName;
 			if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el instanceof HTMLElement && el.isContentEditable) return;
+			/* Let buttons/links take focus so contenteditable blur gets a real relatedTarget / activeElement
+			   inside the toolbar — otherwise preventDefault blocks focus and headline edit exits. */
+			if (el.closest('button, a[href], [role="button"], [role="menuitem"]')) return;
 			e.preventDefault();
 		};
 		document.addEventListener('pointerdown', preserve, true);
