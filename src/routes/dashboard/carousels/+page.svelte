@@ -3,7 +3,6 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { STARTER_TEMPLATES } from '$lib/templates';
-	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
@@ -180,15 +179,12 @@
 					<!-- Preview area -->
 					<div style="width: 100%; height: {Math.round(templateCardW * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;">
 						{#if tmpl.id === 'news'}
-							<NewsTemplate
-								templateTheme={uiTheme}
-								backgroundImage={tmpl.previewBg}
-								text={tmpl.previewText}
-								source={tmpl.previewSource}
-								highlightColor="#F5A623"
-								textColor={uiTheme === 'dark' ? '#FFFFFF' : '#0a0a0a'}
-								scale={templateScale}
-								interactive={false}
+							<img
+								src={tmpl.previewBg}
+								alt=""
+								class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
+								loading="lazy"
+								draggable="false"
 							/>
 						{:else if tmpl.id === 'tweet'}
 							<TweetTemplate
