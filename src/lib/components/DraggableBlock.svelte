@@ -13,6 +13,12 @@
 		scale?: number;
 		interactive?: boolean;
 		holdMs?: number;
+		/**
+		 * When true, pointer-down on markup text can still arm hold-to-drag / nudge-drag
+		 * (otherwise only Alt+drag works over [[highlight]] text). Use sparingly — conflicts
+		 * with text selection unless the user moves past the drag threshold or holds.
+		 */
+		holdDragFromText?: boolean;
 		onChange?: (nextDx: number, nextDy: number) => void;
 		children: Snippet;
 	}
@@ -23,6 +29,7 @@
 		scale = 1,
 		interactive = true,
 		holdMs = 180,
+		holdDragFromText = false,
 		onChange,
 		children,
 	}: Props = $props();
@@ -58,9 +65,9 @@
 			'[data-draggable-no-pan],[contenteditable="true"],[data-text-selectable="true"]',
 		);
 		// Let the inner markup layer own the gesture for selection/editing.
-		// Hold-to-drag on body text steals the pointer after ~300ms (broken highlights).
-		// Hold Alt while pressing to drag-reposition from inside text.
-		if (onSelectableText && !e.altKey) return;
+		// Hold Alt while pressing to drag-reposition from inside text (default).
+		// Optional `holdDragFromText`: hold timer / small move can still start a block drag.
+		if (onSelectableText && !e.altKey && !holdDragFromText) return;
 
 		dragging = false;
 		armed = true;

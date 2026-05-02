@@ -15,6 +15,8 @@ import JSZip from 'jszip';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import TextCarouselAvatarToolbar from '$lib/components/TextCarouselAvatarToolbar.svelte';
+	import TweetMediaToolbar from '$lib/components/TweetMediaToolbar.svelte';
+	import NewsBackgroundToolbar from '$lib/components/NewsBackgroundToolbar.svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import DockToolbar from '$lib/components/DockToolbar.svelte';
 	import FormatDockToolbar from '$lib/components/FormatDockToolbar.svelte';
@@ -185,7 +187,30 @@ import JSZip from 'jszip';
 
 	// ── Undo (scoped to current template + slide) ─────────────────────────
 	type ScopedSnapshot =
-		| { template: 'tweet'; slide: number; data: { topName: string; topHandle: string; bottomName: string; bottomHandle: string; topText: string; bottomText: string; replyCount: string; repostCount: string; likeCount: string; topImage: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
+		| {
+				template: 'tweet';
+				slide: number;
+				data: {
+					topName: string;
+					topHandle: string;
+					bottomName: string;
+					bottomHandle: string;
+					topText: string;
+					bottomText: string;
+					replyCount: string;
+					repostCount: string;
+					likeCount: string;
+					topImage: string;
+					topAvatarImage: string;
+					topAvatarInnerBg: string;
+					topAvatarLabel: string;
+					bottomAvatarImage: string;
+					bottomAvatarInnerBg: string;
+					bottomAvatarLabel: string;
+					styles: Partial<Record<TextElementKind, TextStyle>>;
+					offsets: Record<string, { x: number; y: number }>;
+				};
+		  }
 		| {
 				template: 'textCarousel';
 				slide: number;
@@ -253,6 +278,12 @@ import JSZip from 'jszip';
 					repostCount: tweetRepostCountBySlide[slide] ?? '12.8K',
 					likeCount: tweetLikeCountBySlide[slide] ?? '89.4K',
 					topImage: (bgImagesByTemplate.tweet ?? [])[slide] ?? '',
+					topAvatarImage: tweetTopAvatarImageBySlide[slide] ?? '',
+					topAvatarInnerBg: tweetTopAvatarInnerBgBySlide[slide] ?? '',
+					topAvatarLabel: tweetTopAvatarLabelBySlide[slide] ?? '',
+					bottomAvatarImage: tweetBottomAvatarImageBySlide[slide] ?? '',
+					bottomAvatarInnerBg: tweetBottomAvatarInnerBgBySlide[slide] ?? '',
+					bottomAvatarLabel: tweetBottomAvatarLabelBySlide[slide] ?? '',
 					styles,
 					offsets,
 				},
@@ -365,6 +396,12 @@ import JSZip from 'jszip';
 			tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, idx) => (idx === i ? d.likeCount : x));
 			// Media for Tweet
 			bgImagesByTemplate = { ...bgImagesByTemplate, tweet: (bgImagesByTemplate.tweet ?? []).map((x, idx) => (idx === i ? d.topImage : x)) };
+			tweetTopAvatarImageBySlide = tweetTopAvatarImageBySlide.map((x, idx) => (idx === i ? (d.topAvatarImage ?? '') : x));
+			tweetTopAvatarInnerBgBySlide = tweetTopAvatarInnerBgBySlide.map((x, idx) => (idx === i ? (d.topAvatarInnerBg ?? '') : x));
+			tweetTopAvatarLabelBySlide = tweetTopAvatarLabelBySlide.map((x, idx) => (idx === i ? (d.topAvatarLabel ?? '') : x));
+			tweetBottomAvatarImageBySlide = tweetBottomAvatarImageBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarImage ?? '') : x));
+			tweetBottomAvatarInnerBgBySlide = tweetBottomAvatarInnerBgBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarInnerBg ?? '') : x));
+			tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarLabel ?? '') : x));
 			return;
 		}
 		if (t === 'textCarousel') {
@@ -598,6 +635,12 @@ import JSZip from 'jszip';
 			tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImageZoom : x));
 			tweetTopImagePanXBySlide = tweetTopImagePanXBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImagePanX : x));
 			tweetTopImagePanYBySlide = tweetTopImagePanYBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topImagePanY : x));
+			tweetTopAvatarImageBySlide = tweetTopAvatarImageBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetTopAvatarInnerBgBySlide = tweetTopAvatarInnerBgBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetTopAvatarLabelBySlide = tweetTopAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetBottomAvatarImageBySlide = tweetBottomAvatarImageBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetBottomAvatarInnerBgBySlide = tweetBottomAvatarInnerBgBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
 		} else if (t === 'article') {
 			articleTextBySlide = articleTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_BODY : x));
 			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_SWIPE : x));
@@ -1176,6 +1219,12 @@ tweetTopImageWidthBySlide = [...tweetTopImageWidthBySlide, tweetTopImageWidthByS
 tweetTopImageZoomBySlide = [...tweetTopImageZoomBySlide, tweetTopImageZoomBySlide[tweetTopImageZoomBySlide.length - 1] ?? 1];
 tweetTopImagePanXBySlide = [...tweetTopImagePanXBySlide, tweetTopImagePanXBySlide[tweetTopImagePanXBySlide.length - 1] ?? 50];
 tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlide[tweetTopImagePanYBySlide.length - 1] ?? 50];
+		tweetTopAvatarImageBySlide = [...tweetTopAvatarImageBySlide, tweetTopAvatarImageBySlide[tweetTopAvatarImageBySlide.length - 1] ?? ''];
+		tweetTopAvatarInnerBgBySlide = [...tweetTopAvatarInnerBgBySlide, tweetTopAvatarInnerBgBySlide[tweetTopAvatarInnerBgBySlide.length - 1] ?? ''];
+		tweetTopAvatarLabelBySlide = [...tweetTopAvatarLabelBySlide, tweetTopAvatarLabelBySlide[tweetTopAvatarLabelBySlide.length - 1] ?? ''];
+		tweetBottomAvatarImageBySlide = [...tweetBottomAvatarImageBySlide, tweetBottomAvatarImageBySlide[tweetBottomAvatarImageBySlide.length - 1] ?? ''];
+		tweetBottomAvatarInnerBgBySlide = [...tweetBottomAvatarInnerBgBySlide, tweetBottomAvatarInnerBgBySlide[tweetBottomAvatarInnerBgBySlide.length - 1] ?? ''];
+		tweetBottomAvatarLabelBySlide = [...tweetBottomAvatarLabelBySlide, tweetBottomAvatarLabelBySlide[tweetBottomAvatarLabelBySlide.length - 1] ?? ''];
 		articleTextBySlide = [...articleTextBySlide, articleTextBySlide[articleTextBySlide.length - 1] ?? ''];
 		textCarouselTextBySlide = [...textCarouselTextBySlide, textCarouselTextBySlide[textCarouselTextBySlide.length - 1] ?? ''];
 		imageQuoteTextBySlide = [...imageQuoteTextBySlide, imageQuoteTextBySlide[imageQuoteTextBySlide.length - 1] ?? ''];
@@ -1263,6 +1312,13 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 	let tweetTopImageZoomBySlide = $state<number[]>([1]);
 	let tweetTopImagePanXBySlide = $state<number[]>([50]);
 	let tweetTopImagePanYBySlide = $state<number[]>([50]);
+	/** Tweet profile circles — image URL / inner fill / optional label (else initials from name). */
+	let tweetTopAvatarImageBySlide = $state<string[]>(['']);
+	let tweetTopAvatarInnerBgBySlide = $state<string[]>(['']);
+	let tweetTopAvatarLabelBySlide = $state<string[]>(['']);
+	let tweetBottomAvatarImageBySlide = $state<string[]>(['']);
+	let tweetBottomAvatarInnerBgBySlide = $state<string[]>(['']);
+	let tweetBottomAvatarLabelBySlide = $state<string[]>(['']);
 	let articleTextBySlide = $state<string[]>([
 		"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
 	]);
@@ -1372,6 +1428,12 @@ tweetTopImageWidthBySlide = pickOr(tweetTopImageWidthBySlide, 920);
 tweetTopImageZoomBySlide = pickOr(tweetTopImageZoomBySlide, 1);
 tweetTopImagePanXBySlide = pickOr(tweetTopImagePanXBySlide, 50);
 tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
+		tweetTopAvatarImageBySlide = pickOr(tweetTopAvatarImageBySlide, '');
+		tweetTopAvatarInnerBgBySlide = pickOr(tweetTopAvatarInnerBgBySlide, '');
+		tweetTopAvatarLabelBySlide = pickOr(tweetTopAvatarLabelBySlide, '');
+		tweetBottomAvatarImageBySlide = pickOr(tweetBottomAvatarImageBySlide, '');
+		tweetBottomAvatarInnerBgBySlide = pickOr(tweetBottomAvatarInnerBgBySlide, '');
+		tweetBottomAvatarLabelBySlide = pickOr(tweetBottomAvatarLabelBySlide, '');
 		articleTextBySlide = pickOr(articleTextBySlide, '');
 		textCarouselTextBySlide = pickOr(textCarouselTextBySlide, '');
 		imageQuoteTextBySlide = pickOr(imageQuoteTextBySlide, '');
@@ -1521,6 +1583,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function getActiveStyleForSelection(): TextStyle {
 		if (selectedText === 'articleImage' || selectedText === 'articleLogo') return {};
+		if (selectedText === 'tweetTopMedia') return {};
+		if (selectedText === 'tweetTopAvatar' || selectedText === 'tweetBottomAvatar') return {};
 		if (isTweetKind(selectedText)) return (canvasTweetStyles[selectedText] ?? {});
 		if (selectedText === 'textOverlay' && selectedTextOverlayId) {
 			const current = (slideTextOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? [];
@@ -1575,6 +1639,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			case 'tweetReplyCount': return 32;
 			case 'tweetRepostCount': return 32;
 			case 'tweetLikeCount': return 32;
+
+			case 'tweetTopMedia':
+				return undefined;
+			case 'tweetTopAvatar':
+			case 'tweetBottomAvatar':
+				return undefined;
 
 			// Overlays
 			case 'textOverlay': return 42;
@@ -1820,6 +1890,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const k = selectedText;
 
 		if (k === 'textCarouselAvatar') return;
+		if (k === 'tweetTopMedia') return;
+		if (k === 'tweetTopAvatar' || k === 'tweetBottomAvatar') return;
 
 		if (k === 'articleImage') {
 			pushUndo(previewTemplate, slide);
@@ -2005,6 +2077,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function patchActiveStyle(patch: Partial<TextStyle>) {
 		if (selectedText === 'articleImage' || selectedText === 'articleLogo') return;
+		if (
+			selectedText === 'textCarouselAvatar' ||
+			selectedText === 'tweetTopAvatar' ||
+			selectedText === 'tweetBottomAvatar' ||
+			selectedText === 'tweetTopMedia'
+		)
+			return;
 		pushUndo(previewTemplate, paintSlide);
 		const kindPre = selectedText;
 		const slotPre = kindPre ? canvasStyleMap[kindPre] : undefined;
@@ -2259,6 +2338,24 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray((s as any).tweetTopImageZoomBySlide)) tweetTopImageZoomBySlide = (s as any).tweetTopImageZoomBySlide;
 		if (Array.isArray((s as any).tweetTopImagePanXBySlide)) tweetTopImagePanXBySlide = (s as any).tweetTopImagePanXBySlide;
 		if (Array.isArray((s as any).tweetTopImagePanYBySlide)) tweetTopImagePanYBySlide = (s as any).tweetTopImagePanYBySlide;
+		if (Array.isArray((s as any).tweetTopAvatarImageBySlide)) {
+			tweetTopAvatarImageBySlide = (s as any).tweetTopAvatarImageBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).tweetTopAvatarInnerBgBySlide)) {
+			tweetTopAvatarInnerBgBySlide = (s as any).tweetTopAvatarInnerBgBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).tweetTopAvatarLabelBySlide)) {
+			tweetTopAvatarLabelBySlide = (s as any).tweetTopAvatarLabelBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).tweetBottomAvatarImageBySlide)) {
+			tweetBottomAvatarImageBySlide = (s as any).tweetBottomAvatarImageBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).tweetBottomAvatarInnerBgBySlide)) {
+			tweetBottomAvatarInnerBgBySlide = (s as any).tweetBottomAvatarInnerBgBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).tweetBottomAvatarLabelBySlide)) {
+			tweetBottomAvatarLabelBySlide = (s as any).tweetBottomAvatarLabelBySlide.map((x: unknown) => String(x ?? ''));
+		}
 		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
 		if (Array.isArray(s.textCarouselTextBySlide)) textCarouselTextBySlide = s.textCarouselTextBySlide;
 		if (Array.isArray((s as any).videoStoryHeadlineBySlide)) {
@@ -2423,6 +2520,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		tweetTopImageZoomBySlide = [1];
 		tweetTopImagePanXBySlide = [50];
 		tweetTopImagePanYBySlide = [50];
+		tweetTopAvatarImageBySlide = [''];
+		tweetTopAvatarInnerBgBySlide = [''];
+		tweetTopAvatarLabelBySlide = [''];
+		tweetBottomAvatarImageBySlide = [''];
+		tweetBottomAvatarInnerBgBySlide = [''];
+		tweetBottomAvatarLabelBySlide = [''];
 		articleTextBySlide = [''];
 		articleSwipeTextBySlide = [''];
 		articleLogoSrcBySlide = [''];
@@ -2627,6 +2730,12 @@ tweetTopImageWidthBySlide,
 tweetTopImageZoomBySlide,
 tweetTopImagePanXBySlide,
 tweetTopImagePanYBySlide,
+			tweetTopAvatarImageBySlide: tweetTopAvatarImageBySlide.map(pruneMediaUrl),
+			tweetTopAvatarInnerBgBySlide,
+			tweetTopAvatarLabelBySlide,
+			tweetBottomAvatarImageBySlide: tweetBottomAvatarImageBySlide.map(pruneMediaUrl),
+			tweetBottomAvatarInnerBgBySlide,
+			tweetBottomAvatarLabelBySlide,
 			articleTextBySlide,
 			textCarouselTextBySlide,
 			videoStoryHeadlineBySlide,
@@ -3416,6 +3525,24 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (tweetTopImagePanYBySlide.length !== n) {
 			tweetTopImagePanYBySlide = Array.from({ length: n }, (_, i) => tweetTopImagePanYBySlide[i] ?? 50);
 		}
+		if (tweetTopAvatarImageBySlide.length !== n) {
+			tweetTopAvatarImageBySlide = Array.from({ length: n }, (_, i) => tweetTopAvatarImageBySlide[i] ?? '');
+		}
+		if (tweetTopAvatarInnerBgBySlide.length !== n) {
+			tweetTopAvatarInnerBgBySlide = Array.from({ length: n }, (_, i) => tweetTopAvatarInnerBgBySlide[i] ?? '');
+		}
+		if (tweetTopAvatarLabelBySlide.length !== n) {
+			tweetTopAvatarLabelBySlide = Array.from({ length: n }, (_, i) => tweetTopAvatarLabelBySlide[i] ?? '');
+		}
+		if (tweetBottomAvatarImageBySlide.length !== n) {
+			tweetBottomAvatarImageBySlide = Array.from({ length: n }, (_, i) => tweetBottomAvatarImageBySlide[i] ?? '');
+		}
+		if (tweetBottomAvatarInnerBgBySlide.length !== n) {
+			tweetBottomAvatarInnerBgBySlide = Array.from({ length: n }, (_, i) => tweetBottomAvatarInnerBgBySlide[i] ?? '');
+		}
+		if (tweetBottomAvatarLabelBySlide.length !== n) {
+			tweetBottomAvatarLabelBySlide = Array.from({ length: n }, (_, i) => tweetBottomAvatarLabelBySlide[i] ?? '');
+		}
 		if (articleTextBySlide.length !== n) {
 			articleTextBySlide = Array.from({ length: n }, (_, i) => articleTextBySlide[i] ?? '');
 		}
@@ -3673,6 +3800,35 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		overlayQuickInput?.click();
 	}
 
+	let newsBgToolbarPoint = $state<{ x: number; y: number } | null>(null);
+	let newsBgToolbarImageInput = $state<HTMLInputElement | null>(null);
+	let newsBgToolbarVideoInput = $state<HTMLInputElement | null>(null);
+
+	const newsBgToolbarAnchor = $derived(
+		newsBgToolbarPoint ? new DOMRect(newsBgToolbarPoint.x - 1, newsBgToolbarPoint.y - 1, 2, 2) : null,
+	);
+
+	function closeNewsBgToolbar() {
+		newsBgToolbarPoint = null;
+	}
+
+	function handleNewsBgToolbarImageChange(e: Event) {
+		handleBgUpload(e);
+		const el = e.target as HTMLInputElement;
+		el.value = '';
+	}
+
+	function handleNewsBgToolbarVideoChange(e: Event) {
+		handleVideoUpload(e);
+		const el = e.target as HTMLInputElement;
+		el.value = '';
+	}
+
+	$effect(() => {
+		void activeSlide;
+		closeNewsBgToolbar();
+	});
+
 	function handleOverlayUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
@@ -3823,7 +3979,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		const t = slideTemplates[i] ?? 'news';
 		const imgLen = ((bgImagesByTemplate[t] ?? [])[i] ?? '').length;
 		const vidLen = ((bgVideosByTemplate[t] ?? [])[i] ?? '').length;
-		return `${t}:${imgLen}:${vidLen}:${(slides[i] ?? '').length}:${(tweetTopTextBySlide[i] ?? '').length}:${(articleTextBySlide[i] ?? '').length}:${(textCarouselTextBySlide[i] ?? '').length}:${(imageQuoteTextBySlide[i] ?? '').length}:${(videoStoryHeadlineBySlide[i] ?? '').length}`;
+		return `${t}:${imgLen}:${vidLen}:${(slides[i] ?? '').length}:${(tweetTopTextBySlide[i] ?? '').length}:${(tweetTopAvatarImageBySlide[i] ?? '').length}:${(tweetBottomAvatarImageBySlide[i] ?? '').length}:${(articleTextBySlide[i] ?? '').length}:${(textCarouselTextBySlide[i] ?? '').length}:${(imageQuoteTextBySlide[i] ?? '').length}:${(videoStoryHeadlineBySlide[i] ?? '').length}`;
 	}
 
 	function syncFilmstripSigCacheAfterCapture() {
@@ -4775,6 +4931,24 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				bind:this={overlayQuickInput}
 				onchange={handleOverlayUpload}
 			/>
+			<input
+				type="file"
+				accept="image/*"
+				class="sr-only"
+				tabindex={-1}
+				aria-hidden="true"
+				bind:this={newsBgToolbarImageInput}
+				onchange={handleNewsBgToolbarImageChange}
+			/>
+			<input
+				type="file"
+				accept="video/mp4,video/webm,video/quicktime"
+				class="sr-only"
+				tabindex={-1}
+				aria-hidden="true"
+				bind:this={newsBgToolbarVideoInput}
+				onchange={handleNewsBgToolbarVideoChange}
+			/>
 			<DockToolbar items={dockItems} inline />
 			<TemplateDockToolbar
 				templates={templateDockTabs}
@@ -4801,7 +4975,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				<div
 					data-studio-canvas-root
 					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
-					class="relative overflow-hidden rounded-2xl"
+					class="relative rounded-2xl {previewTemplate === 'tweet' ? 'overflow-visible' : 'overflow-hidden'}"
 				>
 
 			{#if filmstripBulkCapturing && slides.length >= 2}
@@ -4942,6 +5116,14 @@ showSubjectCutout={canvasShowCutout}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 					headlineSelectionRestoreNonce={headlineSelectionRestoreNonce}
 					headlineSelectionRestoreRange={headlineRange}
+					onBackgroundQuickTap={
+						canvasInteractive && previewTemplate === 'news'
+							? (d) => {
+									closeToolbar();
+									newsBgToolbarPoint = { x: d.clientX, y: d.clientY };
+								}
+							: undefined
+					}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
@@ -5029,6 +5211,12 @@ showSubjectCutout={canvasShowCutout}
 					onReplyCountChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetReplyCountBySlide = tweetReplyCountBySlide.map((x, i) => i === paintSlide ? v : x); }}
 					onRepostCountChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetRepostCountBySlide = tweetRepostCountBySlide.map((x, i) => i === paintSlide ? v : x); }}
 					onLikeCountChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetLikeCountBySlide = tweetLikeCountBySlide.map((x, i) => i === paintSlide ? v : x); }}
+					topAvatar={tweetTopAvatarImageBySlide[paintSlide] ?? ''}
+					topAvatarInnerBg={tweetTopAvatarInnerBgBySlide[paintSlide] ?? ''}
+					topAvatarLabel={tweetTopAvatarLabelBySlide[paintSlide] ?? ''}
+					bottomAvatar={tweetBottomAvatarImageBySlide[paintSlide] ?? ''}
+					bottomAvatarInnerBg={tweetBottomAvatarInnerBgBySlide[paintSlide] ?? ''}
+					bottomAvatarLabel={tweetBottomAvatarLabelBySlide[paintSlide] ?? ''}
 topImage={(bgImagesByTemplate.tweet ?? [])[paintSlide] || '/templates/tweet/demo-bg.jpg'}
 onTopImageChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideImage(paintSlide, v, 'tweet'); }}
 topVideo={(bgVideosByTemplate.tweet ?? [])[paintSlide] ?? ''}
@@ -5901,6 +6089,19 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	</div>
 {/if}
 
+<!-- News canvas: tap background → cut out / replace -->
+<NewsBackgroundToolbar
+	anchor={newsBgToolbarAnchor}
+	showCutout={!!String(canvasBackgroundImage ?? '').trim() && !String(canvasBackgroundVideo ?? '').trim()}
+	isVideoBackground={!!String(canvasBackgroundVideo ?? '').trim()}
+	onCutOut={() => void cutOutSubject(activeSlide)}
+	onReplace={() => {
+		if (canvasBackgroundVideo.trim()) newsBgToolbarVideoInput?.click();
+		else newsBgToolbarImageInput?.click();
+	}}
+	onClose={closeNewsBgToolbar}
+/>
+
 <!-- Text carousel profile circle -->
 <TextCarouselAvatarToolbar
 	anchor={selectedText === 'textCarouselAvatar' ? toolbarAnchor : null}
@@ -5945,9 +6146,138 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	onClose={closeToolbar}
 />
 
+<!-- Tweet profile circles (same chrome as text carousel) -->
+<TextCarouselAvatarToolbar
+	anchor={selectedText === 'tweetTopAvatar' ? toolbarAnchor : null}
+	avatarSrc={tweetTopAvatarImageBySlide[paintSlide] ?? ''}
+	innerBg={tweetTopAvatarInnerBgBySlide[paintSlide] ?? ''}
+	label={tweetTopAvatarLabelBySlide[paintSlide] ?? ''}
+	nameFallback={tweetTopNameBySlide[paintSlide] ?? ''}
+	defaultInnerBg={textCarouselDefaultAvatarBg}
+	onImageFile={(dataUrl) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetTopAvatarImageBySlide = tweetTopAvatarImageBySlide.map((x, i) => (i === paintSlide ? dataUrl : x));
+		requestAnimationFrame(() => {
+			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
+		});
+	}}
+	onClearImage={() => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetTopAvatarImageBySlide = tweetTopAvatarImageBySlide.map((x, i) => (i === paintSlide ? '' : x));
+		requestAnimationFrame(() => {
+			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
+		});
+	}}
+	onInnerBg={(hex) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetTopAvatarInnerBgBySlide = tweetTopAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? hex : x));
+	}}
+	onClearInnerBg={() => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetTopAvatarInnerBgBySlide = tweetTopAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? '' : x));
+	}}
+	onLabel={(value) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetTopAvatarLabelBySlide = tweetTopAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
+	}}
+	onClose={closeToolbar}
+/>
+<TextCarouselAvatarToolbar
+	anchor={selectedText === 'tweetBottomAvatar' ? toolbarAnchor : null}
+	avatarSrc={tweetBottomAvatarImageBySlide[paintSlide] ?? ''}
+	innerBg={tweetBottomAvatarInnerBgBySlide[paintSlide] ?? ''}
+	label={tweetBottomAvatarLabelBySlide[paintSlide] ?? ''}
+	nameFallback={tweetBottomNameBySlide[paintSlide] ?? ''}
+	defaultInnerBg={textCarouselDefaultAvatarBg}
+	onImageFile={(dataUrl) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetBottomAvatarImageBySlide = tweetBottomAvatarImageBySlide.map((x, i) => (i === paintSlide ? dataUrl : x));
+		requestAnimationFrame(() => {
+			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
+		});
+	}}
+	onClearImage={() => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetBottomAvatarImageBySlide = tweetBottomAvatarImageBySlide.map((x, i) => (i === paintSlide ? '' : x));
+		requestAnimationFrame(() => {
+			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
+		});
+	}}
+	onInnerBg={(hex) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetBottomAvatarInnerBgBySlide = tweetBottomAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? hex : x));
+	}}
+	onClearInnerBg={() => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetBottomAvatarInnerBgBySlide = tweetBottomAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? '' : x));
+	}}
+	onLabel={(value) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
+	}}
+	onClose={closeToolbar}
+/>
+
+<TweetMediaToolbar
+	anchor={selectedText === 'tweetTopMedia' ? toolbarAnchor : null}
+	hasAttachment={!!(
+		String((bgImagesByTemplate.tweet ?? [])[paintSlide] ?? '').trim() ||
+		String((bgVideosByTemplate.tweet ?? [])[paintSlide] ?? '').trim()
+	)}
+	zoom={tweetTopImageZoomBySlide[paintSlide] ?? 1}
+	onZoomIn={() => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		const cur = Number(tweetTopImageZoomBySlide[paintSlide]) || 1;
+		const next = Math.min(5, Math.max(1, cur + 0.12));
+		tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((z, i) => (i === paintSlide ? next : z));
+	}}
+	onZoomOut={() => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		const cur = Number(tweetTopImageZoomBySlide[paintSlide]) || 1;
+		const next = Math.min(5, Math.max(1, cur - 0.12));
+		tweetTopImageZoomBySlide = tweetTopImageZoomBySlide.map((z, i) => (i === paintSlide ? next : z));
+	}}
+	onReplaceFile={(file) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		const extOk = /\.(mp4|mov|webm|m4v|mkv|avi)$/i.test(file.name ?? '');
+		const isVideo =
+			file.type.startsWith('video/') ||
+			file.type === 'application/mp4' ||
+			(file.type === 'application/octet-stream' && extOk) ||
+			extOk;
+		const url = URL.createObjectURL(file);
+		if (isVideo) setSlideVideo(paintSlide, url, 'tweet');
+		else setSlideImage(paintSlide, url, 'tweet');
+	}}
+	onRemove={() => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		setSlideImage(paintSlide, '', 'tweet');
+	}}
+	onClose={closeToolbar}
+/>
+
 <!-- Canva-style floating toolbar for text formatting -->
 <FloatingTextToolbar
-	anchor={selectedText === 'textCarouselAvatar' ? null : toolbarAnchor}
+	anchor={selectedText === 'textCarouselAvatar' ||
+		selectedText === 'tweetTopAvatar' ||
+		selectedText === 'tweetBottomAvatar' ||
+		selectedText === 'tweetTopMedia'
+		? null
+		: toolbarAnchor}
 	style={toolbarFloatingStyle}
 	autoFontSize={toolbarAutoFontSize ?? (selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined)}
 	deleteOnly={selectedText === 'articleImage' || selectedText === 'articleLogo'}
@@ -5970,6 +6300,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	onDelete={
 		selectedText &&
 			selectedText !== 'textCarouselAvatar' &&
+			selectedText !== 'tweetTopAvatar' &&
+			selectedText !== 'tweetBottomAvatar' &&
+			selectedText !== 'tweetTopMedia' &&
 			(selectedText !== 'textOverlay' || !!selectedTextOverlayId)
 			? handleFloatingToolbarDelete
 			: undefined

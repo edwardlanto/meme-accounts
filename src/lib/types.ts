@@ -62,6 +62,12 @@ export type TextElementKind =
 	| 'tweetTopName'
 	| 'tweetTopHandle'
 	| 'tweetTopText'
+	/** Studio: tweet attachment frame selected (floating media toolbar). */
+	| 'tweetTopMedia'
+	/** Studio: top tweet profile circle (avatar toolbar). */
+	| 'tweetTopAvatar'
+	/** Studio: reply profile circle (avatar toolbar). */
+	| 'tweetBottomAvatar'
 	| 'tweetBottomName'
 	| 'tweetBottomHandle'
 	| 'tweetBottomText'

@@ -3,13 +3,17 @@ import HighlightedText from '$lib/components/HighlightedText.svelte';
 import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
-import { Image as ImageIcon, Minus, Move, Plus, Trash2 } from 'lucide-svelte';
+import { Move } from 'lucide-svelte';
 
 interface TweetProps {
 	// Top tweet
 	topName?: string;
 	topHandle?: string;
 	topAvatar?: string;
+	/** Solid fill inside top profile circle when no photo (empty = tweet card surface). */
+	topAvatarInnerBg?: string;
+	/** Override letters in top circle; empty → initials from name. */
+	topAvatarLabel?: string;
 	topVerified?: boolean;
 	topText?: string;
 	topImage?: string;
@@ -34,6 +38,8 @@ interface TweetProps {
 	bottomName?: string;
 	bottomHandle?: string;
 	bottomAvatar?: string;
+	bottomAvatarInnerBg?: string;
+	bottomAvatarLabel?: string;
 	bottomVerified?: boolean;
 	bottomText?: string;
 	// Engagement
@@ -81,6 +87,8 @@ let {
 	topName      = 'Chef 👨‍🍳',
 	topHandle    = '@chefsevenn',
 	topAvatar    = '',
+	topAvatarInnerBg = '',
+	topAvatarLabel = '',
 	topVerified  = true,
 	topText      = 'Ketchup or mayo or mustard?',
 	topImage     = '/templates/tweet/demo-bg.jpg',
@@ -93,6 +101,8 @@ let {
 	bottomName   = 'Mo Mohler',
 	bottomHandle = '@MoMohler',
 	bottomAvatar = '',
+	bottomAvatarInnerBg = '',
+	bottomAvatarLabel = '',
 	bottomVerified = true,
 	bottomText   = '3 straight misses chef. These appear to be French fries.',
 	replyCount = '4.2K',
@@ -158,10 +168,6 @@ let {
 		onTopImageZoomChange?.(v);
 	}
 
-	function bumpTopMediaZoom(delta: number) {
-		const z = Number(topImageZoom) || 1;
-		setTopImageZoom(z + delta);
-	}
 	/** Wider than 0–100 so tall/wide cover crops can reach edges without hitting a hard wall. */
 	const PAN_PCT_MIN = -55;
 	const PAN_PCT_MAX = 155;
@@ -235,108 +241,33 @@ let {
 	}
 
 	function endTopImage(e: PointerEvent) {
+		const wasDragging = topImageResizing || topImagePanning;
 		if (topImageResizing || topImagePanning) e.stopPropagation();
 		topImageResizing = false;
 		topImagePanning = false;
 		topImageStart = null;
-	}
-
-	function onTopImageWheel(e: WheelEvent) {
-		if (!interactive) return;
-		// Alt/Option wheel to zoom inside the frame.
-		if (!e.altKey) return;
-		e.preventDefault();
-		const z = Number(topImageZoom) || 1;
-		const next = z + (e.deltaY > 0 ? -0.08 : 0.08);
-		setTopImageZoom(next);
-	}
-
-	let topImageHovering = $state(false);
-	let topImageFileEl = $state<HTMLInputElement | null>(null);
-
-	// Keep these small for fast editing/preview; export can still upscale if needed.
-	const MAX_IMAGE_DIM = 1600; // px
-	const IMAGE_QUALITY = 0.82;
-
-	async function compressImageToBlob(file: File): Promise<Blob> {
-		// decode() is significantly faster than drawing raw <img> in many cases
-		const bmp = await createImageBitmap(file);
-		const srcW = bmp.width;
-		const srcH = bmp.height;
-		const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(srcW, srcH));
-		const w = Math.max(1, Math.round(srcW * scale));
-		const h = Math.max(1, Math.round(srcH * scale));
-
-		const canvas = document.createElement('canvas');
-		canvas.width = w;
-		canvas.height = h;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) {
-			bmp.close();
-			return file;
+		if (wasDragging) {
+			suppressMediaClick = true;
+			setTimeout(() => {
+				suppressMediaClick = false;
+			}, 120);
 		}
-		ctx.imageSmoothingEnabled = true;
-		ctx.imageSmoothingQuality = 'high';
-		ctx.drawImage(bmp, 0, 0, w, h);
-		bmp.close();
-
-		const type = file.type === 'image/png' ? 'image/webp' : 'image/webp';
-		const blob: Blob = await new Promise((resolve) =>
-			canvas.toBlob((b) => resolve(b ?? file), type, IMAGE_QUALITY),
-		);
-		return blob;
 	}
 
-	function openTopImagePicker(e: MouseEvent) {
+	/** Suppress frame click after pan/resize so the media toolbar doesn’t reopen. */
+	let suppressMediaClick = $state(false);
+
+	function onTweetMediaFrameClick(e: MouseEvent) {
+		if (suppressMediaClick) return;
+		if (!interactive || !topImageEditable || !onTextSelect) return;
 		e.stopPropagation();
-		if (!topImageEditable && !topVideoEditable) return;
-		topImageFileEl?.click();
+		onTextSelect('tweetTopMedia', e.currentTarget as HTMLElement);
 	}
 
-	function removeTopImage(e: MouseEvent) {
-		e.stopPropagation();
-		if (!topImageEditable && !topVideoEditable) return;
-		onTopImageChange?.('');
-		onTopVideoChange?.('');
-	}
-
-	function onTopImageFile(e: Event) {
-		if (!topImageEditable && !topVideoEditable) return;
-		const file = (e.target as HTMLInputElement).files?.[0];
-		if (!file) return;
-		(e.target as HTMLInputElement).value = '';
-
-		const extOk = /\.(mp4|mov|webm|m4v|mkv|avi)$/i.test(file.name ?? '');
-		const isVideo =
-			file.type.startsWith('video/') ||
-			file.type === 'application/mp4' ||
-			(file.type === 'application/octet-stream' && extOk) ||
-			extOk;
-		if (isVideo) {
-			const url = URL.createObjectURL(file);
-			onTopVideoChange?.(url);
-			return;
-		}
-
-		// 1) Instant preview (no base64).
-		const quickUrl = URL.createObjectURL(file);
-		onTopImageChange?.(quickUrl);
-		onTopVideoChange?.('');
-
-		// 2) Compress in background, then swap in a smaller blob URL.
-		(async () => {
-			try {
-				const blob = await compressImageToBlob(file);
-				const smallUrl = URL.createObjectURL(blob);
-				onTopImageChange?.(smallUrl);
-				// Studio revokes the previous blob when it replaces it, but revoke here too
-				// in case this template is used outside Studio.
-				if (quickUrl.startsWith('blob:')) URL.revokeObjectURL(quickUrl);
-			} catch {
-				// Keep quick preview on failure.
-			}
-		})();
-	}
+	const mediaFrameSelected = $derived(selectedText === 'tweetTopMedia');
+	const mediaFrameOutline = $derived(
+		mediaFrameSelected && topImageEditable ? 'box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.65);' : '',
+	);
 	const tweetHighlightDefault = '#1D9BF0';
 	const isLight = $derived(templateTheme === 'light');
 	const card = $derived(isLight ? '#FFFFFF' : '#111111');
@@ -370,24 +301,51 @@ let {
 	const W = 1080;
 	const H = 1350;
 
-	/** Initials fallback for missing avatar */
+	/** Initials fallback for missing avatar (match text carousel: up to 3 letters). */
 	function initials(name: string) {
-		return name.replace(/[^\w\s]/g, '').trim().split(/\s+/).map(w => w[0]?.toUpperCase() ?? '').slice(0, 2).join('');
+		return name.replace(/[^\w\s]/g, '').trim().split(/\s+/).map(w => w[0]?.toUpperCase() ?? '').slice(0, 3).join('');
 	}
 
-	/** Simple hash → hue for coloured initials placeholder */
-	function nameHue(name: string) {
-		let h = 0;
-		for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
-		return Math.abs(h) % 360;
+	const topInnerDiscBg = $derived(
+		(topAvatarInnerBg && topAvatarInnerBg.trim()) ? topAvatarInnerBg.trim() : card,
+	);
+	const bottomInnerDiscBg = $derived(
+		(bottomAvatarInnerBg && bottomAvatarInnerBg.trim()) ? bottomAvatarInnerBg.trim() : card,
+	);
+	const topDiscText = $derived((topAvatarLabel && topAvatarLabel.trim()) || initials(topName));
+	const bottomDiscText = $derived((bottomAvatarLabel && bottomAvatarLabel.trim()) || initials(bottomName));
+
+	function topDiscInk() {
+		const custom = !!(topAvatarInnerBg && topAvatarInnerBg.trim());
+		if (custom) return '#ffffff';
+		return textPrimary;
 	}
+	function bottomDiscInk() {
+		const custom = !!(bottomAvatarInnerBg && bottomAvatarInnerBg.trim());
+		if (custom) return '#ffffff';
+		return textPrimary;
+	}
+
+	function onTopAvatarClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!interactive || !onTextSelect) return;
+		onTextSelect('tweetTopAvatar', e.currentTarget as HTMLElement);
+	}
+	function onBottomAvatarClick(e: MouseEvent) {
+		e.stopPropagation();
+		if (!interactive || !onTextSelect) return;
+		onTextSelect('tweetBottomAvatar', e.currentTarget as HTMLElement);
+	}
+
+	const topAvatarSelected = $derived(selectedText === 'tweetTopAvatar');
+	const bottomAvatarSelected = $derived(selectedText === 'tweetBottomAvatar');
 </script>
 
 <!-- Outer wrapper — controls display size -->
 <div style="
 	width: {W * scale}px;
 	height: {H * scale}px;
-	overflow: hidden;
+	overflow: visible;
 	border-radius: {scale < 1 ? '12px' : '0'};
 	flex-shrink: 0;
 	position: relative;
@@ -406,7 +364,7 @@ let {
 			display: flex;
 			flex-direction: column;
 			box-sizing: border-box;
-			overflow: hidden;
+			overflow: visible;
 			padding: 56px 72px 72px;
 		"
 	>
@@ -421,16 +379,31 @@ let {
 				{#snippet children()}
 					<div style="display:flex;align-items:flex-start;gap:16px;margin:0 0 20px;">
 						<div
+							role="button"
+							tabindex="0"
+							data-draggable-no-pan
+							data-text-selectable="tweetTopAvatar"
 							style="
 								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
-								{topAvatar ? '' : `background: hsl(${nameHue(topName)}, 60%, 50%);`}
+								background:{topInnerDiscBg};
 								display:flex;align-items:center;justify-content:center;
+								cursor:{interactive && onTextSelect ? 'pointer' : 'default'};
+								outline:none;
+								{topAvatarSelected ? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);' : ''}
 							"
+							onclick={onTopAvatarClick}
+							onkeydown={(e) => {
+								if (!interactive || !onTextSelect) return;
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									onTextSelect('tweetTopAvatar', e.currentTarget as HTMLElement);
+								}
+							}}
 						>
-							{#if topAvatar}
-								<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
+							{#if topAvatar?.trim()}
+								<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;" />
 							{:else}
-								<span style="color:#fff;font-size:26px;font-weight:700;letter-spacing:-0.5px;">{initials(topName)}</span>
+								<span style="color:{topDiscInk()};font-size:26px;font-weight:700;letter-spacing:-0.5px;pointer-events:none;">{topDiscText}</span>
 							{/if}
 						</div>
 						<div style="flex:1;min-width:0;padding-top:2px;">
@@ -491,48 +464,43 @@ let {
 				dy={textOffsets.tweetTopText?.y ?? 0}
 				{interactive}
 				{scale}
+				holdDragFromText={!!topEditable}
+				holdMs={300}
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopText', { x, y })}
 			>
 				{#snippet children()}
 					<div style="margin: 0 0 22px;">
-				<CanvasMarkupTextBlock
-					value={topText}
-					interactive={topEditable}
-					defaultColor={tweetHighlightDefault}
-					toolbarKind="tweetTopText"
-					selected={selectedText === 'tweetTopText'}
-					onTextSelect={onTextSelect}
-					onHeadlineRangeSelect={onHeadlineRangeSelect}
-					rows={1}
-					minHeight="0px"
-					{showToolbar}
-					ariaLabel="Tweet text"
-					fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
-					fontSize={tweetStyles.tweetTopText?.fontSize ?? 44}
-					onTextChange={onTopTextChange}
-				>
-					{#snippet display()}
-						<HighlightedText
-							as="p"
-							text={topText}
+						<CanvasMarkupTextBlock
+							value={topText}
+							interactive={topEditable}
 							defaultColor={tweetHighlightDefault}
-							style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
-						/>
-					{/snippet}
-				</CanvasMarkupTextBlock>
+							toolbarKind="tweetTopText"
+							selected={selectedText === 'tweetTopText'}
+							onTextSelect={onTextSelect}
+							onHeadlineRangeSelect={onHeadlineRangeSelect}
+							rows={1}
+							minHeight="0px"
+							{showToolbar}
+							ariaLabel="Tweet text"
+							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+							fontSize={tweetStyles.tweetTopText?.fontSize ?? 44}
+							onTextChange={onTopTextChange}
+						>
+							{#snippet display()}
+								<HighlightedText
+									as="p"
+									text={topText}
+									defaultColor={tweetHighlightDefault}
+									style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
+								/>
+							{/snippet}
+						</CanvasMarkupTextBlock>
 					</div>
 				{/snippet}
 			</DraggableBlock>
 
 			<!-- Attached image -->
 			{#if topImage || topImageEditable}
-				<input
-					bind:this={topImageFileEl}
-					type="file"
-					accept="image/*,video/*"
-					style="display:none"
-					onchange={onTopImageFile}
-				/>
 				<DraggableBlock
 					dx={textOffsets.tweetTopImage?.x ?? 0}
 					dy={textOffsets.tweetTopImage?.y ?? 0}
@@ -542,20 +510,17 @@ let {
 				>
 					{#snippet children()}
 						<div
-style="border-radius:16px;overflow:hidden;margin:0 0 40px;border:1px solid {mediaBorder};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;"
-							onmouseenter={() => (topImageHovering = true)}
-							onmouseleave={() => {
-								if (!topImagePanning && !topImageResizing) topImageHovering = false;
-							}}
-onpointermove={moveTopImage}
-onpointerup={endTopImage}
-onpointercancel={endTopImage}
-onwheel={onTopImageWheel}
+							data-tweet-media-frame
+							style="border-radius:16px;overflow:hidden;margin:0 0 40px;border:1px solid {mediaBorder};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;{mediaFrameOutline}"
+							onclick={onTweetMediaFrameClick}
+							onpointermove={moveTopImage}
+							onpointerup={endTopImage}
+							onpointercancel={endTopImage}
 							role="presentation"
 						>
-{#if topVideo}
+							{#if topVideo}
 								<div
-									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && topImageHovering && !topVideo ? 'grab' : 'default'};"
+									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && mediaFrameSelected ? 'grab' : 'default'};"
 									onpointerdown={(e) => {
 										if (e.altKey) startTopImagePan(e);
 									}}
@@ -584,7 +549,7 @@ onwheel={onTopImageWheel}
 								</div>
 							{:else if topImage}
 								<div
-									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && topImageHovering ? 'grab' : 'default'};"
+									style="position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:{interactive && mediaFrameSelected ? 'grab' : 'default'};"
 									onpointerdown={startTopImagePan}
 									role="presentation"
 								>
@@ -607,112 +572,52 @@ onwheel={onTopImageWheel}
 									/>
 								</div>
 							{:else}
-								<div style="width:100%;height:320px;background:{card2};display:flex;align-items:center;justify-content:center;color:{textSecondary};font-size:28px;">
+								<div
+									style="width:100%;height:320px;background:{card2};display:flex;align-items:center;justify-content:center;color:{textSecondary};font-size:28px;cursor:{topImageEditable ? 'pointer' : 'default'};"
+								>
 									Add image
 								</div>
-
 							{/if}
 
-							{#if topImageEditable && topImageHovering}
-								<div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(0,0,0,0.0), rgba(0,0,0,0.25));pointer-events:none;"></div>
-								<div style="position:absolute;top:14px;right:14px;display:flex;gap:10px;pointer-events:auto;">
-									<button
-										type="button"
-										onclick={openTopImagePicker}
-										onmousedown={(e) => e.preventDefault()}
-										style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
-										title="Upload media (image/video)"
-										aria-label="Upload media"
-									><ImageIcon size={18} /></button>
-									{#if topImage || topVideo}
-										<button
-											type="button"
-											onclick={removeTopImage}
-											onmousedown={(e) => e.preventDefault()}
-											style="width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;"
-											title="Remove media"
-											aria-label="Remove media"
-										><Trash2 size={18} /></button>
-									{/if}
-								</div>
-								<div style="position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:8px;pointer-events:none;">
-									{#if topVideo && onTopImagePanChange}
-										<button
-											type="button"
-											style="pointer-events:auto;width:44px;height:44px;border-radius:999px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.70);color:#fff;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;"
-											title="Drag to reposition video in frame"
-											aria-label="Drag to reposition video in frame"
-											onpointerdown={(e) => {
-												(e.currentTarget as HTMLButtonElement).style.cursor = 'grabbing';
-												startTopVideoPanFromHandle(e);
-											}}
-											onpointerup={(e) => {
-												(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
-											}}
-											onpointercancel={(e) => {
-												(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
-											}}
-											onlostpointercapture={(e) => {
-												(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
-											}}
-											onmousedown={(e) => e.preventDefault()}
-										>
-											<Move size={18} />
-										</button>
-									{/if}
-									{#if (topVideo || topImage) && onTopImageZoomChange}
-										<div
-											style="display:flex;flex-direction:column;gap:3px;pointer-events:auto;"
-											role="group"
-											aria-label="Zoom media in frame"
-										>
-											<button
-												type="button"
-												style="width:36px;height:36px;border-radius:10px;border:2px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.72);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:{(Number(topImageZoom) || 1) >= MEDIA_ZOOM_MAX - 0.02 ? 0.35 : 1};"
-												disabled={(Number(topImageZoom) || 1) >= MEDIA_ZOOM_MAX - 0.02}
-												title="Zoom in (expand crop)"
-												aria-label="Zoom in"
-												onclick={(e) => {
-													e.stopPropagation();
-													bumpTopMediaZoom(0.12);
-												}}
-												onmousedown={(e) => e.preventDefault()}
-											>
-												<Plus size={16} strokeWidth={2.5} />
-											</button>
-											<button
-												type="button"
-												style="width:36px;height:36px;border-radius:10px;border:2px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.72);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:{(Number(topImageZoom) || 1) <= MEDIA_ZOOM_MIN + 0.02 ? 0.35 : 1};"
-												disabled={(Number(topImageZoom) || 1) <= MEDIA_ZOOM_MIN + 0.02}
-												title="Zoom out"
-												aria-label="Zoom out"
-												onclick={(e) => {
-													e.stopPropagation();
-													bumpTopMediaZoom(-0.12);
-												}}
-												onmousedown={(e) => e.preventDefault()}
-											>
-												<Minus size={16} strokeWidth={2.5} />
-											</button>
-										</div>
-									{/if}
-									<div style="font-size:11px;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.14);padding:6px 8px;border-radius:999px;">
-										{#if topVideo}
-											Move icon: pan · ±: zoom · Alt+wheel · Alt+drag
-										{:else}
-											Corner: resize · ±: zoom · Alt+wheel · Alt+drag
-										{/if}
-									</div>
-								</div>
+							{#if topVideo && topImageEditable && mediaFrameSelected && onTopImagePanChange}
+								<button
+									type="button"
+									style="position:absolute;left:12px;bottom:12px;z-index:3;width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;pointer-events:auto;"
+									title="Drag to reposition video"
+									aria-label="Drag to reposition video in frame"
+									onpointerdown={(e) => {
+										e.stopPropagation();
+										(e.currentTarget as HTMLButtonElement).style.cursor = 'grabbing';
+										startTopVideoPanFromHandle(e);
+									}}
+									onpointerup={(e) => {
+										(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
+									}}
+									onpointercancel={(e) => {
+										(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
+									}}
+									onlostpointercapture={(e) => {
+										(e.currentTarget as HTMLButtonElement).style.cursor = 'grab';
+									}}
+									onmousedown={(e) => e.preventDefault()}
+								>
+									<Move size={18} />
+								</button>
+							{/if}
+
+							{#if topImageEditable && mediaFrameSelected}
 								<div
-									style="position:absolute;right:12px;bottom:12px;width:18px;height:18px;border-radius:6px;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;cursor:nwse-resize;pointer-events:auto;"
-									onpointerdown={startTopImageResize}
-									title="Drag to resize"
+									style="position:absolute;right:10px;bottom:10px;z-index:3;width:22px;height:22px;border-radius:8px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;cursor:nwse-resize;pointer-events:auto;touch-action:none;"
+									onpointerdown={(e) => {
+										e.stopPropagation();
+										startTopImageResize(e);
+									}}
+									title="Drag to resize frame"
 									role="button"
 									tabindex="0"
-									aria-label="Resize image"
+									aria-label="Resize media frame"
 								>
-									<div style="width:10px;height:10px;border-right:2px solid rgba(255,255,255,0.7);border-bottom:2px solid rgba(255,255,255,0.7);transform:translate(1px,1px);"></div>
+									<div style="width:10px;height:10px;border-right:2px solid rgba(255,255,255,0.75);border-bottom:2px solid rgba(255,255,255,0.75);transform:translate(1px,1px);"></div>
 								</div>
 							{/if}
 						</div>
@@ -731,16 +636,31 @@ onwheel={onTopImageWheel}
 				{#snippet children()}
 					<div style="display:flex;align-items:flex-start;gap:16px;margin:8px 0 14px;">
 						<div
+							role="button"
+							tabindex="0"
+							data-draggable-no-pan
+							data-text-selectable="tweetBottomAvatar"
 							style="
 								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
-								{bottomAvatar ? '' : `background:hsl(${nameHue(bottomName)},60%,45%);`}
+								background:{bottomInnerDiscBg};
 								display:flex;align-items:center;justify-content:center;
+								cursor:{interactive && onTextSelect ? 'pointer' : 'default'};
+								outline:none;
+								{bottomAvatarSelected ? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);' : ''}
 							"
+							onclick={onBottomAvatarClick}
+							onkeydown={(e) => {
+								if (!interactive || !onTextSelect) return;
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									onTextSelect('tweetBottomAvatar', e.currentTarget as HTMLElement);
+								}
+							}}
 						>
-							{#if bottomAvatar}
-								<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;" />
+							{#if bottomAvatar?.trim()}
+								<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;" />
 							{:else}
-								<span style="color:#fff;font-size:26px;font-weight:700;">{initials(bottomName)}</span>
+								<span style="color:{bottomDiscInk()};font-size:26px;font-weight:700;pointer-events:none;">{bottomDiscText}</span>
 							{/if}
 						</div>
 						<div style="flex:1;min-width:0;padding-top:2px;">
@@ -801,6 +721,8 @@ onwheel={onTopImageWheel}
 				dy={textOffsets.tweetBottomText?.y ?? 0}
 				{interactive}
 				{scale}
+				holdDragFromText={!!bottomEditable}
+				holdMs={300}
 				onChange={(x, y) => onTextOffsetChange?.('tweetBottomText', { x, y })}
 			>
 				{#snippet children()}

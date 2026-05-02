@@ -135,6 +135,8 @@
 		/** Parent bumps after applying `[[...]]` markup so we can re-select the same plain range. */
 		headlineSelectionRestoreNonce?: number;
 		headlineSelectionRestoreRange?: { start: number; end: number } | null;
+		/** Fired on tap (no drag) on the background pan layer when photo/video is present — parent may show a BG toolbar. */
+		onBackgroundQuickTap?: (detail: { clientX: number; clientY: number }) => void;
 	}
 
 	let {
@@ -210,6 +212,7 @@
 		onHeadlineRangeSelect,
 		headlineSelectionRestoreNonce = 0,
 		headlineSelectionRestoreRange = null,
+		onBackgroundQuickTap,
 	}: Props = $props();
 
 	const isLight = $derived(templateTheme === 'light');
@@ -430,12 +433,15 @@
 	const bgRenderSize = $derived(
 		bgFitMode === 'contain' ? bgZoomPct : Math.max(bgZoomPct, BG_COVER_MIN_BLEED),
 	);
-	const bgRenderOverflowPct = $derived(Math.max(0, bgRenderSize - 100)); // pan room when zoomed in
+	const bgRenderOverflowPct = $derived(Math.max(0, bgRenderSize - 100)); // strict cover overscan
+	/** Extra pan range at 100% zoom so drag-pan doesn’t feel dead; can show a sliver of letterbox at extremes. */
+	const BG_MIN_PAN_ROOM_PCT = 18;
+	const bgPanRangePct = $derived(Math.max(BG_MIN_PAN_ROOM_PCT, bgRenderOverflowPct));
 	// Natural panning: slide an oversized layer inside the frame.
 	//  - bgOffsetX/Y = 0  → show left/top edge
 	//  - bgOffsetX/Y = 100→ show right/bottom edge
-	const bgPanLeftPct = $derived(-(bgRenderOverflowPct * (bgOffsetX / 100)));
-	const bgPanTopPct  = $derived(-(bgRenderOverflowPct * (bgOffsetY / 100)));
+	const bgPanLeftPct = $derived(-(bgPanRangePct * (bgOffsetX / 100)));
+	const bgPanTopPct  = $derived(-(bgPanRangePct * (bgOffsetY / 100)));
 	// When shrinking below 100%, the image no longer covers the frame. In that
 	// case we center it and the X/Y sliders instead pan the shrunk image within
 	// the frame (so 0→100% shifts the image from one edge to the other).
@@ -1025,33 +1031,123 @@
 		resizingCircle2 = false;
 	}
 
-	// ── Background pan ─────────────────────────────────────────────────────
+	// ── Background: click opens BG toolbar (Studio); pan only after long-press — avoids false taps & “always grabbing” cursor
 	let bgDragging = $state(false);
 	let bgLastMx = 0;
 	let bgLastMy = 0;
+	let bgPanStartX = 0;
+	let bgPanStartY = 0;
+	let bgPanArmed = $state(false);
+	let bgDidPan = $state(false);
+	let bgSlopBeforeArm = $state(false);
+	let bgArmCompleted = $state(false);
+	let bgSuppressNextClick = $state(false);
+	let bgHoldTimer: ReturnType<typeof setTimeout> | null = null;
+	const BG_HOLD_MS = 420;
+	const BG_SLOP_PX = 18;
+	/** Pointer drag sensitivity — higher = move background farther per pixel */
+	const BG_PAN_DRAG_SENS = 6;
+
+	const bgPanCursor = $derived(
+		!bgArmCompleted ? 'default' : bgDragging ? 'grabbing' : 'grab',
+	);
 
 	function bgPointerDown(e: PointerEvent) {
 		if (!interactive) return;
-		bgDragging = true;
+		bgPanStartX = e.clientX;
+		bgPanStartY = e.clientY;
 		bgLastMx = e.clientX;
 		bgLastMy = e.clientY;
+		bgDragging = false;
+		bgPanArmed = false;
+		bgDidPan = false;
+		bgSlopBeforeArm = false;
+		bgArmCompleted = false;
+		bgSuppressNextClick = false;
+		if (bgHoldTimer) {
+			clearTimeout(bgHoldTimer);
+			bgHoldTimer = null;
+		}
+		bgHoldTimer = setTimeout(() => {
+			bgHoldTimer = null;
+			bgPanArmed = true;
+			bgArmCompleted = true;
+		}, BG_HOLD_MS);
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
 	function bgPointerMove(e: PointerEvent) {
-		if (!bgDragging) return;
+		const dx0 = e.clientX - bgPanStartX;
+		const dy0 = e.clientY - bgPanStartY;
+		const dist2 = dx0 * dx0 + dy0 * dy0;
+
+		if (!bgPanArmed) {
+			if (dist2 > BG_SLOP_PX * BG_SLOP_PX) {
+				if (bgHoldTimer) {
+					clearTimeout(bgHoldTimer);
+					bgHoldTimer = null;
+				}
+				bgSlopBeforeArm = true;
+			}
+			return;
+		}
+
+		if (!bgDragging) {
+			bgDragging = true;
+			bgLastMx = e.clientX;
+			bgLastMy = e.clientY;
+			return;
+		}
 		const dx = (e.clientX - bgLastMx) / scale;
 		const dy = (e.clientY - bgLastMy) / scale;
 		bgLastMx = e.clientX;
 		bgLastMy = e.clientY;
-		// Apply 3x multiplier for much more responsive dragging, and allow
-		// going beyond 0-100 range so the image can be dragged partially off-canvas.
-		bgOffsetX = bgOffsetX - (dx / W) * 100 * 3;
-		bgOffsetY = bgOffsetY - (dy / H) * 100 * 3;
+		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - (dx / W) * 100 * BG_PAN_DRAG_SENS));
+		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - (dy / H) * 100 * BG_PAN_DRAG_SENS));
+		bgDidPan = true;
 	}
 
-	function bgPointerUp() {
+	function bgPointerUp(e: PointerEvent) {
+		if (bgHoldTimer) {
+			clearTimeout(bgHoldTimer);
+			bgHoldTimer = null;
+		}
+		try {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+		bgSuppressNextClick = bgSlopBeforeArm || bgDidPan || bgArmCompleted;
 		bgDragging = false;
+		bgPanArmed = false;
+		bgArmCompleted = false;
+	}
+
+	function bgPointerCancel(e: PointerEvent) {
+		if (bgHoldTimer) {
+			clearTimeout(bgHoldTimer);
+			bgHoldTimer = null;
+		}
+		try {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+		bgSuppressNextClick = true;
+		bgDragging = false;
+		bgPanArmed = false;
+		bgArmCompleted = false;
+	}
+
+	function bgLayerClick(e: MouseEvent) {
+		if (!interactive || !onBackgroundQuickTap) return;
+		if (!(String(backgroundImage ?? '').trim() || String(backgroundVideo ?? '').trim())) return;
+		if (bgSuppressNextClick) {
+			bgSuppressNextClick = false;
+			return;
+		}
+		e.stopPropagation();
+		onBackgroundQuickTap({ clientX: e.clientX, clientY: e.clientY });
 	}
 
 	// ── Pattern rendering helpers ──────────────────────────────────────────
@@ -1255,13 +1351,14 @@
 			<div
 				style="
 					position: absolute; inset: 0; z-index: 2;
-					cursor: {bgDragging ? 'grabbing' : 'move'};
+					cursor: {bgPanCursor};
 					touch-action: none;
 				"
 				onpointerdown={bgPointerDown}
 				onpointermove={bgPointerMove}
 				onpointerup={bgPointerUp}
-				onpointercancel={bgPointerUp}
+				onpointercancel={bgPointerCancel}
+				onclick={bgLayerClick}
 				role="presentation"
 			></div>
 		{/if}
