@@ -3,7 +3,8 @@
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
-	import { Pencil, Trash2, LoaderCircle, Eraser, Minus, Plus } from 'lucide-svelte';
+	import ClassicLoader from '$lib/components/ClassicLoader.svelte';
+	import { Pencil, Trash2, Eraser, Minus, Plus } from 'lucide-svelte';
 
 	interface Props {
 		overlay: Overlay;
@@ -183,6 +184,7 @@
 	>
 		<div
 			style="
+				position: relative;
 				width: 100%; height: 100%;
 				overflow: hidden;
 				border-radius: {borderRadiusPx}px;
@@ -198,6 +200,15 @@
 					display: block;
 				"
 			/>
+			{#if removingBg}
+				<div
+					class="bg-background/55 absolute inset-0 flex items-center justify-center backdrop-blur-[1px]"
+					role="status"
+					aria-label="Removing background"
+				>
+					<ClassicLoader size="lg" />
+				</div>
+			{/if}
 		</div>
 
 		{#if interactive && showChrome}
@@ -255,7 +266,7 @@
 				aria-label="Remove background"
 			>
 				{#if removingBg}
-					<LoaderCircle size={18} class="animate-spin" />
+					<ClassicLoader size="sm" />
 				{:else}
 					<Eraser size={18} strokeWidth={2} />
 				{/if}

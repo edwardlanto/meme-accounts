@@ -4,18 +4,22 @@
 	import JSZip from 'jszip';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import BurnSegmentRange from '$lib/components/BurnSegmentRange.svelte';
+	import ClassicLoader from '$lib/components/ClassicLoader.svelte';
 	import {
 		ArrowLeft,
 		ChevronLeft,
 		ChevronRight,
 		Download,
-		LoaderCircle,
 		Music,
 		Play,
 	} from 'lucide-svelte';
 	import type { PageProps } from './$types';
 
 	const STORAGE_KEY = 'burn-music-v1';
+
+	const MIN_SEG = 1;
+	const MAX_SEG = 120;
 
 	let { data }: PageProps = $props();
 
@@ -24,10 +28,10 @@
 		preview: string;
 		/** Empty string = no music; otherwise URL under `/music/…` from `static/music`. */
 		song: string;
-		/** Clip length on the slide / audio excerpt length (seconds). */
-		seconds: number;
-		/** Where playback starts inside the source track (seconds). */
+		/** Segment start in source (seconds). */
 		audioStartSec: number;
+		/** Segment end in source (seconds, exclusive): plays [audioStartSec, audioEndSec). */
+		audioEndSec: number;
 	};
 
 	let loading = $state(true);
@@ -60,39 +64,129 @@
 		container.scrollBy({ left: dir === 'left' ? -dx : dx, behavior: 'smooth' });
 	}
 
-	function maxStartFor(row: SlideRow): number {
-		const dur = row.song ? (trackDurations[row.song] ?? 0) : 0;
-		if (dur <= 0) return 0;
-		return Math.max(0, dur - row.seconds);
+	function segmentLen(row: SlideRow): number {
+		return Math.max(0, row.audioEndSec - row.audioStartSec);
 	}
 
-	function clampStart(i: number) {
+	function clampSegment(i: number) {
 		const row = slides[i];
 		if (!row) return;
-		const m = maxStartFor(row);
-		const next = Math.min(Math.max(0, row.audioStartSec), m);
-		if (next !== row.audioStartSec) {
-			slides = slides.map((s, j) => (j === i ? { ...s, audioStartSec: next } : s));
+		const dur = row.song ? (trackDurations[row.song] ?? 0) : 0;
+		let s = Number(row.audioStartSec) || 0;
+		let e = Number(row.audioEndSec);
+		if (!Number.isFinite(e)) e = s + MIN_SEG;
+		if (e <= s) e = s + MIN_SEG;
+
+		let minLen = dur > 0 ? Math.min(MIN_SEG, dur) : MIN_SEG;
+		let maxLen = dur > 0 ? Math.min(MAX_SEG, dur) : MAX_SEG;
+		if (maxLen < minLen) minLen = maxLen;
+
+		let len = Math.min(maxLen, Math.max(minLen, e - s));
+
+		if (dur > 0) {
+			s = Math.max(0, Math.min(s, dur - len));
+			e = s + len;
+			if (e > dur + 1e-6) {
+				e = dur;
+				s = Math.max(0, e - len);
+				len = e - s;
+				if (len < minLen && dur >= minLen) {
+					len = minLen;
+					s = Math.max(0, dur - len);
+					e = s + len;
+				}
+			}
+		} else {
+			s = Math.max(0, s);
+			e = s + len;
+		}
+
+		s = Math.round(s * 10) / 10;
+		e = Math.round(e * 10) / 10;
+
+		if (Math.abs(s - row.audioStartSec) > 1e-6 || Math.abs(e - row.audioEndSec) > 1e-6) {
+			slides = slides.map((sl, j) => (j === i ? { ...sl, audioStartSec: s, audioEndSec: e } : sl));
 		}
 	}
 
+	function setSegmentRange(i: number, start: number, end: number) {
+		slides = slides.map((sl, j) => (j === i ? { ...sl, audioStartSec: start, audioEndSec: end } : sl));
+		clampSegment(i);
+	}
+
+	function maxStartForRow(row: SlideRow): number {
+		const dur = row.song ? (trackDurations[row.song] ?? 0) : 0;
+		if (dur <= 0) return 0;
+		const len = Math.max(MIN_SEG, row.audioEndSec - row.audioStartSec);
+		return Math.max(0, dur - len);
+	}
+
+	function minEndForRow(row: SlideRow): number {
+		return row.audioStartSec + MIN_SEG;
+	}
+
+	function maxEndForRow(row: SlideRow): number {
+		const dur = row.song ? (trackDurations[row.song] ?? 0) : 0;
+		if (dur <= 0) return row.audioStartSec + MAX_SEG;
+		return Math.min(dur, row.audioStartSec + MAX_SEG);
+	}
+
+	/** Move segment start; keeps clip length, then clamps into the file. */
 	function setAudioStart(i: number, sec: number) {
-		slides = slides.map((s, j) => (j === i ? { ...s, audioStartSec: sec } : s));
-		clampStart(i);
+		const row = slides[i];
+		if (!row) return;
+		const len = Math.max(MIN_SEG, row.audioEndSec - row.audioStartSec);
+		const s = sec;
+		slides = slides.map((sl, j) => (j === i ? { ...sl, audioStartSec: s, audioEndSec: s + len } : sl));
+		clampSegment(i);
+	}
+
+	/** Move segment end (exclusive); changes clip length. */
+	function setAudioEnd(i: number, sec: number) {
+		slides = slides.map((sl, j) => (j === i ? { ...sl, audioEndSec: sec } : sl));
+		clampSegment(i);
+	}
+
+	function setSegmentDuration(i: number, len: number) {
+		const row = slides[i];
+		if (!row) return;
+		const dur = row.song ? (trackDurations[row.song] ?? 0) : 0;
+		const minLen = dur > 0 ? Math.min(MIN_SEG, dur) : MIN_SEG;
+		const maxLen = dur > 0 ? Math.min(MAX_SEG, dur) : MAX_SEG;
+		const L = Math.min(maxLen, Math.max(minLen, len));
+		const s = row.audioStartSec;
+		slides = slides.map((sl, j) => (j === i ? { ...sl, audioEndSec: s + L } : sl));
+		clampSegment(i);
 	}
 
 	function applyStartPreset(i: number, kind: 'start' | 'q1' | 'half' | 'q3' | 'end') {
 		const row = slides[i];
 		if (!row?.song) return;
 		const dur = trackDurations[row.song] ?? 0;
-		const m = maxStartFor(row);
-		let ideal = 0;
-		if (kind === 'start') ideal = 0;
-		else if (kind === 'end') ideal = m;
-		else if (kind === 'q1') ideal = dur * 0.25;
-		else if (kind === 'half') ideal = dur * 0.5;
-		else ideal = dur * 0.75;
-		setAudioStart(i, Math.min(Math.max(0, ideal), m));
+		if (dur <= 0) return;
+		const minLen = Math.min(MIN_SEG, dur);
+		const maxLen = Math.min(MAX_SEG, dur);
+		let len = Math.min(maxLen, Math.max(minLen, row.audioEndSec - row.audioStartSec));
+		let anchor = 0;
+		if (kind === 'start') anchor = 0;
+		else if (kind === 'end') anchor = dur - len;
+		else if (kind === 'q1') anchor = dur * 0.25 - len / 2;
+		else if (kind === 'half') anchor = dur * 0.5 - len / 2;
+		else anchor = dur * 0.75 - len / 2;
+		const s = Math.max(0, Math.min(anchor, dur - len));
+		slides = slides.map((sl, j) => (j === i ? { ...sl, audioStartSec: s, audioEndSec: s + len } : sl));
+		clampSegment(i);
+	}
+
+	function applySegmentMidSlice(i: number) {
+		const row = slides[i];
+		if (!row?.song) return;
+		const dur = trackDurations[row.song] ?? 0;
+		if (dur <= 0) return;
+		const len = Math.min(MAX_SEG, Math.max(MIN_SEG, dur / 3));
+		const s = Math.max(0, (dur - len) / 2);
+		slides = slides.map((sl, j) => (j === i ? { ...sl, audioStartSec: s, audioEndSec: s + len } : sl));
+		clampSegment(i);
 	}
 
 	async function ensureDuration(url: string): Promise<void> {
@@ -111,8 +205,27 @@
 			a.addEventListener('error', () => done(0));
 		});
 		for (let si = 0; si < slides.length; si++) {
-			if (slides[si]?.song === url) clampStart(si);
+			if (slides[si]?.song === url) clampSegment(si);
 		}
+	}
+
+	/** Full usable track [0, min(duration, MAX_SEG)] for a fresh pick. */
+	function defaultSegmentEndForDuration(dur: number): number {
+		if (!(dur > 0)) return MIN_SEG;
+		return Math.max(MIN_SEG, Math.min(dur, MAX_SEG));
+	}
+
+	function applyFullTrackSegmentForSlide(i: number, url: string) {
+		const d = trackDurations[url] ?? 0;
+		if (!url || d <= 0) {
+			clampSegment(i);
+			return;
+		}
+		const end = defaultSegmentEndForDuration(d);
+		slides = slides.map((s, j) =>
+			j === i ? { ...s, audioStartSec: 0, audioEndSec: end } : s,
+		);
+		clampSegment(i);
 	}
 
 	function stopPreview() {
@@ -130,7 +243,7 @@
 		const a = new Audio(row.song);
 		previewAudioEl = a;
 		const start = Math.max(0, row.audioStartSec);
-		const end = start + row.seconds;
+		const end = row.audioEndSec;
 		const onTime = () => {
 			if (a.currentTime >= end - 0.08) {
 				a.pause();
@@ -166,7 +279,8 @@
 				label: s.label,
 				audioUrl: s.song || null,
 				audioStartSec: s.song ? s.audioStartSec : null,
-				clipDurationSec: s.seconds,
+				audioEndSec: s.song ? s.audioEndSec : null,
+				clipDurationSec: s.song ? s.audioEndSec - s.audioStartSec : null,
 				hasImagePreview: !!s.preview,
 			})),
 		};
@@ -200,8 +314,8 @@
 				label: labels[i] ?? `Slide ${i + 1}`,
 				preview: previews[i] ?? '',
 				song: '',
-				seconds: 5,
 				audioStartSec: 0,
+				audioEndSec: 5,
 			}));
 		} catch {
 			loadError = 'Could not read slide data.';
@@ -274,8 +388,8 @@
 		</div>
 
 		{#if loading}
-			<div class="flex items-center gap-2 text-sm burn-muted">
-				<LoaderCircle size={18} class="animate-spin" aria-hidden="true" />
+			<div class="flex items-center gap-3 text-sm burn-muted">
+				<ClassicLoader size="md" />
 				Loading slides…
 			</div>
 		{:else if loadError}
@@ -327,7 +441,13 @@
 					class="burn-scroll flex gap-4 overflow-x-auto scroll-smooth pb-2 pt-1 md:gap-6 [scrollbar-width:thin] snap-x snap-mandatory"
 				>
 					{#each slides as row, i (i)}
-						<div class="burn-card-wrap flex w-max max-w-full flex-shrink-0 flex-col snap-start">
+						{@const dur = row.song ? (trackDurations[row.song] ?? 0) : 0}
+						{@const pending = row.song ? !!durationFetchPending[row.song] : false}
+						{@const maxSt = row.song ? maxStartForRow(row) : 0}
+						{@const minE = row.song ? minEndForRow(row) : MIN_SEG}
+						{@const maxE = row.song ? maxEndForRow(row) : MAX_SEG}
+						{@const len = segmentLen(row)}
+						<div class="burn-card-wrap flex flex-shrink-0 flex-col snap-start">
 							<div class="burn-card group cursor-pointer">
 								<div
 									class="burn-card-frame relative mx-auto mb-3 w-fit max-w-full overflow-hidden rounded-lg border transition-all duration-300 ease-in-out group-hover:-translate-y-1 group-hover:shadow-lg"
@@ -352,7 +472,7 @@
 							</div>
 
 							<div
-								class="burn-controls mt-3 space-y-3 rounded-lg border p-2.5 burn-control-border burn-control-bg"
+								class="burn-controls mt-3 w-full space-y-3 rounded-lg border p-2.5 burn-control-border burn-control-bg"
 							>
 								<div class="space-y-1">
 									<Label class="text-[9px] font-mono uppercase tracking-wider burn-muted">Song</Label>
@@ -360,10 +480,19 @@
 										bind:value={slides[i].song}
 										onchange={() => {
 											const url = slides[i].song;
+											if (!url) {
+												slides = slides.map((s, j) =>
+													j === i ? { ...s, song: '', audioStartSec: 0, audioEndSec: 5 } : s,
+												);
+												return;
+											}
 											slides = slides.map((s, j) =>
-												j === i ? { ...s, song: url, audioStartSec: 0 } : s,
+												j === i ? { ...s, song: url, audioStartSec: 0, audioEndSec: MIN_SEG } : s,
 											);
-											void ensureDuration(url);
+											void (async () => {
+												await ensureDuration(url);
+												applyFullTrackSegmentForSlide(i, url);
+											})();
 										}}
 										class="burn-select w-full rounded-lg border py-1.5 pl-2 pr-1 text-[11px]"
 									>
@@ -374,84 +503,111 @@
 									</select>
 								</div>
 
-								{#if slides[i].song}
-									{@const dur = trackDurations[slides[i].song] ?? 0}
-									{@const pending = !!durationFetchPending[slides[i].song]}
-									{@const maxSt = maxStartFor(slides[i])}
-									<div class="burn-segment space-y-2 rounded-md border border-dashed burn-segment-border px-2 py-2">
-										<div class="flex items-center justify-between gap-2">
-											<Label class="text-[9px] font-mono uppercase tracking-wider burn-muted"
-												>Clip starts in track</Label
+								<div
+									class="burn-segment burn-seg-range-host space-y-2 rounded-md border border-dashed burn-segment-border px-2 py-2"
+								>
+									<div class="flex flex-col gap-0.5">
+										<Label class="text-[9px] font-mono uppercase tracking-wider burn-muted"
+											>Segment in track</Label
+										>
+										{#if !row.song}
+											<span class="text-[10px] burn-muted">Select a track — segment trims the part you burn.</span
 											>
-											{#if pending}
-												<span class="text-[10px] burn-muted">Reading length…</span>
-											{:else if dur > 0}
-												<span class="text-[10px] font-mono burn-muted"
-													>Track {formatTime(dur)} · clip ends at {formatTime(
-														slides[i].audioStartSec + slides[i].seconds,
-													)}</span
+										{:else if pending}
+											<span class="text-[10px] burn-muted">Reading length…</span>
+										{:else if dur > 0}
+											<span class="text-[10px] font-mono burn-muted"
+												>Track {formatTime(dur)} · {row.audioStartSec.toFixed(1)}s → {row.audioEndSec.toFixed(
+													1,
+												)}s ({len.toFixed(1)}s)</span
+											>
+										{:else}
+											<span class="text-[10px] burn-muted">Could not read this file’s duration.</span>
+										{/if}
+									</div>
+									{#if row.song && !pending && dur > 0}
+										<p class="text-[10px] burn-muted leading-snug">
+											Drag the <strong class="text-foreground/80">two handles</strong> on one bar, or tap the
+											bar to jump the nearest handle. Use the number fields for exact times.
+										</p>
+										<BurnSegmentRange
+											durationSec={dur}
+											startSec={row.audioStartSec}
+											endSec={row.audioEndSec}
+											minSeg={MIN_SEG}
+											maxSeg={MAX_SEG}
+											onChange={(s, e) => setSegmentRange(i, s, e)}
+										/>
+										<div class="burn-seg-inputs grid min-w-0 grid-cols-2 gap-2">
+											<div class="min-w-0 space-y-0.5">
+												<span class="text-[9px] font-mono uppercase tracking-wider burn-muted"
+													>Start (sec)</span
 												>
-											{/if}
-										</div>
-										{#if !pending && dur > 0}
-											<input
-												type="range"
-												min="0"
-												max={maxSt}
-												step="0.1"
-												value={slides[i].audioStartSec}
-												oninput={(e) =>
-													setAudioStart(i, parseFloat((e.currentTarget as HTMLInputElement).value))}
-												class="burn-range w-full"
-												aria-label="Start position in track"
-											/>
-											<div class="flex flex-wrap items-center gap-2">
 												<input
 													type="number"
 													min="0"
 													max={maxSt}
 													step="0.1"
-													value={slides[i].audioStartSec}
+													value={row.audioStartSec}
 													oninput={(e) => {
 														const v = parseFloat((e.currentTarget as HTMLInputElement).value);
 														setAudioStart(i, Number.isFinite(v) ? v : 0);
 													}}
-													class="burn-num flex-1 min-w-[4rem] rounded-md border px-2 py-1 text-xs"
+													class="burn-num box-border w-full min-w-0 max-w-full rounded-md border px-2 py-1 text-xs"
 												/>
-												<span class="text-[10px] burn-muted">sec</span>
 											</div>
-											<div class="flex flex-wrap gap-1.5">
-												<button
-													type="button"
-													class="burn-chip"
-													onclick={() => applyStartPreset(i, 'start')}>Start</button
+											<div class="min-w-0 space-y-0.5">
+												<span class="text-[9px] font-mono uppercase tracking-wider burn-muted"
+													>End (sec)</span
 												>
-												<button
-													type="button"
-													class="burn-chip"
-													onclick={() => applyStartPreset(i, 'q1')}>25%</button
-												>
-												<button
-													type="button"
-													class="burn-chip"
-													onclick={() => applyStartPreset(i, 'half')}>Half</button
-												>
-												<button
-													type="button"
-													class="burn-chip"
-													onclick={() => applyStartPreset(i, 'q3')}>75%</button
-												>
-												<button
-													type="button"
-													class="burn-chip"
-													onclick={() => applyStartPreset(i, 'end')}>End</button
-												>
+												<input
+													type="number"
+													min={minE}
+													max={maxE}
+													step="0.1"
+													value={row.audioEndSec}
+													oninput={(e) => {
+														const v = parseFloat((e.currentTarget as HTMLInputElement).value);
+														setAudioEnd(i, Number.isFinite(v) ? v : minE);
+													}}
+													class="burn-num box-border w-full min-w-0 max-w-full rounded-md border px-2 py-1 text-xs"
+												/>
 											</div>
-										{:else if !pending && slides[i].song}
-											<p class="text-[11px] burn-muted">Could not read this file’s duration.</p>
-										{/if}
-									</div>
-								{/if}
+										</div>
+										<div class="flex flex-wrap gap-1.5">
+											<button
+												type="button"
+												class="burn-chip"
+												onclick={() => applyStartPreset(i, 'start')}>Start</button
+											>
+											<button
+												type="button"
+												class="burn-chip"
+												onclick={() => applyStartPreset(i, 'q1')}>25%</button
+											>
+											<button
+												type="button"
+												class="burn-chip"
+												onclick={() => applyStartPreset(i, 'half')}>Half</button
+											>
+											<button
+												type="button"
+												class="burn-chip"
+												onclick={() => applyStartPreset(i, 'q3')}>75%</button
+											>
+											<button
+												type="button"
+												class="burn-chip"
+												onclick={() => applyStartPreset(i, 'end')}>End</button
+											>
+											<button type="button" class="burn-chip" onclick={() => applySegmentMidSlice(i)}
+												>Mid slice</button
+											>
+										</div>
+									{:else if row.song}
+										<div class="burn-seg-range-host min-h-[2.25rem]"></div>
+									{/if}
+								</div>
 
 								<div class="space-y-1">
 									<Label class="text-[9px] font-mono uppercase tracking-wider burn-muted"
@@ -461,19 +617,11 @@
 										type="number"
 										min="1"
 										max="120"
-										step="1"
-										value={slides[i].seconds}
+										step="0.1"
+										value={segmentLen(row)}
 										oninput={(e) => {
-											const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
-											slides = slides.map((s, j) =>
-												j === i
-													? {
-															...s,
-															seconds: Number.isFinite(v) ? Math.max(1, Math.min(120, v)) : s.seconds,
-														}
-													: s,
-											);
-											clampStart(i);
+											const v = parseFloat((e.currentTarget as HTMLInputElement).value);
+											setSegmentDuration(i, Number.isFinite(v) ? v : MIN_SEG);
 										}}
 										class="h-8 text-xs"
 									/>
@@ -482,7 +630,7 @@
 									<button
 										type="button"
 										class="btn btn-outline btn-block sm:flex-1"
-										disabled={!slides[i].song}
+										disabled={!row.song}
 										onclick={() => previewClip(i)}
 									>
 										<Play size={14} aria-hidden="true" />
@@ -518,7 +666,7 @@
 						onclick={() => void exportImageZip()}
 					>
 						{#if exportImagesBusy}
-							<LoaderCircle size={16} class="animate-spin" aria-hidden="true" />
+							<ClassicLoader size="sm" />
 							Building ZIP…
 						{:else}
 							<Download size={16} aria-hidden="true" />
@@ -557,6 +705,15 @@
 
 	.burn-scroll {
 		scrollbar-color: color-mix(in oklab, var(--app-text) 15%, transparent) transparent;
+	}
+
+	/* Same column width with or without a track — matches preview max width */
+	.burn-card-wrap {
+		width: min(320px, calc(100vw - 3rem));
+	}
+
+	.burn-seg-inputs {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	}
 
 	.burn-card-frame {
@@ -706,9 +863,9 @@
 		border-color: color-mix(in oklab, var(--app-text) 14%, transparent);
 	}
 
-	.burn-range {
-		accent-color: var(--ap-accent);
-		height: 1.25rem;
+	.burn-seg-range-host {
+		--burn-seg-accent: var(--ap-accent);
+		--burn-seg-muted: var(--app-text);
 	}
 
 	.burn-num {

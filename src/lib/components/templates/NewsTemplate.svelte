@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import ImageStickerOverlayBox from '$lib/components/ImageStickerOverlayBox.svelte';
+	import ClassicLoader from '$lib/components/ClassicLoader.svelte';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
 	import {
@@ -20,7 +21,6 @@
 		ZoomOut,
 		RotateCcw,
 		Eraser,
-		LoaderCircle,
 	} from 'lucide-svelte';
 
 	interface Props {
@@ -439,7 +439,7 @@
 	);
 	const bgRenderOverflowPct = $derived(Math.max(0, bgRenderSize - 100)); // strict cover overscan
 	/** Extra pan range at 100% zoom so drag-pan doesn’t feel dead; can show a sliver of letterbox at extremes. */
-	const BG_MIN_PAN_ROOM_PCT = 18;
+	const BG_MIN_PAN_ROOM_PCT = 36;
 	const bgPanRangePct = $derived(Math.max(BG_MIN_PAN_ROOM_PCT, bgRenderOverflowPct));
 	// Natural panning: slide an oversized layer inside the frame.
 	//  - bgOffsetX/Y = 0  → show left/top edge
@@ -1064,14 +1064,84 @@
 	let bgLastMy = 0;
 	let bgPanStartX = 0;
 	let bgPanStartY = 0;
-	const BG_SLOP_PX = 10;
+	const BG_SLOP_PX = 6;
 	/** Pointer drag sensitivity — higher = move background farther per pixel */
-	const BG_PAN_DRAG_SENS = 6;
+	const BG_PAN_DRAG_SENS = 11;
+	/** Alt+drag anywhere on the canvas (capture) to pan — avoids the z-index-2 dead zone under text/circle. */
+	let bgAltPanActive = $state(false);
 
-	const bgPanCursor = $derived(bgDragging ? 'grabbing' : 'default');
+	const bgPanCursor = $derived(bgDragging || bgAltPanActive ? 'grabbing' : 'default');
+
+	function applyBgPanPixels(dx: number, dy: number) {
+		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - (dx / W) * 100 * BG_PAN_DRAG_SENS));
+		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - (dy / H) * 100 * BG_PAN_DRAG_SENS));
+	}
+
+	function removeBgAltPanListeners() {
+		if (typeof window === 'undefined') return;
+		window.removeEventListener('pointermove', onBgAltPanMove);
+		window.removeEventListener('pointerup', onBgAltPanUp);
+		window.removeEventListener('pointercancel', onBgAltPanUp);
+	}
+
+	function onBgAltPanMove(e: PointerEvent) {
+		if (!bgAltPanActive) return;
+		const dx = (e.clientX - bgLastMx) / scale;
+		const dy = (e.clientY - bgLastMy) / scale;
+		bgLastMx = e.clientX;
+		bgLastMy = e.clientY;
+		applyBgPanPixels(dx, dy);
+	}
+
+	function onBgAltPanUp() {
+		bgAltPanActive = false;
+		removeBgAltPanListeners();
+	}
+
+	function bgAltPointerDownCapture(e: PointerEvent) {
+		if (!interactive || !hasBg || e.button !== 0 || !e.altKey) return;
+		if (typeof window === 'undefined') return;
+		e.preventDefault();
+		e.stopPropagation();
+		bgAltPanActive = true;
+		bgPanPressed = false;
+		bgDragging = false;
+		bgLastMx = e.clientX;
+		bgLastMy = e.clientY;
+		window.addEventListener('pointermove', onBgAltPanMove, { passive: true });
+		window.addEventListener('pointerup', onBgAltPanUp);
+		window.addEventListener('pointercancel', onBgAltPanUp);
+	}
+
+	function onCanvasWheel(e: WheelEvent) {
+		if (!interactive || !hasBg || !e.altKey) return;
+		e.preventDefault();
+		const delta = e.deltaY > 0 ? -5 : 5;
+		if (bgFitMode === 'contain') {
+			bgContainMagnify = Math.round(
+				Math.max(50, Math.min(200, Number(bgContainMagnify) + delta)),
+			);
+		} else {
+			bgZoom = Math.round(Math.max(30, Math.min(300, Number(bgZoom) + delta)));
+		}
+	}
+
+	onDestroy(() => {
+		removeBgAltPanListeners();
+	});
+
+	/** Alt+wheel zoom needs a non-passive listener so `preventDefault` works. */
+	$effect(() => {
+		if (!interactive || !hasBg) return;
+		const el = exportRef;
+		if (!el) return;
+		const fn = (e: WheelEvent) => onCanvasWheel(e);
+		el.addEventListener('wheel', fn, { passive: false });
+		return () => el.removeEventListener('wheel', fn);
+	});
 
 	function bgPointerDown(e: PointerEvent) {
-		if (!interactive || e.button !== 0) return;
+		if (!interactive || e.button !== 0 || e.altKey) return;
 		bgPanPressed = true;
 		bgPanStartX = e.clientX;
 		bgPanStartY = e.clientY;
@@ -1098,8 +1168,7 @@
 		const dy = (e.clientY - bgLastMy) / scale;
 		bgLastMx = e.clientX;
 		bgLastMy = e.clientY;
-		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - (dx / W) * 100 * BG_PAN_DRAG_SENS));
-		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - (dy / H) * 100 * BG_PAN_DRAG_SENS));
+		applyBgPanPixels(dx, dy);
 	}
 
 	function bgPointerUp(e: PointerEvent) {
@@ -1157,6 +1226,7 @@
 	<!-- Inner at W×H — scaled via CSS transform -->
 	<div
 		bind:this={exportRef}
+		onpointerdowncapture={bgAltPointerDownCapture}
 		style="
 			width: {W}px;
 			height: {H}px;
@@ -1331,6 +1401,7 @@
 					cursor: {bgPanCursor};
 					touch-action: none;
 				"
+				title="Drag empty canvas to pan · Alt+drag anywhere to pan · Alt+scroll to zoom"
 				onpointerdown={bgPointerDown}
 				onpointermove={bgPointerMove}
 				onpointerup={bgPointerUp}
@@ -1569,6 +1640,25 @@
 								user-select:none;
 							"
 						/>
+						{#if circleRemovingBg}
+							<div
+								style="
+									position: absolute;
+									inset: 0;
+									border-radius: 50%;
+									background: rgba(0,0,0,0.48);
+									display: flex;
+									align-items: center;
+									justify-content: center;
+									z-index: 3;
+									pointer-events: none;
+								"
+								role="status"
+								aria-label="Removing background"
+							>
+								<ClassicLoader size="lg" />
+							</div>
+						{/if}
 					</div>
 				{:else}
 					<div style="
@@ -1641,7 +1731,7 @@
 							aria-label="Remove circle background"
 						>
 							{#if circleRemovingBg}
-								<LoaderCircle size={18} class="animate-spin" />
+								<ClassicLoader size="sm" />
 							{:else}
 								<Eraser size={18} strokeWidth={2} />
 							{/if}
@@ -1745,6 +1835,25 @@
 								user-select:none;
 							"
 						/>
+						{#if circle2RemovingBg}
+							<div
+								style="
+									position: absolute;
+									inset: 0;
+									border-radius: 50%;
+									background: rgba(0,0,0,0.48);
+									display: flex;
+									align-items: center;
+									justify-content: center;
+									z-index: 3;
+									pointer-events: none;
+								"
+								role="status"
+								aria-label="Removing background"
+							>
+								<ClassicLoader size="lg" />
+							</div>
+						{/if}
 					</div>
 				{:else}
 					<div style="
@@ -1816,7 +1925,7 @@
 							aria-label="Remove circle 2 background"
 						>
 							{#if circle2RemovingBg}
-								<LoaderCircle size={18} class="animate-spin" />
+								<ClassicLoader size="sm" />
 							{:else}
 								<Eraser size={18} strokeWidth={2} />
 							{/if}

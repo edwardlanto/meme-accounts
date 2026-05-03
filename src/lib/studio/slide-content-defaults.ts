@@ -59,6 +59,13 @@ export const IMAGE_QUOTE_DEFAULTS = {
 } as const;
 
 /** Vertical short-form layout: headline + full-bleed video + watermark. */
+/** Black full-bleed carousel: blue hook + white body + optional swipe hint. */
+export const BLACK_TEXT_CAROUSEL_DEFAULTS = {
+	headline: '1. Find flights so cheap they feel like a steal',
+	body:
+		'Learn the flight booking strategies frequent travelers use but rarely share. Find the lowest possible fares from [departure city] to [destination] in [month]. Include the best days to search, the best days to fly, hidden-city ticketing insights, and the common booking mistake that costs most travelers hundreds on every trip.',
+} as const;
+
 export const VIDEO_STORY_DEFAULTS = {
 	videoUrl: '/videos/video-template.mp4',
 	watermark: 'BUSINESS FOUNDERS',

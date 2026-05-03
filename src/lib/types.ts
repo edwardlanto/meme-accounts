@@ -87,7 +87,10 @@ export type TextElementKind =
 	| 'imageQuoteFooterLeft'
 	| 'imageQuoteFooterRight'
 	| 'videoStoryHeadline'
-	| 'videoStoryWatermark';
+	| 'videoStoryWatermark'
+	| 'blackTextHeadline'
+	| 'blackTextBody'
+	| 'blackTextSwipe';
 
 export interface TextSelection {
 	slideIndex: number;

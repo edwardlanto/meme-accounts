@@ -21,6 +21,8 @@ export type ExternalSlideMergeMode = 'mix' | 'replace';
 export type StudioSlideMergePatch = {
 	slideIndex: number;
 	primary?: string;
+	/** Black-text template: long copy under the headline. */
+	body?: string;
 	tweetBottom?: string;
 	source?: string;
 	imageUrl?: string;
@@ -61,7 +63,10 @@ export function coerceExternalSlideBlock(row: unknown): ExternalSlideBlock {
 	const imageUrl =
 		pickStr(o.imageUrl) ?? pickStr(o.image_url) ?? pickStr(o.topImage) ?? pickStr(o.backgroundImage);
 	return {
-		headline: pickStr(o.headline) ?? pickStr(o.title) ?? pickStr(o.hook),
+		headline:
+			pickStr(o.headline) ??
+			pickStr(o.title) ??
+			pickStr(typeof o.hook === 'string' ? o.hook : undefined),
 		subheadline: pickStr(o.subheadline) ?? pickStr(o.subtitle),
 		body: pickStr(o.body) ?? pickStr(o.text) ?? pickStr(o.copy),
 		bullets: bullets?.length ? bullets : undefined,
@@ -111,20 +116,30 @@ export function computeStudioSlideMergePatches(
 	const out: StudioSlideMergePatch[] = [];
 	for (let i = 0; i < n; i++) {
 		const b = blocks[i];
-		const primary = primaryTextFromBlock(b);
+		let primary = primaryTextFromBlock(b);
+		let blackBody: string | undefined;
+		if (template === 'blackText') {
+			const hl = pickStr(b.headline);
+			const bd = pickStr(b.body);
+			if (hl) primary = hl;
+			else if (bd) primary = (bd.split('\n')[0] ?? bd).trim().slice(0, 240);
+			if (bd) blackBody = bd;
+		}
 		const tweetBottom = template === 'tweet' ? tweetBottomFromBlock(b) : '';
 		const imageUrl = httpImageUrl(b);
 		const source = b.source?.trim();
 
 		const hasPrimary = !!primary;
+		const hasBlackBody = template === 'blackText' && !!blackBody;
 		const hasBottom = !!tweetBottom;
 		const hasImg = !!imageUrl;
 		const hasSource = !!source;
 
-		if (mode === 'mix' && !hasPrimary && !hasBottom && !hasImg && !hasSource) continue;
+		if (mode === 'mix' && !hasPrimary && !hasBlackBody && !hasBottom && !hasImg && !hasSource) continue;
 
 		const patch: StudioSlideMergePatch = { slideIndex: i };
 		if (hasPrimary) patch.primary = primary;
+		if (hasBlackBody) patch.body = blackBody;
 		if (template === 'tweet' && hasBottom) patch.tweetBottom = tweetBottom;
 		if (hasImg) patch.imageUrl = imageUrl;
 		if (hasSource) patch.source = source;

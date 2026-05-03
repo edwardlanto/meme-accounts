@@ -159,6 +159,7 @@
 						tmpl.id === 'empty'   ? 'hover:border-neutral-400/35 hover:shadow-[0_0_24px_rgba(115,115,115,0.10)]'
 						: tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
 						: tmpl.id === 'text'  ? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
+						: tmpl.id === 'black-text' ? 'hover:border-sky-500/35 hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]'
 						: tmpl.id === 'article' ? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
 						: tmpl.id === 'brand' ? 'hover:border-violet-500/40 hover:shadow-[0_0_28px_rgba(139,92,246,0.15)]'
 						: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}
@@ -166,6 +167,7 @@
 						tmpl.id === 'empty'   ? 'group-hover:text-neutral-400'
 						: tmpl.id === 'tweet'   ? 'group-hover:text-sky-400'
 						: tmpl.id === 'text'  ? 'group-hover:text-white/70'
+						: tmpl.id === 'black-text' ? 'group-hover:text-sky-400'
 						: tmpl.id === 'article' ? 'group-hover:text-emerald-400'
 						: tmpl.id === 'brand' ? 'group-hover:text-violet-400'
 						: 'group-hover:text-amber-400'}
@@ -229,6 +231,16 @@
 									showSwipe={false}
 									scale={templateScale}
 									interactive={false}
+								/>
+							{/if}
+						{:else if tmpl.id === 'black-text'}
+							{#if tmpl.previewBg}
+								<img
+									src={tmpl.previewBg}
+									alt=""
+									class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
+									loading="lazy"
+									draggable="false"
 								/>
 							{/if}
 						{:else if tmpl.id === 'article'}

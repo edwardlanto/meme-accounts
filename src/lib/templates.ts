@@ -91,6 +91,17 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		badgeColor: 'text-fuchsia-400',
 	},
 	{
+		id: 'black-text',
+		name: 'Black text',
+		description: 'Full-bleed dark slide with a bright hook line and long body copy',
+		href: '/dashboard/studio?template=black-text',
+		previewBg: '/placeholders/carousel/black-bg-placeholder.jpg',
+		previewText: '',
+		previewSource: '',
+		badge: 'Carousel',
+		badgeColor: 'text-sky-300',
+	},
+	{
 		id: 'brand',
 		name: 'Brand Carousel',
 		description: 'Upload brand images → AI extracts style → 7-slide branded carousel',

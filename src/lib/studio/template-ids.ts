@@ -1,5 +1,12 @@
 /** Studio canvas template ids — shared by News Studio routes and merge/import helpers. */
-export type TemplateId = 'news' | 'tweet' | 'article' | 'textCarousel' | 'imageQuote' | 'videoStory';
+export type TemplateId =
+	| 'news'
+	| 'tweet'
+	| 'article'
+	| 'textCarousel'
+	| 'imageQuote'
+	| 'videoStory'
+	| 'blackText';
 
 export type StudioTemplateDef = { id: TemplateId; label: string };
 
@@ -10,6 +17,7 @@ export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 	{ id: 'textCarousel', label: 'Text carousel' },
 	{ id: 'videoStory', label: 'Video story' },
 	{ id: 'imageQuote', label: 'Image quote' },
+	{ id: 'blackText', label: 'Black text' },
 ];
 
 /** Keys must be lowercase — `mapQueryParamToTemplateId` lowercases before lookup. */
@@ -23,6 +31,9 @@ const QUERY_TEMPLATE_MAP: Record<string, TemplateId> = {
 	imagequote: 'imageQuote',
 	video: 'videoStory',
 	videostory: 'videoStory',
+	'black-text': 'blackText',
+	blacktext: 'blackText',
+	black: 'blackText',
 };
 
 /** `?template=` query values → `TemplateId` (unknown keys should fall back to `news`). */
@@ -39,6 +50,7 @@ const CANONICAL_TEMPLATE_IDS: TemplateId[] = [
 	'textCarousel',
 	'imageQuote',
 	'videoStory',
+	'blackText',
 ];
 
 /** Normalize draft/API/legacy strings to a valid template id (never returns invalid ids). */
