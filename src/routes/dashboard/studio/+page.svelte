@@ -79,7 +79,7 @@ import JSZip from 'jszip';
 		type ExternalSlideMergeMode,
 	} from '$lib/studio/external-slide-merge';
 	import {
-		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark,
+		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark, Save,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper
 	} from 'lucide-svelte';
@@ -2364,6 +2364,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	// ── Draft persistence (Supabase) ──────────────────────────────────────
 	type DraftRow = { id: string; kind: string; state: any; updated_at: string };
+	/** Workspace draft rows — keep in sync with `STUDIO_WORKSPACE_DRAFT_KIND` on `carousels/+page.svelte`. */
 	const DRAFT_KIND = 'news_studio';
 	/** Named snapshots from Studio — listed on the dashboard; open with `?saved=<id>`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
@@ -2380,6 +2381,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let draftLoaded = $state(false);
 	let draftSaving = $state(false);
 	let draftError = $state('');
+	/** Shown after a successful manual save from the sidebar button. */
+	let draftManualSaveMessage = $state('');
 	let draftRestoring = $state(true);
 	let saveTimer: any = null;
 
@@ -2813,6 +2816,50 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		applyDraftState(s as Record<string, any>);
 	}
 
+	/** Open a specific workspace draft from the dashboard (`?draft=uuid`). */
+	async function loadDraftById(id: string) {
+		draftError = '';
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.select('id,kind,state,updated_at')
+			.eq('user_id', userId)
+			.eq('id', id)
+			.eq('kind', DRAFT_KIND)
+			.maybeSingle();
+		if (error) {
+			draftError = error.message ?? 'Failed to load draft';
+			draftId = '';
+			return;
+		}
+		if (!data) {
+			draftError = 'Draft not found or you do not have access.';
+			draftId = '';
+			return;
+		}
+
+		const row = data as DraftRow;
+		draftId = row.id;
+		const s = row.state ?? {};
+		if (Array.isArray((s as any).exportedSlides) && (s as any).exportedSlides.length) {
+			const ex = (s as any).exportedSlides as unknown[];
+			const looksHuge = ex.some((v) => typeof v === 'string' && v.startsWith('data:') && v.length > 220_000);
+			if (looksHuge) {
+				queueMicrotask(() => {
+					try {
+						void (supabase as any)
+							.from('drafts')
+							.update({ state: { ...(s as any), exportedSlides: [] } })
+							.eq('id', row.id);
+					} catch {
+						// ignore
+					}
+				});
+			}
+		}
+
+		applyDraftState(s as Record<string, any>);
+	}
+
 	async function loadSavedStudioTemplate(templateDraftId: string) {
 		draftError = '';
 		const { data, error } = await (supabase as any)
@@ -3001,6 +3048,18 @@ tweetTopImagePanYBySlide,
 		if (data?.id) draftId = data.id;
 	}
 
+	async function saveDraftFromButton() {
+		if (!userId || draftSaving) return;
+		draftManualSaveMessage = '';
+		await saveDraftNow();
+		if (!draftError) {
+			draftManualSaveMessage = 'Draft saved. You can reopen it from Carousels → Studio drafts.';
+			setTimeout(() => {
+				draftManualSaveMessage = '';
+			}, 5000);
+		}
+	}
+
 	function scheduleDraftSave() {
 		if (!draftLoaded) return;
 		if (saveTimer) clearTimeout(saveTimer);
@@ -3013,13 +3072,17 @@ tweetTopImagePanYBySlide,
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
 		draftRestoring = true;
-		const savedParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('saved') : null;
+		const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+		const savedParam = sp?.get('saved') ?? null;
+		const draftParam = sp?.get('draft') ?? null;
 		const loadPromise =
 			savedParam && /^[0-9a-f-]{36}$/i.test(savedParam)
 				? loadSavedStudioTemplate(savedParam)
 				: forcedBlankFromQuery
 					? Promise.resolve()
-					: loadLatestDraft();
+					: draftParam && /^[0-9a-f-]{36}$/i.test(draftParam)
+						? loadDraftById(draftParam)
+						: loadLatestDraft();
 		void loadPromise
 			.catch(() => {
 				// loaders set draftError; swallow to keep UI responsive.
@@ -4594,7 +4657,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	<div class="w-80 flex-shrink-0 border-r border-neutral-800 bg-black text-neutral-50 flex flex-col overflow-y-auto studio-left">
 		<div class="px-5 py-4 border-b border-neutral-800 space-y-3">
 			<div class="flex items-start justify-between gap-2">
-				<div class="flex flex-col items-end gap-1.5">
+				<div class="flex flex-col items-stretch w-full gap-1.5">
 					<Button
 						type="button"
 						variant="outline"
@@ -5236,6 +5299,28 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		class="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#080808] p-6 gap-3 studio-right"
 		style="background: var(--app-bg);"
 	>
+		<div class="relative z-40 flex w-full max-w-full shrink-0 flex-wrap items-center justify-end gap-2 gap-y-1 px-1 pb-1">
+			{#if draftError}
+				<p class="max-w-[min(22rem,70vw)] min-w-0 text-right text-[10px] font-body leading-snug text-red-400/90">
+					{draftError}
+				</p>
+			{:else if draftManualSaveMessage}
+				<p class="max-w-[min(22rem,70vw)] min-w-0 text-right text-[10px] font-body leading-snug text-emerald-400/90">
+					{draftManualSaveMessage}
+				</p>
+			{/if}
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				class="h-8 shrink-0 gap-1.5 rounded-lg border-violet-600/50 bg-violet-950/40 text-[11px] font-semibold text-violet-100 hover:bg-violet-950/70"
+				disabled={draftSaving || !userId || draftRestoring}
+				onclick={() => void saveDraftFromButton()}
+			>
+				{#if draftSaving}<Loader size={12} class="animate-spin" />{:else}<Save size={12} />{/if}
+				Save draft
+			</Button>
+		</div>
 
 		<!-- Editor dock + format dock — in document flow so the canvas never stacks over them -->
 		<div class="relative z-30 flex w-full max-w-full shrink-0 flex-wrap items-center justify-center gap-3 px-1 py-1">

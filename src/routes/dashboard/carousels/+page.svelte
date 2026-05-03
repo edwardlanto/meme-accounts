@@ -3,6 +3,10 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { STARTER_TEMPLATES } from '$lib/templates';
+	import { stripMarkup } from '$lib/highlight';
+
+	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte` (workspace autosave rows). */
+	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
@@ -10,6 +14,7 @@
 	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight, Wand2 } from 'lucide-svelte';
 
 	let carousels: any[] = $state([]);
+	let studioDrafts = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
 	let loading = $state(true);
 	let creating = $state(false);
 	let createError = $state('');
@@ -50,13 +55,37 @@
 		return () => ro.disconnect();
 	});
 
+	function studioDraftTitle(d: { state?: Record<string, unknown> }): string {
+		const slides = d.state?.slides;
+		if (Array.isArray(slides) && slides.length) {
+			const t = stripMarkup(String(slides[0] ?? '')).trim().replace(/\s+/g, ' ');
+			if (t) return t.length > 72 ? `${t.slice(0, 69)}…` : t;
+		}
+		const src = d.state?.source;
+		if (typeof src === 'string' && src.trim()) {
+			const t = src.trim();
+			return t.length > 72 ? `${t.slice(0, 69)}…` : t;
+		}
+		return 'Studio draft';
+	}
+
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
 
-		const { data } = await (supabase as any).from('carousels').select('*').order('updated_at', { ascending: false });
-		carousels = data ?? [];
+		const [carouselRes, draftRes] = await Promise.all([
+			(supabase as any).from('carousels').select('*').order('updated_at', { ascending: false }),
+			(supabase as any)
+				.from('drafts')
+				.select('id,updated_at,state')
+				.eq('user_id', user.id)
+				.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND)
+				.order('updated_at', { ascending: false })
+				.limit(40),
+		]);
+		carousels = carouselRes.data ?? [];
+		studioDrafts = draftRes.data ?? [];
 		loading = false;
 	});
 
@@ -366,6 +395,31 @@
 		</div>
 	</div>
 
+	{#if studioDrafts.length > 0}
+		<div class="studio-drafts-block">
+			<div class="studio-drafts-head">
+				<h2 class="studio-drafts-title">Studio drafts</h2>
+				<p class="studio-drafts-sub">
+					Workspace saves from News Studio. Continue editing anytime — also use <span class="font-mono">Save draft</span> in the studio sidebar.
+				</p>
+			</div>
+			<ul class="studio-drafts-list">
+				{#each studioDrafts as d}
+					<li>
+						<a href="/dashboard/studio?draft={d.id}" class="studio-draft-link">
+							<FileText size={14} class="studio-draft-icon" />
+							<span class="studio-draft-text">
+								<span class="studio-draft-name">{studioDraftTitle(d)}</span>
+								<span class="studio-draft-meta">Updated {timeAgo(d.updated_at)}</span>
+							</span>
+							<ArrowRight size={14} class="studio-draft-arrow" />
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+
 	<!-- ── Divider ────────────────────────────────────────────────────────── -->
 	<div class="section-divider"></div>
 
@@ -542,6 +596,58 @@
 	.tmpl-arrow { color: color-mix(in oklab, var(--t-muted) 55%, transparent); }
 
 	.tmpl-more { border-color: var(--panel-border); color: var(--t-muted); background: color-mix(in oklab, var(--panel-bg) 70%, transparent); }
+
+	/* Studio workspace drafts (News Studio `news_studio` rows) */
+	.studio-drafts-block {
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.25rem;
+		border-radius: 16px;
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
+	}
+	.studio-drafts-head { margin-bottom: 0.75rem; }
+	.studio-drafts-title {
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
+		font-size: 1rem;
+		font-weight: 700;
+		color: var(--t-strong);
+		margin: 0 0 0.35rem;
+	}
+	.studio-drafts-sub {
+		font-size: 0.75rem;
+		color: var(--t-muted);
+		margin: 0;
+		line-height: 1.45;
+		max-width: 56rem;
+	}
+	.studio-drafts-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+	.studio-draft-link {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+		padding: 0.55rem 0.75rem;
+		border-radius: 12px;
+		text-decoration: none;
+		color: var(--t-strong);
+		border: 1px solid transparent;
+		transition: background 0.12s, border-color 0.12s;
+	}
+	.studio-draft-link:hover {
+		background: var(--panel-bg-2);
+		border-color: var(--panel-border-hover);
+	}
+	.studio-draft-icon { flex-shrink: 0; color: var(--t-muted); opacity: 0.9; }
+	.studio-draft-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+	.studio-draft-name { font-size: 0.8125rem; font-weight: 600; line-height: 1.3; display: block; }
+	.studio-draft-meta { font-size: 0.7rem; color: var(--t-muted); font-family: 'Space Mono', monospace; }
+	.studio-draft-arrow { flex-shrink: 0; color: var(--t-muted); }
 
 	/* Section divider */
 	.section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 0.5rem 0 1.5rem; }
