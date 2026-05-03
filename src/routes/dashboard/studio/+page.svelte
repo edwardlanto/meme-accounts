@@ -1107,6 +1107,8 @@ import JSZip from 'jszip';
 
 	// Style
 	let highlightColor = $state('#F5A623');
+	/** Sidebar + fetch: when false, no `[[…]]` markup from AI and no highlight swatches on the floating text toolbar. */
+	let studioTextHighlightsEnabled = $state(true);
 	// Default to light-mode friendly; updated onMount to match global theme.
 	let textColor = $state('#0a0a0a');
 	let textColorTouched = $state(false);
@@ -1886,6 +1888,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	}
 
 	function onHighlight(spec: HighlightSpec) {
+		if (!studioTextHighlightsEnabled) return;
 		if (selectedText !== 'textOverlay') {
 			const raw = toolbarHighlightableRaw();
 			ensurePlainRangeForMarkupTools(raw);
@@ -2200,7 +2203,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	function onFloatingToolbarChange(patch: Partial<TextStyle>) {
 		if (selectedText === 'articleImage' || selectedText === 'articleLogo') return;
 		const raw = toolbarHighlightableRaw();
-		if (raw && selectedText && selectedText !== 'textOverlay') {
+		if (
+			studioTextHighlightsEnabled &&
+			raw &&
+			selectedText &&
+			selectedText !== 'textOverlay'
+		) {
 			if ('color' in patch && patch.color !== undefined) {
 				ensurePlainRangeForMarkupTools(raw);
 				if (headlineRange) {
@@ -2606,6 +2614,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (typeof s.shadowHeight === 'number') shadowHeight = s.shadowHeight;
 		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
 		if (typeof s.highlightColor === 'string') highlightColor = s.highlightColor;
+		if (typeof s.studioTextHighlightsEnabled === 'boolean') studioTextHighlightsEnabled = s.studioTextHighlightsEnabled;
 		if (typeof s.textColor === 'string') textColor = s.textColor;
 		// Intentionally do NOT restore `exportedSlides` (huge data URLs) from drafts.
 		// slideCount is derived from slides.length; do not restore it directly.
@@ -2958,6 +2967,7 @@ tweetTopImagePanYBySlide,
 			shadowHeight,
 			shadowStrength,
 			highlightColor,
+			studioTextHighlightsEnabled,
 			textColor,
 			// Don’t persist `exportedSlides` (huge data URLs) in drafts — it makes restore slow.
 			// We can always re-export when needed.
@@ -3176,7 +3186,14 @@ tweetTopImagePanYBySlide,
 		imageQuote: 130,
 		videoStory: 320,
 		blackText: 200,
+		/** Black text template: long body under the hook line (separate from hook clamp). */
+		blackTextBody: 1100,
 	} as const;
+
+	/** Article hero image is only seeded for templates built around full-bleed / top media. */
+	function templateAcceptsArticleHeroBackground(t: TemplateId): boolean {
+		return t === 'news' || t === 'article' || t === 'imageQuote' || t === 'tweet';
+	}
 
 	function clampFetchedPlainLength(text: string, maxLen: number): string {
 		const raw = String(text ?? '').trim();
@@ -3300,7 +3317,7 @@ tweetTopImagePanYBySlide,
 				setSlideImage(i, p.imageUrl, t);
 			}
 			if (p.body !== undefined && p.body !== '' && t === 'blackText') {
-				const bodyClamped = clampFetchedPlainLength(p.body, 1200);
+				const bodyClamped = clampFetchedPlainLength(p.body, FETCH_TEXT_CLIP.blackTextBody);
 				blackTextBodyBySlide = blackTextBodyBySlide.map((s, idx) => (idx === i ? bodyClamped : s));
 			}
 		}
@@ -3378,7 +3395,7 @@ tweetTopImagePanYBySlide,
 						storyCategory,
 						search: newsContentMode === 'news' ? search || undefined : undefined,
 						categories: newsContentMode === 'news' ? category : undefined,
-						autoHighlight: true,
+						autoHighlight: studioTextHighlightsEnabled,
 						pick: 'first',
 					}),
 				});
@@ -3423,9 +3440,14 @@ tweetTopImagePanYBySlide,
 				};
 				showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
 			} else {
+				const heroBgRow = templateAcceptsArticleHeroBackground(contentTemplate)
+					? Array.from({ length: n }, (_, i) => (i === 0 ? articleImageUrl : ''))
+					: Array.from({ length: n }, (_, i) =>
+							contentTemplate === 'blackText' ? BLACK_TEXT_BG_DEFAULT : '',
+						);
 				bgImagesByTemplate = {
 					...bgImagesByTemplate,
-					[contentTemplate]: Array.from({ length: n }, (_, i) => (i === 0 ? articleImageUrl : '')),
+					[contentTemplate]: heroBgRow,
 				};
 				bgVideosByTemplate = {
 					...bgVideosByTemplate,
@@ -3454,6 +3476,15 @@ tweetTopImagePanYBySlide,
 				generatingVariants = true;
 				await generateVariants(hookText, rawText, contentTemplate);
 				generatingVariants = false;
+			}
+
+			// Black text: hook lines come from variants above; body must follow the same article (not stale template defaults).
+			if (contentTemplate === 'blackText') {
+				const body0 = clampFetchedPlainLength(
+					String(articleSnippet || rawText || '').trim(),
+					FETCH_TEXT_CLIP.blackTextBody,
+				);
+				blackTextBodyBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? body0 : ''));
 			}
 
 			// Generate unique Vertex image per slide in parallel
@@ -3485,7 +3516,7 @@ tweetTopImagePanYBySlide,
 					title: articleTitle,
 					text: rawText || articleTitle,
 					sourceUrl: articleUrl,
-					autoHighlight: true,
+					autoHighlight: studioTextHighlightsEnabled,
 				}),
 			});
 			const data = await res.json();
@@ -3591,9 +3622,9 @@ tweetTopImagePanYBySlide,
 		}
 		slideTemplates = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
-		// Slide 0: use article image directly if available, otherwise Vertex
+		// Slide 0: use article image directly if available (templates with hero media only), otherwise Vertex
 		const articleSrc = String(articleImageUrl ?? '').trim();
-		if (articleSrc) {
+		if (articleSrc && templateAcceptsArticleHeroBackground(template)) {
 			if (template === 'news') applyNewsSeedBackgroundLayout();
 			const safe = await toExportSafeImageUrl(articleSrc);
 			if (template === 'news' && String(safe ?? '').trim()) {
@@ -3605,7 +3636,7 @@ tweetTopImagePanYBySlide,
 		// Fire all Vertex requests in parallel (skip slide 0 if we have article image)
 		const promises = slides.map((_, i) => {
 			if (template === 'blackText') return Promise.resolve();
-			if (i === 0 && articleImageUrl) return Promise.resolve(); // already set
+			if (i === 0 && articleImageUrl && templateAcceptsArticleHeroBackground(template)) return Promise.resolve(); // hero already set from article
 			const cleanText = primarySlideTextForPrompt(template, i);
 			const prompt = i === 0
 				? (articleTitle || cleanText)
@@ -4825,6 +4856,21 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<div>
 				<Label for="source-label" class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Source Label</Label>
 				<Input id="source-label" bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body" />
+			</div>
+
+			<div class="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950/80 px-3 py-2.5">
+				<div class="min-w-0">
+					<Label for="studio-highlights-toggle" class="text-xs font-semibold text-neutral-200 block">Word highlights</Label>
+					<p class="text-[10px] text-neutral-500 leading-snug mt-0.5">
+						Off = plain text in the canvas toolbar; fetch/variants won’t add <span class="font-mono text-neutral-400">[[…]]</span> markup.
+					</p>
+				</div>
+				<Switch
+					id="studio-highlights-toggle"
+					bind:checked={studioTextHighlightsEnabled}
+					class="shrink-0"
+					title="Toggle colored word highlights ([[markup]])"
+				/>
 			</div>
 
 			<!-- Bottom shadow controls -->
@@ -6645,23 +6691,25 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	style={toolbarFloatingStyle}
 	autoFontSize={toolbarAutoFontSize ?? (selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined)}
 	deleteOnly={selectedText === 'articleImage' || selectedText === 'articleLogo'}
-	supportsHighlights={(selectedText === 'headline' ||
-		selectedText === 'articleBody' ||
-		selectedText === 'textCarouselBody' ||
-		selectedText === 'tweetTopName' ||
-		selectedText === 'tweetTopHandle' ||
-		selectedText === 'tweetTopText' ||
-		selectedText === 'tweetBottomName' ||
-		selectedText === 'tweetBottomHandle' ||
-		selectedText === 'tweetBottomText' ||
-		selectedText === 'videoStoryHeadline' ||
-		selectedText === 'videoStoryWatermark' ||
-		selectedText === 'blackTextHeadline' ||
-		selectedText === 'blackTextBody') || selectedText === 'textOverlay'}
+	supportsHighlights={studioTextHighlightsEnabled &&
+		((selectedText === 'headline' ||
+			selectedText === 'articleBody' ||
+			selectedText === 'textCarouselBody' ||
+			selectedText === 'tweetTopName' ||
+			selectedText === 'tweetTopHandle' ||
+			selectedText === 'tweetTopText' ||
+			selectedText === 'tweetBottomName' ||
+			selectedText === 'tweetBottomHandle' ||
+			selectedText === 'tweetBottomText' ||
+			selectedText === 'videoStoryHeadline' ||
+			selectedText === 'videoStoryWatermark' ||
+			selectedText === 'blackTextHeadline' ||
+			selectedText === 'blackTextBody') ||
+			selectedText === 'textOverlay')}
 	hasRangeSelection={hasRangeSelection}
 	textColorMixed={toolbarTextColorMixed}
 	onChange={onFloatingToolbarChange}
-	onHighlight={onHighlight}
+	onHighlight={studioTextHighlightsEnabled ? onHighlight : undefined}
 	onClose={closeToolbar}
 	onDelete={
 		selectedText &&
