@@ -66,9 +66,13 @@
 	}: Props = $props();
 
 	let editorEl: HTMLDivElement | null = $state(null);
-	// Track the last value we wrote into the DOM so external updates don't blow away
-	// the user's caret while typing.
-	let lastSyncedValue = $state<string>('');
+	// Last markup emitted or applied to the DOM. Must NOT be `$state`: updating it from
+	// `handleInput` would re-run the sync `$effect` before `value` props catch up, and
+	// the effect would call `renderMarkupToDom(stale value)` — a full rerender that kills
+	// Enter / line breaks and the caret.
+	let lastSyncedValue = '';
+	/** After we emit via `onChange`, skip applying `value` until props match `lastSyncedValue` (avoids painting stale props when the effect runs for other deps like `defaultColor`). */
+	let pendingOwnEmit = false;
 	let hasRange = $state(false);
 
 	const DEFAULT_SWATCHES = [
@@ -198,14 +202,42 @@
 	}
 
 	// Serialize the DOM back to raw markup.
+	/** Block-ish tags Chrome inserts when pressing Enter inside contenteditable. */
+	function isBlockTag(el: HTMLElement): boolean {
+		const t = el.tagName;
+		return t === 'DIV' || t === 'P';
+	}
+
+	/** Insert `\n` between siblings when contenteditable uses DIV/P boundaries (BR already emits `\n`). */
+	function needsNewlineBetween(prev: ChildNode, curr: ChildNode): boolean {
+		if (prev.nodeType === Node.ELEMENT_NODE && (prev as HTMLElement).tagName === 'BR') return false;
+		if (curr.nodeType === Node.ELEMENT_NODE && (curr as HTMLElement).tagName === 'BR') return false;
+		const prevBlock =
+			prev.nodeType === Node.ELEMENT_NODE && isBlockTag(prev as HTMLElement);
+		const currBlock =
+			curr.nodeType === Node.ELEMENT_NODE && isBlockTag(curr as HTMLElement);
+		return prevBlock || currBlock;
+	}
+
+	function serializeSiblingNodes(nodes: ArrayLike<ChildNode>): string {
+		const arr = Array.from(nodes);
+		let out = '';
+		for (let i = 0; i < arr.length; i++) {
+			if (i > 0 && needsNewlineBetween(arr[i - 1]!, arr[i]!)) out += '\n';
+			out += serializeNode(arr[i]!);
+		}
+		return out;
+	}
+
 	function serializeDomToMarkup(): string {
 		if (!editorEl) return '';
-		let out = '';
-		for (const node of Array.from(editorEl.childNodes)) {
-			out += serializeNode(node);
-		}
-		// Collapse any stray leftover brackets a user might have pasted.
-		return out;
+		return serializeSiblingNodes(editorEl.childNodes);
+	}
+
+	function editorContainsFocus(): boolean {
+		if (!editorEl) return false;
+		const ae = document.activeElement;
+		return ae === editorEl || (!!ae && ae instanceof Node && editorEl.contains(ae));
 	}
 
 	function serializeNode(node: ChildNode): string {
@@ -218,7 +250,7 @@
 		// Highlight span?
 		if (el.hasAttribute('data-hl')) {
 			const kind = el.getAttribute('data-hl-kind') ?? 'default';
-			const inner = (el.textContent ?? '').replace(/\[\[|\]\]/g, '');
+			const inner = serializeSiblingNodes(el.childNodes).replace(/\[\[|\]\]/g, '');
 			if (!inner) return '';
 			switch (kind) {
 				case 'marker': {
@@ -242,38 +274,46 @@
 					return `[[${inner}]]`;
 			}
 		}
-		// Unknown element — walk children.
-		let s = '';
-		for (const child of Array.from(el.childNodes)) s += serializeNode(child);
-		return s;
+		// Other elements (DIV/P from Enter, inline wrappers, etc.)
+		return serializeSiblingNodes(el.childNodes);
 	}
 
 	// Sync external `value` → DOM only when it actually differs from our last emit,
 	// so typing doesn't reset the caret.
 	$effect(() => {
 		if (!editorEl) return;
-		if (value === lastSyncedValue) return;
-		const ae = document.activeElement;
-		const hadFocus = ae === editorEl || (ae instanceof Node && editorEl.contains(ae));
-		let restore: { start: number; end: number } | null = null;
-		if (hadFocus) {
-			const r = getPlainSelectionRange();
-			if (r && r.end > r.start) restore = r;
+		// Never replace innerHTML while the user is typing — avoids flicker on Enter when
+		// `value`/other deps churn before props catch up (or round-trip markup differs).
+		if (editorContainsFocus()) {
+			if (pendingOwnEmit && value === lastSyncedValue) pendingOwnEmit = false;
+			return;
 		}
+		if (pendingOwnEmit) {
+			if (value === lastSyncedValue) {
+				pendingOwnEmit = false;
+				return;
+			}
+			return;
+		}
+		if (value === lastSyncedValue) return;
 		renderMarkupToDom(value);
 		lastSyncedValue = value;
-		if (hadFocus) {
-			void tick().then(() => {
-				if (!editorEl) return;
-				editorEl.focus();
-				if (restore) restorePlainSelection(editorEl, restore.start, restore.end);
-			});
-		}
 	});
+
+	function handleEditorBlur(e: FocusEvent) {
+		const live = serializeDomToMarkup();
+		lastSyncedValue = live;
+		// Protect against prop lag after blur (e.g. focus moves to toolbar): don't let the
+		// sync effect paint stale `value` over the live DOM until the parent catches up.
+		pendingOwnEmit = true;
+		if (live !== value) onChange(live);
+		onBlur?.(e);
+	}
 
 	function handleInput() {
 		const next = serializeDomToMarkup();
 		lastSyncedValue = next;
+		pendingOwnEmit = true;
 		onChange(next);
 	}
 
@@ -349,6 +389,8 @@
 		const r = getPlainSelectionRange();
 		if (!r) return false;
 		const next = applyHighlight(serializeDomToMarkup(), r.start, r.end, spec, defaultColor);
+		lastSyncedValue = next;
+		pendingOwnEmit = true;
 		onChange(next);
 		// Re-render from the new markup on next tick so styled spans appear.
 		void tick().then(() => {
@@ -498,7 +540,7 @@
 			onselect={refreshSelectionState}
 			onpaste={onPaste}
 			onfocus={() => onFocus?.()}
-			onblur={(e) => onBlur?.(e)}
+			onblur={handleEditorBlur}
 			class="hl-editor w-full outline-none whitespace-pre-wrap break-words"
 			style="
 				/* Use line-based min-height so large font sizes don't create huge empty gaps. */

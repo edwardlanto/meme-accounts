@@ -556,7 +556,16 @@ import JSZip from 'jszip';
 			onClick: () => void generateBackground(activeSlide, undefined, activeTemplate),
 			disabled: !!(generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide],
 		},
-		{ icon: Circle, label: 'Shape', onClick: activeTemplate === 'news' ? (() => (showCircle = !showCircle)) : undefined, disabled: activeTemplate !== 'news' },
+		{
+			icon: Circle,
+			label: 'Shape',
+			onClick: activeTemplate === 'news'
+				? () => {
+						showCircleBySlide = showCircleBySlide.map((v, i) => (i === activeSlide ? !v : v));
+					}
+				: undefined,
+			disabled: activeTemplate !== 'news',
+		},
 		{ icon: Type, label: 'Text', onClick: addTextOverlay },
 		{ icon: Image, label: 'Image', onClick: uploadOverlayImage },
 		{ icon: Palette, label: 'Colors', disabled: true },
@@ -603,7 +612,9 @@ import JSZip from 'jszip';
 			showCircle2BySlide = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? false : (showCircle2BySlide[idx] ?? false),
 			);
-			showCircle = true;
+			showCircleBySlide = Array.from({ length: slides.length }, (_, idx) =>
+				idx === i ? true : (showCircleBySlide[idx] ?? false),
+			);
 			circleX = NEWS_DEFAULT_LAYOUT.circleX;
 			circleY = NEWS_DEFAULT_LAYOUT.circleY;
 			circleSize = NEWS_DEFAULT_LAYOUT.circleSize;
@@ -717,6 +728,7 @@ import JSZip from 'jszip';
 	// Convenience derived for current active slide text
 	const overlayText = $derived(slides[activeSlide] ?? '');
 	function setActiveSlideText(val: string) {
+		if ((slides[activeSlide] ?? '') === val) return;
 		slides = slides.map((s, i) => i === activeSlide ? val : s);
 	}
 
@@ -868,7 +880,8 @@ import JSZip from 'jszip';
 	const activeCutout = $derived(subjectCutouts[activeSlide] ?? '');
 	const activeShowCutout = $derived(showCutout[activeSlide] ?? false);
 	const activeCutting = $derived(cuttingOut[activeSlide] ?? false);
-	let showCircle = $state(true);       // toggle — default ON
+	/** Primary news circle: per-slide visibility (slide 0 defaults on; add Shape on other slides if desired). */
+	let showCircleBySlide = $state<boolean[]>([true]);
 	// Circle images are per-slide (so each slide can have its own badge photo).
 	let circleImages = $state<string[]>([]);
 	let circleBorderColor = $state('#FFFFFF');
@@ -1459,6 +1472,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (exportedSlides.length) exportedSlides = pickOr(exportedSlides, '');
 		slideIds        = pickOr(slideIds, newSlideId());
 		slideMusic      = pickOr(slideMusic, null);
+		circleImages = pick(circleImages);
+		circle2Images = pick(circle2Images);
+		showCircle2BySlide = pick(showCircle2BySlide);
+		showCircleBySlide = pick(showCircleBySlide);
 
 		// Keep the same logical slide focused after reorder.
 		const newActive = newOrder.indexOf(activeSlide);
@@ -1515,6 +1532,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		circleImages = pickPerSlideArraysForOldIndices(keep, circleImages, '');
 		circle2Images = pickPerSlideArraysForOldIndices(keep, circle2Images, '');
 		showCircle2BySlide = pickPerSlideArraysForOldIndices(keep, showCircle2BySlide, false);
+		showCircleBySlide = pickPerSlideArraysForOldIndices(keep, showCircleBySlide, false);
 		textOffsetsBySlide = pickPerSlideArraysForOldIndices(keep, textOffsetsBySlide, {} as Record<string, TextOffset>);
 		historyByTemplateBySlide = (Object.fromEntries(
 			(Object.entries(historyByTemplateBySlide) as [TemplateId, ScopedHistory[]][]).map(([k, arr]) => [
@@ -1676,7 +1694,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function toolbarHighlightableRaw(): string {
 		const si = paintSlide;
-		if (selectedText === 'headline') return slides[si] ?? '';
+		if (selectedText === 'headline') {
+			if (newsHeadlineLive !== null) return newsHeadlineLive;
+			return slides[si] ?? '';
+		}
 		if (selectedText === 'articleBody') return articleTextBySlide[si] ?? '';
 		if (selectedText === 'textCarouselBody') return textCarouselTextBySlide[si] ?? '';
 		if (selectedText === 'tweetBottomText') return tweetBottomTextBySlide[si] ?? '';
@@ -1801,8 +1822,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		pushUndo(activeTemplate, activeSlide);
 
 		if (selectedText === 'headline') {
-			const current = slides[activeSlide] ?? '';
-			setActiveSlideText(applyHighlight(current, start, end, spec));
+			const current =
+				newsHeadlineLive !== null ? newsHeadlineLive : (slides[activeSlide] ?? '');
+			const next = applyHighlight(current, start, end, spec);
+			setActiveSlideText(next);
+			if (newsHeadlineLive !== null) newsHeadlineLive = next;
 		} else if (selectedText === 'articleBody') {
 			const current = articleTextBySlide[activeSlide] ?? '';
 			articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
@@ -2179,7 +2203,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const previewTemplate = $derived(coerceTemplateId(slideTemplates[paintSlide]));
 	const canvasInteractive = $derived(canvasRasterSlide === null);
 
-	const canvasOverlayText = $derived(slides[paintSlide] ?? '');
+	/** Mirrors News headline markup during inline edit so `slides` isn't rewritten every keystroke (avoids full preview flicker). */
+	let newsHeadlineLive = $state<string | null>(null);
+
+	const canvasOverlayText = $derived(
+		newsHeadlineLive !== null ? newsHeadlineLive : (slides[paintSlide] ?? ''),
+	);
 	const canvasBackgroundImage = $derived((bgImagesByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
 	const canvasBackgroundVideo = $derived((bgVideosByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
 	const canvasVideoTrimStart = $derived(videoTrimStartSecBySlide[paintSlide] ?? 0);
@@ -2192,6 +2221,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const canvasCircleImg = $derived(circleImages[paintSlide] ?? '');
 	const canvasCircle2Img = $derived(circle2Images[paintSlide] ?? '');
 	const canvasShowCircle2 = $derived(showCircle2BySlide[paintSlide] ?? false);
+	const canvasShowPrimaryCircle = $derived(showCircleBySlide[paintSlide] ?? false);
 	const canvasOverlays = $derived((slideOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []);
 	const canvasTextOverlays = $derived((slideTextOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []);
 	const canvasStyleMap = $derived((stylesByTemplateBySlide[previewTemplate] ?? [])[paintSlide] ?? {});
@@ -2401,7 +2431,19 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray(s.videoVolumeBySlide)) videoVolumeBySlide = s.videoVolumeBySlide;
 		if (Array.isArray(s.textOffsetsBySlide)) textOffsetsBySlide = s.textOffsetsBySlide;
 
-		if (typeof s.showCircle === 'boolean') showCircle = s.showCircle;
+		{
+			const nSlides = Array.isArray(s.slides) ? s.slides.length : slides.length;
+			if (Array.isArray((s as any).showCircleBySlide)) {
+				const a = (s as any).showCircleBySlide.map((x: unknown) => !!x);
+				showCircleBySlide = Array.from({ length: nSlides }, (_, i) => a[i] ?? false);
+			} else if (typeof s.showCircle === 'boolean') {
+				const legacy = s.showCircle;
+				const imgs = Array.isArray(s.circleImages)
+					? s.circleImages.map((x: unknown) => String(x ?? '').trim())
+					: [];
+				showCircleBySlide = Array.from({ length: nSlides }, (_, i) => legacy && (i === 0 || imgs[i] !== ''));
+			}
+		}
 		// Back-compat: older drafts stored a single circleImage; newer ones store per-slide arrays.
 		if (Array.isArray(s.circleImages)) circleImages = s.circleImages;
 		else if (typeof s.circleImage === 'string') {
@@ -2551,7 +2593,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		textOffsetsBySlide = [{}];
 		slideIds = [newSlideId()];
-		showCircle = false;
+		showCircleBySlide = [false];
 		circleImages = [''];
 		circle2Images = [''];
 		showCircle2BySlide = [false];
@@ -2758,7 +2800,7 @@ tweetTopImagePanYBySlide,
 			subjectCutouts,
 			showCutout,
 			slideMusic,
-			showCircle,
+			showCircleBySlide,
 			circleImages,
 			circleBorderColor,
 			showCircle2BySlide,
@@ -2840,7 +2882,7 @@ tweetTopImagePanYBySlide,
 				draftRestoring = false;
 				if (forcedBlankFromQuery) applyBlankCanvas();
 				// After restore (or blank canvas), optionally seed the primary circle badge.
-				if (showCircle && !activeCircleImage) void generateCircleImage(activeSlide);
+				if ((showCircleBySlide[activeSlide] ?? false) && !activeCircleImage) void generateCircleImage(activeSlide);
 			});
 	});
 
@@ -3229,6 +3271,7 @@ tweetTopImagePanYBySlide,
 					...slideTextOverlaysByTemplate,
 					news: Array.from({ length: n }, () => []),
 				};
+				showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
 			} else {
 				bgImagesByTemplate = {
 					...bgImagesByTemplate,
@@ -3268,8 +3311,8 @@ tweetTopImagePanYBySlide,
 			// Slides 1+: generate from their own text copy
 			const imagePromise = generateAllSlideImages(articleImageUrl, contentTemplate);
 
-			// Auto-generate circle badge if toggle is on
-			if (showCircle) generateCircleImage();
+			// Auto-generate circle badge on slide 1 only when enabled
+			if (showCircleBySlide[0]) generateCircleImage(0);
 
 			await imagePromise;
 
@@ -3498,6 +3541,11 @@ tweetTopImagePanYBySlide,
 		if (showCircle2BySlide.length !== n) {
 			showCircle2BySlide = Array.from({ length: n }, (_, i) => showCircle2BySlide[i] ?? false);
 		}
+		if (showCircleBySlide.length !== n) {
+			showCircleBySlide = Array.from({ length: n }, (_, i) =>
+				i < showCircleBySlide.length ? showCircleBySlide[i] ?? false : false,
+			);
+		}
 		if (tweetTopNameBySlide.length !== n) {
 			tweetTopNameBySlide = Array.from({ length: n }, (_, i) => tweetTopNameBySlide[i] ?? 'Chef 👨‍🍳');
 		}
@@ -3649,7 +3697,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			});
 			const data = await res.json();
 			if (data.dataUrl) {
-				circleImages = circleImages.map((v, i) => (i === slideIdx ? data.dataUrl : v));
+				const n = Math.max(slides.length, slideIdx + 1);
+				const padded = Array.from({ length: n }, (_, i) => circleImages[i] ?? '');
+				circleImages = padded.map((v, i) => (i === slideIdx ? data.dataUrl : v));
 			}
 		} catch { /* ignore */ }
 		generatingCircle = false;
@@ -3693,7 +3743,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			if (data.dataUrl) {
 				if (which === 1) {
 					circleImages = circleImages.map((v, i) => (i === activeSlide ? data.dataUrl : v));
-					showCircle = true;
+					showCircleBySlide = showCircleBySlide.map((v, i) => (i === activeSlide ? true : v));
 				} else {
 					circle2Images = circle2Images.map((v, i) => (i === activeSlide ? data.dataUrl : v));
 					showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === activeSlide ? true : v));
@@ -5092,9 +5142,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						}}
 					subjectCutout={canvasCutout}
 showSubjectCutout={canvasShowCutout}
-					allowCircle={showCircle}
+					allowCircle={canvasShowPrimaryCircle}
 					allowCircle2={true}
-					circleImage={showCircle ? canvasCircleImg : ''}
+					circleImage={canvasShowPrimaryCircle ? canvasCircleImg : ''}
 					showCircle2={canvasShowCircle2}
 					circle2Image={canvasShowCircle2 ? canvasCircle2Img : ''}
 					text={canvasOverlayText}
@@ -5110,17 +5160,30 @@ showSubjectCutout={canvasShowCutout}
 					headlineStyle={canvasHeadlineStyle}
 					sourceStyle={canvasSourceStyle}
 					selectedText={selectedText}
+					onHeadlineEditStart={() => {
+						if (!canvasInteractive) return;
+						newsHeadlineLive = slides[paintSlide] ?? '';
+					}}
+					onHeadlineLive={(s) => {
+						if (!canvasInteractive) return;
+						newsHeadlineLive = s;
+					}}
+					onHeadlineEditEnd={() => {
+						newsHeadlineLive = null;
+					}}
 					onTextChange={(t) => { if (!canvasInteractive) return; setActiveSlideText(t); }}
 					onCircleMove={(x, y) => { if (!canvasInteractive) return; circleX = x; circleY = y; }}
 					onCircleImageChange={(src) => {
 						if (!canvasInteractive) return;
 						circleImages = circleImages.map((v, i) => (i === paintSlide ? src : v));
-						if (String(src ?? '').trim()) showCircle = true;
+						if (String(src ?? '').trim()) {
+							showCircleBySlide = showCircleBySlide.map((v, i) => (i === paintSlide ? true : v));
+						}
 					}}
 					onCircleRemove={() => {
 						if (!canvasInteractive) return;
 						circleImages = circleImages.map((v, i) => (i === paintSlide ? '' : v));
-						showCircle = false;
+						showCircleBySlide = showCircleBySlide.map((v, i) => (i === paintSlide ? false : v));
 					}}
 					onCircleAIClick={() => { if (!canvasInteractive) return; void generateCircleFromPrompt(1); }}
 					onCircle2Move={(x, y) => { if (!canvasInteractive) return; circle2X = x; circle2Y = y; }}
@@ -5440,6 +5503,17 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					headlineStyle={canvasHeadlineStyle}
 					sourceStyle={canvasSourceStyle}
 					selectedText={selectedText}
+					onHeadlineEditStart={() => {
+						if (!canvasInteractive) return;
+						newsHeadlineLive = slides[paintSlide] ?? '';
+					}}
+					onHeadlineLive={(s) => {
+						if (!canvasInteractive) return;
+						newsHeadlineLive = s;
+					}}
+					onHeadlineEditEnd={() => {
+						newsHeadlineLive = null;
+					}}
 					onTextChange={(t) => { if (!canvasInteractive) return; setActiveSlideText(t); }}
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={onTextSelect}
@@ -6116,6 +6190,12 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		if (canvasBackgroundVideo.trim()) newsBgToolbarVideoInput?.click();
 		else newsBgToolbarImageInput?.click();
 	}}
+	onApplySolid={(hex) => {
+		pushUndo('news', activeSlide);
+		applyNewsSolidBg(hex);
+		closeNewsBgToolbar();
+	}}
+	solidPresets={NEWS_SOLID_PRESETS}
 	onClose={closeNewsBgToolbar}
 />
 

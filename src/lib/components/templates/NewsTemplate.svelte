@@ -129,6 +129,10 @@
 		onTextOverlaysChange?: (overlays: TextOverlay[]) => void;
 		/** Fired when the user clicks a stylable text element. */
 		onTextSelect?: (kind: TextElementKind, anchor: HTMLElement) => void;
+		/** When set (Studio), headline keystrokes update this instead of spamming `onTextChange`; parent commits `slides` on blur/escape only. */
+		onHeadlineLive?: (t: string) => void;
+		onHeadlineEditStart?: () => void;
+		onHeadlineEditEnd?: () => void;
 		/** Fired when the user selects a range of PLAIN text inside the headline.
 		 *  Offsets are into the visible (unmarked-up) text, suitable for applyHighlight(). */
 		onHeadlineRangeSelect?: (plainStart: number, plainEnd: number) => void;
@@ -207,6 +211,9 @@
 		onOverlaysChange,
 		onTextOverlaysChange,
 		onTextSelect,
+		onHeadlineLive,
+		onHeadlineEditStart,
+		onHeadlineEditEnd,
 		onHeadlineRangeSelect,
 		headlineSelectionRestoreNonce = 0,
 		headlineSelectionRestoreRange = null,
@@ -480,8 +487,29 @@
 
 	// ── Inline text editing ────────────────────────────────────────────────
 	let editing = $state(false);
+	/** Local mirror while editing; avoids pushing every keystroke to parent when `onHeadlineLive` is used. */
+	let headlineDraft = $state('');
 	let editableEl = $state<HTMLElement | null>(null);
 	let hoveringText = $state(false);
+
+	function commitHeadlineToParent() {
+		if (onHeadlineLive) {
+			onTextChange?.(headlineDraft);
+			// Clear the Studio live buffer after paint so `slides` + static headline mount
+			// settle first — avoids a visible flash when swapping editor → read-only markup.
+			queueMicrotask(() => onHeadlineEditEnd?.());
+		}
+	}
+
+	function pushHeadlineChange(v: string) {
+		headlineDraft = v;
+		if (onHeadlineLive) onHeadlineLive(v);
+		else onTextChange?.(v);
+	}
+
+	$effect(() => {
+		if (text !== headlineDraft) headlineDraft = text;
+	});
 
 	// ── Text panel drag (HTML) ─────────────────────────────────────────────
 	const TEXT_PANEL_H = 520; // must match visual design; used for clamp range
@@ -499,6 +527,8 @@
 	function startEdit(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
+		headlineDraft = text;
+		onHeadlineEditStart?.();
 		editing = true;
 		setTimeout(() => {
 			const ce = editableEl?.querySelector<HTMLElement>('[contenteditable="true"]');
@@ -522,6 +552,7 @@
 	}
 
 	function exitHeadlineEditMode() {
+		commitHeadlineToParent();
 		editing = false;
 	}
 
@@ -538,6 +569,7 @@
 				const ae = document.activeElement;
 				if (ae instanceof Element && ae.closest('[data-floating-toolbar], [data-slot="popover-content"]'))
 					return;
+				commitHeadlineToParent();
 				editing = false;
 			});
 		});
@@ -545,10 +577,7 @@
 
 	function onEditKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') exitHeadlineEditMode();
-		if (e.key === 'Enter' && e.shiftKey) {
-			e.preventDefault();
-			exitHeadlineEditMode();
-		}
+		// Do not intercept Enter / Shift+Enter — multiline editing relies on them (serialized as `\n`).
 	}
 
 	function textPointerDown(e: PointerEvent) {
@@ -1960,47 +1989,16 @@
 				</div>
 			{/if}
 
-			<!-- Inline editor (active) -->
-			{#if editing && interactive}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
-					bind:this={editableEl}
-					data-text-selectable="headline"
-					onkeydown={onEditKeydown}
-					onclick={(e) => e.stopPropagation()}
-					onmousedown={(e) => e.stopPropagation()}
-					style="
-						margin: 0; padding: 0;
-						{headlineCss}
-						text-transform: uppercase;
-						word-break: break-word;
-						box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
-						border-radius: 4px;
-						cursor: text;
-						white-space: pre-wrap;
-					"
-				>
-					<HighlightEditor
-						value={text}
-						rows={1}
-						showToolbar={false}
-						defaultColor={highlightColor}
-						onChange={(v) => onTextChange?.(v)}
-						onBlur={finishHeadlineEdit}
-						onSelectionChange={(has, r) => {
-							if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
-							else onHeadlineRangeSelect?.(-1, -1);
-						}}
-						ariaLabel="Headline editor"
-					/>
-				</div>
-
-			{:else}
-				<!-- Rendered headline with highlights -->
+			<!--
+			  Stack static headline + editor overlay so exiting edit only peels off the overlay.
+			  The <p> stays mounted (hidden while editing) — avoids tearing down/rebuilding segment markup on blur.
+			-->
+			<div style="position: relative;">
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<p
 					bind:this={headlineEl}
 					data-text-selectable="headline"
+					aria-hidden={interactive && editing ? true : undefined}
 					ondblclick={onHeadlineDblClick}
 					onpointerup={onHeadlineMouseUp}
 					style="
@@ -2008,7 +2006,10 @@
 						{headlineCss}
 						text-transform: uppercase;
 						word-break: break-word;
+						white-space: pre-line;
 						touch-action: pan-x;
+						visibility: {interactive && editing ? 'hidden' : 'visible'};
+						pointer-events: {interactive && editing ? 'none' : 'auto'};
 						{selectedText === 'headline' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 4px;' : ''}
 						{interactive ? 'user-select: text !important; -webkit-user-select: text !important;' : ''}
 					"
@@ -2043,7 +2044,44 @@
 						{/if}
 					{/each}
 				</p>
-			{/if}
+
+				{#if editing && interactive}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						bind:this={editableEl}
+						data-text-selectable="headline"
+						onkeydown={onEditKeydown}
+						onclick={(e) => e.stopPropagation()}
+						onmousedown={(e) => e.stopPropagation()}
+						style="
+							position: absolute;
+							inset: 0;
+							margin: 0; padding: 0;
+							{headlineCss}
+							text-transform: uppercase;
+							word-break: break-word;
+							box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+							border-radius: 4px;
+							cursor: text;
+							white-space: pre-wrap;
+						"
+					>
+						<HighlightEditor
+							value={headlineDraft}
+							rows={4}
+							showToolbar={false}
+							defaultColor={highlightColor}
+							onChange={pushHeadlineChange}
+							onBlur={finishHeadlineEdit}
+							onSelectionChange={(has, r) => {
+								if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
+								else onHeadlineRangeSelect?.(-1, -1);
+							}}
+							ariaLabel="Headline editor"
+						/>
+					</div>
+				{/if}
+			</div>
 		</div>
 	</div>
 </div>
