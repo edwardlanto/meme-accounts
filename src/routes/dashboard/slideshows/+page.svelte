@@ -121,10 +121,13 @@
 	let generating    = $state(false);
 	let genError      = $state('');
 	let generatedHtml = $state('');
+	/** Optional: fill `[data-img-slot]` with Fal after Claude (requires `FAL_KEY` on server). */
+	let generateSlotImagesWithFal = $state(false);
+	let falSlotNote = $state('');
 
 	async function generateCarousel() {
 		if (!content.trim()) { genError = 'Enter a topic or content first.'; return; }
-		generating = true; genError = '';
+		generating = true; genError = ''; falSlotNote = '';
 		try {
 			const res = await fetch('/api/brand/generate', {
 				method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -135,6 +138,7 @@
 					primaryColor,
 					content,
 					slideCount,
+					generateSlotImages: generateSlotImagesWithFal,
 					...(images.length
 						? { referenceImages: images.map((i) => ({ data: i.base64, mediaType: i.mediaType })) }
 						: {}),
@@ -142,6 +146,14 @@
 			});
 			const data = await res.json();
 			if (!res.ok || data.error) throw new Error(data.error ?? 'Generation failed');
+			if (Array.isArray(data.falWarnings) && data.falWarnings.length) {
+				falSlotNote = data.falWarnings.join(' · ');
+			} else if (generateSlotImagesWithFal && typeof data.falFilled === 'number' && data.falFilled > 0) {
+				falSlotNote = `Filled ${data.falFilled} image slot(s) with Fal.`;
+			} else if (generateSlotImagesWithFal && data.falFilled === 0) {
+				falSlotNote =
+					'Image slot fill skipped (set FAL_KEY on the server, or no empty data-img-slot regions found).';
+			}
 		generatedHtml = data.html;
 		_fullHtml = data.html;
 		isDemo = !!data.demo;
@@ -815,6 +827,21 @@ ${inlineEditScript}
 				class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-3 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-violet-500/40 transition-colors resize-none leading-relaxed">
 			</textarea>
 		</div>
+
+		<label class="flex items-start gap-2.5 cursor-pointer select-none rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+			<input type="checkbox" bind:checked={generateSlotImagesWithFal} class="mt-0.5 rounded border-white/20" />
+			<div>
+				<p class="text-xs font-semibold text-white/85">Generate slot images (Fal)</p>
+				<p class="text-[10px] font-body text-white/40 leading-snug mt-0.5">
+					After Claude builds the HTML, fill empty <code class="text-white/55">data-img-slot</code> areas with Fal Flux images (server needs
+					<code class="text-white/55">FAL_KEY</code>). Optional; slower but replaces flat color blocks.
+				</p>
+			</div>
+		</label>
+
+		{#if falSlotNote}
+			<p class="text-[11px] font-body text-amber-200/90 leading-snug">{falSlotNote}</p>
+		{/if}
 
 		{#if genError}
 			<p class="text-[11px] font-body text-red-400">{genError}</p>

@@ -3,7 +3,7 @@
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
-	import { Pencil, Trash2, LoaderCircle, Eraser } from 'lucide-svelte';
+	import { Pencil, Trash2, LoaderCircle, Eraser, Minus, Plus } from 'lucide-svelte';
 
 	interface Props {
 		overlay: Overlay;
@@ -132,6 +132,21 @@
 		reader.onload = () => patch({ src: reader.result as string });
 		reader.readAsDataURL(f);
 	}
+
+	const radiusCap = $derived(Math.min(overlay.w, overlay.h) / 2);
+	const borderRadiusPx = $derived.by(() => {
+		const raw = Number(overlay.borderRadius);
+		const r = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+		return Math.min(r, radiusCap);
+	});
+
+	function bumpBorderRadius(delta: number) {
+		const ov = overlays.find((o) => o.id === overlay.id);
+		if (!ov) return;
+		const cap = Math.min(ov.w, ov.h) / 2;
+		const cur = Math.max(0, Math.min(cap, Number(ov.borderRadius) || 0));
+		patch({ borderRadius: Math.max(0, Math.min(cap, cur + delta)) });
+	}
 </script>
 
 <input
@@ -166,16 +181,24 @@
 		}}
 		role="presentation"
 	>
-		<img
-			src={overlay.src}
-			alt=""
+		<div
 			style="
 				width: 100%; height: 100%;
-				object-fit: contain;
-				pointer-events: none;
-				display: block;
+				overflow: hidden;
+				border-radius: {borderRadiusPx}px;
 			"
-		/>
+		>
+			<img
+				src={overlay.src}
+				alt=""
+				style="
+					width: 100%; height: 100%;
+					object-fit: contain;
+					pointer-events: none;
+					display: block;
+				"
+			/>
+		</div>
 
 		{#if interactive && showChrome}
 			<div
@@ -200,7 +223,7 @@
 				style="
 					position: absolute; inset: -2px;
 					border: 2px dashed rgba(255,255,255,0.5);
-					border-radius: 4px; pointer-events: none;
+					border-radius: {Math.max(0, borderRadiusPx - 2)}px; pointer-events: none;
 				"
 			></div>
 		{/if}
@@ -248,6 +271,38 @@
 			>
 				<Pencil size={20} class="text-foreground" strokeWidth={2} />
 			</Button>
+			<div
+				class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2"
+				role="group"
+				aria-label="Corner radius in pixels"
+				title="Corner radius"
+			>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="h-8 w-8 shrink-0 rounded-full"
+					type="button"
+					disabled={borderRadiusPx <= 0}
+					onclick={() => bumpBorderRadius(-6)}
+					title="Less rounded corners"
+					aria-label="Decrease corner radius"
+				>
+					<Minus size={16} class="text-foreground" strokeWidth={2} />
+				</Button>
+				<span class="min-w-[1.75rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(borderRadiusPx)}</span>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="h-8 w-8 shrink-0 rounded-full"
+					type="button"
+					disabled={borderRadiusPx >= radiusCap - 0.5}
+					onclick={() => bumpBorderRadius(6)}
+					title="More rounded corners"
+					aria-label="Increase corner radius"
+				>
+					<Plus size={16} class="text-foreground" strokeWidth={2} />
+				</Button>
+			</div>
 			<Button
 				variant="ghost"
 				size="icon"

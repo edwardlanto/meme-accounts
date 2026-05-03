@@ -12,6 +12,8 @@ export interface Overlay {
 	y: number;    // top edge in template px (0–1350)
 	w: number;    // width in template px
 	h: number;    // height in template px
+	/** Image sticker overlays: corner radius in template px (clamped to half the shorter side). */
+	borderRadius?: number;
 }
 
 /** Draggable text overlay placed on top of a slide */

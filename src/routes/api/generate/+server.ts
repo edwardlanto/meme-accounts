@@ -83,11 +83,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		`User inputs:\n- Topic: ${topic}\n- Brand Name: ${brandName}\n- Number of slides: ${slideCount}\n\n` +
 		`CRITICAL:\n` +
 		`- Return ONLY a JSON array of exactly ${slideCount} objects.\n` +
-		`- Each object must strictly follow the schema in SKILLS.md.\n` +
-		`- Lock the visual style to the reference image (palette, layout system, typography, lighting).\n` +
-		`- Change the SUBJECT and HEADLINE per slide.\n` +
-		`- Every slide must include the user's Brand Name in the ui_elements field exactly as per SKILLS.md.\n` +
-		`- Ensure slide numbering is correct in ui_elements (e.g. 1/${slideCount}).\n`;
+		`- Each object must strictly follow the schema in SKILLS.md (top-level key "prompt").\n` +
+		`- Lock the visual style to the reference image (palette, layout grid, typography personality, lighting).\n` +
+		`- Vary subject/hero and headline copy per slide; keep the design system identical across the deck.\n` +
+		`- Apply VISUAL_STANDARDS.md: ~10% safe margins, 2–3 text zones max, phone-legible type, no watermarks.\n` +
+		`- In scene.description, state layout zones clearly (e.g. upper third headline, lower third CTA).\n` +
+		`- quality.include / quality.avoid on every slide: ban warped or tiny text, edge-hugging type, misspellings, clutter.\n` +
+		`- Every slide must include the brand name "${brandName}" in ui_elements where the reference style places branding.\n` +
+		`- Slide counters in ui_elements must be accurate (1/${slideCount} through ${slideCount}/${slideCount}).\n`;
 
 	const openRouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 		method: 'POST',

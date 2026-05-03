@@ -1,23 +1,33 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { fillDataImgSlotsWithFal } from '$lib/server/brand-carousel-fal-slots';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const ANTHROPIC_MESSAGES_API = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-/** Direct Anthropic model (Brand Carousel only, when `CLAUDE_API_KEY` is set). */
+/** Direct Anthropic Messages API — Brand Carousel when `CLAUDE_API_KEY` is set (unchanged default). */
 const ANTHROPIC_CAROUSEL_MODEL = 'claude-sonnet-4-5';
 
-/** Brand carousel system prompt — `instagram-carousel-prompt2.md` only (see `instagram-carousel-generator.md` for legacy reference). */
+/** Brand carousel system prompt: main spec + slide arc strategy. */
 const CAROUSEL_PROMPT_FILES = import.meta.glob(
-	'../../../../lib/prompts/carousel/instagram-carousel-prompt2.md',
+	[
+		'../../../../lib/prompts/carousel/instagram-carousel-prompt2.md',
+		'../../../../lib/prompts/brand-images/CAROUSEL_STRATEGY.md',
+	],
 	{ as: 'raw', eager: true },
 ) as Record<string, string>;
 
 function loadCarouselSystemPrompt(): string {
+	const rank = (path: string) => {
+		if (path.includes('instagram-carousel-prompt2')) return 0;
+		if (path.includes('CAROUSEL_STRATEGY')) return 1;
+		return 2;
+	};
 	const parts = Object.entries(CAROUSEL_PROMPT_FILES)
-		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([, raw]) => String(raw).trim());
+		.sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]))
+		.map(([, raw]) => String(raw).trim())
+		.filter(Boolean);
 	return parts.join('\n\n---\n\n');
 }
 
@@ -71,7 +81,7 @@ const MAX_REFERENCE_IMAGES = 4;
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
-	const { style, brandName, handle, primaryColor, content, slideCount, referenceImages } = body;
+	const { style, brandName, handle, primaryColor, content, slideCount, referenceImages, generateSlotImages } = body;
 	const refs: ReferenceImage[] = Array.isArray(referenceImages)
 		? referenceImages
 				.filter((r: unknown) => r && typeof r === 'object' && 'data' in (r as ReferenceImage))
@@ -93,13 +103,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json(
 			{
 				error:
-					'Missing carousel prompt: add src/lib/prompts/carousel/instagram-carousel-prompt2.md',
+					'Missing carousel prompt files under src/lib/prompts/carousel/ and src/lib/prompts/brand-images/',
 			},
 			{ status: 500 },
 		);
 	}
 
-	const userMessage = `The user submitted this through the Brand Carousel UI. Do not ask clarifying questions — use the data below and follow the system instructions.
+	const userMessage = `This request is from the **Brand Carousel** tool (official Claude API, single response — same quality bar as if you designed this in Claude Desktop for a paying client).
+
+Do not ask clarifying questions. Use every field below. The **system** message is the full art direction + HTML contract — follow it literally.
+
+## Creative bar (one shot)
+- Instagram readers decide in **one second** on slide 1. Make the hero feel **finished**: real type hierarchy, real spacing, intentional color—not a wireframe.
+- Each slide should look **screenshot-ready** at 1080×1350 (what someone would save and post).
+- If the topic is educational, prefer **editorial calm** (cream surfaces, black ink, one accent) over “startup landing page” or “neon blocks.”
 
 ## Extracted style (from uploaded reference images; may be empty object if skipped)
 ${styleBlock}
@@ -115,7 +132,7 @@ Generate exactly **${slideCountNum}** slides (\`<div class="slide">\` each), eac
 ## Topic / article / content to turn into the carousel
 ${content}
 
-Generate the full HTML document now. Start with <!DOCTYPE html>.`;
+Output the **complete** HTML document now. First line must be \`<!DOCTYPE html>\`. No markdown, no preamble.`;
 
 	const imageParts: { type: 'image_url'; image_url: { url: string } }[] = [];
 	for (const img of refs) {
@@ -145,6 +162,9 @@ Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 
 	const claudeKey = env.CLAUDE_API_KEY;
 	const openRouterKey = env.OPENROUTER_API_KEY;
+	const falKey = env.FAL_KEY;
+	const falSlotEndpoint =
+		(typeof env.FAL_BRAND_CAROUSEL_MODEL === 'string' && env.FAL_BRAND_CAROUSEL_MODEL.trim()) || undefined;
 
 	if (!claudeKey && !openRouterKey) {
 		return json({ html: getDemoHtml(brandName, h, color, slideCountNum, style), demo: true });
@@ -152,6 +172,23 @@ Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 
 	const openRouterUserContent: OpenRouterContentPart[] | string =
 		userContent.length > 1 ? userContent : userMessage;
+
+	async function maybeFillSlots(html: string) {
+		const want = !!generateSlotImages && !!falKey;
+		if (!want) return { html, falFilled: 0, falWarnings: [] as string[] };
+		try {
+			const { html: next, filled, errors } = await fillDataImgSlotsWithFal(html, {
+				topic: String(content ?? ''),
+				brandName: String(brandName ?? ''),
+				falKey,
+				endpoint: falSlotEndpoint,
+			});
+			return { html: next, falFilled: filled, falWarnings: errors };
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : String(e);
+			return { html, falFilled: 0, falWarnings: [msg] };
+		}
+	}
 
 	try {
 		/** Brand Carousel: direct Anthropic API when `CLAUDE_API_KEY` is set. */
@@ -187,11 +224,19 @@ Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 			}
 
 			const raw = extractAnthropicMessageText(data);
-			const html = normalizeCarouselHtml(raw);
+			let html = normalizeCarouselHtml(raw);
 			if (!html.includes('<html') && !html.includes('<!DOCTYPE')) {
 				return json({ error: 'No HTML returned', raw: html.slice(0, 2000) }, { status: 500 });
 			}
-			return json({ html, provider: 'anthropic', model: ANTHROPIC_CAROUSEL_MODEL });
+			const slotPass = await maybeFillSlots(html);
+			html = slotPass.html;
+			return json({
+				html,
+				provider: 'anthropic',
+				model: ANTHROPIC_CAROUSEL_MODEL,
+				falFilled: slotPass.falFilled,
+				...(slotPass.falWarnings.length ? { falWarnings: slotPass.falWarnings } : {}),
+			});
 		}
 
 		if (!openRouterKey) {
@@ -224,7 +269,15 @@ Generate the full HTML document now. Start with <!DOCTYPE html>.`;
 			return json({ error: 'No HTML returned', raw: html }, { status: 500 });
 		}
 
-		return json({ html, provider: 'openrouter', model: 'anthropic/claude-3.7-sonnet' });
+		const slotPass = await maybeFillSlots(html);
+		html = slotPass.html;
+		return json({
+			html,
+			provider: 'openrouter',
+			model: 'anthropic/claude-3.7-sonnet',
+			falFilled: slotPass.falFilled,
+			...(slotPass.falWarnings.length ? { falWarnings: slotPass.falWarnings } : {}),
+		});
 	} catch (e: any) {
 		return json({ error: e.message }, { status: 500 });
 	}

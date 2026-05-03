@@ -48,6 +48,9 @@ interface TweetProps {
 	likeCount?: string;
 	// Style
 	templateTheme?: 'light' | 'dark';
+	/** Logical export size (Studio); 1080×1350 design is letterboxed to fit */
+	canvasW?: number;
+	canvasH?: number;
 	scale?: number;
 	interactive?: boolean;
 	exportRef?: HTMLElement | null;
@@ -109,6 +112,8 @@ let {
 	repostCount = '12.8K',
 	likeCount = '89.4K',
 	templateTheme = 'light',
+	canvasW      = 1080,
+	canvasH      = 1350,
 	scale        = 1,
 	interactive  = true,
 	exportRef    = $bindable<HTMLElement | null>(null),
@@ -298,8 +303,14 @@ let {
 	const bottomNameCss = $derived(styleCss(tweetStyles.tweetBottomName ?? {}));
 	const bottomHandleCss = $derived(styleCss(tweetStyles.tweetBottomHandle ?? {}));
 	const bottomTextCss = $derived(styleCss(tweetStyles.tweetBottomText ?? {}));
-	const W = 1080;
-	const H = 1350;
+	const BASE_W = 1080;
+	const BASE_H = 1350;
+	const W = $derived(Math.max(320, Number(canvasW) || BASE_W));
+	const H = $derived(Math.max(320, Number(canvasH) || BASE_H));
+	const layoutScale = $derived(Math.min(W / BASE_W, H / BASE_H));
+	const letterInsetX = $derived((W - BASE_W * layoutScale) / 2);
+	const letterInsetY = $derived((H - BASE_H * layoutScale) / 2);
+	const dragScale = $derived(scale * layoutScale);
 
 	/** Initials fallback for missing avatar (match text carousel: up to 3 letters). */
 	function initials(name: string) {
@@ -350,7 +361,7 @@ let {
 	flex-shrink: 0;
 	position: relative;
 ">
-	<!-- Inner at 1080×1350 — full bleed, no card wrapper -->
+	<!-- Inner export surface — letterboxed 1080×1350 design when w/h differ -->
 	<div
 		bind:this={exportRef}
 		style="
@@ -361,19 +372,32 @@ let {
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: 'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-			display: flex;
-			flex-direction: column;
 			box-sizing: border-box;
-			overflow: visible;
-			padding: 56px 72px 72px;
+			overflow: hidden;
 		"
 	>
+		<div
+			style="
+				position: absolute;
+				left: {letterInsetX}px;
+				top: {letterInsetY}px;
+				width: {BASE_W}px;
+				height: {BASE_H}px;
+				transform: scale({layoutScale});
+				transform-origin: 0 0;
+				display: flex;
+				flex-direction: column;
+				box-sizing: border-box;
+				overflow: visible;
+				padding: 56px 72px 72px;
+			"
+		>
 			<!-- OP: avatar + name + badge + handle (classic tweet header) -->
 			<DraggableBlock
 				dx={textOffsets.tweetTopProfile?.x ?? 0}
 				dy={textOffsets.tweetTopProfile?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopProfile', { x, y })}
 			>
 				{#snippet children()}
@@ -463,7 +487,7 @@ let {
 				dx={textOffsets.tweetTopText?.x ?? 0}
 				dy={textOffsets.tweetTopText?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				holdDragFromText={!!topEditable}
 				holdMs={300}
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopText', { x, y })}
@@ -505,7 +529,7 @@ let {
 					dx={textOffsets.tweetTopImage?.x ?? 0}
 					dy={textOffsets.tweetTopImage?.y ?? 0}
 					{interactive}
-					{scale}
+					scale={dragScale}
 					onChange={(x, y) => onTextOffsetChange?.('tweetTopImage', { x, y })}
 				>
 					{#snippet children()}
@@ -630,7 +654,7 @@ let {
 				dx={textOffsets.tweetBottomProfile?.x ?? 0}
 				dy={textOffsets.tweetBottomProfile?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				onChange={(x, y) => onTextOffsetChange?.('tweetBottomProfile', { x, y })}
 			>
 				{#snippet children()}
@@ -720,7 +744,7 @@ let {
 				dx={textOffsets.tweetBottomText?.x ?? 0}
 				dy={textOffsets.tweetBottomText?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				holdDragFromText={!!bottomEditable}
 				holdMs={300}
 				onChange={(x, y) => onTextOffsetChange?.('tweetBottomText', { x, y })}
@@ -762,5 +786,6 @@ let {
 				font-size:22px;font-weight:600;color:{textSecondary};opacity:0.28;
 				letter-spacing:0;font-family:inherit;
 			">𝕏</div>
+		</div>
 	</div>
 </div>

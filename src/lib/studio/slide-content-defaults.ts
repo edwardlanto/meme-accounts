@@ -14,7 +14,7 @@ export const NEWS_DEFAULT_LAYOUT = {
 	circle2X: 80,
 	circle2Y: 80,
 	circle2Size: 220,
-	bgOffsetX: 50,
+	bgOffsetX: 0,
 	bgOffsetY: 50,
 	bgZoom: 100,
 	bgFitMode: 'cover' as const,

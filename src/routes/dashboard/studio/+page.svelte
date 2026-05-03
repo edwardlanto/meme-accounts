@@ -79,7 +79,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper
 	} from 'lucide-svelte';
 
 	// ── Mock data ─────────────────────────────────────────────────────────
@@ -545,6 +545,9 @@ import JSZip from 'jszip';
 	}
 
 	const dockItems = $derived.by(() => ([
+		...(activeTemplate === 'news'
+			? [{ icon: Wallpaper, label: 'BG tools', onClick: openNewsBgToolbarFromDock }]
+			: []),
 		{ icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !effectiveBackgroundVideo },
 		{ icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !effectiveBackgroundVideo },
 		{
@@ -607,11 +610,7 @@ import JSZip from 'jszip';
 			circle2X = NEWS_DEFAULT_LAYOUT.circle2X;
 			circle2Y = NEWS_DEFAULT_LAYOUT.circle2Y;
 			circle2Size = NEWS_DEFAULT_LAYOUT.circle2Size;
-			bgOffsetX = NEWS_DEFAULT_LAYOUT.bgOffsetX;
-			bgOffsetY = NEWS_DEFAULT_LAYOUT.bgOffsetY;
-			bgZoom = NEWS_DEFAULT_LAYOUT.bgZoom;
-			bgFitMode = NEWS_DEFAULT_LAYOUT.bgFitMode;
-			bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
+			applyNewsSeedBackgroundLayout();
 			textPanelOffsetY = NEWS_DEFAULT_LAYOUT.textPanelOffsetY;
 			shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
 			shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
@@ -915,6 +914,15 @@ import JSZip from 'jszip';
 		};
 	}
 
+	/** Reset News background fit/zoom/pan for a freshly loaded article/API image (full-bleed cover). */
+	function applyNewsSeedBackgroundLayout() {
+		bgOffsetX = NEWS_DEFAULT_LAYOUT.bgOffsetX;
+		bgOffsetY = NEWS_DEFAULT_LAYOUT.bgOffsetY;
+		bgZoom = NEWS_DEFAULT_LAYOUT.bgZoom;
+		bgFitMode = NEWS_DEFAULT_LAYOUT.bgFitMode;
+		bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
+	}
+
 	function setSlideImage(i: number, url: string, template: TemplateId = 'news') {
 		// If we’re replacing a blob URL, revoke it to keep memory stable.
 		const prev = (bgImagesByTemplate[template] ?? [])[i];
@@ -1065,7 +1073,7 @@ import JSZip from 'jszip';
 	let circle2Size = $state(220);
 
 	// Background pan (0–100 %)
-	let bgOffsetX = $state(50); // horizontal: 0=left, 100=right
+	let bgOffsetX = $state(0); // horizontal: 0=left, 100=right (matches NEWS_DEFAULT_LAYOUT)
 	let bgOffsetY = $state(50); // vertical:   0=top,  100=bottom
 	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in (cover mode only)
 	let bgFitMode = $state<'cover' | 'contain'>('cover'); // contain = full image visible + optional magnify
@@ -2559,11 +2567,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		circle2X = NEWS_DEFAULT_LAYOUT.circle2X;
 		circle2Y = NEWS_DEFAULT_LAYOUT.circle2Y;
 		circle2Size = NEWS_DEFAULT_LAYOUT.circle2Size;
-		bgOffsetX = NEWS_DEFAULT_LAYOUT.bgOffsetX;
-		bgOffsetY = NEWS_DEFAULT_LAYOUT.bgOffsetY;
-		bgZoom = NEWS_DEFAULT_LAYOUT.bgZoom;
-		bgFitMode = NEWS_DEFAULT_LAYOUT.bgFitMode;
-		bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
+		applyNewsSeedBackgroundLayout();
 		textPanelOffsetY = NEWS_DEFAULT_LAYOUT.textPanelOffsetY;
 		shadowHeight = 0;
 		shadowStrength = 0;
@@ -3128,10 +3132,7 @@ tweetTopImagePanYBySlide,
 		circleImages = [];
 		circle2Images = [];
 		showCircle2BySlide = [];
-		bgOffsetX  = 50;
-		bgOffsetY  = 0;
-		bgFitMode = 'cover';
-		bgContainMagnify = 100;
+		applyNewsSeedBackgroundLayout();
 
 		try {
 			let hookText = '';
@@ -3394,8 +3395,13 @@ tweetTopImagePanYBySlide,
 		slideTemplates = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
 		// Slide 0: use article image directly if available, otherwise Vertex
-		if (articleImageUrl) {
-			const safe = await toExportSafeImageUrl(articleImageUrl);
+		const articleSrc = String(articleImageUrl ?? '').trim();
+		if (articleSrc) {
+			if (template === 'news') applyNewsSeedBackgroundLayout();
+			const safe = await toExportSafeImageUrl(articleSrc);
+			if (template === 'news' && String(safe ?? '').trim()) {
+				applyNewsSeedBackgroundLayout();
+			}
 			setSlideImage(0, safe, template);
 		}
 
@@ -3812,6 +3818,21 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		newsBgToolbarPoint = null;
 	}
 
+	/** Open Cut out / Replace toolbar — use dock “BG” instead of tapping the canvas (tap would fight drag-pan). */
+	function openNewsBgToolbarFromDock() {
+		closeToolbar();
+		const root =
+			typeof document !== 'undefined'
+				? document.querySelector<HTMLElement>('[data-studio-canvas-root]')
+				: null;
+		const r = root?.getBoundingClientRect();
+		if (r && r.width > 4 && r.height > 4) {
+			newsBgToolbarPoint = { x: r.left + r.width * 0.5, y: r.top + Math.min(r.height * 0.28, 220) };
+		} else if (typeof window !== 'undefined') {
+			newsBgToolbarPoint = { x: window.innerWidth * 0.55, y: 200 };
+		}
+	}
+
 	function handleNewsBgToolbarImageChange(e: Event) {
 		handleBgUpload(e);
 		const el = e.target as HTMLInputElement;
@@ -3958,10 +3979,43 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
-	// Preview scale — cap width and height so tall formats (9:16) never cover the docks
-	const PREVIEW_MAX_W = 520;
-	const PREVIEW_MAX_H = 560;
-	const previewScale = $derived(Math.min(PREVIEW_MAX_W / CANVAS_W, PREVIEW_MAX_H / CANVAS_H));
+	// Preview scale — fit the live viewport and cap so tall formats (9:16) never swamp the docks
+	const PREVIEW_COMFORT_MAX_W = 580;
+	const PREVIEW_COMFORT_MAX_H = 640;
+	let studioPreviewHostEl = $state<HTMLElement | null>(null);
+	let previewHostW = $state(720);
+	let previewHostH = $state(600);
+
+	$effect(() => {
+		const el = studioPreviewHostEl;
+		if (typeof ResizeObserver === 'undefined') {
+			if (typeof window !== 'undefined') {
+				previewHostW = Math.max(240, window.innerWidth - 280);
+				previewHostH = Math.max(240, window.innerHeight - 220);
+			}
+			return;
+		}
+		if (!el) return;
+		const padX = 40;
+		const padY = 56;
+		const ro = new ResizeObserver(() => {
+			previewHostW = Math.max(200, el.clientWidth - padX);
+			previewHostH = Math.max(200, el.clientHeight - padY);
+		});
+		ro.observe(el);
+		previewHostW = Math.max(200, el.clientWidth - padX);
+		previewHostH = Math.max(200, el.clientHeight - padY);
+		return () => ro.disconnect();
+	});
+
+	const previewScale = $derived(
+		Math.min(
+			PREVIEW_COMFORT_MAX_W / CANVAS_W,
+			PREVIEW_COMFORT_MAX_H / CANVAS_H,
+			previewHostW / CANVAS_W,
+			previewHostH / CANVAS_H,
+		),
+	);
 	const previewDisplayW = $derived(CANVAS_W * previewScale);
 	const previewDisplayH = $derived(CANVAS_H * previewScale);
 
@@ -4452,44 +4506,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					{/if}
 				</div>
 			</div>
-
-			<!-- Slide count -->
-			<div class="rounded-2xl bg-neutral-950 border border-neutral-800 p-3">
-				<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Number of slides</Label>
-				<div class="flex items-center gap-2">
-					<Button
-						type="button"
-						variant="outline"
-						size="icon-sm"
-						class="shrink-0 text-base font-bold bg-neutral-950 border-neutral-800 text-neutral-50 hover:bg-neutral-900"
-						onclick={() => (slideCount = Math.max(1, slideCount - 1))}
-					>−</Button>
-					<span class="flex-1 text-center text-sm font-mono text-neutral-200">{slideCount} slide{slideCount !== 1 ? 's' : ''}</span>
-					<Button
-						type="button"
-						variant="outline"
-						size="icon-sm"
-						class="shrink-0 text-base font-bold bg-neutral-950 border-neutral-800 text-neutral-50 hover:bg-neutral-900"
-						onclick={() => (slideCount = Math.min(10, slideCount + 1))}
-					>+</Button>
-				</div>
-				<div class="mt-2 flex gap-1">
-					{#each [1, 2, 3, 4, 5, 6, 8, 10] as n}
-						<Button
-							type="button"
-							variant="outline"
-							size="xs"
-							class={cn(
-								'min-w-0 flex-1 py-1 text-[10px] font-mono',
-								slideCount === n &&
-									'border-amber-500/25 bg-amber-500/20 text-amber-300 hover:bg-amber-500/25 hover:text-amber-200'
-							)}
-							onclick={() => (slideCount = n)}
-						>{n}</Button>
-					{/each}
-				</div>
-			</div>
-
 			<!-- Data source toggle -->
 			<div class="flex items-center justify-between rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
 				<div class="flex items-center gap-2">
@@ -4968,9 +4984,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 		<!-- Main preview + quick actions (next to canvas) -->
-		<div class="flex min-h-0 flex-1 items-center justify-center overflow-auto">
-		<div class="flex shrink-0 items-start gap-3 py-2">
-			<div style="width: {previewDisplayW}px;" class="relative z-10 shrink-0">
+		<div
+			class="flex min-h-0 w-full min-w-0 flex-1 items-center justify-center overflow-auto"
+			bind:this={studioPreviewHostEl}
+		>
+		<div class="flex shrink-0 items-start justify-center gap-3 py-2 px-1">
+			<div style="width: {previewDisplayW}px;" class="relative z-10 max-w-full shrink-0">
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div
 					data-studio-canvas-root
@@ -5116,14 +5135,6 @@ showSubjectCutout={canvasShowCutout}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 					headlineSelectionRestoreNonce={headlineSelectionRestoreNonce}
 					headlineSelectionRestoreRange={headlineRange}
-					onBackgroundQuickTap={
-						canvasInteractive && previewTemplate === 'news'
-							? (d) => {
-									closeToolbar();
-									newsBgToolbarPoint = { x: d.clientX, y: d.clientY };
-								}
-							: undefined
-					}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<TextOverlayLayer
@@ -5142,6 +5153,8 @@ showSubjectCutout={canvasShowCutout}
 				<ArticleTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
+					canvasW={CANVAS_W}
+					canvasH={CANVAS_H}
 					text={articleTextBySlide[paintSlide] ?? ''}
 					image={canvasBackgroundImage}
 					logoSrc={articleLogoSrcBySlide[paintSlide] ?? ''}
@@ -5192,6 +5205,8 @@ showSubjectCutout={canvasShowCutout}
 				<TweetTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
+					canvasW={CANVAS_W}
+					canvasH={CANVAS_H}
 					topText={tweetTopTextBySlide[paintSlide] ?? ''}
 					onTopTextChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => i === paintSlide ? v : x); }}
 					/* Editable per-slide tweet fields */
@@ -5268,6 +5283,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				<TextCarouselTemplate
 					templateTheme={uiTheme}
 					bind:exportRef
+					canvasW={CANVAS_W}
+					canvasH={CANVAS_H}
 					text={textCarouselTextBySlide[paintSlide] ?? ''}
 					name={textCarouselNameBySlide[paintSlide] ?? 'Captains of industry'}
 					handle={textCarouselHandleBySlide[paintSlide] ?? '@captainsofindustryy'}
@@ -6089,7 +6106,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	</div>
 {/if}
 
-<!-- News canvas: tap background → cut out / replace -->
+<!-- News: use dock “BG tools” to open; canvas is for drag-pan only -->
 <NewsBackgroundToolbar
 	anchor={newsBgToolbarAnchor}
 	showCutout={!!String(canvasBackgroundImage ?? '').trim() && !String(canvasBackgroundVideo ?? '').trim()}

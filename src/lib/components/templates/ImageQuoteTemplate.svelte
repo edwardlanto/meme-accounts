@@ -17,6 +17,8 @@
 		bgColor?: string;
 		textColor?: string;
 		templateTheme?: 'light' | 'dark';
+		canvasW?: number;
+		canvasH?: number;
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
@@ -42,6 +44,8 @@
 		bgColor = '',
 		textColor = '',
 		templateTheme = 'light',
+		canvasW = 1080,
+		canvasH = 1350,
 		scale = 1,
 		interactive = true,
 		exportRef = $bindable(null),
@@ -74,10 +78,16 @@
 		return bits.join(' ');
 	});
 
-	const W = 1080;
-	const H = 1350;
-	const topH = $derived(Math.round(H * Math.min(0.75, Math.max(0.35, topRatio))));
-	const bottomH = $derived(H - topH);
+	const BASE_W = 1080;
+	const BASE_H = 1350;
+	const W = $derived(Math.max(320, Number(canvasW) || BASE_W));
+	const H = $derived(Math.max(320, Number(canvasH) || BASE_H));
+	const layoutScale = $derived(Math.min(W / BASE_W, H / BASE_H));
+	const letterInsetX = $derived((W - BASE_W * layoutScale) / 2);
+	const letterInsetY = $derived((H - BASE_H * layoutScale) / 2);
+	const dragScale = $derived(scale * layoutScale);
+	const topH = $derived(Math.round(BASE_H * Math.min(0.75, Math.max(0.35, topRatio))));
+	const bottomH = $derived(BASE_H - topH);
 
 	function splitLines(v: string) {
 		return (v || '').split('\n').map((x) => x.trim()).filter(Boolean);
@@ -102,12 +112,24 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			background: {baseBg};
-			display: flex;
-			flex-direction: column;
 			font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 			overflow: hidden;
 		"
 	>
+		<div
+			style="
+				position: absolute;
+				left: {letterInsetX}px;
+				top: {letterInsetY}px;
+				width: {BASE_W}px;
+				height: {BASE_H}px;
+				transform: scale({layoutScale});
+				transform-origin: 0 0;
+				display: flex;
+				flex-direction: column;
+				overflow: hidden;
+			"
+		>
 		<!-- Top image -->
 		<div style="height: {topH}px; width: 100%; position: relative; overflow: hidden; background: {isLight ? '#f1f2f6' : '#111'};">
 			{#if image}
@@ -145,7 +167,7 @@
 				dx={textOffsets.headline?.x ?? 0}
 				dy={textOffsets.headline?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 			>
 				{#snippet children()}
@@ -195,7 +217,7 @@
 					dx={textOffsets.imageQuoteFooterLeft?.x ?? 0}
 					dy={textOffsets.imageQuoteFooterLeft?.y ?? 0}
 					{interactive}
-					{scale}
+					scale={dragScale}
 					onChange={(x, y) => onTextOffsetChange?.('imageQuoteFooterLeft', { x, y })}
 				>
 					{#snippet children()}
@@ -225,7 +247,7 @@
 					dx={textOffsets.imageQuoteFooterRight?.x ?? 0}
 					dy={textOffsets.imageQuoteFooterRight?.y ?? 0}
 					{interactive}
-					{scale}
+					scale={dragScale}
 					onChange={(x, y) => onTextOffsetChange?.('imageQuoteFooterRight', { x, y })}
 				>
 					{#snippet children()}
@@ -251,6 +273,7 @@
 					{/snippet}
 				</DraggableBlock>
 			</div>
+		</div>
 		</div>
 	</div>
 </div>

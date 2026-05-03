@@ -5,6 +5,18 @@ description: Analyze reference images and generate ready-to-use structured JSON 
 
 # JSON Prompt Generator
 
+## Brand Carousel API mode (priority)
+
+When this skill runs **inside the Brand Carousel backend** (reference image + topic + brand name + slide count):
+
+1. **Output:** A single JSON **array** only — `[ {...}, {...}, ... ]`. No “Analysis” section, no “Tweaks” section, no preamble or closing chatter.
+2. **Each element:** One slide object shaped exactly like the **JSON Prompt** in the schema below: outer wrapper `{ "prompt": { ... } }` matching `SKILLS.md` / `EXAMPLE-OUTPUT.md`.
+3. **Length:** The array length **must equal** the slide count in the user message.
+4. **Quality:** Every slide must satisfy **`VISUAL_STANDARDS.md`** (safe margins, readable type, consistent system across slides). Spell-check all customer-facing strings.
+5. The human-oriented sections below (“Analysis”, “Response Format”, etc.) apply to **interactive** use; **ignore them for API mode** except the **JSON Schema** and **Core Rules**.
+
+---
+
 Analyze reference images and produce ready-to-use structured JSON prompts that capture every visual quality needed to reproduce the image in an AI image generator.
 
 ## Workflow

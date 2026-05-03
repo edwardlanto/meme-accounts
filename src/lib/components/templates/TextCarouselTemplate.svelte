@@ -18,6 +18,9 @@
 		templateTheme?: 'light' | 'dark';
 		text?: string;
 		showSwipe?: boolean;
+		/** Logical export size (Studio); 1080×1350 design is letterboxed */
+		canvasW?: number;
+		canvasH?: number;
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
@@ -55,6 +58,8 @@
 		templateTheme = 'light',
 		text      = 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.',
 		showSwipe = false,
+		canvasW   = 1080,
+		canvasH   = 1350,
 		scale     = 1,
 		interactive = true,
 		exportRef = $bindable(null),
@@ -146,8 +151,14 @@
 
 	const bodyDisplayText = $derived((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body);
 
-	const W = 1080;
-	const H = 1350;
+	const BASE_W = 1080;
+	const BASE_H = 1350;
+	const W = $derived(Math.max(320, Number(canvasW) || BASE_W));
+	const H = $derived(Math.max(320, Number(canvasH) || BASE_H));
+	const layoutScale = $derived(Math.min(W / BASE_W, H / BASE_H));
+	const letterInsetX = $derived((W - BASE_W * layoutScale) / 2);
+	const letterInsetY = $derived((H - BASE_H * layoutScale) / 2);
+	const dragScale = $derived(scale * layoutScale);
 
 	function initials(n: string) {
 		return n.replace(/[^\w\s]/g, '').trim().split(/\s+/).map(w => w[0]?.toUpperCase() ?? '').slice(0, 3).join('');
@@ -173,19 +184,32 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: '{DEFAULT_BODY_FONT}', -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
-			display: flex;
-			flex-direction: column;
 			box-sizing: border-box;
-			padding: 100px 88px 100px;
 			overflow: hidden;
 		"
 	>
+		<div
+			style="
+				position: absolute;
+				left: {letterInsetX}px;
+				top: {letterInsetY}px;
+				width: {BASE_W}px;
+				height: {BASE_H}px;
+				transform: scale({layoutScale});
+				transform-origin: 0 0;
+				display: flex;
+				flex-direction: column;
+				box-sizing: border-box;
+				padding: 100px 88px 100px;
+				overflow: hidden;
+			"
+		>
 		<!-- ── Profile row ─────────────────────────────────────────────────── -->
 		<DraggableBlock
 			dx={textOffsets.textCarouselProfile?.x ?? 0}
 			dy={textOffsets.textCarouselProfile?.y ?? 0}
 			{interactive}
-			{scale}
+			scale={dragScale}
 			onChange={(x, y) => onTextOffsetChange?.('textCarouselProfile', { x, y })}
 		>
 			{#snippet children()}
@@ -309,7 +333,7 @@
 				dx={textOffsets.textCarouselBody?.x ?? 0}
 				dy={textOffsets.textCarouselBody?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				onChange={(x, y) => onTextOffsetChange?.('textCarouselBody', { x, y })}
 			>
 				{#snippet children()}
@@ -346,7 +370,7 @@
 				dx={textOffsets.textCarouselSwipe?.x ?? 0}
 				dy={textOffsets.textCarouselSwipe?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				onChange={(x, y) => onTextOffsetChange?.('textCarouselSwipe', { x, y })}
 			>
 				{#snippet children()}
@@ -383,5 +407,6 @@
 				{/snippet}
 			</DraggableBlock>
 		{/if}
+		</div>
 	</div>
 </div>

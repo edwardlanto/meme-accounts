@@ -135,8 +135,6 @@
 		/** Parent bumps after applying `[[...]]` markup so we can re-select the same plain range. */
 		headlineSelectionRestoreNonce?: number;
 		headlineSelectionRestoreRange?: { start: number; end: number } | null;
-		/** Fired on tap (no drag) on the background pan layer when photo/video is present — parent may show a BG toolbar. */
-		onBackgroundQuickTap?: (detail: { clientX: number; clientY: number }) => void;
 	}
 
 	let {
@@ -182,7 +180,7 @@
 		circle2X   = $bindable(80),
 		circle2Y   = $bindable(80),
 		circle2Size = $bindable(220),
-		bgOffsetX  = $bindable(50),
+		bgOffsetX  = $bindable(0),
 		bgOffsetY  = $bindable(50),
 		bgZoom     = $bindable(100),
 		bgFitMode = $bindable<'cover' | 'contain'>('cover'),
@@ -212,7 +210,6 @@
 		onHeadlineRangeSelect,
 		headlineSelectionRestoreNonce = 0,
 		headlineSelectionRestoreRange = null,
-		onBackgroundQuickTap,
 	}: Props = $props();
 
 	const isLight = $derived(templateTheme === 'light');
@@ -1031,68 +1028,38 @@
 		resizingCircle2 = false;
 	}
 
-	// ── Background: click opens BG toolbar (Studio); pan only after long-press — avoids false taps & “always grabbing” cursor
+	// ── Background: pan only after pointerdown + move (slop); hover moves ignored
 	let bgDragging = $state(false);
+	let bgPanPressed = false;
 	let bgLastMx = 0;
 	let bgLastMy = 0;
 	let bgPanStartX = 0;
 	let bgPanStartY = 0;
-	let bgPanArmed = $state(false);
-	let bgDidPan = $state(false);
-	let bgSlopBeforeArm = $state(false);
-	let bgArmCompleted = $state(false);
-	let bgSuppressNextClick = $state(false);
-	let bgHoldTimer: ReturnType<typeof setTimeout> | null = null;
-	const BG_HOLD_MS = 420;
-	const BG_SLOP_PX = 18;
+	const BG_SLOP_PX = 10;
 	/** Pointer drag sensitivity — higher = move background farther per pixel */
 	const BG_PAN_DRAG_SENS = 6;
 
-	const bgPanCursor = $derived(
-		!bgArmCompleted ? 'default' : bgDragging ? 'grabbing' : 'grab',
-	);
+	const bgPanCursor = $derived(bgDragging ? 'grabbing' : 'default');
 
 	function bgPointerDown(e: PointerEvent) {
-		if (!interactive) return;
+		if (!interactive || e.button !== 0) return;
+		bgPanPressed = true;
 		bgPanStartX = e.clientX;
 		bgPanStartY = e.clientY;
 		bgLastMx = e.clientX;
 		bgLastMy = e.clientY;
 		bgDragging = false;
-		bgPanArmed = false;
-		bgDidPan = false;
-		bgSlopBeforeArm = false;
-		bgArmCompleted = false;
-		bgSuppressNextClick = false;
-		if (bgHoldTimer) {
-			clearTimeout(bgHoldTimer);
-			bgHoldTimer = null;
-		}
-		bgHoldTimer = setTimeout(() => {
-			bgHoldTimer = null;
-			bgPanArmed = true;
-			bgArmCompleted = true;
-		}, BG_HOLD_MS);
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
 	function bgPointerMove(e: PointerEvent) {
+		if (!interactive || !bgPanPressed) return;
 		const dx0 = e.clientX - bgPanStartX;
 		const dy0 = e.clientY - bgPanStartY;
 		const dist2 = dx0 * dx0 + dy0 * dy0;
 
-		if (!bgPanArmed) {
-			if (dist2 > BG_SLOP_PX * BG_SLOP_PX) {
-				if (bgHoldTimer) {
-					clearTimeout(bgHoldTimer);
-					bgHoldTimer = null;
-				}
-				bgSlopBeforeArm = true;
-			}
-			return;
-		}
-
 		if (!bgDragging) {
+			if (dist2 <= BG_SLOP_PX * BG_SLOP_PX) return;
 			bgDragging = true;
 			bgLastMx = e.clientX;
 			bgLastMy = e.clientY;
@@ -1104,50 +1071,31 @@
 		bgLastMy = e.clientY;
 		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - (dx / W) * 100 * BG_PAN_DRAG_SENS));
 		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - (dy / H) * 100 * BG_PAN_DRAG_SENS));
-		bgDidPan = true;
 	}
 
 	function bgPointerUp(e: PointerEvent) {
-		if (bgHoldTimer) {
-			clearTimeout(bgHoldTimer);
-			bgHoldTimer = null;
-		}
 		try {
 			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 		} catch {
 			/* ignore */
 		}
-		bgSuppressNextClick = bgSlopBeforeArm || bgDidPan || bgArmCompleted;
+		bgPanPressed = false;
 		bgDragging = false;
-		bgPanArmed = false;
-		bgArmCompleted = false;
 	}
 
 	function bgPointerCancel(e: PointerEvent) {
-		if (bgHoldTimer) {
-			clearTimeout(bgHoldTimer);
-			bgHoldTimer = null;
-		}
 		try {
 			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 		} catch {
 			/* ignore */
 		}
-		bgSuppressNextClick = true;
+		bgPanPressed = false;
 		bgDragging = false;
-		bgPanArmed = false;
-		bgArmCompleted = false;
 	}
 
-	function bgLayerClick(e: MouseEvent) {
-		if (!interactive || !onBackgroundQuickTap) return;
-		if (!(String(backgroundImage ?? '').trim() || String(backgroundVideo ?? '').trim())) return;
-		if (bgSuppressNextClick) {
-			bgSuppressNextClick = false;
-			return;
-		}
-		e.stopPropagation();
-		onBackgroundQuickTap({ clientX: e.clientX, clientY: e.clientY });
+	function bgLostPointerCapture() {
+		bgPanPressed = false;
+		bgDragging = false;
 	}
 
 	// ── Pattern rendering helpers ──────────────────────────────────────────
@@ -1358,7 +1306,7 @@
 				onpointermove={bgPointerMove}
 				onpointerup={bgPointerUp}
 				onpointercancel={bgPointerCancel}
-				onclick={bgLayerClick}
+				onlostpointercapture={bgLostPointerCapture}
 				role="presentation"
 			></div>
 		{/if}

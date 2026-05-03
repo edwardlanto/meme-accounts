@@ -73,7 +73,7 @@
 		return { text:'', image:'', accentColor:'#3ecf8e', bgColor:'#000000', logoSrc:'', logoRingColor:'#c9b97a', showSwipe:true, swipeText:'«« Swipe' };
 	}
 	function blankNews(): NewsData {
-		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:50, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
+		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:0, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
 	}
 function blankImageQuote(): ImageQuoteData {
 	return {

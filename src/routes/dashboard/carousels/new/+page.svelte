@@ -335,18 +335,6 @@
 					{/each}
 				</div>
 
-				<!-- Slide count -->
-				<div class="field-group" style="margin-top: 36px;">
-					<label class="field-label">Number of slides</label>
-					<div class="count-pills">
-						{#each slideCounts as c}
-							<button
-								class="count-pill {slideCount === c ? 'active' : ''}"
-								onclick={() => slideCount = c}
-							>{c}</button>
-						{/each}
-					</div>
-				</div>
 
 				<!-- Brand settings -->
 				<div class="brand-row">

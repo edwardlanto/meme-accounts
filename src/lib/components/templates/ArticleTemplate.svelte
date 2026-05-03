@@ -20,7 +20,9 @@
 		showSwipe?: boolean;
 		swipeText?: string;
 		onSwipeTextChange?: (v: string) => void;
-		// Rendering
+		// Rendering — logical export size (Studio format); design is letterboxed from 1080×1350
+		canvasW?: number;
+		canvasH?: number;
 		scale?: number;
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
@@ -53,6 +55,8 @@
 		showSwipe    = true,
 		swipeText    = '«« Swipe',
 		onSwipeTextChange,
+		canvasW      = 1080,
+		canvasH      = 1350,
 		scale        = 1,
 		interactive  = true,
 		exportRef    = $bindable(null),
@@ -109,8 +113,14 @@
 	const bodyCss = $derived(styleCss(articleStyles.articleBody ?? {}, { omitBlockBg: true }));
 	const swipeCss = $derived(styleCss(articleStyles.articleSwipeText ?? {}));
 
-	const W = 1080;
-	const H = 1350;
+	const BASE_W = 1080;
+	const BASE_H = 1350;
+	const W = $derived(Math.max(320, Number(canvasW) || BASE_W));
+	const H = $derived(Math.max(320, Number(canvasH) || BASE_H));
+	const layoutScale = $derived(Math.min(W / BASE_W, H / BASE_H));
+	const letterInsetX = $derived((W - BASE_W * layoutScale) / 2);
+	const letterInsetY = $derived((H - BASE_H * layoutScale) / 2);
+	const dragScale = $derived(scale * layoutScale);
 
 	// Back-compat: old Article content used *accent* markup.
 	// We normalize it to the shared [[...]] highlight markup so highlights remain visible while editing.
@@ -141,12 +151,25 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-			display: flex;
-			flex-direction: column;
 			box-sizing: border-box;
 			overflow: hidden;
 		"
 	>
+		<div
+			style="
+				position: absolute;
+				left: {letterInsetX}px;
+				top: {letterInsetY}px;
+				width: {BASE_W}px;
+				height: {BASE_H}px;
+				transform: scale({layoutScale});
+				transform-origin: 0 0;
+				display: flex;
+				flex-direction: column;
+				box-sizing: border-box;
+				overflow: hidden;
+			"
+		>
 		<!-- ── Main content ──────────────────────────────────────────────────── -->
 		<div style="
 			flex: 1;
@@ -161,7 +184,7 @@
 				dx={textOffsets.articleBody?.x ?? 0}
 				dy={textOffsets.articleBody?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				onChange={(x, y) => onTextOffsetChange?.('articleBody', { x, y })}
 			>
 				{#snippet children()}
@@ -210,7 +233,7 @@
 					dx={textOffsets.articleImage?.x ?? 0}
 					dy={textOffsets.articleImage?.y ?? 0}
 					{interactive}
-					{scale}
+					scale={dragScale}
 					onChange={(x, y) => onTextOffsetChange?.('articleImage', { x, y })}
 				>
 					{#snippet children()}
@@ -267,7 +290,7 @@
 				dx={textOffsets.articleLogo?.x ?? 0}
 				dy={textOffsets.articleLogo?.y ?? 0}
 				{interactive}
-				{scale}
+				scale={dragScale}
 				onChange={(x, y) => onTextOffsetChange?.('articleLogo', { x, y })}
 			>
 				{#snippet children()}
@@ -332,7 +355,7 @@
 					dx={textOffsets.articleSwipeText?.x ?? 0}
 					dy={textOffsets.articleSwipeText?.y ?? 0}
 					{interactive}
-					{scale}
+					scale={dragScale}
 					onChange={(x, y) => onTextOffsetChange?.('articleSwipeText', { x, y })}
 				>
 					{#snippet children()}
@@ -371,6 +394,7 @@
 					{/snippet}
 				</DraggableBlock>
 			{/if}
+		</div>
 		</div>
 
 	</div>
