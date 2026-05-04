@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import { stripMarkup } from '$lib/highlight';
+	import { coerceTemplateId, STUDIO_TEMPLATES } from '$lib/studio/template-ids';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte` (workspace autosave rows). */
 	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
@@ -67,6 +68,140 @@
 			return t.length > 72 ? `${t.slice(0, 69)}…` : t;
 		}
 		return 'Studio draft';
+	}
+
+	function isLightHex(hex: string): boolean {
+		const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? '').trim());
+		if (!m) return false;
+		const v = parseInt(m[1], 16);
+		const r = (v >> 16) & 0xff;
+		const g = (v >> 8) & 0xff;
+		const b = v & 0xff;
+		const L = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+		return L > 0.62;
+	}
+
+	function strArr(v: unknown): string[] {
+		return Array.isArray(v) ? v.map((x) => String(x ?? '')) : [];
+	}
+
+	function templateLabelFromId(id: string): string {
+		const t = coerceTemplateId(id);
+		return STUDIO_TEMPLATES.find((x) => x.id === t)?.label ?? t;
+	}
+
+	type StudioDraftPreview = {
+		templateLabel: string;
+		headline: string;
+		textColor: string;
+		bgSolid: string;
+		heroUrl: string;
+		slideCount: number;
+		slideHints: string[];
+		/** Filmstrip chips on light previews (tweet / light news) */
+		filmLight: boolean;
+	};
+
+	function studioDraftPreview(d: { state?: Record<string, unknown> }): StudioDraftPreview {
+		const s = d.state ?? {};
+		const slideList = strArr(s.slides);
+		const slideCount = Math.max(1, slideList.length);
+		const templates = strArr(s.slideTemplates);
+		const tpl = coerceTemplateId(templates[0] ?? 'news');
+		const templateLabel = templateLabelFromId(templates[0] ?? tpl);
+
+		const bgMap = (s.bgImagesByTemplate ?? {}) as Record<string, string[]>;
+		const pickHero = (key: string) => {
+			const u = String(bgMap[key]?.[0] ?? '').trim();
+			return u.startsWith('http://') || u.startsWith('https://') ? u : '';
+		};
+
+		let headline = '';
+		if (tpl === 'tweet') {
+			headline = stripMarkup(String(strArr(s.tweetTopTextBySlide)[0] ?? '')).trim();
+		} else if (tpl === 'blackText') {
+			headline = stripMarkup(String(strArr(s.blackTextHeadlineBySlide)[0] ?? '')).trim();
+		} else if (tpl === 'textCarousel') {
+			headline = stripMarkup(String(strArr(s.textCarouselTextBySlide)[0] ?? '')).trim();
+		} else if (tpl === 'videoStory') {
+			headline = stripMarkup(String(strArr(s.videoStoryHeadlineBySlide)[0] ?? '')).trim();
+		} else if (tpl === 'imageQuote') {
+			headline = stripMarkup(String(strArr(s.imageQuoteTextBySlide)[0] ?? '')).trim();
+		} else if (tpl === 'article') {
+			headline = stripMarkup(String(strArr(s.articleTextBySlide)[0] ?? '')).trim();
+		} else {
+			headline = stripMarkup(String(slideList[0] ?? '')).trim();
+		}
+		if (!headline) headline = studioDraftTitle(d);
+
+		const stripLen = Math.min(slideCount, 10);
+		const slideHints = Array.from({ length: stripLen }, (_, i) => {
+			const raw = stripMarkup(String(slideList[i] ?? '')).trim();
+			return raw ? raw.slice(0, 2).toUpperCase() : '·';
+		});
+
+		let bgSolid = '#111111';
+		let textColor = '#f5f5f5';
+		let heroUrl = '';
+
+		if (tpl === 'news') {
+			heroUrl = pickHero('news');
+			const solid = String(strArr(s.newsSolidBgBySlide)[0] ?? '').trim();
+			bgSolid = solid || (heroUrl ? '#0a0a0a' : '#ffffff');
+			const tc = String(s.textColor ?? '').trim();
+			if (tc) {
+				textColor = tc;
+			} else if (heroUrl) {
+				textColor = '#ffffff';
+			} else {
+				textColor = isLightHex(bgSolid) ? '#0a0a0a' : '#f5f5f5';
+			}
+		} else if (tpl === 'tweet') {
+			bgSolid = '#ffffff';
+			textColor = '#0a0a0a';
+			heroUrl = pickHero('tweet');
+		} else if (tpl === 'blackText') {
+			bgSolid = '#000000';
+			textColor = '#e5e5e5';
+			heroUrl = pickHero('blackText');
+		} else if (tpl === 'textCarousel') {
+			bgSolid = '#0a0a0a';
+			textColor = '#f5f5f5';
+		} else if (tpl === 'videoStory') {
+			bgSolid = '#0a0a0a';
+			textColor = '#fafafa';
+			heroUrl = pickHero('videoStory');
+		} else if (tpl === 'imageQuote') {
+			bgSolid = '#0f172a';
+			textColor = '#fafafa';
+			heroUrl = pickHero('imageQuote');
+		} else if (tpl === 'article') {
+			bgSolid = '#fafafa';
+			textColor = '#0a0a0a';
+			heroUrl = pickHero('article');
+		}
+
+		const filmLight =
+			tpl === 'tweet' ||
+			(tpl === 'article' && !heroUrl) ||
+			(tpl === 'news' && !heroUrl && isLightHex(bgSolid));
+
+		return { templateLabel, headline, textColor, bgSolid, heroUrl, slideCount, slideHints, filmLight };
+	}
+
+	async function deleteStudioDraft(id: string) {
+		if (!confirm('Delete this studio draft? This cannot be undone.')) return;
+		const { error } = await (supabase as any)
+			.from('drafts')
+			.delete()
+			.eq('id', id)
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND);
+		if (error) {
+			alert(error.message ?? 'Could not delete draft');
+			return;
+		}
+		studioDrafts = studioDrafts.filter((x) => x.id !== id);
 	}
 
 	onMount(async () => {
@@ -400,23 +535,70 @@
 			<div class="studio-drafts-head">
 				<h2 class="studio-drafts-title">Studio drafts</h2>
 				<p class="studio-drafts-sub">
-					Workspace saves from News Studio. Continue editing anytime — also use <span class="font-mono">Save draft</span> in the studio sidebar.
+					Workspace saves from News Studio — same card layout as your carousels. Open to edit, or delete when you no longer need a snapshot.
 				</p>
 			</div>
-			<ul class="studio-drafts-list">
+			<div class="carousel-grid studio-drafts-grid">
 				{#each studioDrafts as d}
-					<li>
-						<a href="/dashboard/studio?draft={d.id}" class="studio-draft-link">
-							<FileText size={14} class="studio-draft-icon" />
-							<span class="studio-draft-text">
-								<span class="studio-draft-name">{studioDraftTitle(d)}</span>
-								<span class="studio-draft-meta">Updated {timeAgo(d.updated_at)}</span>
-							</span>
-							<ArrowRight size={14} class="studio-draft-arrow" />
+					{@const pv = studioDraftPreview(d)}
+					<div
+						class="carousel-card group studio-draft-card"
+						style="--card-bg: {pv.bgSolid}; --card-color: {pv.textColor};"
+					>
+						<a
+							href="/dashboard/studio?draft={d.id}"
+							class="card-preview studio-draft-card-preview"
+							style={pv.heroUrl ? '' : `background-color: ${pv.bgSolid};`}
+						>
+							{#if pv.heroUrl}
+								<img src={pv.heroUrl} alt="" class="studio-draft-bg-img" referrerpolicy="no-referrer" />
+								<div class="studio-draft-bg-scrim" aria-hidden="true"></div>
+							{/if}
+							<p class="card-preview-text studio-draft-preview-headline" style="color: {pv.textColor};">
+								{pv.headline}
+							</p>
+							<div
+								class="studio-draft-filmstrip"
+								class:studio-draft-filmstrip--light={pv.filmLight}
+								aria-hidden="true"
+							>
+								{#each pv.slideHints as hint, i}
+									<div
+										class="studio-draft-film-cell"
+										class:studio-draft-film-cell--on={i === 0}
+										title="Slide {i + 1}"
+									>
+										<span class="studio-draft-film-hint">{hint}</span>
+									</div>
+								{/each}
+							</div>
 						</a>
-					</li>
+
+						<div class="slide-count">{pv.slideCount} slides</div>
+						<div class="studio-draft-template-pill">{pv.templateLabel}</div>
+
+						<div class="card-footer">
+							<div class="card-info">
+								<p class="card-title-text">{studioDraftTitle(d)}</p>
+								<p class="card-time">Updated {timeAgo(d.updated_at)}</p>
+							</div>
+							<div class="card-actions">
+								<a href="/dashboard/studio?draft={d.id}" class="card-action card-action--edit" title="Open in Studio">
+									<Edit2 size={11} />
+								</a>
+								<button
+									type="button"
+									class="card-action card-action--delete"
+									title="Delete draft"
+									onclick={() => void deleteStudioDraft(d.id)}
+								>
+									<Trash2 size={11} />
+								</button>
+							</div>
+						</div>
+					</div>
 				{/each}
-			</ul>
+			</div>
 		</div>
 	{/if}
 
@@ -620,34 +802,91 @@
 		line-height: 1.45;
 		max-width: 56rem;
 	}
-	.studio-drafts-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
+	.studio-drafts-grid { margin-top: 0.5rem; }
+
+	.studio-draft-card-preview {
+		position: relative;
+		overflow: hidden;
 	}
-	.studio-draft-link {
+	.studio-draft-bg-img {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: center;
+	}
+	.studio-draft-bg-scrim {
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.55) 100%);
+		pointer-events: none;
+	}
+	.studio-draft-preview-headline {
+		position: relative;
+		z-index: 2;
+		text-shadow: 0 1px 14px rgba(0, 0, 0, 0.45);
+	}
+	.studio-draft-filmstrip {
+		position: absolute;
+		bottom: 0.55rem;
+		left: 0.5rem;
+		right: 0.5rem;
+		display: flex;
+		gap: 4px;
+		z-index: 2;
+		pointer-events: none;
+	}
+	.studio-draft-film-cell {
+		flex: 1;
+		min-width: 0;
+		height: 22px;
+		border-radius: 4px;
 		display: flex;
 		align-items: center;
-		gap: 0.65rem;
-		padding: 0.55rem 0.75rem;
-		border-radius: 12px;
-		text-decoration: none;
-		color: var(--t-strong);
-		border: 1px solid transparent;
-		transition: background 0.12s, border-color 0.12s;
+		justify-content: center;
+		background: rgba(255, 255, 255, 0.14);
+		border: 1px solid rgba(255, 255, 255, 0.22);
+		font-size: 8px;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		color: rgba(255, 255, 255, 0.9);
 	}
-	.studio-draft-link:hover {
-		background: var(--panel-bg-2);
-		border-color: var(--panel-border-hover);
+	.studio-draft-filmstrip--light .studio-draft-film-cell {
+		background: rgba(0, 0, 0, 0.06);
+		border-color: rgba(0, 0, 0, 0.12);
+		color: rgba(0, 0, 0, 0.55);
 	}
-	.studio-draft-icon { flex-shrink: 0; color: var(--t-muted); opacity: 0.9; }
-	.studio-draft-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
-	.studio-draft-name { font-size: 0.8125rem; font-weight: 600; line-height: 1.3; display: block; }
-	.studio-draft-meta { font-size: 0.7rem; color: var(--t-muted); font-family: 'Space Mono', monospace; }
-	.studio-draft-arrow { flex-shrink: 0; color: var(--t-muted); }
+	.studio-draft-film-cell--on {
+		background: rgba(232, 255, 72, 0.22);
+		border-color: rgba(232, 255, 72, 0.45);
+		color: #eab308;
+	}
+	.studio-draft-filmstrip--light .studio-draft-film-cell--on {
+		background: rgba(124, 58, 237, 0.12);
+		border-color: rgba(124, 58, 237, 0.35);
+		color: #6d28d9;
+	}
+	.studio-draft-template-pill {
+		position: absolute;
+		top: 0.5rem;
+		left: 0.5rem;
+		z-index: 3;
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: rgba(0, 0, 0, 0.55);
+		color: rgba(255, 255, 255, 0.92);
+		font-size: 0.58rem;
+		font-family: 'Space Mono', monospace;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		backdrop-filter: blur(4px);
+		max-width: calc(100% - 5rem);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 
 	/* Section divider */
 	.section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 0.5rem 0 1.5rem; }

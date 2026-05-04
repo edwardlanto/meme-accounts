@@ -3091,8 +3091,7 @@ tweetTopImagePanYBySlide,
 				draftLoaded = true;
 				draftRestoring = false;
 				if (forcedBlankFromQuery) applyBlankCanvas();
-				// After restore (or blank canvas), optionally seed the primary circle badge.
-				if ((showCircleBySlide[activeSlide] ?? false) && !activeCircleImage) void generateCircleImage(activeSlide);
+				// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
 			});
 	});
 
@@ -3554,9 +3553,6 @@ tweetTopImagePanYBySlide,
 			// Slide 0: keep article image if available; otherwise generate from title
 			// Slides 1+: generate from their own text copy
 			const imagePromise = generateAllSlideImages(articleImageUrl, contentTemplate);
-
-			// Auto-generate circle badge on slide 1 only when enabled
-			if (showCircleBySlide[0]) generateCircleImage(0);
 
 			await imagePromise;
 
