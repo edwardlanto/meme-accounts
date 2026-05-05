@@ -100,6 +100,8 @@
 		slideHints: string[];
 		/** Filmstrip chips on light previews (tweet / light news) */
 		filmLight: boolean;
+		/** Saved slide PNG from Storage — already includes headline; don’t paint copy on top */
+		fullSlideRaster: boolean;
 	};
 
 	function studioDraftPreview(d: { state?: Record<string, unknown> }): StudioDraftPreview {
@@ -113,8 +115,17 @@
 		const bgMap = (s.bgImagesByTemplate ?? {}) as Record<string, string[]>;
 		const pickHero = (key: string) => {
 			const u = String(bgMap[key]?.[0] ?? '').trim();
-			return u.startsWith('http://') || u.startsWith('https://') ? u : '';
+			if (u.startsWith('http://') || u.startsWith('https://')) return u;
+			// Draft state embeds AI/uploads as data URLs — same-origin img supports these for thumbnails.
+			if (u.startsWith('data:image/') && u.length < 2_500_000) return u;
+			return '';
 		};
+
+		/** First-slide raster uploaded to Supabase Storage on save (preferred over parsing bg data URLs). */
+		const storagePreviewHero = (() => {
+			const u = String((s as any).draftPreviewUrl ?? '').trim();
+			return u.startsWith('http://') || u.startsWith('https://') ? u : '';
+		})();
 
 		let headline = '';
 		if (tpl === 'tweet') {
@@ -145,7 +156,7 @@
 		let heroUrl = '';
 
 		if (tpl === 'news') {
-			heroUrl = pickHero('news');
+			heroUrl = storagePreviewHero || pickHero('news');
 			const solid = String(strArr(s.newsSolidBgBySlide)[0] ?? '').trim();
 			bgSolid = solid || (heroUrl ? '#0a0a0a' : '#ffffff');
 			const tc = String(s.textColor ?? '').trim();
@@ -159,34 +170,47 @@
 		} else if (tpl === 'tweet') {
 			bgSolid = '#ffffff';
 			textColor = '#0a0a0a';
-			heroUrl = pickHero('tweet');
+			heroUrl = storagePreviewHero || pickHero('tweet');
 		} else if (tpl === 'blackText') {
 			bgSolid = '#000000';
 			textColor = '#e5e5e5';
-			heroUrl = pickHero('blackText');
+			heroUrl = storagePreviewHero || pickHero('blackText');
 		} else if (tpl === 'textCarousel') {
 			bgSolid = '#0a0a0a';
 			textColor = '#f5f5f5';
+			heroUrl = storagePreviewHero;
 		} else if (tpl === 'videoStory') {
 			bgSolid = '#0a0a0a';
 			textColor = '#fafafa';
-			heroUrl = pickHero('videoStory');
+			heroUrl = storagePreviewHero || pickHero('videoStory');
 		} else if (tpl === 'imageQuote') {
 			bgSolid = '#0f172a';
 			textColor = '#fafafa';
-			heroUrl = pickHero('imageQuote');
+			heroUrl = storagePreviewHero || pickHero('imageQuote');
 		} else if (tpl === 'article') {
 			bgSolid = '#fafafa';
 			textColor = '#0a0a0a';
-			heroUrl = pickHero('article');
+			heroUrl = storagePreviewHero || pickHero('article');
 		}
 
+		const fullSlideRaster = !!storagePreviewHero;
 		const filmLight =
-			tpl === 'tweet' ||
-			(tpl === 'article' && !heroUrl) ||
-			(tpl === 'news' && !heroUrl && isLightHex(bgSolid));
+			!fullSlideRaster &&
+			(tpl === 'tweet' ||
+				(tpl === 'article' && !heroUrl) ||
+				(tpl === 'news' && !heroUrl && isLightHex(bgSolid)));
 
-		return { templateLabel, headline, textColor, bgSolid, heroUrl, slideCount, slideHints, filmLight };
+		return {
+			templateLabel,
+			headline,
+			textColor,
+			bgSolid,
+			heroUrl,
+			slideCount,
+			slideHints,
+			filmLight,
+			fullSlideRaster,
+		};
 	}
 
 	async function deleteStudioDraft(id: string) {
@@ -548,15 +572,31 @@
 						<a
 							href="/dashboard/studio?draft={d.id}"
 							class="card-preview studio-draft-card-preview"
-							style={pv.heroUrl ? '' : `background-color: ${pv.bgSolid};`}
+							style={
+								pv.heroUrl
+									? pv.fullSlideRaster
+										? `background-color: ${pv.bgSolid};`
+										: ''
+									: `background-color: ${pv.bgSolid};`
+							}
 						>
 							{#if pv.heroUrl}
-								<img src={pv.heroUrl} alt="" class="studio-draft-bg-img" referrerpolicy="no-referrer" />
-								<div class="studio-draft-bg-scrim" aria-hidden="true"></div>
+								<img
+									src={pv.heroUrl}
+									alt=""
+									class="studio-draft-bg-img"
+									class:studio-draft-bg-img--full-slide={pv.fullSlideRaster}
+									referrerpolicy="no-referrer"
+								/>
+								{#if !pv.fullSlideRaster}
+									<div class="studio-draft-bg-scrim" aria-hidden="true"></div>
+								{/if}
 							{/if}
-							<p class="card-preview-text studio-draft-preview-headline" style="color: {pv.textColor};">
-								{pv.headline}
-							</p>
+							{#if !pv.fullSlideRaster}
+								<p class="card-preview-text studio-draft-preview-headline" style="color: {pv.textColor};">
+									{pv.headline}
+								</p>
+							{/if}
 							<div
 								class="studio-draft-filmstrip"
 								class:studio-draft-filmstrip--light={pv.filmLight}
@@ -815,6 +855,10 @@
 		height: 100%;
 		object-fit: cover;
 		object-position: center;
+	}
+	/* Saved PNG is already the full composed slide — show it whole (no crop) like Studio; letterbox if aspect differs slightly */
+	.studio-draft-bg-img--full-slide {
+		object-fit: contain;
 	}
 	.studio-draft-bg-scrim {
 		position: absolute;

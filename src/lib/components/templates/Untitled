@@ -1,0 +1,8 @@
+		selectedText?: TextElementKind | null;
+		onTextChange?: (t: string) => void;
+		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
+		onHeadlineRangeSelect?: (start: number, end: number) => void;
+		headlineStyle?: TextStyle;
+		textOffsets?: Record<string, { x: number; y: number }>;
+		onTextOffsetChange?: (kind: TextElementKind, next: { x: number; y: number }) => void;
+		showToolbar?: boolean;

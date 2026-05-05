@@ -2027,25 +2027,48 @@
 
 		<!-- ── Text area ──────────────────────────────────────────────────── -->
 		<!-- z=40 keeps text in front of EVERYTHING (cutout @ 25, gradient @ 30,
-		     circle @ 20, overlays @ 15) so words are never covered. -->
+		     circle @ 20, overlays @ 15) so words are never covered.
+		     Full-frame clip + bottom-aligned inner so huge toolbar font sizes cannot
+		     paint below the canvas (interactive preview + scaled studio).
+		     pointer-events: none on this shell so the circle/background stay draggable;
+		     only the inner content column re-enables hits. -->
 		<div
 			style="
 				position: absolute;
-				bottom: 0; left: 0; right: 0;
-				padding: 48px 64px 72px;
+				inset: 0;
 				z-index: 40;
+				overflow: hidden;
+				display: flex;
+				flex-direction: column;
+				justify-content: flex-end;
 				transform: translateY({textPanelOffsetY}px);
-				{interactive && !editing ? 'cursor: grab;' : ''}
+				pointer-events: none;
 			"
-			onpointerdown={textPointerDown}
-			onpointermove={textPointerMove}
-			onpointerup={textPointerUp}
-			onpointercancel={textPointerUp}
-			role={interactive ? 'group' : undefined}
-			aria-label={interactive ? 'News headline area' : undefined}
-			onmouseenter={() => hoveringText = true}
-			onmouseleave={() => hoveringText = false}
 		>
+			<div
+				style="
+					position: relative;
+					width: 100%;
+					max-height: 100%;
+					min-height: 0;
+					flex: 0 1 auto;
+					overflow-x: hidden;
+					overflow-y: auto;
+					overscroll-behavior: contain;
+					padding: 48px 64px 72px;
+					box-sizing: border-box;
+					pointer-events: auto;
+					{interactive && !editing ? 'cursor: grab;' : ''}
+				"
+				onpointerdown={textPointerDown}
+				onpointermove={textPointerMove}
+				onpointerup={textPointerUp}
+				onpointercancel={textPointerUp}
+				role={interactive ? 'group' : undefined}
+				aria-label={interactive ? 'News headline area' : undefined}
+				onmouseenter={() => (hoveringText = true)}
+				onmouseleave={() => (hoveringText = false)}
+			>
 			<!-- Edit hint outline -->
 			{#if interactive && hoveringText && !editing}
 				<div style="
@@ -2190,6 +2213,7 @@
 						/>
 					</div>
 				{/if}
+			</div>
 			</div>
 		</div>
 	</div>

@@ -13,7 +13,7 @@
 	type StudioSavedRow = {
 		id: string;
 		updated_at: string;
-		state: { _templateName?: string } | null;
+		state: { _templateName?: string; templatePreviewUrl?: string } | null;
 	};
 
 	let studioSavedTemplates = $state<StudioSavedRow[]>([]);
@@ -79,7 +79,7 @@
 	{#if !loading}
 		<div class="saved-section">
 			<h2 class="saved-heading">Saved Studio templates</h2>
-			<p class="saved-sub">Layouts and copy you saved from News Studio open as a new session (your autosave draft stays separate).</p>
+			<p class="saved-sub">Layouts and copy you saved from News Studio open as a new session. Saving also updates Studio drafts under Carousels.</p>
 			{#if studioTemplatesLoading}
 				<p class="loading">Loading templates…</p>
 			{:else if studioSavedTemplates.length === 0}
@@ -87,8 +87,15 @@
 			{:else}
 				<div class="saved-grid">
 					{#each studioSavedTemplates as row (row.id)}
+						{@const preview = (row.state?.templatePreviewUrl ?? '').trim()}
 						<a class="saved-card" href="/dashboard/studio?saved={row.id}">
-							<div class="saved-icon"><Bookmark size={16} /></div>
+							{#if preview}
+								<div class="saved-thumb" aria-hidden="true">
+									<img src={preview} alt="" referrerpolicy="no-referrer" />
+								</div>
+							{:else}
+								<div class="saved-icon"><Bookmark size={16} /></div>
+							{/if}
 							<div class="saved-body">
 								<p class="saved-title">{row.state?._templateName?.trim() || 'Untitled template'}</p>
 								<p class="saved-meta">
@@ -292,6 +299,21 @@
 		align-items: center;
 		justify-content: center;
 		color: #a78bfa;
+	}
+	.saved-thumb {
+		width: 44px;
+		height: 44px;
+		border-radius: 12px;
+		overflow: hidden;
+		border: 1px solid var(--app-border);
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+		flex-shrink: 0;
+	}
+	.saved-thumb img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
 	}
 	.saved-body { flex: 1; min-width: 0; }
 	.saved-title {

@@ -79,7 +79,7 @@ import JSZip from 'jszip';
 		type ExternalSlideMergeMode,
 	} from '$lib/studio/external-slide-merge';
 	import {
-		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark, Save,
+		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper
 	} from 'lucide-svelte';
@@ -129,6 +129,8 @@ import JSZip from 'jszip';
 	let forcedTemplateFromQuery = $state<TemplateId | null>(null);
 	/** `?blank=1` — skip draft restore and open a minimal News canvas (users can switch templates per slide). */
 	let forcedBlankFromQuery = $state(false);
+	/** `?template=…` starter links (template carousel / nav) — don’t restore last autosave workspace on top of a “new” session. */
+	let skipLatestWorkspaceDraftRestore = $state(false);
 
 	// News controls
 	let search = $state('');
@@ -749,7 +751,8 @@ import JSZip from 'jszip';
 		closeToolbar();
 	}
 
-	// Allow starter-template cards to deep-link into Studio with a template preselected.
+	// Parse starter URL flags. Actual blank/template application runs in the auth `onMount` `.finally`
+	// so it wins over `loadLatestDraft()` (otherwise the last autosave overwrites “new from template”).
 	onMount(() => {
 		if (initialTemplateParamApplied) return;
 		initialTemplateParamApplied = true;
@@ -757,18 +760,21 @@ import JSZip from 'jszip';
 		const params = new URLSearchParams(window.location.search);
 		const savedQ = params.get('saved');
 		const hasSaved = !!(savedQ && /^[0-9a-f-]{36}$/i.test(savedQ));
+		const draftQ = params.get('draft');
+		const hasDraft = !!(draftQ && /^[0-9a-f-]{36}$/i.test(draftQ));
 		const blankRaw = params.get('blank');
-		if (!hasSaved && (blankRaw === '1' || blankRaw === 'true' || blankRaw === 'yes')) {
+		if (!hasSaved && !hasDraft && (blankRaw === '1' || blankRaw === 'true' || blankRaw === 'yes')) {
 			forcedBlankFromQuery = true;
 			forcedTemplateFromQuery = 'news';
-			applyTemplateToAll('news');
 			return;
 		}
 		const raw = params.get('template') ?? '';
 		const next = mapQueryParamToTemplateId(raw) ?? (raw.trim() ? 'news' : undefined);
 		if (!next) return;
 		forcedTemplateFromQuery = next;
-		applyTemplateToAll(next);
+		if (!hasSaved && !hasDraft) {
+			skipLatestWorkspaceDraftRestore = true;
+		}
 	});
 
 	// Client-side navigations to `/dashboard/studio?template=…` don’t re-run `onMount`; sync from the URL.
@@ -777,11 +783,31 @@ import JSZip from 'jszip';
 		if (!url) return;
 		const pathNoTrailing = url.pathname.replace(/\/+$/, '') || '/';
 		if (!pathNoTrailing.endsWith('/studio') || pathNoTrailing.includes('burn-music')) return;
+		const savedQ = url.searchParams.get('saved');
+		const hasSaved = !!(savedQ && /^[0-9a-f-]{36}$/i.test(savedQ));
+		const draftQ = url.searchParams.get('draft');
+		const hasDraft = !!(draftQ && /^[0-9a-f-]{36}$/i.test(draftQ));
+		const blankRaw = url.searchParams.get('blank');
+		if (!hasSaved && !hasDraft && (blankRaw === '1' || blankRaw === 'true' || blankRaw === 'yes')) {
+			forcedBlankFromQuery = true;
+			forcedTemplateFromQuery = 'news';
+			skipLatestWorkspaceDraftRestore = false;
+			applyBlankCanvas();
+			seedNewsStarterPlaceholderLayout();
+			return;
+		}
 		const raw = url.searchParams.get('template')?.trim() ?? '';
 		if (!raw) return;
 		const next = mapQueryParamToTemplateId(raw) ?? 'news';
 		forcedTemplateFromQuery = next;
-		applyTemplateToAll(next);
+		if (!hasSaved && !hasDraft) {
+			skipLatestWorkspaceDraftRestore = true;
+			applyBlankCanvas();
+			applyTemplateToAll(next);
+			seedNewsStarterPlaceholderLayout();
+		} else {
+			applyTemplateToAll(next);
+		}
 	});
 
 	// Convenience derived for current active slide text
@@ -1564,7 +1590,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		// Keep the same logical slide focused after reorder.
 		const newActive = newOrder.indexOf(activeSlide);
 		if (newActive >= 0) activeSlide = newActive;
-		void saveDraftNow?.();
 	}
 
 	function reorderSlidesByIds(nextIds: string[]) {
@@ -1628,7 +1653,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		showVideoTrim = false;
 		videoSeekSec = NaN;
 		closeToolbar();
-		void saveDraftNow?.();
 	}
 
 	// Filmstrip DnD (dnd-kit). Keep a temporary visual order while dragging
@@ -2378,13 +2402,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let studioTemplateName = $state('');
 	let studioTemplateSaving = $state(false);
 	let studioTemplateFeedback = $state('');
-	let draftLoaded = $state(false);
 	let draftSaving = $state(false);
 	let draftError = $state('');
 	/** Shown after a successful manual save from the sidebar button. */
-	let draftManualSaveMessage = $state('');
+	/** Public Supabase Storage URL for the first-slide thumbnail (Carousels → Studio drafts). */
+	let draftPreviewUrl = $state('');
 	let draftRestoring = $state(true);
-	let saveTimer: any = null;
 
 	const studioBooting = $derived(!initialTemplateParamApplied || draftRestoring || !userId);
 
@@ -2404,6 +2427,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (typeof s.articleUrl === 'string') articleUrl = s.articleUrl;
 		if (typeof s.articleTitle === 'string') articleTitle = s.articleTitle;
 		if (typeof s.articleSnippet === 'string') articleSnippet = s.articleSnippet;
+		if (typeof (s as any).draftPreviewUrl === 'string') {
+			draftPreviewUrl = (s as any).draftPreviewUrl.trim();
+		} else {
+			draftPreviewUrl = '';
+		}
 
 		if (Array.isArray(s.slideTemplates)) {
 			slideTemplates = (s.slideTemplates as unknown[]).map((t) => coerceTemplateId(t));
@@ -2772,7 +2800,23 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		draftId = '';
 		draftError = '';
+		draftPreviewUrl = '';
 		closeToolbar();
+	}
+
+	/** `applyBlankCanvas()` resets headline/solid fills, kills shadow, and hides the circle chrome — restore readable News starters (gradient, hook circle ring, vignette). */
+	function seedNewsStarterPlaceholderLayout() {
+		if (coerceTemplateId(slideTemplates[0] ?? 'news') !== 'news') return;
+		const n = Math.max(1, slides.length);
+		slides = slides.map((row, i) =>
+			String(row ?? '').trim() ? row : i === 0 ? NEWS_PLACEHOLDER_HEADLINE : row
+		);
+		if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
+		newsSolidBgBySlide = Array.from({ length: n }, () => '');
+		// Match default hook behaviour: badge on slide 1 only until user adds elsewhere.
+		showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
+		shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
+		shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
 	}
 
 	async function loadLatestDraft() {
@@ -2891,23 +2935,70 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const name = studioTemplateName.trim() || `Studio template ${new Date().toLocaleDateString()}`;
 		studioTemplateSaving = true;
 		studioTemplateFeedback = '';
-		const state = { ...buildDraftState(), _templateName: name };
-		const { error } = await (supabase as any).from('drafts').insert({
+
+		// Use the exact same export pipeline as the bottom-right Export/Post button.
+		// This avoids subtle races with the filmstrip capture and guarantees "what you see"
+		// matches the stored preview.
+		let previewPng: string | null = null;
+		try {
+			const n = await exportAllSlidesToDraft();
+			previewPng = n > 0 ? (exportedSlides[0] ?? null) : null;
+		} catch {
+			previewPng = null;
+		}
+
+		const state = { ...buildDraftState('template'), _templateName: name };
+		const { data, error } = await (supabase as any).from('drafts').insert({
 			user_id: userId,
 			kind: STUDIO_SAVED_TEMPLATE_KIND,
 			state,
-		});
-		studioTemplateSaving = false;
+		}).select('id').single();
 		if (error) {
+			studioTemplateSaving = false;
 			studioTemplateFeedback = error.message ?? 'Save failed';
 			return;
 		}
-		studioTemplateFeedback = 'Saved to dashboard';
+		const templateId = String(data?.id ?? '').trim();
+
+		// Upload a dedicated preview for the saved template row (separate from workspace draft preview).
+		if (templateId) {
+			try {
+				if (previewPng) {
+					const path = `${userId}/templates/${templateId}.png`;
+					const blob = await (await fetch(previewPng)).blob();
+					const { error: upErr } = await supabase.storage.from('draft-previews').upload(path, blob, {
+						contentType: 'image/png',
+						upsert: true,
+					});
+					if (!upErr) {
+						const { data: pub } = supabase.storage.from('draft-previews').getPublicUrl(path);
+						const templatePreviewUrl = `${pub.publicUrl}?v=${Date.now()}`;
+						// Persist URL into template state so the dashboard can render it.
+						await (supabase as any)
+							.from('drafts')
+							.update({ state: { ...state, templatePreviewUrl } })
+							.eq('id', templateId)
+							.eq('user_id', userId)
+							.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+					}
+				}
+			} catch {
+				/* keep template without preview */
+			}
+		}
+		studioTemplateSaving = false;
+		studioTemplateFeedback = 'Saved to your dashboard and Studio drafts (Carousels).';
 		showSaveTemplatePanel = false;
 		studioTemplateName = '';
 	}
 
-	function buildDraftState() {
+	/** ~1.2M chars ≈ under 1MB base64 — full-bleed Vertex JPEGs often exceed the old 220k cap. */
+	const DRAFT_MAX_DATA_URL_CHARS = 1_200_000;
+	/** Templates should preserve backgrounds across slides; allow much larger embedded media. */
+	const TEMPLATE_MAX_DATA_URL_CHARS = 8_000_000;
+
+	function buildDraftState(mode: 'draft' | 'template' = 'draft') {
+		const maxDataUrlChars = mode === 'template' ? TEMPLATE_MAX_DATA_URL_CHARS : DRAFT_MAX_DATA_URL_CHARS;
 		// Avoid saving huge/persistent-less URLs that can freeze restore.
 		const pruneMediaUrl = (u: unknown) => {
 			if (typeof u !== 'string') return '';
@@ -2916,7 +3007,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			// blob: URLs don’t survive reload and can get large in drafts.
 			if (s.startsWith('blob:')) return '';
 			// Very large data URLs make draft JSON huge and slow to restore.
-			if (s.startsWith('data:') && s.length > 220_000) return '';
+			if (s.startsWith('data:') && s.length > maxDataUrlChars) return '';
 			return s;
 		};
 		const pruneMediaMap = (m: Record<string, unknown>) =>
@@ -3016,24 +3107,176 @@ tweetTopImagePanYBySlide,
 			highlightColor,
 			studioTextHighlightsEnabled,
 			textColor,
+			draftPreviewUrl,
 			// Don’t persist `exportedSlides` (huge data URLs) in drafts — it makes restore slow.
 			// We can always re-export when needed.
 			exportedSlides: [],
 		};
 	}
 
+	async function blobUrlToDataUrl(src: string): Promise<string> {
+		const s = String(src ?? '').trim();
+		if (!s.startsWith('blob:')) return s;
+		try {
+			const res = await fetch(s);
+			const blob = await res.blob();
+			return await new Promise<string>((resolve, reject) => {
+				const fr = new FileReader();
+				fr.onload = () => resolve(String(fr.result ?? ''));
+				fr.onerror = () => reject(fr.error);
+				fr.readAsDataURL(blob);
+			});
+		} catch {
+			return '';
+		}
+	}
+
+	function studioBlobMediaScan(): boolean {
+		const blob = (s: unknown) => typeof s === 'string' && s.startsWith('blob:');
+		for (const t of Object.keys(bgImagesByTemplate) as TemplateId[]) {
+			for (const u of bgImagesByTemplate[t] ?? []) if (blob(u)) return true;
+		}
+		for (const t of Object.keys(bgVideosByTemplate) as TemplateId[]) {
+			for (const u of bgVideosByTemplate[t] ?? []) if (blob(u)) return true;
+		}
+		for (const u of circleImages) if (blob(u)) return true;
+		for (const u of circle2Images) if (blob(u)) return true;
+		for (const u of subjectCutouts) if (blob(u)) return true;
+		for (const u of tweetTopAvatarImageBySlide) if (blob(u)) return true;
+		for (const u of tweetBottomAvatarImageBySlide) if (blob(u)) return true;
+		for (const u of textCarouselAvatarImageBySlide) if (blob(u)) return true;
+		for (const u of articleLogoSrcBySlide) if (blob(u)) return true;
+		for (const key of Object.keys(slideOverlaysByTemplate) as TemplateId[]) {
+			for (const slideRow of slideOverlaysByTemplate[key] ?? []) {
+				for (const o of slideRow ?? []) if (blob(o?.src)) return true;
+			}
+		}
+		return false;
+	}
+
+	/** Replace in-memory `blob:` media with data URLs so drafts survive reload (blobs are session-only). */
+	async function materializeBlobUrlsForDraftSave() {
+		if (!studioBlobMediaScan()) return;
+
+		const mat = async (cur: string): Promise<string> => {
+			if (!cur.startsWith('blob:')) return cur;
+			const next = await blobUrlToDataUrl(cur);
+			if (next && !next.startsWith('blob:')) {
+				try {
+					URL.revokeObjectURL(cur);
+				} catch {
+					// ignore
+				}
+				return next;
+			}
+			return cur;
+		};
+
+		const imgKeys = Object.keys(bgImagesByTemplate) as TemplateId[];
+		const nextImg = { ...bgImagesByTemplate };
+		for (const t of imgKeys) {
+			const row = [...(nextImg[t] ?? [])];
+			for (let i = 0; i < row.length; i++) {
+				row[i] = await mat(row[i] ?? '');
+			}
+			nextImg[t] = row;
+		}
+		bgImagesByTemplate = nextImg;
+
+		let ci = [...circleImages];
+		for (let i = 0; i < ci.length; i++) ci[i] = await mat(ci[i] ?? '');
+		circleImages = ci;
+
+		let c2 = [...circle2Images];
+		for (let i = 0; i < c2.length; i++) c2[i] = await mat(c2[i] ?? '');
+		circle2Images = c2;
+
+		let sc = [...subjectCutouts];
+		for (let i = 0; i < sc.length; i++) sc[i] = await mat(sc[i] ?? '');
+		subjectCutouts = sc;
+
+		let tTop = [...tweetTopAvatarImageBySlide];
+		for (let i = 0; i < tTop.length; i++) tTop[i] = await mat(tTop[i] ?? '');
+		tweetTopAvatarImageBySlide = tTop;
+
+		let tBot = [...tweetBottomAvatarImageBySlide];
+		for (let i = 0; i < tBot.length; i++) tBot[i] = await mat(tBot[i] ?? '');
+		tweetBottomAvatarImageBySlide = tBot;
+
+		let tcAv = [...textCarouselAvatarImageBySlide];
+		for (let i = 0; i < tcAv.length; i++) tcAv[i] = await mat(tcAv[i] ?? '');
+		textCarouselAvatarImageBySlide = tcAv;
+
+		let logos = [...articleLogoSrcBySlide];
+		for (let i = 0; i < logos.length; i++) logos[i] = await mat(logos[i] ?? '');
+		articleLogoSrcBySlide = logos;
+
+		const tplKeys = Object.keys(slideOverlaysByTemplate) as TemplateId[];
+		const nextOver: Record<TemplateId, Overlay[][]> = { ...slideOverlaysByTemplate };
+		for (const tpl of tplKeys) {
+			const rows = slideOverlaysByTemplate[tpl] ?? [];
+			const outRows: Overlay[][] = [];
+			for (let s = 0; s < rows.length; s++) {
+				const row = rows[s] ?? [];
+				const out: Overlay[] = [];
+				for (const o of row) {
+					const src = o.src ?? '';
+					if (src.startsWith('blob:')) {
+						const nextSrc = await mat(src);
+						out.push({ ...o, src: nextSrc });
+					} else {
+						out.push(o);
+					}
+				}
+				outRows.push(out);
+			}
+			nextOver[tpl] = outRows;
+		}
+		slideOverlaysByTemplate = nextOver;
+	}
+
 	// Rendered PNGs (data URLs) of each slide's final template output
 	let exportedSlides = $state<string[]>([]);
 
-	async function saveDraftNow() {
+	type SaveDraftNowOpts = { captureThumbnail?: boolean };
+
+	/** Persist workspace draft (invoked when saving templates or other explicit flows). */
+	async function saveDraftNow(opts?: SaveDraftNowOpts) {
 		if (!userId) return;
+		const captureThumbnail = opts?.captureThumbnail === true;
 		draftSaving = true;
 		draftError = '';
+		await materializeBlobUrlsForDraftSave();
+
+		const rowId = draftId || crypto.randomUUID();
+		let nextPreviewUrl = draftPreviewUrl;
+		if (captureThumbnail) {
+			try {
+				const thumbDataUrl = await captureDraftThumbnailDataUrl();
+				if (thumbDataUrl) {
+					const path = `${userId}/${rowId}.png`;
+					const blob = await (await fetch(thumbDataUrl)).blob();
+					const { error: upErr } = await supabase.storage.from('draft-previews').upload(path, blob, {
+						contentType: 'image/png',
+						upsert: true,
+					});
+					if (!upErr) {
+						const { data: pub } = supabase.storage.from('draft-previews').getPublicUrl(path);
+						// Cache-bust so repeated saves update immediately.
+						nextPreviewUrl = `${pub.publicUrl}?v=${Date.now()}`;
+					}
+				}
+			} catch {
+				// Keep previous draftPreviewUrl if capture/upload fails.
+			}
+		}
+		draftPreviewUrl = nextPreviewUrl;
+
 		const payload = {
 			user_id: userId,
 			kind: DRAFT_KIND,
 			state: buildDraftState(),
-			...(draftId ? { id: draftId } : {}),
+			id: rowId,
 		};
 		const { data, error } = await (supabase as any)
 			.from('drafts')
@@ -3048,24 +3291,6 @@ tweetTopImagePanYBySlide,
 		if (data?.id) draftId = data.id;
 	}
 
-	async function saveDraftFromButton() {
-		if (!userId || draftSaving) return;
-		draftManualSaveMessage = '';
-		await saveDraftNow();
-		if (!draftError) {
-			draftManualSaveMessage = 'Draft saved. You can reopen it from Carousels → Studio drafts.';
-			setTimeout(() => {
-				draftManualSaveMessage = '';
-			}, 5000);
-		}
-	}
-
-	function scheduleDraftSave() {
-		if (!draftLoaded) return;
-		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => void saveDraftNow(), 900);
-	}
-
 	// ── Auth ──────────────────────────────────────────────────────────────
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
@@ -3078,19 +3303,28 @@ tweetTopImagePanYBySlide,
 		const loadPromise =
 			savedParam && /^[0-9a-f-]{36}$/i.test(savedParam)
 				? loadSavedStudioTemplate(savedParam)
-				: forcedBlankFromQuery
-					? Promise.resolve()
-					: draftParam && /^[0-9a-f-]{36}$/i.test(draftParam)
-						? loadDraftById(draftParam)
-						: loadLatestDraft();
+				: draftParam && /^[0-9a-f-]{36}$/i.test(draftParam)
+					? loadDraftById(draftParam)
+					: forcedBlankFromQuery
+						? Promise.resolve()
+						: skipLatestWorkspaceDraftRestore
+							? Promise.resolve()
+							: loadLatestDraft();
 		void loadPromise
 			.catch(() => {
 				// loaders set draftError; swallow to keep UI responsive.
 			})
 			.finally(() => {
-				draftLoaded = true;
 				draftRestoring = false;
-				if (forcedBlankFromQuery) applyBlankCanvas();
+				if (forcedBlankFromQuery) {
+					applyBlankCanvas();
+					seedNewsStarterPlaceholderLayout();
+				} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
+					// Fresh session from template carousel / `?template=` — never overlay last autosave.
+					applyBlankCanvas();
+					applyTemplateToAll(forcedTemplateFromQuery);
+					seedNewsStarterPlaceholderLayout();
+				}
 				// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
 			});
 	});
@@ -3556,6 +3790,11 @@ tweetTopImagePanYBySlide,
 
 			await imagePromise;
 
+			// After a fetched story (including test article), fill the badge circle — not on idle studio boot.
+			if (contentTemplate === 'news' && (showCircleBySlide[0] ?? false)) {
+				await generateCircleImage(0);
+			}
+
 		} catch (e: any) {
 			newsError = e.message;
 		}
@@ -3934,13 +4173,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		closeToolbar();
 	});
 
-	// Auto-save draft (debounced). This will persist editor state across reloads.
-	$effect(() => {
-		// Reading the state here makes it reactive without TS comma-operator issues.
-		buildDraftState();
-		scheduleDraftSave();
-	});
-
 	// ── Generate circle image via Vertex ─────────────────────────────────
 	async function generateCircleImage(slideIdx: number = activeSlide) {
 		generatingCircle = true;
@@ -4264,7 +4496,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				out.push(dataUrl);
 			}
 			exportedSlides = out;
-			await saveDraftNow();
 			return out.length;
 		} catch (e: any) {
 			const msg =
@@ -4368,6 +4599,50 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 	}
 
+	/**
+	 * Captures slide 0 as a PNG using the EXACT same pipeline as the Export button
+	 * (`exportAllSlidesToDraft`): sets `exportingAll = true` so the filmstrip can't
+	 * compete for `canvasRasterSlide` during the `toPng` call.
+	 */
+	async function captureSlide0PngDataUrl(pixelRatio = 1): Promise<string | null> {
+		if (!exportRef || studioBooting || slides.length === 0) return null;
+		if (exporting || exportingAll) return null; // already exporting, skip
+
+		exportingAll = true;
+		const prevRaster = canvasRasterSlide;
+		try {
+			canvasRasterSlide = 0;
+			await tick();
+			await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+			const node = exportRef;
+			if (!node) return null;
+			try { await (document as any).fonts?.ready; } catch { /* ignore */ }
+			const dataUrl = await toPng(node, {
+				width: CANVAS_W,
+				height: CANVAS_H,
+				pixelRatio,
+				backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+				style: { transform: 'scale(1)', transformOrigin: 'top left' },
+				cacheBust: true,
+			} as any);
+			return dataUrl || null;
+		} catch {
+			return null;
+		} finally {
+			canvasRasterSlide = prevRaster ?? null;
+			exportingAll = false;
+			await tick();
+		}
+	}
+
+	async function captureDraftThumbnailDataUrl(): Promise<string | null> {
+		return captureSlide0PngDataUrl(1);
+	}
+
+	async function captureTemplatePreviewPngDataUrl(): Promise<string | null> {
+		return captureSlide0PngDataUrl(1);
+	}
+
 	/** Filmstrip thumbs are small; 0.2 looked nothing like the canvas — keep file size sane vs legibility. */
 	const FILMSTRIP_THUMB_PIXEL_RATIO = 0.52;
 
@@ -4381,12 +4656,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	async function refreshFilmstripPreviews() {
 		if (!exportRef || studioBooting || slides.length === 0) return;
 		if (exporting || exportingAll || filmstripPreviewInFlight) return;
-		// Filmstrip UI only exists for 2+ slides.
-		if (slides.length < 2) {
-			filmstripPreviewUrls = [];
-			prevFilmstripSigs = [];
-			return;
-		}
 		filmstripPreviewInFlight = true;
 		filmstripBulkCapturing = true;
 		const urls: string[] = [];
@@ -4434,7 +4703,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		const uniq = [...new Set(indices)]
 			.filter((i) => Number.isInteger(i) && i >= 0 && i < slides.length)
 			.sort((a, b) => a - b);
-		if (!uniq.length || !exportRef || studioBooting || slides.length < 2) return;
+		if (!uniq.length || !exportRef || studioBooting || slides.length < 1) return;
 		if (exporting || exportingAll || filmstripPreviewInFlight) return;
 
 		filmstripPreviewInFlight = true;
@@ -4482,7 +4751,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 	/** Update one filmstrip thumbnail without iterating all slides (avoids “flickity” on template change). */
 	async function refreshFilmstripPreviewSlice(slideIdx: number) {
-		if (!exportRef || studioBooting || slides.length < 2) return;
+		if (!exportRef || studioBooting || slides.length < 1) return;
 		if (exporting || exportingAll || filmstripPreviewInFlight) return;
 		if (slideIdx < 0 || slideIdx >= slides.length) return;
 
@@ -4586,8 +4855,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		const n = slides.length;
 		const nextSigs = n > 0 ? Array.from({ length: n }, (_, i) => slideThumbSignature(i)) : [];
 
-		if (n < 2) {
-			prevFilmstripSigs = nextSigs;
+		if (n === 0) {
+			prevFilmstripSigs = [];
+			filmstripPreviewUrls = [];
 			return;
 		}
 
@@ -4694,7 +4964,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							type="button"
 							size="sm"
 							class="flex-1 rounded-lg bg-violet-600 text-white hover:bg-violet-500"
-							disabled={studioTemplateSaving || !userId}
+							disabled={studioTemplateSaving || draftSaving || !userId}
 							onclick={() => void saveStudioTemplateNamed()}
 						>
 							{#if studioTemplateSaving}<Loader size={12} class="animate-spin" />{:else}Save{/if}
@@ -4711,7 +4981,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						>Cancel</Button>
 					</div>
 					<p class="text-[9px] font-body text-neutral-500 leading-snug">
-						Saved templates appear on your dashboard. Open them anytime from there.
+						Saves your workspace to Studio drafts (Carousels) with a thumbnail, adds a reusable layout to your dashboard, and uploads a preview when possible.
 					</p>
 				</div>
 			{/if}
@@ -4773,6 +5043,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</div>
 				</div>
 			{/if}
+			<p class="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
+				{slides.length === 1 ? '1 slide' : `${slides.length} slides`}
+			</p>
 		</div>
 
 		<div class="flex flex-col gap-4 p-4">
@@ -5300,22 +5573,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				<p class="max-w-[min(22rem,70vw)] min-w-0 text-right text-[10px] font-body leading-snug text-red-400/90">
 					{draftError}
 				</p>
-			{:else if draftManualSaveMessage}
-				<p class="max-w-[min(22rem,70vw)] min-w-0 text-right text-[10px] font-body leading-snug text-emerald-400/90">
-					{draftManualSaveMessage}
-				</p>
 			{/if}
-			<Button
-				type="button"
-				variant="outline"
-				size="sm"
-				class="h-8 shrink-0 gap-1.5 rounded-lg border-violet-600/50 bg-violet-950/40 text-[11px] font-semibold text-violet-100 hover:bg-violet-950/70"
-				disabled={draftSaving || !userId || draftRestoring}
-				onclick={() => void saveDraftFromButton()}
-			>
-				{#if draftSaving}<Loader size={12} class="animate-spin" />{:else}<Save size={12} />{/if}
-				Save draft
-			</Button>
 		</div>
 
 		<!-- Editor dock + format dock — in document flow so the canvas never stacks over them -->
@@ -5380,7 +5638,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					class="relative rounded-2xl {previewTemplate === 'tweet' ? 'overflow-visible' : 'overflow-hidden'}"
 				>
 
-			{#if filmstripBulkCapturing && slides.length >= 2}
+			{#if filmstripBulkCapturing && slides.length >= 1}
 				<div
 					class="absolute inset-0 z-[19] flex flex-col items-center justify-center gap-2 rounded-2xl"
 					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
@@ -5932,8 +6190,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		</div>
 		</div>
 
-		<!-- Slide filmstrip: drag to reorder -->
-		{#if slideCount > 1}
+		<!-- Slide filmstrip: drag to reorder (show for single-slide decks so Hook + Add stay visible) -->
+		{#if slides.length >= 1}
 			{@const orderIds = filmstripIds.length ? filmstripIds : slideIds}
 			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
 			{@const dndItems = orderIds.map((id) => {
