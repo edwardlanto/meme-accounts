@@ -5,9 +5,12 @@
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import { stripMarkup } from '$lib/highlight';
 	import { coerceTemplateId, STUDIO_TEMPLATES } from '$lib/studio/template-ids';
+	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte` (workspace autosave rows). */
 	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
+	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte` (saved templates). */
+	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
@@ -16,6 +19,8 @@
 
 	let carousels: any[] = $state([]);
 	let studioDrafts = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
+	let studioSavedTemplates = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
+	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
 	let loading = $state(true);
 	let creating = $state(false);
 	let createError = $state('');
@@ -228,12 +233,44 @@
 		studioDrafts = studioDrafts.filter((x) => x.id !== id);
 	}
 
+	async function deleteStudioSavedTemplate(id: string) {
+		if (!confirm('Delete this saved template? This cannot be undone.')) return;
+		// Best-effort: delete stored PNG first (ignore errors).
+		try {
+			const row = studioSavedTemplates.find((x) => x.id === id);
+			const s = row?.state as any;
+			const key =
+				String(s?.draftPreviewKey ?? '').trim() ||
+				String(s?.draftPreviewPath ?? '').trim() ||
+				`${userId}/templates/${id}.png`;
+			if (key) await r2DeleteObject({ key });
+		} catch {
+			// ignore
+		}
+		const { error } = await (supabase as any)
+			.from('drafts')
+			.delete()
+			.eq('id', id)
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+		if (error) {
+			alert(error.message ?? 'Could not delete template');
+			return;
+		}
+		studioSavedTemplates = studioSavedTemplates.filter((x) => x.id !== id);
+		{
+			const next = { ...studioSavedTemplateThumbById };
+			delete next[id];
+			studioSavedTemplateThumbById = next;
+		}
+	}
+
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
 
-		const [carouselRes, draftRes] = await Promise.all([
+		const [carouselRes, draftRes, savedTplRes] = await Promise.all([
 			(supabase as any).from('carousels').select('*').order('updated_at', { ascending: false }),
 			(supabase as any)
 				.from('drafts')
@@ -242,11 +279,68 @@
 				.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND)
 				.order('updated_at', { ascending: false })
 				.limit(40),
+			(supabase as any)
+				.from('drafts')
+				.select('id,updated_at,state')
+				.eq('user_id', user.id)
+				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+				.order('updated_at', { ascending: false })
+				.limit(24),
 		]);
 		carousels = carouselRes.data ?? [];
 		studioDrafts = draftRes.data ?? [];
+		studioSavedTemplates = savedTplRes.data ?? [];
+		await hydrateSavedTemplateThumbs();
 		loading = false;
 	});
+
+	function studioSavedTemplateName(row: { state?: Record<string, unknown> }): string {
+		const raw = String((row.state as any)?._templateName ?? '').trim();
+		return raw || 'Untitled template';
+	}
+
+	async function hydrateSavedTemplateThumbs() {
+		const rows = studioSavedTemplates;
+		if (!userId || !rows.length) {
+			studioSavedTemplateThumbById = {};
+			return;
+		}
+		const next: Record<string, string> = {};
+		await Promise.all(
+			rows.map(async (row) => {
+				const id = String(row.id ?? '').trim();
+				if (!id) return;
+				const s = row.state as any;
+				const key =
+					String(s?.draftPreviewKey ?? '').trim() ||
+					String(s?.draftPreviewPath ?? '').trim() ||
+					`${userId}/templates/${id}.png`;
+				try {
+					const { url } = await r2SignRead({ key });
+					// Do not append query params — presigned URLs must match signing exactly or R2 returns SignatureDoesNotMatch.
+					next[id] = url;
+				} catch {
+					// ignore
+				}
+			}),
+		);
+		studioSavedTemplateThumbById = next;
+	}
+
+	function studioSavedTemplatePreviewUrl(row: { state?: Record<string, unknown> }): { url: string; fullSlideRaster: boolean } {
+		const signed = studioSavedTemplateThumbById[String((row as any)?.id ?? '').trim()];
+		if (signed) return { url: signed, fullSlideRaster: true };
+		const s = row.state as any;
+		const draftPreviewUrl = String(s?.draftPreviewUrl ?? '').trim();
+		if (draftPreviewUrl.startsWith('http://') || draftPreviewUrl.startsWith('https://')) {
+			return { url: draftPreviewUrl, fullSlideRaster: true };
+		}
+		const templatePreviewUrl = String(s?.templatePreviewUrl ?? '').trim();
+		if (templatePreviewUrl.startsWith('http://') || templatePreviewUrl.startsWith('https://')) {
+			return { url: templatePreviewUrl, fullSlideRaster: false };
+		}
+		return { url: '', fullSlideRaster: false };
+	}
 
 	async function createNew() {
 		creating = true;
@@ -259,7 +353,6 @@
 				{ id: '1', text: 'Your hook here', type: 'hook', bg: '#0f172a', textColor: '#ffffff', align: 'center', bold: true, fontSize: 32 },
 				{ id: '2', text: 'Key insight or point', type: 'body', bg: '#111111', textColor: '#f8f8f8', align: 'center', bold: false, fontSize: 28 },
 				{ id: '3', text: 'Another key point', type: 'body', bg: '#111111', textColor: '#f8f8f8', align: 'center', bold: false, fontSize: 28 },
-				{ id: '4', text: 'Follow for more!', type: 'cta', bg: '#0a0a0a', textColor: '#8B5CF6', align: 'center', bold: true, fontSize: 30 },
 			]),
 		}).select().single();
 		creating = false;
@@ -554,6 +647,50 @@
 		</div>
 	</div>
 
+	{#if studioSavedTemplates.length > 0}
+		<div class="saved-templates-block">
+			<div class="saved-templates-head">
+				<h2 class="saved-templates-title">Saved Studio templates</h2>
+				<p class="saved-templates-sub">
+					Layouts and copy you saved from News Studio open as a new session. Thumbnails show the saved first slide PNG when available.
+				</p>
+			</div>
+			<div class="saved-templates-grid">
+				{#each studioSavedTemplates as row (row.id)}
+					{@const pv = studioSavedTemplatePreviewUrl(row)}
+					<div class="saved-template-tile group">
+						<a class="saved-template-link" href="/dashboard/studio?saved={row.id}" aria-label="Open saved template">
+							{#if pv.url}
+								<img
+									src={pv.url}
+									alt=""
+									class="saved-template-img"
+									class:saved-template-img--full={pv.fullSlideRaster}
+									referrerpolicy="no-referrer"
+									loading="lazy"
+									draggable="false"
+								/>
+							{:else}
+								<div class="saved-template-empty">
+									<span class="saved-template-empty-text">{studioSavedTemplateName(row)}</span>
+								</div>
+							{/if}
+						</a>
+						<button
+							type="button"
+							class="saved-template-del"
+							title="Delete template"
+							aria-label="Delete template"
+							onclick={() => void deleteStudioSavedTemplate(row.id)}
+						>
+							<Trash2 size={12} />
+						</button>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
 	{#if studioDrafts.length > 0}
 		<div class="studio-drafts-block">
 			<div class="studio-drafts-head">
@@ -843,6 +980,118 @@
 		max-width: 56rem;
 	}
 	.studio-drafts-grid { margin-top: 0.5rem; }
+
+	/* Saved Studio templates (news studio “save template”) */
+	.saved-templates-block {
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.25rem;
+		border-radius: 16px;
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
+	}
+	.saved-templates-head { margin-bottom: 0.75rem; }
+	.saved-templates-title {
+		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
+		font-size: 1rem;
+		font-weight: 700;
+		color: var(--t-strong);
+		margin: 0 0 0.35rem;
+	}
+	.saved-templates-sub {
+		font-size: 0.75rem;
+		color: var(--t-muted);
+		margin: 0;
+		line-height: 1.45;
+		max-width: 56rem;
+	}
+	.saved-templates-grid {
+		margin-top: 0.65rem;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: 12px;
+	}
+	.saved-template-tile {
+		position: relative;
+		border-radius: 16px;
+		overflow: hidden;
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
+		transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+		aspect-ratio: 4 / 5;
+	}
+	.saved-template-tile:hover {
+		transform: translateY(-1px);
+		border-color: var(--panel-border-hover);
+	}
+	:root:not([data-theme="dark"]) .saved-template-tile:hover {
+		box-shadow: 0 14px 44px rgba(2, 6, 23, 0.10);
+	}
+	:root[data-theme="dark"] .saved-template-tile:hover {
+		box-shadow: 0 14px 44px rgba(0, 0, 0, 0.34);
+	}
+	.saved-template-link {
+		display: block;
+		width: 100%;
+		height: 100%;
+		text-decoration: none;
+	}
+	.saved-template-img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	/* First-slide PNGs should be shown whole (contain) to match Studio expectations */
+	.saved-template-img--full {
+		object-fit: contain;
+		background: rgba(0, 0, 0, 0.35);
+	}
+	.saved-template-empty {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1rem;
+		color: var(--t-muted);
+		font-family: 'Space Mono', monospace;
+		font-size: 0.7rem;
+		text-align: center;
+		background: color-mix(in oklab, var(--panel-bg) 70%, transparent);
+	}
+	.saved-template-empty-text {
+		display: -webkit-box;
+		line-clamp: 3;
+		-webkit-line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.saved-template-del {
+		position: absolute;
+		top: 0.55rem;
+		right: 0.55rem;
+		width: 32px;
+		height: 32px;
+		border-radius: 10px;
+		border: 1px solid color-mix(in oklab, var(--panel-border) 60%, transparent);
+		background: rgba(0, 0, 0, 0.55);
+		color: rgba(255, 255, 255, 0.9);
+		backdrop-filter: blur(6px);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		opacity: 0;
+		transform: translateY(-2px);
+		transition: opacity 0.15s, transform 0.15s, background 0.15s;
+		cursor: pointer;
+	}
+	.saved-template-tile:hover .saved-template-del {
+		opacity: 1;
+		transform: translateY(0);
+	}
+	.saved-template-del:hover {
+		background: rgba(239, 68, 68, 0.55);
+	}
 
 	.studio-draft-card-preview {
 		position: relative;

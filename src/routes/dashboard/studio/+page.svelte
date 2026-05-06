@@ -27,6 +27,7 @@ import JSZip from 'jszip';
 	import { loadGoogleFont } from '$lib/fonts';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { r2UploadBlob } from '$lib/r2Client';
 	import {
 		Select,
 		SelectContent,
@@ -1273,7 +1274,10 @@ import JSZip from 'jszip';
 
 	function addSlide() {
 		if (slides.length >= 10) return;
-		slides = [...slides, ''];
+		// New slides should start with sensible defaults so the canvas doesn't look "broken".
+		// For News, use the placeholder headline; for other templates keep it empty.
+		const nextText = coerceTemplateId(lastTemplateUsed) === 'news' ? NEWS_PLACEHOLDER_HEADLINE : '';
+		slides = [...slides, nextText];
 		slideCount = slides.length;
 		activeSlide = slides.length - 1;
 		// Keep background media per-template, per-slide.
@@ -2960,36 +2964,43 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 		const templateId = String(data?.id ?? '').trim();
 
-		// Upload a dedicated preview for the saved template row (separate from workspace draft preview).
+		let r2Note = '';
+		// Upload preview via same-origin /api/r2/upload (server writes to R2 — no browser CORS to R2).
 		if (templateId) {
-			try {
-				if (previewPng) {
-					const path = `${userId}/templates/${templateId}.png`;
+			if (!previewPng) {
+				r2Note =
+					' Note: First-slide preview was not exported, so nothing was uploaded to R2. Try Export first or ensure slides render.';
+			} else {
+				try {
+					const key = `${userId}/templates/${templateId}.png`;
 					const blob = await (await fetch(previewPng)).blob();
-					const { error: upErr } = await supabase.storage.from('draft-previews').upload(path, blob, {
-						contentType: 'image/png',
-						upsert: true,
-					});
-					if (!upErr) {
-						const { data: pub } = supabase.storage.from('draft-previews').getPublicUrl(path);
-						const templatePreviewUrl = `${pub.publicUrl}?v=${Date.now()}`;
-						// Persist URL into template state so the dashboard can render it.
-						await (supabase as any)
-							.from('drafts')
-							.update({ state: { ...state, templatePreviewUrl } })
-							.eq('id', templateId)
-							.eq('user_id', userId)
-							.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
-					}
+					await r2UploadBlob({ key, blob, filename: 'slide-1.png' });
+					await (supabase as any)
+						.from('drafts')
+						.update({
+							state: {
+								...state,
+								draftPreviewUrl: '',
+								draftPreviewKey: key,
+								draftPreviewPath: key,
+								templatePreviewUrl: '',
+							},
+						})
+						.eq('id', templateId)
+						.eq('user_id', userId)
+						.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+				} catch (e: unknown) {
+					const msg = e instanceof Error ? e.message : String(e);
+					r2Note = ` R2 error: ${msg}. Check .env R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET — restart dev after changes.`;
 				}
-			} catch {
-				/* keep template without preview */
 			}
 		}
 		studioTemplateSaving = false;
-		studioTemplateFeedback = 'Saved to your dashboard and Studio drafts (Carousels).';
-		showSaveTemplatePanel = false;
-		studioTemplateName = '';
+		studioTemplateFeedback =
+			`Saved. Find it under Carousels → “Saved Studio templates”.${r2Note}`;
+		// Keep the panel open so the user can see the success message (and any errors).
+		// showSaveTemplatePanel = false;
+		// studioTemplateName = '';
 	}
 
 	/** ~1.2M chars ≈ under 1MB base64 — full-bleed Vertex JPEGs often exceed the old 220k cap. */
@@ -3254,17 +3265,10 @@ tweetTopImagePanYBySlide,
 			try {
 				const thumbDataUrl = await captureDraftThumbnailDataUrl();
 				if (thumbDataUrl) {
-					const path = `${userId}/${rowId}.png`;
+					const key = `${userId}/${rowId}.png`;
 					const blob = await (await fetch(thumbDataUrl)).blob();
-					const { error: upErr } = await supabase.storage.from('draft-previews').upload(path, blob, {
-						contentType: 'image/png',
-						upsert: true,
-					});
-					if (!upErr) {
-						const { data: pub } = supabase.storage.from('draft-previews').getPublicUrl(path);
-						// Cache-bust so repeated saves update immediately.
-						nextPreviewUrl = `${pub.publicUrl}?v=${Date.now()}`;
-					}
+					await r2UploadBlob({ key, blob, filename: 'draft-thumb.png' });
+					nextPreviewUrl = '';
 				}
 			} catch {
 				// Keep previous draftPreviewUrl if capture/upload fails.

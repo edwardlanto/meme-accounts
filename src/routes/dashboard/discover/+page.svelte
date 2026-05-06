@@ -90,7 +90,6 @@
 				{ id: '1', text: post.hook ?? 'Your hook here', type: 'hook', bg: '#111111', textColor: '#ffffff' },
 				{ id: '2', text: 'Slide 2', type: 'body', bg: '#111111', textColor: '#ffffff' },
 				{ id: '3', text: 'Slide 3', type: 'body', bg: '#111111', textColor: '#ffffff' },
-				{ id: '4', text: 'Follow for more!', type: 'cta', bg: '#111111', textColor: '#8B5CF6' },
 			]),
 			source_post_id: post.id,
 		}).select().single();

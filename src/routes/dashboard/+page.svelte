@@ -3,21 +3,10 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
-		ArrowRight, ImagePlus, Sparkles, Layers, Wand2, BarChart3, Bookmark
+		ArrowRight, ImagePlus, Sparkles, Layers, Wand2, BarChart3
 	} from 'lucide-svelte';
 
 	let loading = $state(true);
-
-	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
-
-	type StudioSavedRow = {
-		id: string;
-		updated_at: string;
-		state: { _templateName?: string; templatePreviewUrl?: string } | null;
-	};
-
-	let studioSavedTemplates = $state<StudioSavedRow[]>([]);
-	let studioTemplatesLoading = $state(false);
 
 	const primaryCards = [
 		{ href: '/dashboard/branding', icon: Sparkles, label: 'Generate Image', sub: 'Branding generator', accent: '#7c3aed' },
@@ -30,16 +19,6 @@
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		loading = false;
-		studioTemplatesLoading = true;
-		const { data, error } = await supabase
-			.from('drafts')
-			.select('id,updated_at,state')
-			.eq('user_id', user.id)
-			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
-			.order('updated_at', { ascending: false })
-			.limit(24);
-		studioTemplatesLoading = false;
-		if (!error && data) studioSavedTemplates = data as StudioSavedRow[];
 	});
 </script>
 
@@ -75,44 +54,6 @@
 			</a>
 		{/each}
 	</div>
-
-	{#if !loading}
-		<div class="saved-section">
-			<h2 class="saved-heading">Saved Studio templates</h2>
-			<p class="saved-sub">Layouts and copy you saved from News Studio open as a new session. Saving also updates Studio drafts under Carousels.</p>
-			{#if studioTemplatesLoading}
-				<p class="loading">Loading templates…</p>
-			{:else if studioSavedTemplates.length === 0}
-				<p class="saved-empty">None yet — use <strong>Save template</strong> in the studio sidebar.</p>
-			{:else}
-				<div class="saved-grid">
-					{#each studioSavedTemplates as row (row.id)}
-						{@const preview = (row.state?.templatePreviewUrl ?? '').trim()}
-						<a class="saved-card" href="/dashboard/studio?saved={row.id}">
-							{#if preview}
-								<div class="saved-thumb" aria-hidden="true">
-									<img src={preview} alt="" referrerpolicy="no-referrer" />
-								</div>
-							{:else}
-								<div class="saved-icon"><Bookmark size={16} /></div>
-							{/if}
-							<div class="saved-body">
-								<p class="saved-title">{row.state?._templateName?.trim() || 'Untitled template'}</p>
-								<p class="saved-meta">
-									{new Date(row.updated_at).toLocaleString(undefined, {
-										month: 'short',
-										day: 'numeric',
-										year: 'numeric',
-									})}
-								</p>
-							</div>
-							<div class="saved-go"><ArrowRight size={16} /></div>
-						</a>
-					{/each}
-				</div>
-			{/if}
-		</div>
-	{/if}
 
 	{#if loading}
 		<p class="loading">Loading…</p>
@@ -241,96 +182,4 @@
 		.hero-title { font-size: 28px; }
 	}
 
-	.saved-section {
-		margin-top: 22px;
-		padding-top: 18px;
-		border-top: 1px solid var(--app-border);
-	}
-	.saved-heading {
-		margin: 0;
-		font-family: 'DM Sans', sans-serif;
-		font-weight: 800;
-		font-size: 15px;
-		color: var(--app-text);
-		letter-spacing: -0.02em;
-	}
-	.saved-sub {
-		margin: 6px 0 0;
-		font-size: 12px;
-		color: var(--app-text-2);
-		max-width: 70ch;
-		line-height: 1.45;
-	}
-	.saved-empty {
-		margin: 10px 0 0;
-		font-size: 12px;
-		color: var(--app-text-3);
-	}
-	.saved-grid {
-		margin-top: 12px;
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-		gap: 10px;
-	}
-	.saved-card {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 10px 12px;
-		border-radius: 12px;
-		background: color-mix(in oklab, var(--app-text) 3%, transparent);
-		border: 1px solid var(--app-border);
-		text-decoration: none;
-		color: var(--app-text);
-		transition: transform 0.15s, background 0.15s, border-color 0.15s;
-	}
-	.saved-card:hover {
-		transform: translateY(-1px);
-		background: color-mix(in oklab, var(--app-text) 5%, transparent);
-		border-color: var(--app-border-hover);
-	}
-	.saved-icon {
-		width: 32px;
-		height: 32px;
-		border-radius: 10px;
-		background: color-mix(in oklab, var(--app-text) 5%, transparent);
-		border: 1px solid var(--app-border);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: #a78bfa;
-	}
-	.saved-thumb {
-		width: 44px;
-		height: 44px;
-		border-radius: 12px;
-		overflow: hidden;
-		border: 1px solid var(--app-border);
-		background: color-mix(in oklab, var(--app-text) 6%, transparent);
-		flex-shrink: 0;
-	}
-	.saved-thumb img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-	.saved-body { flex: 1; min-width: 0; }
-	.saved-title {
-		margin: 0;
-		font-weight: 700;
-		font-size: 13px;
-		color: var(--app-text);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.saved-meta {
-		margin: 2px 0 0;
-		font-size: 10px;
-		font-family: 'Space Mono', monospace;
-		color: var(--app-text-3);
-	}
-	.saved-go { color: var(--app-text-3); flex-shrink: 0; }
-	.saved-card:hover .saved-go { color: var(--app-text-2); }
 </style>
