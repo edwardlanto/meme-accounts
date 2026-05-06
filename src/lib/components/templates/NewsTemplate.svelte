@@ -439,7 +439,8 @@
 	);
 	const bgRenderOverflowPct = $derived(Math.max(0, bgRenderSize - 100)); // strict cover overscan
 	/** Extra pan range at 100% zoom so drag-pan doesn’t feel dead; can show a sliver of letterbox at extremes. */
-	const BG_MIN_PAN_ROOM_PCT = 36;
+	// Give more pan room near 100% zoom so it doesn't feel "stuck".
+	const BG_MIN_PAN_ROOM_PCT = 70;
 	const bgPanRangePct = $derived(Math.max(BG_MIN_PAN_ROOM_PCT, bgRenderOverflowPct));
 	// Natural panning: slide an oversized layer inside the frame.
 	//  - bgOffsetX/Y = 0  → show left/top edge
@@ -1066,15 +1067,21 @@
 	let bgPanStartY = 0;
 	const BG_SLOP_PX = 6;
 	/** Pointer drag sensitivity — higher = move background farther per pixel */
-	const BG_PAN_DRAG_SENS = 11;
+	const BG_PAN_DRAG_SENS = 9;
 	/** Alt+drag anywhere on the canvas (capture) to pan — avoids the z-index-2 dead zone under text/circle. */
 	let bgAltPanActive = $state(false);
 
 	const bgPanCursor = $derived(bgDragging || bgAltPanActive ? 'grabbing' : 'default');
 
 	function applyBgPanPixels(dx: number, dy: number) {
-		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - (dx / W) * 100 * BG_PAN_DRAG_SENS));
-		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - (dy / H) * 100 * BG_PAN_DRAG_SENS));
+		// Convert pixel drag → percent, then scale by how much pan room the current zoom actually has.
+		// This makes panning feel consistent (more room when zoomed in, less when barely overscanned),
+		// and prevents the "I can't drag further right" early clamp feeling.
+		const panRoom = Math.max(16, Number(bgPanRangePct) || 0); // percent of extra image beyond frame
+		const xPerPx = (100 / Math.max(1, W)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
+		const yPerPx = (100 / Math.max(1, H)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
+		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - dx * xPerPx));
+		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - dy * yPerPx));
 	}
 
 	function removeBgAltPanListeners() {
@@ -1116,13 +1123,15 @@
 	function onCanvasWheel(e: WheelEvent) {
 		if (!interactive || !hasBg || !e.altKey) return;
 		e.preventDefault();
-		const delta = e.deltaY > 0 ? -5 : 5;
+		// Exponential zoom feels more "natural" than linear steps.
+		// Trackpads generate many small wheel events; keep a gentle factor.
+		const factor = e.deltaY > 0 ? 0.94 : 1.06;
 		if (bgFitMode === 'contain') {
-			bgContainMagnify = Math.round(
-				Math.max(50, Math.min(200, Number(bgContainMagnify) + delta)),
-			);
+			const cur = Number(bgContainMagnify) || 100;
+			bgContainMagnify = Math.round(Math.max(50, Math.min(200, cur * factor)));
 		} else {
-			bgZoom = Math.round(Math.max(30, Math.min(300, Number(bgZoom) + delta)));
+			const cur = Number(bgZoom) || 100;
+			bgZoom = Math.round(Math.max(30, Math.min(300, cur * factor)));
 		}
 	}
 

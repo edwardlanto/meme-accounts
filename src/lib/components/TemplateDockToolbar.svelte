@@ -14,16 +14,20 @@
 	type Props = {
 		templates: TemplateTab[];
 		selectedId: string;
+		/** Optional label override (e.g. "Blank"). */
+		selectedLabelOverride?: string;
 		onSelect: (id: string) => void;
 		/** Apply the current template to every slide (same as sidebar “Apply all”). */
 		onApplyAll?: () => void;
 		className?: string;
 	};
 
-	let { templates, selectedId, onSelect, onApplyAll, className = '' }: Props = $props();
+	let { templates, selectedId, selectedLabelOverride, onSelect, onApplyAll, className = '' }: Props = $props();
 
 	const selectedLabel = $derived(
-		templates.find((t) => t.id === selectedId)?.label ?? 'Template',
+		selectedLabelOverride?.trim() ||
+			templates.find((t) => t.id === selectedId)?.label ||
+			'Template',
 	);
 </script>
 

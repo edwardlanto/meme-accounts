@@ -5827,6 +5827,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<TemplateDockToolbar
 				templates={templateDockTabs}
 				selectedId={activeTemplate}
+				selectedLabelOverride={forcedBlankFromQuery &&
+				slides.length === 1 &&
+				!String(slides[0] ?? '').trim() &&
+				!String(backgroundImage ?? '').trim() &&
+				!String(backgroundVideo ?? '').trim()
+					? 'Blank'
+					: ''}
 				onSelect={(id) => setActiveTemplate(id as TemplateId)}
 				onApplyAll={() => applyTemplateToAll(activeTemplate)}
 			/>

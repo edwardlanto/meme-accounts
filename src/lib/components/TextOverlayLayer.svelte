@@ -245,7 +245,12 @@
 									onTextSelect?.('textOverlay', box);
 								}
 							}}
-							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
+							onChange={(v) => {
+								// HighlightEditor can leave a trailing newline on blur/commit; strip it so overlays
+								// don't "grow" by one empty line after editing.
+								const next = String(v ?? '').replace(/\n$/, '');
+								onTextOverlaysChange?.(textOverlays.map((o) => (o.id === t.id ? { ...o, text: next } : o)));
+							}}
 							onBlur={(e) => finishEdit(t.id, e)}
 						/>
 					</div>
