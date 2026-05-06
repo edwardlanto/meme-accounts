@@ -11,8 +11,8 @@ import JSZip from 'jszip';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
 	import BlackTextCarouselTemplate from '$lib/components/templates/BlackTextCarouselTemplate.svelte';
-	import TextOverlayLayer from '$lib/components/TextOverlayLayer.svelte';
-	import ImageStickerOverlayLayer from '$lib/components/ImageStickerOverlayLayer.svelte';
+	import StudioTextOverlays from '$lib/components/studio/StudioTextOverlays.svelte';
+	import StudioImageStickers from '$lib/components/studio/StudioImageStickers.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import TextCarouselAvatarToolbar from '$lib/components/TextCarouselAvatarToolbar.svelte';
@@ -29,6 +29,8 @@ import JSZip from 'jszip';
 	import { Label } from '$lib/components/ui/label';
 	import { r2UploadBlob } from '$lib/r2Client';
 	import { r2SignRead } from '$lib/r2Client';
+	import { resolveStoredMediaUrl, ensureR2RefLoaded, prefetchAllR2RefsInStudioMedia } from '$lib/studio/r2-media-resolve';
+	import { studioTemplateRuntime } from '$lib/studio/template-runtime';
 	import {
 		Select,
 		SelectContent,
@@ -1048,36 +1050,18 @@ import JSZip from 'jszip';
 
 	// ── R2 media refs (saved templates) ────────────────────────────────────
 	// Saved templates can store media as `r2:<key>` instead of giant data URLs.
-	// We resolve those to short-lived signed URLs on demand for rendering.
+	// Resolution logic lives in `$lib/studio/r2-media-resolve.ts` (single source of truth).
 	let r2ResolvedUrlByKey = $state<Record<string, string>>({});
 	const r2Resolving = new Set<string>();
-	const isR2Ref = (u: unknown): u is string => typeof u === 'string' && u.startsWith('r2:');
-	const r2KeyFromRef = (ref: string) => ref.slice(3).trim();
 
 	async function ensureR2Resolved(refOrUrl: string) {
-		if (!isR2Ref(refOrUrl)) return;
-		const key = r2KeyFromRef(refOrUrl);
-		if (!key) return;
-		if (r2ResolvedUrlByKey[key]) return;
-		if (r2Resolving.has(key)) return;
-		r2Resolving.add(key);
-		try {
-			const { url } = await r2SignRead({ key });
+		await ensureR2RefLoaded(refOrUrl, r2ResolvedUrlByKey, r2Resolving, r2SignRead, (key, url) => {
 			r2ResolvedUrlByKey = { ...r2ResolvedUrlByKey, [key]: url };
-		} catch {
-			// keep unresolved (renders as blank)
-		} finally {
-			r2Resolving.delete(key);
-		}
+		});
 	}
 
 	function resolveMediaUrl(u: unknown): string {
-		if (typeof u !== 'string') return '';
-		const s = u.trim();
-		if (!s) return '';
-		if (!isR2Ref(s)) return s;
-		const key = r2KeyFromRef(s);
-		return r2ResolvedUrlByKey[key] ?? '';
+		return resolveStoredMediaUrl(u, r2ResolvedUrlByKey);
 	}
 
 	const activeCutout = $derived(resolveMediaUrl(subjectCutouts[activeSlide] ?? ''));
@@ -2465,6 +2449,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	const paintSlide = $derived(canvasRasterSlide ?? activeSlide);
 	const previewTemplate = $derived(coerceTemplateId(slideTemplates[paintSlide]));
+	const previewCanvasOverflowClass = $derived(studioTemplateRuntime(previewTemplate).canvasOverflowClass);
 	const canvasInteractive = $derived(canvasRasterSlide === null);
 
 	/** Mirrors News headline markup during inline edit so `slides` isn't rewritten every keystroke (avoids full preview flicker). */
@@ -3057,25 +3042,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	}
 
 	async function resolveAllR2RefsInStudioState() {
-		// Background images by template
-		for (const t of Object.keys(bgImagesByTemplate) as TemplateId[]) {
-			for (const u of bgImagesByTemplate[t] ?? []) {
-				if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
-			}
-		}
-		// Circles + cutouts
-		for (const u of circleImages ?? []) if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
-		for (const u of circle2Images ?? []) if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
-		for (const u of subjectCutouts ?? []) if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
-		// Image sticker overlays
-		for (const key of Object.keys(slideOverlaysByTemplate) as TemplateId[]) {
-			for (const slideRow of slideOverlaysByTemplate[key] ?? []) {
-				for (const o of slideRow ?? []) {
-					const src = String((o as any)?.src ?? '').trim();
-					if (src.startsWith('r2:')) await ensureR2Resolved(src);
-				}
-			}
-		}
+		await prefetchAllR2RefsInStudioMedia(ensureR2Resolved, {
+			bgImagesByTemplate,
+			circleImages,
+			circle2Images,
+			subjectCutouts,
+			slideOverlaysByTemplate,
+		});
 	}
 
 	async function saveStudioTemplateNamed() {
@@ -5939,7 +5912,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				<div
 					data-studio-canvas-root
 					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
-					class="relative rounded-2xl {previewTemplate === 'tweet' ? 'overflow-visible' : 'overflow-hidden'}"
+					class="relative rounded-2xl {previewCanvasOverflowClass}"
 				>
 
 			{#if filmstripBulkCapturing && slides.length >= 1}
@@ -6095,14 +6068,15 @@ showSubjectCutout={canvasShowCutout}
 					headlineSelectionRestoreRange={headlineRange}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
-				<TextOverlayLayer
+				<StudioTextOverlays
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
@@ -6137,7 +6111,7 @@ showSubjectCutout={canvasShowCutout}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
-				<ImageStickerOverlayLayer
+				<StudioImageStickers
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
@@ -6146,14 +6120,15 @@ showSubjectCutout={canvasShowCutout}
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
-				<TextOverlayLayer
+				<StudioTextOverlays
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
@@ -6216,7 +6191,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						showToolbar: false,
 					} as any)}
 				/>
-				<ImageStickerOverlayLayer
+				<StudioImageStickers
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
@@ -6225,14 +6200,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
-				<TextOverlayLayer
+				<StudioTextOverlays
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
@@ -6267,7 +6243,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				/>
-				<ImageStickerOverlayLayer
+				<StudioImageStickers
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
@@ -6276,14 +6252,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
-				<TextOverlayLayer
+				<StudioTextOverlays
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
@@ -6347,7 +6324,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 					showToolbar={false}
 				/>
-				<ImageStickerOverlayLayer
+				<StudioImageStickers
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
@@ -6358,14 +6335,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						setSlideOverlays(paintSlide, o, previewTemplate);
 					}}
 				/>
-				<TextOverlayLayer
+				<StudioTextOverlays
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => {
 						if (!canvasInteractive) return;
@@ -6406,7 +6384,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 					showToolbar={false}
 				/>
-				<ImageStickerOverlayLayer
+				<StudioImageStickers
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
@@ -6417,14 +6395,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						setSlideOverlays(paintSlide, o, previewTemplate);
 					}}
 				/>
-				<TextOverlayLayer
+				<StudioTextOverlays
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => {
 						if (!canvasInteractive) return;
@@ -6476,14 +6455,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					headlineSelectionRestoreRange={headlineRange}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
-				<TextOverlayLayer
+				<StudioTextOverlays
 					w={CANVAS_W}
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
-					selectedId={selectedText === 'textOverlay' ? selectedTextOverlayId : null}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
