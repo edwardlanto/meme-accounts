@@ -177,10 +177,89 @@ import JSZip from 'jszip';
 	let slideTemplates = $state<TemplateId[]>(['news']);
 	let lastTemplateUsed = $state<TemplateId>('news');
 	const activeTemplate = $derived(coerceTemplateId(slideTemplates[activeSlide]));
+
+	function ensureTemplateDefaultsForSlide(t: TemplateId, idx: number) {
+		// Seed template-specific copy so switching templates from a blank canvas doesn’t look “broken”.
+		// Only fills when the target field is empty.
+		if (t === 'news') {
+			if (!String(slides[idx] ?? '').trim()) {
+				slides = slides.map((x, i) => (i === idx ? NEWS_PLACEHOLDER_HEADLINE : x));
+			}
+			return;
+		}
+		if (t === 'tweet') {
+			if (!String(tweetTopTextBySlide[idx] ?? '').trim()) {
+				tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.topText : x));
+			}
+			if (!String(tweetBottomTextBySlide[idx] ?? '').trim()) {
+				tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.bottomText : x));
+			}
+			return;
+		}
+		if (t === 'textCarousel') {
+			if (!String(textCarouselTextBySlide[idx] ?? '').trim()) {
+				textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) =>
+					i === idx ? TEXT_CAROUSEL_DEFAULTS.body : x,
+				);
+			}
+			if (!String(textCarouselNameBySlide[idx] ?? '').trim()) {
+				textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) =>
+					i === idx ? TEXT_CAROUSEL_DEFAULTS.name : x,
+				);
+			}
+			if (!String(textCarouselHandleBySlide[idx] ?? '').trim()) {
+				textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) =>
+					i === idx ? TEXT_CAROUSEL_DEFAULTS.handle : x,
+				);
+			}
+			return;
+		}
+		if (t === 'article') {
+			if (!String(articleTextBySlide[idx] ?? '').trim()) {
+				articleTextBySlide = articleTextBySlide.map((x, i) => (i === idx ? ARTICLE_DEFAULT_BODY : x));
+			}
+			return;
+		}
+		if (t === 'videoStory') {
+			if (!String(videoStoryHeadlineBySlide[idx] ?? '').trim()) {
+				videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, i) =>
+					i === idx ? VIDEO_STORY_DEFAULTS.headline : x,
+				);
+			}
+			if (!String(videoStoryWatermarkBySlide[idx] ?? '').trim()) {
+				videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) =>
+					i === idx ? VIDEO_STORY_DEFAULTS.watermark : x,
+				);
+			}
+			return;
+		}
+		if (t === 'imageQuote') {
+			if (!String(imageQuoteTextBySlide[idx] ?? '').trim()) {
+				imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, i) =>
+					i === idx ? IMAGE_QUOTE_DEFAULTS.body : x,
+				);
+			}
+			return;
+		}
+		if (t === 'blackText') {
+			if (!String(blackTextHeadlineBySlide[idx] ?? '').trim()) {
+				blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((x, i) =>
+					i === idx ? BLACK_TEXT_CAROUSEL_DEFAULTS.headline : x,
+				);
+			}
+			if (!String(blackTextBodyBySlide[idx] ?? '').trim()) {
+				blackTextBodyBySlide = blackTextBodyBySlide.map((x, i) =>
+					i === idx ? BLACK_TEXT_CAROUSEL_DEFAULTS.body : x,
+				);
+			}
+		}
+	}
+
 	function setActiveTemplate(t: TemplateId) {
 		lastTemplateUsed = t;
 		const idx = activeSlide;
 		slideTemplates = slideTemplates.map((x, i) => (i === idx ? t : x));
+		ensureTemplateDefaultsForSlide(t, idx);
 		if (t === 'videoStory') {
 			const row = [...(bgVideosByTemplate.videoStory ?? [])];
 			while (row.length <= idx) row.push('');
@@ -201,6 +280,7 @@ import JSZip from 'jszip';
 	function applyTemplateToAll(t: TemplateId) {
 		lastTemplateUsed = t;
 		slideTemplates = slideTemplates.map(() => t);
+		for (let i = 0; i < slides.length; i++) ensureTemplateDefaultsForSlide(t, i);
 		if (t === 'blackText') {
 			const n = slides.length;
 			const prev = bgImagesByTemplate.blackText ?? [];
