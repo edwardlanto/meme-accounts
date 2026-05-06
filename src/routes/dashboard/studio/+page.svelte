@@ -28,6 +28,7 @@ import JSZip from 'jszip';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { r2UploadBlob } from '$lib/r2Client';
+	import { r2SignRead } from '$lib/r2Client';
 	import {
 		Select,
 		SelectContent,
@@ -794,7 +795,6 @@ import JSZip from 'jszip';
 			forcedTemplateFromQuery = 'news';
 			skipLatestWorkspaceDraftRestore = false;
 			applyBlankCanvas();
-			seedNewsStarterPlaceholderLayout();
 			return;
 		}
 		const raw = url.searchParams.get('template')?.trim() ?? '';
@@ -966,7 +966,41 @@ import JSZip from 'jszip';
 	let cutoutMessage = $state<string>('');
 	let cutoutError = $state<string>('');
 
-	const activeCutout = $derived(subjectCutouts[activeSlide] ?? '');
+	// ── R2 media refs (saved templates) ────────────────────────────────────
+	// Saved templates can store media as `r2:<key>` instead of giant data URLs.
+	// We resolve those to short-lived signed URLs on demand for rendering.
+	let r2ResolvedUrlByKey = $state<Record<string, string>>({});
+	const r2Resolving = new Set<string>();
+	const isR2Ref = (u: unknown): u is string => typeof u === 'string' && u.startsWith('r2:');
+	const r2KeyFromRef = (ref: string) => ref.slice(3).trim();
+
+	async function ensureR2Resolved(refOrUrl: string) {
+		if (!isR2Ref(refOrUrl)) return;
+		const key = r2KeyFromRef(refOrUrl);
+		if (!key) return;
+		if (r2ResolvedUrlByKey[key]) return;
+		if (r2Resolving.has(key)) return;
+		r2Resolving.add(key);
+		try {
+			const { url } = await r2SignRead({ key });
+			r2ResolvedUrlByKey = { ...r2ResolvedUrlByKey, [key]: url };
+		} catch {
+			// keep unresolved (renders as blank)
+		} finally {
+			r2Resolving.delete(key);
+		}
+	}
+
+	function resolveMediaUrl(u: unknown): string {
+		if (typeof u !== 'string') return '';
+		const s = u.trim();
+		if (!s) return '';
+		if (!isR2Ref(s)) return s;
+		const key = r2KeyFromRef(s);
+		return r2ResolvedUrlByKey[key] ?? '';
+	}
+
+	const activeCutout = $derived(resolveMediaUrl(subjectCutouts[activeSlide] ?? ''));
 	const activeShowCutout = $derived(showCutout[activeSlide] ?? false);
 	const activeCutting = $derived(cuttingOut[activeSlide] ?? false);
 	/** Primary news circle: per-slide visibility (slide 0 defaults on; add Shape on other slides if desired). */
@@ -981,12 +1015,12 @@ import JSZip from 'jszip';
 	let generatingCircle = $state(false);
 	let bgError = $state('');
 
-	const activeCircleImage = $derived(circleImages[activeSlide] ?? '');
-	const activeCircle2Image = $derived(circle2Images[activeSlide] ?? '');
+	const activeCircleImage = $derived(resolveMediaUrl(circleImages[activeSlide] ?? ''));
+	const activeCircle2Image = $derived(resolveMediaUrl(circle2Images[activeSlide] ?? ''));
 	const activeShowCircle2 = $derived(showCircle2BySlide[activeSlide] ?? false);
 
 	// Convenience: active template's image / video (News uses these; other templates can too)
-	const backgroundImage = $derived((bgImagesByTemplate[activeTemplate] ?? [])[activeSlide] ?? '');
+	const backgroundImage = $derived(resolveMediaUrl((bgImagesByTemplate[activeTemplate] ?? [])[activeSlide] ?? ''));
 	const backgroundVideo = $derived((bgVideosByTemplate[activeTemplate] ?? [])[activeSlide] ?? '');
 	/** URL used for “is there a video on this slide?” (includes Video Story’s default template clip when none is set). */
 	const effectiveBackgroundVideo = $derived.by(() => {
@@ -2359,17 +2393,17 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const canvasOverlayText = $derived(
 		newsHeadlineLive !== null ? newsHeadlineLive : (slides[paintSlide] ?? ''),
 	);
-	const canvasBackgroundImage = $derived((bgImagesByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
+	const canvasBackgroundImage = $derived(resolveMediaUrl((bgImagesByTemplate[previewTemplate] ?? [])[paintSlide] ?? ''));
 	const canvasBackgroundVideo = $derived((bgVideosByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
 	const canvasVideoTrimStart = $derived(videoTrimStartSecBySlide[paintSlide] ?? 0);
 	const canvasVideoTrimEnd = $derived(videoTrimEndSecBySlide[paintSlide] ?? 0);
 	const canvasVideoDuration = $derived(videoDurationBySlide[paintSlide] ?? 0);
 	const canvasVideoMuted = $derived(videoMutedBySlide[paintSlide] ?? true);
 	const canvasVideoVolume = $derived(videoVolumeBySlide[paintSlide] ?? 0.8);
-	const canvasCutout = $derived(subjectCutouts[paintSlide] ?? '');
+	const canvasCutout = $derived(resolveMediaUrl(subjectCutouts[paintSlide] ?? ''));
 	const canvasShowCutout = $derived(showCutout[paintSlide] ?? false);
-	const canvasCircleImg = $derived(circleImages[paintSlide] ?? '');
-	const canvasCircle2Img = $derived(circle2Images[paintSlide] ?? '');
+	const canvasCircleImg = $derived(resolveMediaUrl(circleImages[paintSlide] ?? ''));
+	const canvasCircle2Img = $derived(resolveMediaUrl(circle2Images[paintSlide] ?? ''));
 	const canvasShowCircle2 = $derived(showCircle2BySlide[paintSlide] ?? false);
 	const canvasShowPrimaryCircle = $derived(showCircleBySlide[paintSlide] ?? false);
 	const canvasOverlays = $derived((slideOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []);
@@ -2928,10 +2962,40 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const raw = { ...(data.state ?? {}) } as Record<string, any>;
 		delete raw._templateName;
 		applyDraftState(raw);
+		// Resolve any saved-template R2 refs needed for rendering.
+		queueMicrotask(() => {
+			try {
+				void resolveAllR2RefsInStudioState();
+			} catch {
+				// ignore
+			}
+		});
 		// Next autosave should target the workspace draft, not overwrite the named template row.
 		draftId = '';
 		slideCount = slides.length;
 		exportedSlides = [];
+	}
+
+	async function resolveAllR2RefsInStudioState() {
+		// Background images by template
+		for (const t of Object.keys(bgImagesByTemplate) as TemplateId[]) {
+			for (const u of bgImagesByTemplate[t] ?? []) {
+				if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
+			}
+		}
+		// Circles + cutouts
+		for (const u of circleImages ?? []) if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
+		for (const u of circle2Images ?? []) if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
+		for (const u of subjectCutouts ?? []) if (typeof u === 'string' && u.startsWith('r2:')) await ensureR2Resolved(u);
+		// Image sticker overlays
+		for (const key of Object.keys(slideOverlaysByTemplate) as TemplateId[]) {
+			for (const slideRow of slideOverlaysByTemplate[key] ?? []) {
+				for (const o of slideRow ?? []) {
+					const src = String((o as any)?.src ?? '').trim();
+					if (src.startsWith('r2:')) await ensureR2Resolved(src);
+				}
+			}
+		}
 	}
 
 	async function saveStudioTemplateNamed() {
@@ -2951,7 +3015,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			previewPng = null;
 		}
 
-		const state = { ...buildDraftState('template'), _templateName: name };
+		await materializeBlobUrlsForDraftSave();
+		let state: Record<string, any> = { ...buildDraftState('template'), _templateName: name };
 		const { data, error } = await (supabase as any).from('drafts').insert({
 			user_id: userId,
 			kind: STUDIO_SAVED_TEMPLATE_KIND,
@@ -2965,6 +3030,22 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const templateId = String(data?.id ?? '').trim();
 
 		let r2Note = '';
+		// Upload all embedded images to R2 and rewrite template state to `r2:<key>` refs.
+		if (templateId) {
+			try {
+				state = await uploadTemplateMediaToR2AndRewriteState(templateId, state);
+				await (supabase as any)
+					.from('drafts')
+					.update({ state })
+					.eq('id', templateId)
+					.eq('user_id', userId)
+					.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : String(e);
+				r2Note = ` R2 media upload warning: ${msg}`;
+			}
+		}
+
 		// Upload preview via same-origin /api/r2/upload (server writes to R2 — no browser CORS to R2).
 		if (templateId) {
 			if (!previewPng) {
@@ -3001,6 +3082,139 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		// Keep the panel open so the user can see the success message (and any errors).
 		// showSaveTemplatePanel = false;
 		// studioTemplateName = '';
+	}
+
+	function extFromMime(mime: string): string {
+		const m = String(mime ?? '').toLowerCase();
+		if (m.includes('png')) return 'png';
+		if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+		if (m.includes('webp')) return 'webp';
+		return 'bin';
+	}
+
+	async function uploadDataUrlToR2Key(dataUrl: string, key: string) {
+		const blob = await (await fetch(dataUrl)).blob();
+		await r2UploadBlob({ key, blob, filename: `asset.${extFromMime(blob.type)}` });
+	}
+
+	function isImageDataUrl(u: unknown): u is string {
+		return typeof u === 'string' && u.startsWith('data:image/');
+	}
+
+	async function uploadTemplateMediaToR2AndRewriteState(templateId: string, state: Record<string, any>) {
+		const out = { ...(state ?? {}) } as Record<string, any>;
+		const base = `${userId}/templates/${templateId}`;
+
+		// Background images (by template, by slide)
+		if (out.bgImagesByTemplate && typeof out.bgImagesByTemplate === 'object') {
+			const next: Record<string, string[]> = { ...(out.bgImagesByTemplate ?? {}) };
+			for (const tpl of Object.keys(next)) {
+				const arr = Array.isArray(next[tpl]) ? [...next[tpl]] : [];
+				for (let i = 0; i < arr.length; i++) {
+					const u = arr[i];
+					if (isImageDataUrl(u)) {
+						const mime = u.slice(5, u.indexOf(';'));
+						const key = `${base}/bg/${tpl}/${i}.${extFromMime(mime)}`;
+						await uploadDataUrlToR2Key(u, key);
+						arr[i] = `r2:${key}`;
+					}
+				}
+				next[tpl] = arr;
+			}
+			out.bgImagesByTemplate = next;
+		}
+
+		// Circle images
+		if (Array.isArray(out.circleImages)) {
+			const arr = [...out.circleImages];
+			for (let i = 0; i < arr.length; i++) {
+				const u = arr[i];
+				if (isImageDataUrl(u)) {
+					const mime = u.slice(5, u.indexOf(';'));
+					const key = `${base}/circle/${i}.${extFromMime(mime)}`;
+					await uploadDataUrlToR2Key(u, key);
+					arr[i] = `r2:${key}`;
+				}
+			}
+			out.circleImages = arr;
+		}
+		if (Array.isArray(out.circle2Images)) {
+			const arr = [...out.circle2Images];
+			for (let i = 0; i < arr.length; i++) {
+				const u = arr[i];
+				if (isImageDataUrl(u)) {
+					const mime = u.slice(5, u.indexOf(';'));
+					const key = `${base}/circle2/${i}.${extFromMime(mime)}`;
+					await uploadDataUrlToR2Key(u, key);
+					arr[i] = `r2:${key}`;
+				}
+			}
+			out.circle2Images = arr;
+		}
+
+		// Subject cutouts (PNG data URLs)
+		if (Array.isArray(out.subjectCutouts)) {
+			const arr = [...out.subjectCutouts];
+			for (let i = 0; i < arr.length; i++) {
+				const u = arr[i];
+				if (isImageDataUrl(u)) {
+					const mime = u.slice(5, u.indexOf(';'));
+					const key = `${base}/cutout/${i}.${extFromMime(mime)}`;
+					await uploadDataUrlToR2Key(u, key);
+					arr[i] = `r2:${key}`;
+				}
+			}
+			out.subjectCutouts = arr;
+		}
+
+		// Image sticker overlays (per template/slide)
+		if (out.slideOverlaysByTemplate && typeof out.slideOverlaysByTemplate === 'object') {
+			const next: Record<string, any> = { ...(out.slideOverlaysByTemplate ?? {}) };
+			for (const tpl of Object.keys(next)) {
+				const slides = Array.isArray(next[tpl]) ? [...next[tpl]] : [];
+				for (let s = 0; s < slides.length; s++) {
+					const row = Array.isArray(slides[s]) ? [...slides[s]] : [];
+					for (let j = 0; j < row.length; j++) {
+						const o = { ...(row[j] ?? {}) };
+						const src = String(o.src ?? '').trim();
+						if (isImageDataUrl(src)) {
+							const mime = src.slice(5, src.indexOf(';'));
+							const key = `${base}/overlay/${tpl}/${s}-${j}.${extFromMime(mime)}`;
+							await uploadDataUrlToR2Key(src, key);
+							o.src = `r2:${key}`;
+						}
+						row[j] = o;
+					}
+					slides[s] = row;
+				}
+				next[tpl] = slides;
+			}
+			out.slideOverlaysByTemplate = next;
+		}
+
+		// Avatar / logo images used by templates (best effort)
+		for (const field of [
+			'tweetTopAvatarImageBySlide',
+			'tweetBottomAvatarImageBySlide',
+			'textCarouselAvatarImageBySlide',
+			'articleLogoSrcBySlide',
+		] as const) {
+			if (Array.isArray((out as any)[field])) {
+				const arr = [...((out as any)[field] as string[])];
+				for (let i = 0; i < arr.length; i++) {
+					const u = arr[i];
+					if (isImageDataUrl(u)) {
+						const mime = u.slice(5, u.indexOf(';'));
+						const key = `${base}/asset/${field}/${i}.${extFromMime(mime)}`;
+						await uploadDataUrlToR2Key(u, key);
+						arr[i] = `r2:${key}`;
+					}
+				}
+				(out as any)[field] = arr;
+			}
+		}
+
+		return out;
 	}
 
 	/** ~1.2M chars ≈ under 1MB base64 — full-bleed Vertex JPEGs often exceed the old 220k cap. */
@@ -3322,7 +3536,6 @@ tweetTopImagePanYBySlide,
 				draftRestoring = false;
 				if (forcedBlankFromQuery) {
 					applyBlankCanvas();
-					seedNewsStarterPlaceholderLayout();
 				} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
 					// Fresh session from template carousel / `?template=` — never overlay last autosave.
 					applyBlankCanvas();
