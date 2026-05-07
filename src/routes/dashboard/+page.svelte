@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
-		ArrowRight, ImagePlus, Sparkles, Layers, Wand2, BarChart3, Trash2
+		ArrowRight, ImagePlus, Sparkles, Layers, Wand2, BarChart3, Trash2, ArrowUpRight
 	} from 'lucide-svelte';
 
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
@@ -18,10 +18,10 @@
 	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
 
 	const primaryCards = [
-		{ href: '/dashboard/branding', icon: Sparkles, label: 'Generate Image', sub: 'Branding generator', accent: '#7c3aed' },
-		{ href: '/dashboard/brand-carousel', icon: Wand2, label: 'Brand Carousel', sub: 'Brand-style carousels', accent: '#06b6d4' },
-		{ href: '/dashboard/studio?template=news', icon: Layers, label: 'News Studio', sub: 'News → post', accent: '#f97316' },
-		{ href: '/dashboard/analytics', icon: BarChart3, label: 'Analytics', sub: 'Track performance', accent: '#22c55e' },
+		{ href: '/dashboard/branding',       icon: Sparkles,  label: 'Generate Image', sub: 'Branding generator',  accent: '#7c3aed', tint: '#f3e8ff' },
+		{ href: '/dashboard/brand-carousel', icon: Wand2,     label: 'Brand Carousel', sub: 'Brand‑style carousels', accent: '#0891b2', tint: '#cffafe' },
+		{ href: '/dashboard/studio?template=news', icon: Layers, label: 'News Studio', sub: 'News → post', accent: '#ea580c', tint: '#ffedd5' },
+		{ href: '/dashboard/analytics',      icon: BarChart3, label: 'Analytics',      sub: 'Track performance',    accent: '#16a34a', tint: '#dcfce7' },
 	] as const;
 
 	function studioSavedTemplateName(row: { state?: Record<string, unknown> }): string {
@@ -122,38 +122,52 @@
 </script>
 
 <div class="dash">
-	<div class="hero">
-		<div class="hero-bg"></div>
+	<!-- ── Hero ─────────────────────────────────────────── -->
+	<section class="hero">
+		<div class="hero-bg" aria-hidden="true"></div>
+		<div class="hero-glow" aria-hidden="true"></div>
 		<div class="hero-inner">
+			<div class="hero-eyebrow">
+				<span class="hero-dot"></span>
+				<span>Studio</span>
+			</div>
 			<h1 class="hero-title">Start by generating a free image</h1>
-			<p class="hero-sub">Upload a style reference, choose a size preset, and generate a branded slideshow.</p>
+			<p class="hero-sub">
+				Upload a style reference, choose a size preset, and generate a branded slideshow in seconds.
+			</p>
 			<div class="hero-actions">
-				<a href="/dashboard/branding" class="hero-btn">
+				<a href="/dashboard/branding" class="btn btn-dark">
 					Generate
-					<ArrowRight size={16} />
+					<ArrowRight size={14} />
 				</a>
-				<a href="/dashboard/carousels/new" class="hero-btn-secondary">
+				<a href="/dashboard/carousels/new" class="btn btn-ghost">
 					New carousel
-					<ImagePlus size={16} />
+					<ImagePlus size={14} />
 				</a>
 			</div>
 		</div>
-	</div>
+	</section>
 
-	<div class="row">
-		{#each primaryCards as c (c.href)}
+	<!-- ── Quick actions ─────────────────────────────────── -->
+	<section class="row">
+		{#each primaryCards as c, i (c.href)}
 			{@const Icon = c.icon}
-			<a class="card" href={c.href} style="--accent:{c.accent}">
-				<div class="card-icon"><Icon size={18} /></div>
+			<a class="card" href={c.href} style={`--accent:${c.accent}; --tint:${c.tint}; --d:${i * 0.05}s`}>
+				<div class="card-icon">
+					<Icon size={18} />
+				</div>
 				<div class="card-body">
 					<p class="card-title">{c.label}</p>
 					<p class="card-sub">{c.sub}</p>
 				</div>
-				<div class="card-go"><ArrowRight size={16} /></div>
+				<div class="card-go">
+					<ArrowUpRight size={15} />
+				</div>
 			</a>
 		{/each}
-	</div>
+	</section>
 
+	<!-- ── Saved templates ────────────────────────────────── -->
 	{#if !loading}
 		<section class="saved-section" aria-labelledby="saved-templates-heading">
 			<div class="saved-section-head">
@@ -220,209 +234,315 @@
 </div>
 
 <style>
-	:root:not([data-theme="dark"]) {
-		--dash-panel-bg: color-mix(in oklab, var(--app-text) 3%, transparent);
-		--dash-panel-border: var(--app-border);
-		--dash-panel-border-hover: var(--app-border-hover);
-		--dash-t-strong: var(--app-text);
-		--dash-t-muted: var(--app-text-3);
-	}
-	:root[data-theme="dark"] {
-		--dash-panel-bg: rgba(255, 255, 255, 0.02);
-		--dash-panel-border: rgba(255, 255, 255, 0.06);
-		--dash-panel-border-hover: rgba(255, 255, 255, 0.15);
-		--dash-t-strong: rgba(255, 255, 255, 0.92);
-		--dash-t-muted: rgba(255, 255, 255, 0.38);
-	}
-
+	/* ─── tokens ────────────────────────────────────────────── */
 	.dash {
-		padding: 20px 22px 28px;
-		max-width: 1160px;
+		--ap-text:   #0a0a0a;
+		--ap-text-2: rgba(10, 10, 10, 0.62);
+		--ap-text-3: rgba(10, 10, 10, 0.42);
+		--ap-line:   rgba(10, 10, 10, 0.08);
+		--ap-line-2: rgba(10, 10, 10, 0.16);
+		--ap-soft:   #f6f5f1;
+		--ap-bg:     #ffffff;
+		--ap-accent: #0a0a0a;
+
+		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		max-width: 1180px;
 		margin: 0 auto;
+		padding: 32px 32px 64px;
+		letter-spacing: -0.01em;
+		-webkit-font-smoothing: antialiased;
+	}
+	:global(:root[data-theme='dark']) .dash {
+		--ap-text:   #f5f5f5;
+		--ap-text-2: rgba(245, 245, 245, 0.66);
+		--ap-text-3: rgba(245, 245, 245, 0.42);
+		--ap-line:   rgba(255, 255, 255, 0.08);
+		--ap-line-2: rgba(255, 255, 255, 0.14);
+		--ap-soft:   #161616;
+		--ap-bg:     #0a0a0a;
+		--ap-accent: #ffffff;
 	}
 
+	/* ─── Hero ──────────────────────────────────────────────── */
 	.hero {
 		position: relative;
-		border-radius: 16px;
+		border-radius: 24px;
 		overflow: hidden;
-		border: 1px solid var(--app-border);
-		background: color-mix(in oklab, var(--app-text) 3%, transparent);
-		height: 240px;
+		min-height: 280px;
 		display: flex;
 		align-items: center;
+		isolation: isolate;
+		background: linear-gradient(180deg, #1c1f22 0%, #0a0c0e 100%);
+		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.06) inset,
+			0 28px 60px -28px rgba(10, 10, 10, 0.32),
+			0 12px 24px -14px rgba(10, 10, 10, 0.18);
+		animation: dash-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 	.hero-bg {
 		position: absolute;
 		inset: 0;
 		background:
-			radial-gradient(1200px 600px at 20% 30%, rgba(96,165,250,0.45), transparent 60%),
-			radial-gradient(900px 520px at 70% 60%, rgba(59,130,246,0.35), transparent 55%),
-			linear-gradient(180deg, color-mix(in oklab, var(--app-text) 6%, transparent), color-mix(in oklab, var(--app-text) 2%, transparent));
-		filter: saturate(1.05);
+			radial-gradient(900px 500px at 18% 20%, rgba(96, 165, 250, 0.32), transparent 65%),
+			radial-gradient(700px 420px at 80% 80%, rgba(147, 51, 234, 0.22), transparent 60%);
+		z-index: -2;
 	}
-	.hero-inner {
-		position: relative;
-		padding: 28px 28px;
+	.hero-glow {
+		position: absolute;
+		inset: -40%;
+		background: conic-gradient(from 0deg at 50% 50%, transparent 0deg, rgba(255, 255, 255, 0.04) 90deg, transparent 180deg);
+		opacity: 0.6;
+		animation: hero-spin 28s linear infinite;
+		z-index: -1;
+		pointer-events: none;
 	}
-	.hero-title {
-		margin: 0;
-		font-family: 'DM Sans', sans-serif;
-		font-weight: 800;
-		letter-spacing: -0.02em;
-		font-size: 34px;
-		color: var(--app-text);
-	}
-	.hero-sub {
-		margin: 8px 0 0;
-		font-size: 13px;
-		color: var(--app-text-2);
-		max-width: 62ch;
-	}
-	.hero-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
-	.hero-btn {
-		display: inline-flex; align-items: center; gap: 8px;
-		padding: 10px 14px;
-		border-radius: 999px;
-		background: color-mix(in oklab, var(--app-text) 86%, transparent);
-		border: 1px solid color-mix(in oklab, var(--app-bg) 40%, transparent);
-		color: color-mix(in oklab, var(--app-bg) 92%, transparent);
-		text-decoration: none;
-		font-weight: 700;
-		font-size: 13px;
-	}
-	.hero-btn:hover { background: color-mix(in oklab, var(--app-text) 92%, transparent); }
-	.hero-btn-secondary {
-		display: inline-flex; align-items: center; gap: 8px;
-		padding: 10px 14px;
-		border-radius: 999px;
-		background: color-mix(in oklab, var(--app-text) 4%, transparent);
-		border: 1px solid var(--app-border);
-		color: var(--app-text-2);
-		text-decoration: none;
-		font-weight: 700;
-		font-size: 13px;
-	}
-	.hero-btn-secondary:hover {
-		background: color-mix(in oklab, var(--app-text) 6%, transparent);
-		color: var(--app-text);
+	@keyframes hero-spin {
+		from { transform: rotate(0deg); }
+		to   { transform: rotate(360deg); }
 	}
 
+	.hero-inner {
+		position: relative;
+		padding: 36px 40px;
+		max-width: 720px;
+	}
+	.hero-eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 5px 12px 5px 10px;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.10);
+		color: rgba(255, 255, 255, 0.86);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		backdrop-filter: blur(8px);
+		margin-bottom: 18px;
+	}
+	.hero-dot {
+		width: 6px; height: 6px;
+		border-radius: 50%;
+		background: #34d399;
+		box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+	}
+	.hero-title {
+		margin: 0 0 14px;
+		font-family: 'Satoshi', sans-serif;
+		font-weight: 800;
+		font-size: clamp(30px, 3.2vw, 44px);
+		line-height: 1.04;
+		letter-spacing: -0.025em;
+		color: #ffffff;
+	}
+	.hero-sub {
+		margin: 0 0 24px;
+		font-size: 15px;
+		line-height: 1.55;
+		color: rgba(255, 255, 255, 0.72);
+		max-width: 56ch;
+		font-weight: 400;
+	}
+	.hero-actions {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	/* ─── Buttons ───────────────────────────────────────────── */
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 11px 18px;
+		border-radius: 999px;
+		font-family: inherit;
+		font-weight: 600;
+		font-size: 13.5px;
+		text-decoration: none;
+		border: 1px solid transparent;
+		transition: transform 0.22s ease, background 0.22s ease, border-color 0.22s ease, color 0.22s ease, box-shadow 0.22s ease;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.btn-dark {
+		background: #ffffff;
+		color: #0a0a0a;
+		border-color: #ffffff;
+	}
+	.btn-dark:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 12px 28px -10px rgba(255, 255, 255, 0.35);
+	}
+	.btn-ghost {
+		color: rgba(255, 255, 255, 0.92);
+		background: rgba(255, 255, 255, 0.06);
+		border-color: rgba(255, 255, 255, 0.14);
+		backdrop-filter: blur(6px);
+	}
+	.btn-ghost:hover {
+		background: rgba(255, 255, 255, 0.10);
+		border-color: rgba(255, 255, 255, 0.22);
+	}
+
+	/* ─── Quick action cards ────────────────────────────────── */
 	.row {
-		margin-top: 16px;
+		margin-top: 18px;
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
 		gap: 12px;
 	}
 	.card {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: 12px 12px;
-		border-radius: 14px;
-		background: color-mix(in oklab, var(--app-text) 3%, transparent);
-		border: 1px solid var(--app-border);
+		padding: 14px 14px;
+		border-radius: 16px;
+		background: var(--ap-bg);
+		border: 1px solid var(--ap-line);
 		text-decoration: none;
-		color: var(--app-text);
-		transition: transform 0.15s, background 0.15s, border-color 0.15s;
+		color: var(--ap-text);
+		overflow: hidden;
+		transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s, box-shadow 0.25s;
+		animation: dash-fade-up 600ms cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s) both;
+	}
+	.card::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(120% 80% at 100% 0%, var(--tint), transparent 65%);
+		opacity: 0;
+		transition: opacity 0.3s ease;
+		pointer-events: none;
+	}
+	:global(:root[data-theme='dark']) .card::before {
+		background: radial-gradient(120% 80% at 100% 0%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 65%);
 	}
 	.card:hover {
-		transform: translateY(-1px);
-		background: color-mix(in oklab, var(--app-text) 5%, transparent);
-		border-color: var(--app-border-hover);
+		transform: translateY(-2px);
+		border-color: var(--ap-line-2);
+		box-shadow: 0 14px 32px -16px rgba(10, 10, 10, 0.18);
 	}
+	:global(:root[data-theme='dark']) .card:hover {
+		box-shadow: 0 14px 32px -16px rgba(0, 0, 0, 0.5);
+	}
+	.card:hover::before { opacity: 1; }
 	.card-icon {
-		width: 34px; height: 34px;
+		position: relative;
+		width: 38px;
+		height: 38px;
 		border-radius: 12px;
-		background: color-mix(in oklab, var(--app-text) 4%, transparent);
-		border: 1px solid var(--app-border);
-		display: flex; align-items: center; justify-content: center;
-		color: color-mix(in srgb, var(--accent) 80%, white);
+		background: var(--tint);
+		color: var(--accent);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 	}
-	.card-title { margin: 0; font-weight: 800; font-size: 13px; color: var(--app-text); }
-	.card-sub { margin: 2px 0 0; font-size: 11px; color: var(--app-text-2); }
-	.card-body { flex: 1; min-width: 0; }
-	.card-go { color: var(--app-text-3); }
-	.card:hover .card-go { color: var(--app-text-2); }
+	:global(:root[data-theme='dark']) .card-icon {
+		background: color-mix(in oklab, var(--accent) 18%, transparent);
+		color: color-mix(in srgb, var(--accent) 70%, white);
+	}
+	.card:hover .card-icon { transform: scale(1.05) rotate(-2deg); }
+	.card-body { flex: 1; min-width: 0; position: relative; }
+	.card-title {
+		margin: 0;
+		font-weight: 700;
+		font-size: 13.5px;
+		letter-spacing: -0.01em;
+		color: var(--ap-text);
+	}
+	.card-sub {
+		margin: 2px 0 0;
+		font-size: 11.5px;
+		color: var(--ap-text-2);
+	}
+	.card-go {
+		position: relative;
+		color: var(--ap-text-3);
+		transition: color 0.25s, transform 0.25s;
+	}
+	.card:hover .card-go {
+		color: var(--ap-text);
+		transform: translate(2px, -2px);
+	}
 
-	.loading { margin-top: 14px; font-size: 12px; color: var(--app-text-3); font-family: 'Space Mono', monospace; }
-
+	/* ─── Saved templates ───────────────────────────────────── */
 	.saved-section {
-		margin-top: 28px;
-		padding: 1rem 1.25rem;
-		border-radius: 16px;
-		border: 1px solid var(--dash-panel-border);
-		background: var(--dash-panel-bg);
+		margin-top: 36px;
+		padding: 24px 26px 22px;
+		border-radius: 22px;
+		border: 1px solid var(--ap-line);
+		background: var(--ap-bg);
+		animation: dash-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
 	}
-	.saved-section-head {
-		margin-bottom: 0.75rem;
+	:global(:root[data-theme='dark']) .saved-section {
+		background: rgba(255, 255, 255, 0.02);
 	}
+	.saved-section-head { margin-bottom: 16px; }
 	.saved-section-title {
-		margin: 0 0 0.35rem;
-		font-family: 'DM Sans', sans-serif;
-		font-size: 1.05rem;
+		margin: 0 0 6px;
+		font-family: 'Satoshi', sans-serif;
+		font-size: 20px;
 		font-weight: 800;
 		letter-spacing: -0.02em;
-		color: var(--dash-t-strong);
+		color: var(--ap-text);
 	}
 	.saved-section-sub {
 		margin: 0;
-		font-size: 0.75rem;
-		line-height: 1.45;
-		color: var(--dash-t-muted);
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--ap-text-2);
 		max-width: 56rem;
 	}
 	.saved-section-link {
-		color: var(--app-text-2);
+		color: var(--ap-text);
 		font-weight: 600;
 		text-decoration: underline;
 		text-underline-offset: 2px;
+		text-decoration-color: var(--ap-line-2);
+		transition: text-decoration-color 0.2s;
 	}
 	.saved-section-link:hover {
-		color: var(--app-text);
+		text-decoration-color: var(--ap-text);
 	}
 	.saved-empty {
 		margin: 0;
-		font-size: 0.8125rem;
-		color: var(--dash-t-muted);
-		line-height: 1.5;
+		font-size: 13px;
+		color: var(--ap-text-2);
+		line-height: 1.55;
 	}
 	.saved-templates-grid {
-		margin-top: 0.65rem;
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 12px;
+		gap: 14px;
 	}
 	.saved-template-tile {
 		position: relative;
-		border-radius: 16px;
+		border-radius: 18px;
 		overflow: hidden;
-		border: 1px solid var(--dash-panel-border);
-		background: var(--dash-panel-bg);
-		transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+		border: 1px solid var(--ap-line);
+		background: var(--ap-soft);
+		transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s, box-shadow 0.25s;
 		aspect-ratio: 4 / 5;
 	}
 	.saved-template-tile:hover {
-		transform: translateY(-1px);
-		border-color: var(--dash-panel-border-hover);
+		transform: translateY(-3px);
+		border-color: var(--ap-line-2);
+		box-shadow: 0 18px 40px -18px rgba(10, 10, 10, 0.18);
 	}
-	:root:not([data-theme="dark"]) .saved-template-tile:hover {
-		box-shadow: 0 14px 44px rgba(2, 6, 23, 0.1);
-	}
-	:root[data-theme="dark"] .saved-template-tile:hover {
-		box-shadow: 0 14px 44px rgba(0, 0, 0, 0.34);
+	:global(:root[data-theme='dark']) .saved-template-tile:hover {
+		box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.55);
 	}
 	.saved-template-link {
-		display: block;
-		width: 100%;
-		height: 100%;
-		text-decoration: none;
+		display: block; width: 100%; height: 100%; text-decoration: none;
 	}
-	.saved-template-img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
+	.saved-template-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 	.saved-template-img--full {
 		object-fit: contain;
 		background: rgba(0, 0, 0, 0.35);
@@ -434,11 +554,10 @@
 		align-items: center;
 		justify-content: center;
 		padding: 1rem;
-		color: var(--dash-t-muted);
+		color: var(--ap-text-3);
 		font-family: 'Space Mono', monospace;
 		font-size: 0.7rem;
 		text-align: center;
-		background: color-mix(in oklab, var(--dash-panel-bg) 70%, transparent);
 	}
 	.saved-template-empty-text {
 		display: -webkit-box;
@@ -449,39 +568,55 @@
 	}
 	.saved-template-del {
 		position: absolute;
-		top: 0.55rem;
-		right: 0.55rem;
+		top: 0.6rem;
+		right: 0.6rem;
 		width: 32px;
 		height: 32px;
 		border-radius: 10px;
-		border: 1px solid color-mix(in oklab, var(--dash-panel-border) 60%, transparent);
+		border: 1px solid rgba(255, 255, 255, 0.18);
 		background: rgba(0, 0, 0, 0.55);
-		color: rgba(255, 255, 255, 0.9);
+		color: rgba(255, 255, 255, 0.92);
 		backdrop-filter: blur(6px);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		opacity: 0;
 		transform: translateY(-2px);
-		transition: opacity 0.15s, transform 0.15s, background 0.15s;
+		transition: opacity 0.18s, transform 0.18s, background 0.18s;
 		cursor: pointer;
 	}
 	.saved-template-tile:hover .saved-template-del {
 		opacity: 1;
 		transform: translateY(0);
 	}
-	.saved-template-del:hover {
-		background: rgba(239, 68, 68, 0.55);
+	.saved-template-del:hover { background: rgba(239, 68, 68, 0.65); }
+
+	.loading {
+		margin-top: 18px;
+		font-size: 12px;
+		color: var(--ap-text-3);
+		font-family: 'Space Mono', monospace;
 	}
 
-	@media (max-width: 980px) {
+	/* ─── motion ────────────────────────────────────────────── */
+	@keyframes dash-fade-up {
+		from { opacity: 0; transform: translateY(14px); }
+		to   { opacity: 1; transform: translateY(0); }
+	}
+
+	/* ─── responsive ────────────────────────────────────────── */
+	@media (max-width: 1080px) {
 		.row { grid-template-columns: repeat(2, 1fr); }
 	}
-	@media (max-width: 560px) {
-		.dash { padding: 16px 14px 20px; }
-		.row { grid-template-columns: 1fr; }
-		.hero { height: 220px; }
-		.hero-title { font-size: 28px; }
+	@media (max-width: 640px) {
+		.dash { padding: 22px 18px 40px; }
+		.row  { grid-template-columns: 1fr; }
+		.hero { min-height: 240px; }
+		.hero-inner { padding: 28px 24px; }
+		.hero-title { font-size: 26px; }
 	}
-
+	@media (prefers-reduced-motion: reduce) {
+		.hero-glow { animation: none; }
+		.hero, .card, .saved-section { animation: none; }
+	}
 </style>
