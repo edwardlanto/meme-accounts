@@ -7358,15 +7358,131 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		0% { background-position: 0% 0%; }
 		100% { background-position: 100% 0%; }
 	}
+	/* ─── Studio left panel — light theme makeover ──────────────────
+	   Forces a soft #fafafa surface and flips every dark utility
+	   class inside the panel to a matching light counterpart.
+	   The studio HTML uses Tailwind utilities like `bg-black`,
+	   `bg-neutral-950`, `text-neutral-200`, etc. — these overrides
+	   neutralize them so the layout reads as a polished light panel
+	   without touching the JSX. */
 	:root:not([data-theme="dark"]) .studio-left {
-		/* background: var(--app-surface-2) !important; */
-		/* border-right-color: var(--app-border) !important; */
+		/* Local design tokens that mirror the home / dashboard palette */
+		--sl-bg: #fafafa;
+		--sl-surface: #ffffff;
+		--sl-surface-2: #f3f3f4;
+		--sl-text: #0a0a0a;
+		--sl-text-2: rgba(10, 10, 10, 0.65);
+		--sl-text-3: rgba(10, 10, 10, 0.45);
+		--sl-text-4: rgba(10, 10, 10, 0.32);
+		--sl-border: rgba(10, 10, 10, 0.10);
+		--sl-border-2: rgba(10, 10, 10, 0.06);
+		--sl-shadow: 0 1px 2px rgba(10, 10, 10, 0.04);
+
+		background: var(--sl-bg) !important;
+		color: var(--sl-text) !important;
+		border-right-color: var(--sl-border) !important;
+		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 	}
 	:root:not([data-theme="dark"]) .studio-right {
 		background: var(--app-bg) !important;
 	}
-	/* Light theme: override “dark UI” utility classes inside studio-left */
-	:root:not([data-theme="dark"]) .studio-left :global(.text-white) { color: var(--app-text) !important; }
+
+	/* — Backgrounds: black/neutral-950/900/etc → white surfaces — */
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-black),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-neutral-950),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-neutral-900),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-neutral-950\/80),
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-neutral-950\/90) {
+		background-color: var(--sl-surface) !important;
+	}
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-neutral-800) {
+		background-color: var(--sl-surface-2) !important;
+	}
+
+	/* — Borders: dark → light — */
+	:root:not([data-theme="dark"]) .studio-left :global(.border-neutral-950),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-neutral-900),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-neutral-800),
+	:root:not([data-theme="dark"]) .studio-left :global(.border-neutral-700),
+	:root:not([data-theme="dark"]) .studio-left :global([class*="border-violet-900"]) {
+		border-color: var(--sl-border) !important;
+	}
+
+	/* — Text: neutral-50/100/200/300 → primary, 400/500/600 → muted — */
+	:root:not([data-theme="dark"]) .studio-left :global(.text-neutral-50),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-neutral-100),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-neutral-200),
+	:root:not([data-theme="dark"]) .studio-left :global(.\!text-neutral-50) {
+		color: var(--sl-text) !important;
+	}
+	:root:not([data-theme="dark"]) .studio-left :global(.text-neutral-300),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-neutral-400) {
+		color: var(--sl-text-2) !important;
+	}
+	:root:not([data-theme="dark"]) .studio-left :global(.text-neutral-500),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-neutral-600) {
+		color: var(--sl-text-3) !important;
+	}
+
+	/* — Placeholders — */
+	:root:not([data-theme="dark"]) .studio-left :global(.placeholder\:text-neutral-500)::placeholder,
+	:root:not([data-theme="dark"]) .studio-left :global(.placeholder\:text-neutral-600)::placeholder,
+	:root:not([data-theme="dark"]) .studio-left :global(input)::placeholder,
+	:root:not([data-theme="dark"]) .studio-left :global(textarea)::placeholder {
+		color: var(--sl-text-4) !important;
+	}
+
+	/* — Hover states for buttons inside the panel — */
+	:root:not([data-theme="dark"]) .studio-left :global(.hover\:bg-neutral-900):hover,
+	:root:not([data-theme="dark"]) .studio-left :global(.hover\:bg-neutral-800):hover,
+	:root:not([data-theme="dark"]) .studio-left :global(.hover\:text-neutral-100):hover {
+		background-color: var(--sl-surface-2) !important;
+		color: var(--sl-text) !important;
+	}
+
+	/* — Data-state for tab triggers (active state) — */
+	:root:not([data-theme="dark"]) .studio-left :global([data-state="active"].data-\[state\=active\]\:bg-neutral-800),
+	:root:not([data-theme="dark"]) .studio-left :global([data-state="active"]) {
+		background-color: var(--sl-text) !important;
+		color: #ffffff !important;
+	}
+
+	/* — Inputs & textareas — */
+	:root:not([data-theme="dark"]) .studio-left :global(input),
+	:root:not([data-theme="dark"]) .studio-left :global(textarea),
+	:root:not([data-theme="dark"]) .studio-left :global(select) {
+		color: var(--sl-text) !important;
+		background-color: var(--sl-surface) !important;
+		border-color: var(--sl-border) !important;
+	}
+
+	/* — Headings / chips that use header label styling — */
+	:root:not([data-theme="dark"]) .studio-left :global(label) {
+		color: var(--sl-text-3) !important;
+	}
+
+	/* — Surface card panels (Save template, JSON paste, content card,
+	     SOURCE LABEL, Word highlights, etc.) get a clean white look
+	     with a subtle shadow rather than pure dark — */
+	:root:not([data-theme="dark"]) .studio-left :global(.rounded-xl),
+	:root:not([data-theme="dark"]) .studio-left :global(.rounded-2xl) {
+		box-shadow: var(--sl-shadow);
+	}
+
+	/* — Keep saturated brand pills (violet, yellow, emerald, red) but
+	     gently restyle the muted variants used inside dark UI — */
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-violet-500\/10) {
+		background-color: rgba(139, 92, 246, 0.10) !important;
+	}
+	:root:not([data-theme="dark"]) .studio-left :global(.text-violet-300),
+	:root:not([data-theme="dark"]) .studio-left :global(.text-violet-400) {
+		color: #6d28d9 !important;
+	}
+	:root:not([data-theme="dark"]) .studio-left :global(.text-emerald-400\/90) { color: #047857 !important; }
+	:root:not([data-theme="dark"]) .studio-left :global(.text-red-400\/90)     { color: #b91c1c !important; }
+
+	/* — Inherit prior light-mode overrides for white-alpha utilities — */
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white) { color: var(--sl-text) !important; }
 	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/95),
 	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/90),
 	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/80),
@@ -7380,13 +7496,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/30),
 	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/25),
 	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/20),
-	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/15) { color: var(--app-text-muted) !important; }
+	:root:not([data-theme="dark"]) .studio-left :global(.text-white\/15) { color: var(--sl-text-3) !important; }
 
 	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/\[0\.04\]),
 	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/\[0\.03\]),
 	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/\[0\.02\]),
 	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/3),
-	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/2) { background: var(--app-surface-3) !important; }
+	:root:not([data-theme="dark"]) .studio-left :global(.bg-white\/2) { background: var(--sl-surface-2) !important; }
 
 	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.10\]),
 	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.08\]),
@@ -7394,13 +7510,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.05\]),
 	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/\[0\.04\]),
 	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/10),
-	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/6) { border-color: var(--app-border) !important; }
+	:root:not([data-theme="dark"]) .studio-left :global(.border-white\/6) { border-color: var(--sl-border) !important; }
 
-	:root:not([data-theme="dark"]) .studio-left :global(.placeholder-white\/20)::placeholder { color: var(--app-text-muted) !important; opacity: 0.65; }
-	:root:not([data-theme="dark"]) .studio-left :global(input),
-	:root:not([data-theme="dark"]) .studio-left :global(textarea) {
-		color: var(--app-text) !important;
-	}
+	:root:not([data-theme="dark"]) .studio-left :global(.placeholder-white\/20)::placeholder { color: var(--sl-text-4) !important; opacity: 0.85; }
 
 	/* Hide scrollbars (keep scroll) for the bottom filmstrip */
 	.no-scrollbar {

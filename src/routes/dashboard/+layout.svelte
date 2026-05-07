@@ -3,9 +3,9 @@
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
 	import {
-		Layers, LayoutDashboard, Search, ImagePlus, LogOut, Settings,
+		Layers, LayoutDashboard, Search, ImagePlus,
 		Sparkles, Wand2, FlaskConical, BarChart3, Grid3X3,
-		CalendarDays, PenSquare, ChevronRight, ArrowUpRight, Sun, Moon
+		CalendarDays, PenSquare
 	} from 'lucide-svelte';
 	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
 
