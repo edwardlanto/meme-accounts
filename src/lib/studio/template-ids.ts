@@ -1,5 +1,6 @@
 /** Studio canvas template ids — shared by News Studio routes and merge/import helpers. */
 export type TemplateId =
+	| 'blank'
 	| 'news'
 	| 'tweet'
 	| 'article'
@@ -11,6 +12,7 @@ export type TemplateId =
 export type StudioTemplateDef = { id: TemplateId; label: string };
 
 export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
+	{ id: 'blank', label: 'Blank' },
 	{ id: 'news', label: 'News' },
 	{ id: 'tweet', label: 'Tweet' },
 	// { id: 'article', label: 'Article' },
@@ -22,6 +24,7 @@ export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 
 /** Keys must be lowercase — `mapQueryParamToTemplateId` lowercases before lookup. */
 const QUERY_TEMPLATE_MAP: Record<string, TemplateId> = {
+	blank: 'blank',
 	news: 'news',
 	tweet: 'tweet',
 	article: 'article',
@@ -44,6 +47,7 @@ export function mapQueryParamToTemplateId(raw: string): TemplateId | undefined {
 }
 
 const CANONICAL_TEMPLATE_IDS: TemplateId[] = [
+	'blank',
 	'news',
 	'tweet',
 	'article',

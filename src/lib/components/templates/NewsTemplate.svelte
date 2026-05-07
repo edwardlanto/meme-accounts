@@ -80,6 +80,10 @@
 		circle2Size?: number;
 		text: string;
 		source?: string;
+		/** Optional logo image for the source label (data URL or https URL). */
+		sourceLogoSrc?: string;
+		/** Whether to render the source as text or logo. */
+		sourceLabelMode?: 'text' | 'logo';
 		highlightColor?: string;
 		textColor?: string;
 		scale?: number;
@@ -173,6 +177,8 @@
 		circle2BorderWidth = $bindable(8),
 		text,
 		source = 'Markets',
+		sourceLogoSrc = '',
+		sourceLabelMode = 'text',
 		highlightColor = '#F5A623',
 		textColor = templateTheme === 'light' ? '#0a0a0a' : '#FFFFFF',
 		scale = 1,
@@ -2099,7 +2105,7 @@
 			{/if}
 
 			<!-- Source label -->
-			{#if source}
+			{#if (sourceLabelMode === 'logo' && sourceLogoSrc) || (sourceLabelMode === 'text' && source)}
 				<div style="
 					display: flex; align-items: center;
 					gap: 18px; margin-bottom: 22px;
@@ -2120,10 +2126,26 @@
 							{selectedText === 'source' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 2px;' : ''}
 						"
 					>
-						{#if sourceStyle.fontFamily}
-							{source}
-						{:else}
-							<span style="font-style: italic;">{source.slice(0,1).toLowerCase()}</span>{source.slice(1)}
+						{#if sourceLabelMode === 'logo' && sourceLogoSrc}
+							<img
+								src={sourceLogoSrc}
+								alt=""
+								draggable="false"
+								style="
+									display: block;
+									height: 44px;
+									width: auto;
+									max-width: 260px;
+									object-fit: contain;
+									filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18));
+								"
+							/>
+						{:else if sourceLabelMode === 'text' && source}
+							{#if sourceStyle.fontFamily}
+								{source}
+							{:else}
+								<span style="font-style: italic;">{source.slice(0,1).toLowerCase()}</span>{source.slice(1)}
+							{/if}
 						{/if}
 					</span>
 					<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Scissors, ImagePlus, Clapperboard, Palette } from 'lucide-svelte';
+	import { Scissors, ImagePlus, Clapperboard, Palette, Sparkles } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { cn } from '$lib/utils.js';
@@ -22,6 +22,9 @@
 		showCutout: boolean;
 		/** Photo vs video replace label */
 		isVideoBackground: boolean;
+		/** Optional: generate / regenerate background via AI */
+		onAi?: () => void;
+		aiDisabled?: boolean;
 		onCutOut: () => void;
 		onReplace: () => void;
 		onClose: () => void;
@@ -35,6 +38,8 @@
 		anchor,
 		showCutout,
 		isVideoBackground,
+		onAi,
+		aiDisabled = false,
 		onCutOut,
 		onReplace,
 		onClose,
@@ -50,6 +55,7 @@
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
 		let tw = showCutout ? 300 : 200;
+		if (onAi) tw += 128;
 		if (onApplySolid) tw += 108;
 		const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
 		let top = anchor.top - TOOLBAR_H - 14;
@@ -105,6 +111,22 @@
 			BG
 		</span>
 		<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
+		{#if onAi}
+			<Button
+				variant="ghost"
+				size="sm"
+				class="h-11 shrink-0 rounded-full px-3 text-xs font-semibold"
+				disabled={aiDisabled}
+				onclick={() => {
+					onAi?.();
+					onClose();
+				}}
+			>
+				<Sparkles size={18} class="text-[#E8FF48]" strokeWidth={2} />
+				AI bg
+			</Button>
+			<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
+		{/if}
 		{#if showCutout}
 			<Button
 				variant="ghost"
