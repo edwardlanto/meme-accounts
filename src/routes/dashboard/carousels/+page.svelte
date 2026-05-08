@@ -21,6 +21,8 @@
 	let studioDrafts = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
 	let studioSavedTemplates = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
 	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
+	/** Signed GET URLs for News Studio workspace draft card heroes (keeps PNG egress off Supabase). */
+	let studioDraftThumbById = $state<Record<string, string>>({});
 	let loading = $state(true);
 	let creating = $state(false);
 	let createError = $state('');
@@ -109,7 +111,11 @@
 		fullSlideRaster: boolean;
 	};
 
-	function studioDraftPreview(d: { state?: Record<string, unknown> }): StudioDraftPreview {
+	function studioDraftPreview(d: {
+		id: string;
+		updated_at?: string;
+		state?: Record<string, unknown>;
+	}): StudioDraftPreview {
 		const s = d.state ?? {};
 		const slideList = strArr(s.slides);
 		const slideCount = Math.max(1, slideList.length);
@@ -126,8 +132,11 @@
 			return '';
 		};
 
-		/** First-slide raster uploaded to Supabase Storage on save (preferred over parsing bg data URLs). */
+		/** Prefer R2-signed hero (stored key in draft state); then legacy HTTPS URL; avoids Supabase CDN for PNGs when R2 is set up. */
 		const storagePreviewHero = (() => {
+			const id = String(d.id ?? '').trim();
+			const signed = id ? (studioDraftThumbById[id] ?? '').trim() : '';
+			if (signed.startsWith('http://') || signed.startsWith('https://')) return signed;
 			const u = String((s as any).draftPreviewUrl ?? '').trim();
 			return u.startsWith('http://') || u.startsWith('https://') ? u : '';
 		})();
@@ -220,6 +229,18 @@
 
 	async function deleteStudioDraft(id: string) {
 		if (!confirm('Delete this studio draft? This cannot be undone.')) return;
+		// Best-effort: remove raster thumbnail from R2 (Studio saves `{userId}/{draftId}.png`).
+		try {
+			const row = studioDrafts.find((x) => x.id === id);
+			const st = row?.state as any;
+			const key =
+				String(st?.draftPreviewKey ?? '').trim() ||
+				String(st?.draftPreviewPath ?? '').trim() ||
+				`${userId}/${id}.png`;
+			if (key) await r2DeleteObject({ key });
+		} catch {
+			// ignore
+		}
 		const { error } = await (supabase as any)
 			.from('drafts')
 			.delete()
@@ -231,6 +252,9 @@
 			return;
 		}
 		studioDrafts = studioDrafts.filter((x) => x.id !== id);
+		const nextThumb = { ...studioDraftThumbById };
+		delete nextThumb[id];
+		studioDraftThumbById = nextThumb;
 	}
 
 	async function deleteStudioSavedTemplate(id: string) {
@@ -291,12 +315,40 @@
 		studioDrafts = draftRes.data ?? [];
 		studioSavedTemplates = savedTplRes.data ?? [];
 		await hydrateSavedTemplateThumbs();
+		await hydrateStudioDraftThumbs();
 		loading = false;
 	});
 
 	function studioSavedTemplateName(row: { state?: Record<string, unknown> }): string {
 		const raw = String((row.state as any)?._templateName ?? '').trim();
 		return raw || 'Untitled template';
+	}
+
+	async function hydrateStudioDraftThumbs() {
+		const rows = studioDrafts;
+		if (!userId || !rows.length) {
+			studioDraftThumbById = {};
+			return;
+		}
+		const next: Record<string, string> = {};
+		await Promise.all(
+			rows.map(async (row) => {
+				const id = String(row.id ?? '').trim();
+				if (!id) return;
+				const s = row.state as any;
+				const key =
+					String(s?.draftPreviewKey ?? '').trim() ||
+					String(s?.draftPreviewPath ?? '').trim() ||
+					`${userId}/${id}.png`;
+				try {
+					const { url } = await r2SignRead({ key });
+					next[id] = url;
+				} catch {
+					// No object yet or legacy draft — card falls back to `draftPreviewUrl` / inlined data URLs.
+				}
+			}),
+		);
+		studioDraftThumbById = next;
 	}
 
 	async function hydrateSavedTemplateThumbs() {
@@ -781,111 +833,6 @@
 
 	<!-- ── Divider ────────────────────────────────────────────────────────── -->
 	<div class="section-divider"></div>
-
-	<!-- ── Your Carousels ─────────────────────────────────────────────────── -->
-	<div class="library-header">
-		<h2 class="library-title">Your Carousels</h2>
-
-		<!-- Filter tabs -->
-		<div class="filter-tabs">
-			{#each [
-				{id: 'all',       label: 'All',       count: counts.all},
-				{id: 'draft',     label: 'Drafts',    count: counts.draft},
-				{id: 'published', label: 'Published', count: counts.published},
-				{id: 'scheduled', label: 'Scheduled', count: counts.scheduled},
-			] as t}
-				<button
-					type="button"
-					class="filter-tab {filterTab === t.id ? 'filter-tab--on' : ''}"
-					onclick={() => filterTab = t.id as typeof filterTab}
-				>
-					{t.label}
-					{#if t.count > 0}
-						<span class="filter-count">{t.count}</span>
-					{/if}
-				</button>
-			{/each}
-		</div>
-	</div>
-
-	{#if loading}
-		<div class="carousel-grid">
-			{#each Array(6) as _}
-				<div class="skeleton-card"></div>
-			{/each}
-		</div>
-	{:else if filteredCarousels.length === 0 && carousels.length === 0}
-		<div class="empty-state">
-			<div class="empty-icon">
-				<ImagePlus size={22} />
-			</div>
-			<h3 class="empty-title">No carousels yet</h3>
-			<p class="empty-desc">Pick a template above or create a blank carousel.</p>
-			<button onclick={createNew}
-				class="empty-cta">
-				<Plus size={14} /> Create blank carousel
-			</button>
-		</div>
-	{:else if filteredCarousels.length === 0}
-		<div class="empty-state">
-			<div class="empty-icon"><FileText size={22} /></div>
-			<h3 class="empty-title">No {filterTab} carousels</h3>
-			<p class="empty-desc">You don't have any {filterTab} carousels yet.</p>
-		</div>
-	{:else}
-		<div class="carousel-grid">
-			{#each filteredCarousels as c}
-				{@const slides = (() => { try { return JSON.parse(typeof c.slides === 'string' ? c.slides : JSON.stringify(c.slides)); } catch { return []; } })()}
-				{@const firstSlide = slides[0]}
-				<div class="carousel-card group"
-					style="--card-bg: {firstSlide?.bg ?? '#111111'}; --card-color: {firstSlide?.textColor ?? '#ffffff'}">
-
-					<!-- Preview -->
-					<a href="/dashboard/editor/{c.id}" class="card-preview">
-						<p class="card-preview-text">
-							{firstSlide?.text || 'Untitled'}
-						</p>
-					</a>
-
-					<!-- Slide count badge -->
-					<div class="slide-count">
-						{slides.length} slides
-					</div>
-
-					<!-- Status badge -->
-					<div class="card-status status-{c.status}">
-						<svelte:component this={statusIcon[c.status] ?? FileText} size={9} />
-						{c.status}
-					</div>
-
-					<!-- Bottom bar -->
-					<div class="card-footer">
-						<div class="card-info">
-							<p class="card-title-text">{c.title}</p>
-							<p class="card-time">{timeAgo(c.updated_at ?? c.created_at)}</p>
-						</div>
-						<div class="card-actions">
-							<a href="/dashboard/editor/{c.id}" class="card-action card-action--edit">
-								<Edit2 size={11} />
-							</a>
-							<button onclick={() => deleteCarousel(c.id)} class="card-action card-action--delete">
-								<Trash2 size={11} />
-							</button>
-						</div>
-					</div>
-				</div>
-			{/each}
-
-			<!-- New blank card -->
-			<button onclick={createNew} disabled={creating}
-				class="new-card-btn">
-				<div class="new-card-icon">
-					<Plus size={18} />
-				</div>
-				<span class="new-card-label">New carousel</span>
-			</button>
-		</div>
-	{/if}
 </div>
 
 <style>

@@ -30,7 +30,6 @@
 		Overview: 'linear-gradient(135deg, #1f1f22 0%, #0a0a0c 100%)',
 		Carousels: 'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)',
 		Composer: 'linear-gradient(135deg, #a78bfa 0%, #6d28d9 100%)',
-		Grid: 'linear-gradient(135deg, #34d399 0%, #059669 100%)',
 		'Brand Carousel': 'linear-gradient(135deg, #fbbf24 0%, #f97316 100%)',
 		'News Studio': 'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)',
 		Branding: 'linear-gradient(135deg, #fb7185 0%, #db2777 100%)',
@@ -79,7 +78,7 @@
 			title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 			disabled={railOnly}
 		>
-			<PanelLeft size={16} />
+			<PanelLeft size={18} />
 		</button>
 	</div>
 
@@ -111,7 +110,7 @@
 								style={`background:${accentFor(item)}`}
 								aria-hidden="true"
 							>
-								<Icon size={13} class="ssp-tile-icon" />
+								<Icon size={17} class="ssp-tile-icon" />
 							</span>
 							<span class="ssp-label">{item.label}</span>
 						</a>
@@ -122,7 +121,7 @@
 
 		{#if !isCollapsed}
 			<button type="button" class="ssp-more" disabled>
-				<MoreHorizontal size={14} />
+				<MoreHorizontal size={16} />
 				<span>More</span>
 			</button>
 		{/if}
@@ -142,7 +141,7 @@
 				title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
 				onclick={() => onThemeToggle?.()}
 			>
-				{#if theme === 'dark'}<Sun size={15} />{:else}<Moon size={15} />{/if}
+				{#if theme === 'dark'}<Sun size={17} />{:else}<Moon size={17} />{/if}
 			</button>
 
 			<button
@@ -154,7 +153,7 @@
 				title="Sign out"
 			>
 				{#if isCollapsed}
-					<LogOut size={15} />
+					<LogOut size={17} />
 				{:else}
 					Sign out
 				{/if}
@@ -217,6 +216,11 @@
 		padding: 2px 4px 8px;
 		min-height: 38px;
 	}
+	.ssp-sidebar.collapsed .ssp-header {
+		justify-content: center;
+		padding-left: 0;
+		padding-right: 0;
+	}
 
 	/* ── Body / nav ─────────────────────────────────────────── */
 	.ssp-body {
@@ -264,6 +268,9 @@
 		flex-direction: column;
 		gap: 2px;
 	}
+	.ssp-sidebar.collapsed .ssp-list {
+		align-items: center;
+	}
 
 	.ssp-item {
 		display: flex;
@@ -272,6 +279,7 @@
 		height: 38px;
 		padding: 0 8px;
 		border-radius: 10px;
+		width: 100%;
 		text-decoration: none;
 		color: var(--ssp-text);
 		font-size: 13.5px;
@@ -304,9 +312,9 @@
 
 	.ssp-icon-tile {
 		flex-shrink: 0;
-		width: 24px;
-		height: 24px;
-		border-radius: 7px;
+		width: 30px;
+		height: 30px;
+		border-radius: 9px;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -340,6 +348,7 @@
 		padding: 0;
 		justify-content: center;
 		gap: 0;
+		width: 44px;
 	}
 
 	.ssp-more {
@@ -362,8 +371,8 @@
 
 	/* ── Icon button (header chevron, theme) ─────────────────── */
 	.ssp-icon-btn {
-		width: 32px;
-		height: 32px;
+		width: 36px;
+		height: 36px;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;

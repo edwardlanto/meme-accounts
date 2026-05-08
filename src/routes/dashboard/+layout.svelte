@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		Layers, LayoutDashboard, Search, ImagePlus,
-		Sparkles, Wand2, FlaskConical, BarChart3, Grid3X3,
+		Wand2, FlaskConical, BarChart3,
 		CalendarDays, PenSquare
 	} from 'lucide-svelte';
 	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
@@ -18,14 +18,12 @@
 				{ href: '/dashboard',              label: 'Overview',     icon: LayoutDashboard },
 				{ href: '/dashboard/carousels',    label: 'Carousels',    icon: ImagePlus },
 				{ href: '/dashboard/composer',     label: 'Composer',     icon: PenSquare },
-				{ href: '/dashboard/grid',         label: 'Grid',         icon: Grid3X3 },
 			]
 		},
 		{
 			label: 'Studios',
 			items: [
 				{ href: '/dashboard/brand-carousel',  label: 'Brand Carousel',   icon: Wand2 },
-				{ href: '/dashboard/studio?template=news',       label: 'News Studio',  icon: Layers },
 			]
 		},
 		{

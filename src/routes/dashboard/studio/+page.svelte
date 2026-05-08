@@ -2528,8 +2528,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let draftError = $state('');
 	let sourceLogoInput = $state<HTMLInputElement | null>(null);
 	/** Shown after a successful manual save from the sidebar button. */
-	/** Public Supabase Storage URL for the first-slide thumbnail (Carousels → Studio drafts). */
+	/** HTTPS preview URL when still on legacy storage/CDN — prefer `draftPreviewKey` + R2. */
 	let draftPreviewUrl = $state('');
+	/** Object key under R2 (`userId/draft.png` or templates path) — signed at read time. */
+	let draftPreviewKey = $state('');
 	let draftRestoring = $state(true);
 
 	const studioBooting = $derived(!initialTemplateParamApplied || draftRestoring || !userId);
@@ -2559,6 +2561,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		} else {
 			draftPreviewUrl = '';
 		}
+		const keyFrom =
+			typeof (s as any).draftPreviewKey === 'string'
+				? String((s as any).draftPreviewKey).trim()
+				: typeof (s as any).draftPreviewPath === 'string'
+					? String((s as any).draftPreviewPath).trim()
+					: '';
+		draftPreviewKey = keyFrom;
 
 		if (Array.isArray(s.slideTemplates)) {
 			slideTemplates = (s.slideTemplates as unknown[]).map((t) => coerceTemplateId(t));
@@ -2936,6 +2945,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		draftId = '';
 		draftError = '';
 		draftPreviewUrl = '';
+		draftPreviewKey = '';
 		closeToolbar();
 	}
 
@@ -3420,6 +3430,8 @@ tweetTopImagePanYBySlide,
 			studioTextHighlightsEnabled,
 			textColor,
 			draftPreviewUrl,
+			draftPreviewKey: draftPreviewKey.trim(),
+			draftPreviewPath: draftPreviewKey.trim(),
 			// Don’t persist `exportedSlides` (huge data URLs) in drafts — it makes restore slow.
 			// We can always re-export when needed.
 			exportedSlides: [],
@@ -3562,6 +3574,7 @@ tweetTopImagePanYBySlide,
 
 		const rowId = draftId || crypto.randomUUID();
 		let nextPreviewUrl = draftPreviewUrl;
+		let nextPreviewKey = draftPreviewKey;
 		if (captureThumbnail) {
 			try {
 				const thumbDataUrl = await captureDraftThumbnailDataUrl();
@@ -3570,12 +3583,14 @@ tweetTopImagePanYBySlide,
 					const blob = await (await fetch(thumbDataUrl)).blob();
 					await r2UploadBlob({ key, blob, filename: 'draft-thumb.png' });
 					nextPreviewUrl = '';
+					nextPreviewKey = key;
 				}
 			} catch {
-				// Keep previous draftPreviewUrl if capture/upload fails.
+				// Keep previous draftPreviewUrl / draftPreviewKey if capture/upload fails.
 			}
 		}
 		draftPreviewUrl = nextPreviewUrl;
+		draftPreviewKey = nextPreviewKey;
 
 		const payload = {
 			user_id: userId,
@@ -5404,113 +5419,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 	<!-- ── Left panel: controls ──────────────────────────────────────────── -->
 	<div class="w-80 flex-shrink-0 border-r border-neutral-800 bg-black text-neutral-50 flex flex-col overflow-y-auto studio-left">
-		<div class="px-5 py-4 border-b border-neutral-800 space-y-3">
-			{#if showSaveTemplatePanel}
-				<div class="rounded-xl border border-neutral-800 bg-neutral-950 p-3 space-y-2">
-					<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Name</Label>
-					<Input
-						bind:value={studioTemplateName}
-						placeholder="My carousel layout"
-						autocomplete="off"
-						class="rounded-lg border border-neutral-700 bg-neutral-950 text-sm !text-neutral-50 placeholder:text-neutral-500 caret-neutral-200 selection:bg-violet-500/40 selection:!text-white focus-visible:border-violet-500/50"
-					/>
-					{#if studioTemplateFeedback}
-						<p
-							class="text-[10px] font-body {studioTemplateFeedback.includes('Saved to')
-								? 'text-emerald-400/90'
-								: 'text-red-400/90'}"
-						>
-							{studioTemplateFeedback}
-						</p>
-					{/if}
-					<div class="flex gap-2 pt-1">
-						<Button
-							type="button"
-							size="sm"
-							class="flex-1 rounded-lg bg-violet-600 text-white hover:bg-violet-500"
-							disabled={studioTemplateSaving || draftSaving || !userId}
-							onclick={() => void saveStudioTemplateNamed()}
-						>
-							{#if studioTemplateSaving}<Loader size={12} class="animate-spin" />{:else}Save{/if}
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							class="text-neutral-400"
-							onclick={() => {
-								showSaveTemplatePanel = false;
-								studioTemplateFeedback = '';
-							}}
-						>Cancel</Button>
-					</div>
-					<p class="text-[9px] font-body text-neutral-500 leading-snug">
-						Saves your workspace to Studio drafts (Carousels) with a thumbnail, adds a reusable layout to your dashboard, and uploads a preview when possible.
-					</p>
-				</div>
-			{/if}
-			{#if showImportJsonPanel}
-				<div class="rounded-xl border border-violet-900/40 bg-neutral-950/90 p-3 space-y-2">
-					<p class="text-[10px] font-body text-neutral-400 leading-snug">
-						Paste JSON from Claude or <span class="font-mono text-neutral-500">/api/generate-slides</span> (array or
-						<code class="text-neutral-500">&#123; slides: [] &#125;</code>). Only fields present are written — layout
-						and overlays stay unless you reset the slide.
-					</p>
-					<div class="flex gap-2 flex-wrap">
-						<Button
-							type="button"
-							size="sm"
-							class="h-7 rounded-md px-2 text-[10px] {importMergeMode === 'mix'
-								? 'bg-violet-600 text-white'
-								: 'bg-neutral-900 text-neutral-400'}"
-							onclick={() => (importMergeMode = 'mix')}
-						>Mix</Button>
-						<Button
-							type="button"
-							size="sm"
-							class="h-7 rounded-md px-2 text-[10px] {importMergeMode === 'replace'
-								? 'bg-violet-600 text-white'
-								: 'bg-neutral-900 text-neutral-400'}"
-							onclick={() => (importMergeMode = 'replace')}
-						>Replace</Button>
-					</div>
-					<textarea
-						bind:value={importJsonText}
-						rows="6"
-						placeholder={`[{"headline":"Hook","body":"..."}]`}
-						class="w-full resize-y rounded-lg border border-neutral-700 bg-neutral-950 p-2 font-mono text-[11px] text-neutral-200 placeholder:text-neutral-600 focus-visible:border-violet-500/50 focus-visible:outline-none"
-					></textarea>
-					{#if importJsonError}
-						<p class="text-[10px] text-red-400/90" role="alert">{importJsonError}</p>
-					{/if}
-					{#if importJsonFeedback}
-						<p class="text-[10px] text-emerald-400/90">{importJsonFeedback}</p>
-					{/if}
-					<div class="flex gap-2">
-						<Button
-							type="button"
-							size="sm"
-							class="flex-1 rounded-lg bg-violet-600 text-white hover:bg-violet-500"
-							onclick={() => applyExternalSlideMergeFromPanelJson(importMergeMode)}
-						>Apply to deck</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							class="text-neutral-500"
-							onclick={() => {
-								showImportJsonPanel = false;
-								importJsonError = '';
-								importJsonFeedback = '';
-							}}
-						>Close</Button>
-					</div>
-				</div>
-			{/if}
-			<p class="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
-				{slides.length === 1 ? '1 slide' : `${slides.length} slides`}
-			</p>
-		</div>
 
 		<div class="flex flex-col gap-4 p-4">
 
