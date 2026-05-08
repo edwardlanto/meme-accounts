@@ -1,6 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { r2PutObject } from '$lib/server/r2';
+import { isValidOwnerR2Key, sniffStrictImageMime } from '$lib/server/request-security';
+
+const MAX_UPLOAD_BYTES = 35 * 1024 * 1024;
 
 /** Same-origin upload — avoids browser CORS when PUT-ing directly to R2. */
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -14,11 +17,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const file = form.get('file');
 
 	if (!key) return json({ error: 'Missing key' }, { status: 400 });
-	if (!key.startsWith(`${user.id}/`)) return json({ error: 'Forbidden' }, { status: 403 });
+	if (!isValidOwnerR2Key(user.id, key)) return json({ error: 'Forbidden key' }, { status: 403 });
 	if (!file || !(file instanceof File)) return json({ error: 'Missing file' }, { status: 400 });
 
 	const buf = new Uint8Array(await file.arrayBuffer());
-	const contentType = file.type || 'application/octet-stream';
+	if (buf.byteLength > MAX_UPLOAD_BYTES) {
+		return json({ error: 'File too large' }, { status: 413 });
+	}
+	const sniffed = sniffStrictImageMime(buf);
+	if (!sniffed) return json({ error: 'Unsupported or invalid image file' }, { status: 400 });
+	const contentType = sniffed;
 
 	try {
 		await r2PutObject(key, buf, contentType);

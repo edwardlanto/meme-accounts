@@ -1,16 +1,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { r2Delete } from '$lib/server/r2';
+import { isValidOwnerR2Key, parseJsonBody, r2KeyBodySchema } from '$lib/server/request-security';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-	const body = await request.json().catch(() => ({}));
-	const key = String(body?.key ?? '').trim();
+	const parsed = await parseJsonBody(request, r2KeyBodySchema);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const key = parsed.data.key.trim();
 
-	if (!key) return json({ error: 'Missing key' }, { status: 400 });
-	if (!key.startsWith(`${user.id}/`)) return json({ error: 'Forbidden' }, { status: 403 });
+	if (!isValidOwnerR2Key(user.id, key)) return json({ error: 'Forbidden key' }, { status: 403 });
 
 	try {
 		await r2Delete(key);

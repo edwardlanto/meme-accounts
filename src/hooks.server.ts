@@ -54,9 +54,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return { session: { ...session, user }, user };
 	};
 
-	return resolve(event, {
+	const response = await resolve(event, {
 		// Let SvelteKit forward any `set-cookie` headers Supabase wrote during
 		// token refresh.
 		filterSerializedResponseHeaders: (name) => name === 'content-range' || name === 'x-supabase-auth',
 	});
+	// Baseline hardening (does not replace handler-level auth / validation).
+	response.headers.set('X-Content-Type-Options', 'nosniff');
+	response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+	response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+	return response;
 };

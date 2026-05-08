@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { generateSlidesBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -17,10 +18,14 @@ export interface GeneratedSlide {
 	slideNumber?: number;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	const { topic, style = 'dark', slideCount = 8, imageCount = 0, audience = '' } = await request.json();
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-	if (!topic) return json({ error: 'Missing topic' }, { status: 400 });
+	const parsed = await parseJsonBody(request, generateSlidesBodySchema, 64_000);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const { topic, style, slideCount, imageCount, audience } = parsed.data;
 
 	if (!env.OPENROUTER_API_KEY) {
 		return json({ slides: getDemoSlides(slideCount, imageCount), demo: true });
@@ -84,11 +89,16 @@ function buildPrompt(
 			? `The creator uploaded ${imageCount} photo(s) indexed 0–${imageCount - 1}. Distribute naturally — hero + key value slides get images. Always set imageIndex: null for text-only and quote layouts.`
 			: `No photos uploaded. All slides use "text-only" or "quote" layouts. imageIndex must be null on every slide.`;
 
+	const topicBlock = sandboxUserPlaintext('TOPIC', topic, 12000);
+	const audienceBlock = audience.trim()
+		? `\n${sandboxUserPlaintext('AUDIENCE', audience, 2400)}\n`
+		: '';
+
 	return `You are a world-class viral social media strategist. Generate exactly ${slideCount} carousel slides.
 
-TOPIC: "${topic}"${audience ? `\nAUDIENCE: ${audience}` : ''}
-STYLE: ${styleDesc[style] ?? styleDesc.dark}
-IMAGES: ${imageGuide}
+${topicBlock}${audienceBlock}
+STYLE (fixed directive): ${styleDesc[style] ?? styleDesc.dark}
+IMAGES (fixed directive): ${imageGuide}
 
 PROVEN SLIDE FORMULA:
 1. HOOK — Counterintuitive or shocking opening. Stops the scroll.

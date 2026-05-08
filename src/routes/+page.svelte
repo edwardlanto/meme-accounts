@@ -17,13 +17,13 @@
 	];
 
 	const featured = [
-		{ title: 'Morning Hooks', creator: 'Maya Carter', initials: 'MC',
+		{ title: 'Viral Hooks', creator: 'Maya Carter', initials: 'MC',
 		  bg: '#7B2D26', img: '/placeholders/placeholder-square.jpeg' },
-		{ title: 'Reel Lab',      creator: 'Avery James', initials: 'AJ',
+		{ title: 'Brand Carousel', creator: 'Avery James', initials: 'AJ',
 		  bg: '#D67862', img: '/placeholders/placeholder-square.jpeg' },
-		{ title: 'Story Boost',   creator: 'Sienna Cole', initials: 'SC',
+		{ title: 'News Studio', creator: 'Sienna Cole', initials: 'SC',
 		  bg: '#3D6B8C', img: '/placeholders/placeholder-square.jpeg' },
-		{ title: 'Caption Co.',   creator: 'Devin Park',  initials: 'DP',
+		{ title: 'Slide Composer', creator: 'Devin Park', initials: 'DP',
 		  bg: '#A6B4C4', img: '/placeholders/placeholder-square.jpeg' },
 	];
 

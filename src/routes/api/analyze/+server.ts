@@ -2,29 +2,46 @@ import { json } from '@sveltejs/kit';
 import { createClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { analyzeBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
 
-export const POST: RequestHandler = async ({ request }) => {
-	const { postId } = await request.json();
-	if (!postId) return json({ error: 'Missing postId' }, { status: 400 });
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const parsed = await parseJsonBody(request, analyzeBodySchema, 8192);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const postId = parsed.data.postId;
 
 	const supabase = createClient(env.SUPABASE_URL ?? '', env.SUPABASE_SERVICE_KEY ?? '');
 
 	const { data: post, error: postErr } = await supabase
 		.from('viral_posts')
-		.select('*, creators(instagram_handle, niche)')
+		.select('*, creators!inner(instagram_handle, niche, user_id)')
 		.eq('id', postId)
 		.single();
 
 	if (postErr || !post) return json({ error: 'Post not found' }, { status: 404 });
 
+	const ownerId = (post as { creators?: { user_id?: string } }).creators?.user_id;
+	if (ownerId !== user.id) return json({ error: 'Post not found' }, { status: 404 });
+
+	const handle = String(post.creators?.instagram_handle ?? 'unknown').slice(0, 80);
+	const niche = sandboxUserPlaintext('NICHE', String(post.creators?.niche ?? 'Unknown'), 200);
+	const hookBlock = sandboxUserPlaintext('HOOK', String(post.hook ?? 'N/A'), 400);
+	const captionBlock = sandboxUserPlaintext('CAPTION', (post.caption ?? '').slice(0, 500), 500);
+
 	const prompt = `You are a viral content strategist. Analyze this Instagram post and provide a concise breakdown.
 
-Creator: @${post.creators?.instagram_handle}
-Niche: ${post.creators?.niche ?? 'Unknown'}
-Likes: ${post.likes.toLocaleString()}
-Comments: ${post.comments.toLocaleString()}
-Hook: ${post.hook ?? 'N/A'}
-Caption: ${(post.caption ?? '').slice(0, 500)}
+Creator handle (metadata only): @${handle.replace(/[^\w.]/g, '_')}
+${niche}
+
+Engagement (metadata):
+Likes: ${Number(post.likes) || 0}
+Comments: ${Number(post.comments) || 0}
+
+${hookBlock}
+
+${captionBlock}
 
 Respond with a JSON object (no markdown) with these exact keys:
 {

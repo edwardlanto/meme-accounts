@@ -1,16 +1,26 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { hooksBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
 
-export const POST: RequestHandler = async ({ request }) => {
-	const { topic, niche, hookType, count = 10 } = await request.json();
-	if (!topic) return json({ error: 'Missing topic' }, { status: 400 });
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const parsed = await parseJsonBody(request, hooksBodySchema, 32_000);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const { topic, niche, hookType, count } = parsed.data;
+
+	const topicBlock = sandboxUserPlaintext('TOPIC', topic, 9000);
+	const nicheBlock = sandboxUserPlaintext('NICHE', niche || 'General', 520);
+	const styleBlock = sandboxUserPlaintext('HOOK_STYLE', hookType || 'Any (mix of styles)', 220);
 
 	const prompt = `You are a viral Instagram content strategist. Generate ${count} high-performing carousel hook variations.
 
-Topic: ${topic}
-Niche: ${niche ?? 'General'}
-Hook style: ${hookType ?? 'Any (mix of styles)'}
+${topicBlock}
+${nicheBlock}
+${styleBlock}
 
 Rules for great hooks:
 - Under 15 words ideally, 20 max

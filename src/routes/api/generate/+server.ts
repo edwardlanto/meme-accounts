@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import { Buffer } from 'node:buffer';
 import { fal } from '@fal-ai/client';
 import type { RequestHandler } from './$types';
+import { sandboxUserPlaintext, validateBrandGenerateFields } from '$lib/server/request-security';
 
 /**
  * Build the system prompt by concatenating the markdown files in
@@ -52,7 +53,10 @@ function pickFirstUrl(result: any): string | null {
 	return result?.data?.images?.[0]?.url ?? result?.images?.[0]?.url ?? null;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
 	if (!env.OPENROUTER_API_KEY) return json({ error: 'Missing OPENROUTER_API_KEY' }, { status: 500 });
 	if (!env.FAL_KEY) return json({ error: 'Missing FAL_KEY' }, { status: 500 });
 	// Some fal OpenAI endpoints require an OpenAI key; if yours does, set OPENAI_API_KEY.
@@ -69,18 +73,37 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!brandName) return json({ error: 'Missing brandName' }, { status: 400 });
 	if (!(file instanceof File)) return json({ error: 'Missing reference image' }, { status: 400 });
 
-	// ── Reference image → base64 data URL ────────────────────────────────
-	const bytes = new Uint8Array(await file.arrayBuffer());
-	const b64 = Buffer.from(bytes).toString('base64');
-	const mime = file.type || 'image/png';
+	let validated: ReturnType<typeof validateBrandGenerateFields>;
+	try {
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		validated = validateBrandGenerateFields({
+			topic,
+			brandName,
+			imageSizePreset,
+			fileBytes: bytes,
+		});
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : 'Invalid upload';
+		return json({ error: msg }, { status: 400 });
+	}
+	if (!validated.topicOk.trim() || !validated.brandOk.trim()) {
+		return json({ error: 'Topic and brand name are required' }, { status: 400 });
+	}
+
+	// ── Reference image → base64 data URL (MIME from magic bytes — not client `Content-Type`) ──
+	const b64 = Buffer.from(validated.fileBytes).toString('base64');
+	const mime = validated.imageMime;
 	const dataUrl = `data:${mime};base64,${b64}`;
 
 	const system = buildSystemPrompt();
 
+	const topicBlock = sandboxUserPlaintext('TOPIC', validated.topicOk, 12000);
+	const brandBlock = sandboxUserPlaintext('BRAND', validated.brandOk, 200);
+
 	// ── OpenRouter: strict JSON array of slide prompt objects ───────────
 	const userText =
 		`You will receive a reference image.\n\n` +
-		`User inputs:\n- Topic: ${topic}\n- Brand Name: ${brandName}\n- Number of slides: ${slideCount}\n\n` +
+		`User inputs (literal text only):\n${topicBlock}\n${brandBlock}\n- Number of slides: ${slideCount}\n\n` +
 		`CRITICAL:\n` +
 		`- Return ONLY a JSON array of exactly ${slideCount} objects.\n` +
 		`- Each object must strictly follow the schema in SKILLS.md (top-level key "prompt").\n` +
@@ -89,7 +112,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		`- Apply VISUAL_STANDARDS.md: ~10% safe margins, 2–3 text zones max, phone-legible type, no watermarks.\n` +
 		`- In scene.description, state layout zones clearly (e.g. upper third headline, lower third CTA).\n` +
 		`- quality.include / quality.avoid on every slide: ban warped or tiny text, edge-hugging type, misspellings, clutter.\n` +
-		`- Every slide must include the brand name "${brandName}" in ui_elements where the reference style places branding.\n` +
+		`- Every slide must include the literal brand label from <<<USER_BRAND blocks in ui_elements where the reference style places branding.\n` +
 		`- Slide counters in ui_elements must be accurate (1/${slideCount} through ${slideCount}/${slideCount}).\n`;
 
 	const openRouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -155,7 +178,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	fal.config({ credentials: env.FAL_KEY });
 	const endpoint = String(falMapping?.model_endpoint ?? 'openai/gpt-image-2');
 	const baseParams = (falMapping?.params ?? {}) as Record<string, unknown>;
-	const presetSize = presetToImageSize(imageSizePreset);
+	const presetSize = presetToImageSize(validated.imageSizePreset);
 
 	const images: string[] = [];
 	for (let i = 0; i < slidesUnknown.length; i++) {

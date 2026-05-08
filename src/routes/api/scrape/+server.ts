@@ -2,23 +2,33 @@ import { json } from '@sveltejs/kit';
 import { createClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { parseJsonBody, scrapeBodySchema } from '$lib/server/request-security';
 
 const APIFY_ACTOR_ID = 'apify~instagram-post-scraper';
 
-export const POST: RequestHandler = async ({ request }) => {
-	const { creatorId } = await request.json();
-	if (!creatorId) return json({ error: 'Missing creatorId' }, { status: 400 });
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const parsed = await parseJsonBody(request, scrapeBodySchema, 8192);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+	const creatorId = parsed.data.creatorId;
 
 	const supabase = createClient(env.SUPABASE_URL ?? '', env.SUPABASE_SERVICE_KEY ?? '');
 
-	// Get creator
+	// Get creator (must belong to authenticated user — service-role bypass requires explicit filter)
 	const { data: creator, error: creatorErr } = await supabase
 		.from('creators')
 		.select('*')
 		.eq('id', creatorId)
+		.eq('user_id', user.id)
 		.single();
 
 	if (creatorErr || !creator) return json({ error: 'Creator not found' }, { status: 404 });
+
+	if (!/^[a-zA-Z0-9_.]{1,64}$/.test(String(creator.instagram_handle ?? ''))) {
+		return json({ error: 'Stored handle has unsafe characters' }, { status: 400 });
+	}
 
 	if (!env.APIFY_API_TOKEN) {
 		// Demo mode: insert synthetic posts so the UI works without a real token
