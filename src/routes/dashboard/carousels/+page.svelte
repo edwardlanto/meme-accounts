@@ -27,6 +27,8 @@
 	let creating = $state(false);
 	let createError = $state('');
 	let userId = $state('');
+	let mounted = $state(false);
+	onMount(() => { mounted = true; });
 
 	// Preview scale for template cards — fixed 220px preview width
 	let templatesWrapEl = $state<HTMLDivElement | null>(null);
@@ -459,19 +461,23 @@
 	}
 </script>
 
-<div class="page-wrap">
+<div class="page-wrap" class:mounted>
 
-	<!-- ── Header ─────────────────────────────────────────────────────────── -->
-	<div class="page-header">
-		<div>
+	<!-- ── Hero header ─────────────────────────────────────────────────────── -->
+	<header class="page-hero">
+		<div class="page-hero-text">
+			<div class="page-eyebrow">
+				<span class="page-eyebrow-dot"></span>
+				<span>Library</span>
+			</div>
 			<h1 class="page-title">Carousels</h1>
+			<p class="page-sub">Pick a template to start, or jump back into a saved layout or studio draft.</p>
 		</div>
-		<button onclick={createNew} disabled={creating}
-			class="create-btn">
-			{#if creating}<Loader size={13} class="spin" />{:else}<Plus size={14} />{/if}
+		<button onclick={createNew} disabled={creating} class="create-btn">
+			{#if creating}<Loader size={14} class="spin" />{:else}<Plus size={15} />{/if}
 			New carousel
 		</button>
-	</div>
+	</header>
 
 	{#if createError}
 		<div style="margin-bottom:1rem;padding:0.75rem 1rem;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);font-size:0.8125rem;color:#f87171;">
@@ -480,21 +486,24 @@
 	{/if}
 
 	<!-- ── Starter Templates ───────────────────────────────────────────────── -->
-	<div class="templates-section">
+	<section class="templates-section reveal" style="--d:0.05s">
+		<div class="section-head">
+			<h2 class="section-title">Start from a template</h2>
+			<p class="section-sub">Hand‑crafted layouts that open straight into Studio.</p>
+		</div>
 
 		<div
 			bind:this={templatesWrapEl}
 			class="templates-grid"
 			style="--cols:{templateCols}; --cardw:{templateCardW}px;"
 		>
-			{#each STARTER_TEMPLATES.filter((t) => t.id !== 'image-quote') as tmpl}
+			{#each STARTER_TEMPLATES.filter((t) => t.id !== 'image-quote') as tmpl, i}
 				{@const hoverClass =
 						tmpl.id === 'empty'   ? 'hover:border-neutral-400/35 hover:shadow-[0_0_24px_rgba(115,115,115,0.10)]'
 						: tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
 						: tmpl.id === 'text'  ? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
 						: tmpl.id === 'black-text' ? 'hover:border-sky-500/35 hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]'
 						: tmpl.id === 'article' ? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
-						: tmpl.id === 'brand' ? 'hover:border-violet-500/40 hover:shadow-[0_0_28px_rgba(139,92,246,0.15)]'
 						: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}
 				{@const arrowColor =
 						tmpl.id === 'empty'   ? 'group-hover:text-neutral-400'
@@ -502,12 +511,11 @@
 						: tmpl.id === 'text'  ? 'group-hover:text-white/70'
 						: tmpl.id === 'black-text' ? 'group-hover:text-sky-400'
 						: tmpl.id === 'article' ? 'group-hover:text-emerald-400'
-						: tmpl.id === 'brand' ? 'group-hover:text-violet-400'
 						: 'group-hover:text-amber-400'}
 				<a
 					href={tmpl.href}
-					class="tmpl-card group flex flex-col rounded-2xl overflow-hidden transition-all duration-200 flex-shrink-0 {hoverClass}"
-					style="width: 100%;"
+					class="tmpl-card reveal group flex flex-col rounded-2xl overflow-hidden flex-shrink-0 {hoverClass}"
+					style="width: 100%; --d:{0.06 + i * 0.04}s"
 				>
 					<!-- Preview area -->
 					<div style="width: 100%; height: {Math.round(templateCardW * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;">
@@ -584,98 +592,6 @@
 								scale={templateScale}
 								interactive={false}
 							/>
-						{:else if tmpl.id === 'brand'}
-							<!-- Slideshows static preview -->
-							<div style="
-								width: 100%; height: 100%;
-								background: {uiTheme === 'dark'
-									? 'linear-gradient(135deg, #0f0a1e 0%, #1a0f3a 45%, #0d1a2e 100%)'
-									: 'linear-gradient(135deg, #ffffff 0%, #f4f2ff 45%, #eef6ff 100%)'};
-								display: flex; flex-direction: column;
-								align-items: center; justify-content: center;
-								gap: 14px; padding: 20px; position: relative; overflow: hidden;
-							">
-								<!-- Background glow -->
-								<div style="position:absolute;top:-30px;left:50%;transform:translateX(-50%);width:140px;height:140px;border-radius:50%;background:{uiTheme === 'dark' ? 'rgba(139,92,246,0.15)' : 'rgba(124,58,237,0.12)'};filter:blur(40px);pointer-events:none;"></div>
-
-								<!-- Icon -->
-								<div style="
-									width: 44px; height: 44px; border-radius: 14px;
-									background: {uiTheme === 'dark' ? 'rgba(139,92,246,0.2)' : 'rgba(124,58,237,0.10)'};
-									border: 1.5px solid {uiTheme === 'dark' ? 'rgba(139,92,246,0.4)' : 'rgba(124,58,237,0.22)'};
-									display: flex; align-items: center; justify-content: center;
-									position: relative; z-index: 1;
-								">
-									<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{uiTheme === 'dark' ? 'rgba(167,139,250,1)' : 'rgba(124,58,237,0.95)'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/>
-										<path d="m3 3 18 18" opacity="0"/>
-										<circle cx="12" cy="12" r="3"/>
-										<path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>
-									</svg>
-								</div>
-
-								<!-- Slide strip preview -->
-								<div style="display:flex; gap:5px; position:relative;z-index:1;">
-									{#each [
-										{ bg: '#FDFCF8', label: 'HERO', accent: '#8B5CF6' },
-										{ bg: '#1A0F3A', label: 'PROB', accent: '#c4b5fd' },
-										{ bg: '#F8F9FA', label: 'TIP', accent: '#8B5CF6' },
-										{ bg: '#1A0F3A', label: 'CTA', accent: '#c4b5fd' },
-									] as slide}
-										<div style="
-											width: 34px; height: 43px; border-radius: 4px;
-											background: {slide.bg};
-											border: 1px solid {uiTheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.10)'};
-											display: flex; flex-direction: column;
-											align-items: center; justify-content: center; gap: 3px;
-											flex-shrink: 0;
-										">
-											<div style="width: 20px; height: 2px; background: {slide.accent}; border-radius: 1px;"></div>
-											<div style="width: 16px; height: 1.5px; background: {slide.accent}; opacity: 0.5; border-radius: 1px;"></div>
-											<div style="width: 18px; height: 1.5px; background: {slide.accent}; opacity: 0.3; border-radius: 1px;"></div>
-										</div>
-									{/each}
-									<div style="
-										width: 34px; height: 43px; border-radius: 4px;
-										border: 1px dashed {uiTheme === 'dark' ? 'rgba(139,92,246,0.3)' : 'rgba(124,58,237,0.30)'};
-										display: flex; align-items: center; justify-content: center;
-										flex-shrink: 0;
-									">
-										<span style="font-size:14px;color:{uiTheme === 'dark' ? 'rgba(139,92,246,0.4)' : 'rgba(124,58,237,0.45)'};">+</span>
-									</div>
-								</div>
-
-								<!-- Color swatches -->
-								<div style="display:flex;gap:4px;position:relative;z-index:1;">
-									{#each ['#8B5CF6','#C4B5FD','#1A0F3A','#F8F9FA','#FDFCF8'] as swatch}
-										<div style="width:14px;height:14px;border-radius:50%;background:{swatch};border:1px solid {uiTheme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.12)'};flex-shrink:0;"></div>
-									{/each}
-									<div style="width:14px;height:14px;border-radius:50%;border:1.5px dashed {uiTheme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.16)'};flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-										<span style="font-size:8px;color:{uiTheme === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(15,23,42,0.35)'};">+</span>
-									</div>
-								</div>
-
-								<!-- Label -->
-								<div style="position:relative;z-index:1;text-align:center;">
-									<p style="font-family:'Nunito Sans',sans-serif;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:{uiTheme === 'dark' ? 'rgba(167,139,250,0.8)' : 'rgba(124,58,237,0.70)'};margin-bottom:2px;">Upload images</p>
-									<p style="font-family:'Nunito Sans',sans-serif;font-size:9px;color:{uiTheme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(15,23,42,0.40)'};letter-spacing:0.04em;">AI copies your brand style</p>
-								</div>
-
-								<!-- Bottom bar in preview -->
-								<div style="
-									position:absolute;bottom:0;left:0;right:0;
-									padding: 8px 12px;
-									background: {uiTheme === 'dark'
-										? 'linear-gradient(to top, rgba(15,10,30,0.95), transparent)'
-										: 'linear-gradient(to top, rgba(255,255,255,0.92), transparent)'};
-								">
-									<div style="display:flex;gap:4px;">
-										{#each [30,60,45,70,50] as w}
-											<div style="height:2px;flex:{w};background:{uiTheme === 'dark' ? 'rgba(139,92,246,0.4)' : 'rgba(124,58,237,0.35)'};border-radius:1px;"></div>
-										{/each}
-									</div>
-								</div>
-							</div>
 						{/if}
 					</div>
 
@@ -691,16 +607,18 @@
 			{/each}
 
 			<!-- "More coming" placeholder -->
-			<div class="tmpl-more flex flex-col items-center justify-center rounded-2xl border-2 border-dashed flex-shrink-0"
-				style="width: 100%; height: {Math.round(templateCardW * 1350/1080) + 46}px; display: flex;">
+			<div
+				class="tmpl-more reveal flex flex-col items-center justify-center rounded-2xl border-2 border-dashed flex-shrink-0"
+				style="width: 100%; height: {Math.round(templateCardW * 1350/1080) + 46}px; display: flex; --d:{0.06 + STARTER_TEMPLATES.length * 0.04}s"
+			>
 				<Plus size={18} class="mb-2 opacity-40" />
 				<span class="text-[10px] font-mono">More templates soon</span>
 			</div>
 		</div>
-	</div>
+	</section>
 
 	{#if studioSavedTemplates.length > 0}
-		<div class="saved-templates-block">
+		<section class="saved-templates-block reveal" style="--d:0.18s">
 			<div class="saved-templates-head">
 				<h2 class="saved-templates-title">Saved Studio templates</h2>
 				<p class="saved-templates-sub">
@@ -708,9 +626,9 @@
 				</p>
 			</div>
 			<div class="saved-templates-grid">
-				{#each studioSavedTemplates as row (row.id)}
+				{#each studioSavedTemplates as row, i (row.id)}
 					{@const pv = studioSavedTemplatePreviewUrl(row)}
-					<div class="saved-template-tile group">
+					<div class="saved-template-tile reveal group" style="--d:{0.22 + i * 0.04}s">
 						<a class="saved-template-link" href="/dashboard/studio?saved={row.id}" aria-label="Open saved template">
 							{#if pv.url}
 								<img
@@ -740,11 +658,11 @@
 					</div>
 				{/each}
 			</div>
-		</div>
+		</section>
 	{/if}
 
 	{#if studioDrafts.length > 0}
-		<div class="studio-drafts-block">
+		<section class="studio-drafts-block reveal" style="--d:0.24s">
 			<div class="studio-drafts-head">
 				<h2 class="studio-drafts-title">Studio drafts</h2>
 				<p class="studio-drafts-sub">
@@ -752,11 +670,11 @@
 				</p>
 			</div>
 			<div class="carousel-grid studio-drafts-grid">
-				{#each studioDrafts as d}
+				{#each studioDrafts as d, i}
 					{@const pv = studioDraftPreview(d)}
 					<div
-						class="carousel-card group studio-draft-card"
-						style="--card-bg: {pv.bgSolid}; --card-color: {pv.textColor};"
+						class="carousel-card reveal group studio-draft-card"
+						style="--card-bg: {pv.bgSolid}; --card-color: {pv.textColor}; --d:{0.28 + i * 0.04}s"
 					>
 						<a
 							href="/dashboard/studio?draft={d.id}"
@@ -828,57 +746,169 @@
 					</div>
 				{/each}
 			</div>
-		</div>
+		</section>
 	{/if}
-
-	<!-- ── Divider ────────────────────────────────────────────────────────── -->
-	<div class="section-divider"></div>
 </div>
 
 <style>
+	/* ─── Tokens (homepage palette) ────────────────────────── */
 	:root:not([data-theme="dark"]) {
-		--panel-bg: color-mix(in oklab, var(--app-text) 3%, transparent);
-		--panel-bg-2: color-mix(in oklab, var(--app-text) 5%, transparent);
-		--panel-border: var(--app-border);
-		--panel-border-hover: var(--app-border-hover);
-		--t-strong: var(--app-text);
-		--t: var(--app-text-2);
-		--t-muted: var(--app-text-3);
+		--ap-text:   #0a0a0a;
+		--ap-text-2: rgba(10, 10, 10, 0.62);
+		--ap-text-3: rgba(10, 10, 10, 0.42);
+		--ap-line:   rgba(10, 10, 10, 0.08);
+		--ap-line-2: rgba(10, 10, 10, 0.16);
+		--ap-soft:   #f6f5f1;
+		--ap-bg:     #ffffff;
+
+		--panel-bg: #ffffff;
+		--panel-bg-2: #fafafa;
+		--panel-border: rgba(10, 10, 10, 0.08);
+		--panel-border-hover: rgba(10, 10, 10, 0.16);
+		--t-strong: var(--ap-text);
+		--t: var(--ap-text-2);
+		--t-muted: var(--ap-text-3);
+
+		--shadow-soft: 0 1px 2px rgba(10, 10, 10, 0.04), 0 8px 22px -10px rgba(10, 10, 10, 0.10);
+		--shadow-pop:  0 18px 40px -16px rgba(10, 10, 10, 0.18), 0 6px 14px -8px rgba(10, 10, 10, 0.12);
 	}
 	:root[data-theme="dark"] {
-		--panel-bg: rgba(255,255,255,0.02);
-		--panel-bg-2: rgba(255,255,255,0.04);
-		--panel-border: rgba(255,255,255,0.06);
-		--panel-border-hover: rgba(255,255,255,0.15);
-		--t-strong: rgba(255,255,255,0.92);
-		--t: rgba(255,255,255,0.55);
-		--t-muted: rgba(255,255,255,0.38);
+		--ap-text:   #f5f5f5;
+		--ap-text-2: rgba(245, 245, 245, 0.66);
+		--ap-text-3: rgba(245, 245, 245, 0.42);
+		--ap-line:   rgba(255, 255, 255, 0.07);
+		--ap-line-2: rgba(255, 255, 255, 0.14);
+		--ap-soft:   #161616;
+		--ap-bg:     #0a0a0a;
+
+		--panel-bg: rgba(255, 255, 255, 0.025);
+		--panel-bg-2: rgba(255, 255, 255, 0.045);
+		--panel-border: rgba(255, 255, 255, 0.07);
+		--panel-border-hover: rgba(255, 255, 255, 0.16);
+		--t-strong: var(--ap-text);
+		--t: var(--ap-text-2);
+		--t-muted: var(--ap-text-3);
+
+		--shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 28px -16px rgba(0, 0, 0, 0.55);
+		--shadow-pop:  0 18px 40px -18px rgba(0, 0, 0, 0.55);
 	}
 
-	.page-wrap { padding: 2rem 2.5rem; max-width: 1560px; }
+	.page-wrap {
+		padding: 32px 32px 64px;
+		max-width: 1560px;
+		margin: 0 auto;
+		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		letter-spacing: -0.01em;
+		-webkit-font-smoothing: antialiased;
+	}
 
-	/* Header */
-	.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 2rem; }
-	.page-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.25rem; }
-	.page-sub   { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
+	/* ─── Reveal animation ─────────────────────────────────── */
+	.reveal {
+		opacity: 0;
+		transform: translateY(14px);
+		transition:
+			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s),
+			transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
+		will-change: opacity, transform;
+	}
+	.page-wrap.mounted .reveal {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	/* ─── Hero header ──────────────────────────────────────── */
+	.page-hero {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 24px;
+		flex-wrap: wrap;
+		margin-bottom: 36px;
+		opacity: 0;
+		transform: translateY(10px);
+		animation: cs-hero-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.04s both;
+	}
+	@keyframes cs-hero-in {
+		to { opacity: 1; transform: translateY(0); }
+	}
+	.page-hero-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+	.page-eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 5px 12px 5px 10px;
+		width: fit-content;
+		border-radius: 999px;
+		background: var(--panel-bg-2);
+		border: 1px solid var(--panel-border);
+		color: var(--t);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.page-eyebrow-dot {
+		width: 6px; height: 6px;
+		border-radius: 50%;
+		background: #34d399;
+		box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+	}
+
+	.page-title {
+		font-family: 'Satoshi', sans-serif;
+		font-size: clamp(28px, 3.4vw, 42px);
+		font-weight: 800;
+		letter-spacing: -0.025em;
+		color: var(--t-strong);
+		margin: 0;
+		line-height: 1.05;
+	}
+	.page-sub   {
+		font-size: 14px;
+		line-height: 1.55;
+		color: var(--t);
+		margin: 0;
+		max-width: 60ch;
+	}
 	.create-btn {
-		display: flex; align-items: center; gap: 0.4rem;
-		padding: 0.6rem 1.1rem; border-radius: 10px; border: none;
-		background: #E8FF48; color: #0a0a0a;
-		font-size: 0.8125rem; font-weight: 600; cursor: pointer;
-		font-family: 'DM Sans', sans-serif; transition: transform 0.12s, box-shadow 0.12s;
+		display: inline-flex; align-items: center; gap: 8px;
+		padding: 12px 20px; border-radius: 999px; border: 1px solid var(--ap-text);
+		background: var(--ap-text); color: var(--ap-bg);
+		font-family: inherit;
+		font-size: 13.5px; font-weight: 700; cursor: pointer;
+		letter-spacing: -0.005em;
+		transition: transform 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
+		flex-shrink: 0;
+		white-space: nowrap;
 	}
-	.create-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(232,255,72,0.25); }
+	.create-btn:hover:not(:disabled) {
+		transform: translateY(-1px);
+		box-shadow: 0 12px 28px -12px color-mix(in oklab, var(--ap-text) 50%, transparent);
+	}
 	.create-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.spin { animation: spin 0.8s linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 
-	/* Templates section */
-	.templates-section { margin-bottom: 2rem; }
-	.templates-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-	.templates-title { font-family: 'Space Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--t-muted); margin: 0; }
-	.templates-see-all { font-size: 0.75rem; color: var(--t-muted); text-decoration: none; font-family: 'Space Mono', monospace; transition: color 0.15s; }
-	.templates-see-all:hover { color: #E8FF48; }
+	/* ─── Section heads ────────────────────────────────────── */
+	.section-head { margin-bottom: 16px; }
+	.section-title {
+		font-family: 'Satoshi', sans-serif;
+		font-size: 18px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		color: var(--t-strong);
+		margin: 0 0 4px;
+	}
+	.section-sub {
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--t);
+		margin: 0;
+		max-width: 56rem;
+	}
+
+	/* ─── Templates section ────────────────────────────────── */
+	.templates-section { margin-bottom: 32px; }
 
 	.templates-grid {
 		display: grid;
@@ -891,90 +921,131 @@
 	.tmpl-card {
 		border: 1px solid var(--panel-border);
 		background: var(--panel-bg);
+		box-shadow: var(--shadow-soft);
+		transition:
+			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			border-color 0.25s ease,
+			box-shadow 0.32s ease,
+			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
 	}
-	.tmpl-card:hover { border-color: var(--panel-border-hover); }
-	:root:not([data-theme="dark"]) .tmpl-card:hover { box-shadow: 0 14px 44px rgba(2, 6, 23, 0.08); }
-	:root[data-theme="dark"] .tmpl-card:hover { box-shadow: 0 14px 44px rgba(0, 0, 0, 0.34); }
+	.tmpl-card:hover {
+		transform: translateY(-3px);
+		border-color: var(--panel-border-hover);
+		box-shadow: var(--shadow-pop);
+	}
 
-	.tmpl-footer { background: #fff; border-color: var(--panel-border); }
-	.tmpl-title { color: var(--t-strong); }
-	.tmpl-desc { color: var(--t-muted); }
-	.tmpl-arrow { color: color-mix(in oklab, var(--t-muted) 55%, transparent); }
+	:global(.tmpl-footer) {
+		background: var(--panel-bg);
+		border-color: var(--panel-border) !important;
+	}
+	:global(.tmpl-title) {
+		color: var(--t-strong) !important;
+		font-family: 'Satoshi', sans-serif;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+	}
+	:global(.tmpl-desc)  { color: var(--t-muted) !important; }
+	:global(.tmpl-arrow) {
+		color: var(--t-muted) !important;
+		transition: transform 0.22s ease, color 0.22s ease;
+	}
+	.tmpl-card:hover :global(.tmpl-arrow) {
+		color: var(--t-strong) !important;
+		transform: translateX(2px);
+	}
 
-	.tmpl-more { border-color: var(--panel-border); color: var(--t-muted); background: color-mix(in oklab, var(--panel-bg) 70%, transparent); }
+	.tmpl-more {
+		border-color: var(--panel-border);
+		color: var(--t-muted);
+		background: color-mix(in oklab, var(--panel-bg) 70%, transparent);
+		transition:
+			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			border-color 0.25s ease,
+			color 0.25s ease,
+			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
+	}
+	.tmpl-more:hover {
+		transform: translateY(-3px);
+		border-color: var(--panel-border-hover);
+		color: var(--t-strong);
+	}
 
-	/* Studio workspace drafts (News Studio `news_studio` rows) */
+	/* ─── Studio workspace drafts ──────────────────────────── */
 	.studio-drafts-block {
-		margin-bottom: 1.5rem;
-		padding: 1rem 1.25rem;
-		border-radius: 16px;
+		margin-bottom: 24px;
+		padding: 24px 26px 22px;
+		border-radius: 22px;
 		border: 1px solid var(--panel-border);
 		background: var(--panel-bg);
+		box-shadow: var(--shadow-soft);
 	}
-	.studio-drafts-head { margin-bottom: 0.75rem; }
+	.studio-drafts-head { margin-bottom: 14px; }
 	.studio-drafts-title {
-		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
-		font-size: 1rem;
-		font-weight: 700;
+		font-family: 'Satoshi', sans-serif;
+		font-size: 18px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
 		color: var(--t-strong);
-		margin: 0 0 0.35rem;
+		margin: 0 0 4px;
 	}
 	.studio-drafts-sub {
-		font-size: 0.75rem;
-		color: var(--t-muted);
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--t);
 		margin: 0;
-		line-height: 1.45;
 		max-width: 56rem;
 	}
-	.studio-drafts-grid { margin-top: 0.5rem; }
+	.studio-drafts-grid { margin-top: 12px; }
 
-	/* Saved Studio templates (news studio “save template”) */
+	/* ─── Saved Studio templates ───────────────────────────── */
 	.saved-templates-block {
-		margin-bottom: 1.5rem;
-		padding: 1rem 1.25rem;
-		border-radius: 16px;
+		margin-bottom: 24px;
+		padding: 24px 26px 22px;
+		border-radius: 22px;
 		border: 1px solid var(--panel-border);
 		background: var(--panel-bg);
+		box-shadow: var(--shadow-soft);
 	}
-	.saved-templates-head { margin-bottom: 0.75rem; }
+	.saved-templates-head { margin-bottom: 14px; }
 	.saved-templates-title {
-		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
-		font-size: 1rem;
-		font-weight: 700;
+		font-family: 'Satoshi', sans-serif;
+		font-size: 18px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
 		color: var(--t-strong);
-		margin: 0 0 0.35rem;
+		margin: 0 0 4px;
 	}
 	.saved-templates-sub {
-		font-size: 0.75rem;
-		color: var(--t-muted);
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--t);
 		margin: 0;
-		line-height: 1.45;
 		max-width: 56rem;
 	}
 	.saved-templates-grid {
-		margin-top: 0.65rem;
+		margin-top: 14px;
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 12px;
+		gap: 14px;
 	}
 	.saved-template-tile {
 		position: relative;
-		border-radius: 16px;
+		border-radius: 18px;
 		overflow: hidden;
 		border: 1px solid var(--panel-border);
-		background: var(--panel-bg);
-		transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+		background: var(--ap-soft);
 		aspect-ratio: 4 / 5;
+		box-shadow: var(--shadow-soft);
+		transition:
+			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			border-color 0.25s ease,
+			box-shadow 0.32s ease,
+			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
 	}
 	.saved-template-tile:hover {
-		transform: translateY(-1px);
+		transform: translateY(-3px);
 		border-color: var(--panel-border-hover);
-	}
-	:root:not([data-theme="dark"]) .saved-template-tile:hover {
-		box-shadow: 0 14px 44px rgba(2, 6, 23, 0.10);
-	}
-	:root[data-theme="dark"] .saved-template-tile:hover {
-		box-shadow: 0 14px 44px rgba(0, 0, 0, 0.34);
+		box-shadow: var(--shadow-pop);
 	}
 	.saved-template-link {
 		display: block;
@@ -1128,12 +1199,9 @@
 		white-space: nowrap;
 	}
 
-	/* Section divider */
-	.section-divider { border: none; border-top: 1px solid var(--panel-border); margin: 0.5rem 0 1.5rem; }
-
-	/* Library header */
+	/* ─── Library header (legacy, retained) ────────────────── */
 	.library-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-	.library-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
+	.library-title  { font-family: 'Satoshi', sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; color: var(--t-strong); margin: 0; }
 
 	/* Filter tabs */
 	.filter-tabs {
@@ -1158,10 +1226,10 @@
 	}
 	.filter-tab--on .filter-count { background: rgba(232,255,72,0.15); color: #E8FF48; }
 
-	/* Carousel grid */
-	.carousel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+	/* ─── Carousel grid ────────────────────────────────────── */
+	.carousel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
 	.skeleton-card {
-		aspect-ratio: 4/5; border-radius: 16px;
+		aspect-ratio: 4/5; border-radius: 18px;
 		background: var(--panel-bg);
 		animation: pulse 1.5s ease-in-out infinite;
 	}
@@ -1169,12 +1237,21 @@
 
 	/* Carousel card */
 	.carousel-card {
-		position: relative; border-radius: 16px; overflow: hidden;
+		position: relative; border-radius: 18px; overflow: hidden;
 		border: 1px solid var(--panel-border);
 		background: var(--card-bg, #111);
-		transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+		box-shadow: var(--shadow-soft);
+		transition:
+			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			border-color 0.25s ease,
+			box-shadow 0.32s ease,
+			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
 	}
-	.carousel-card:hover { border-color: var(--panel-border-hover); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+	.carousel-card:hover {
+		transform: translateY(-3px);
+		border-color: var(--panel-border-hover);
+		box-shadow: var(--shadow-pop);
+	}
 
 	.card-preview {
 		display: flex; align-items: center; justify-content: center;
@@ -1271,4 +1348,21 @@
 	}
 	:root:not([data-theme="dark"]) .empty-cta { color: #ffffff; }
 	.empty-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+
+	/* ─── Responsive ───────────────────────────────────────── */
+	@media (max-width: 720px) {
+		.page-wrap { padding: 22px 18px 48px; }
+		.page-hero { margin-bottom: 24px; }
+		.create-btn { padding: 11px 16px; font-size: 13px; }
+		.studio-drafts-block, .saved-templates-block { padding: 18px 18px 16px; border-radius: 18px; }
+	}
+
+	/* ─── Reduced motion ───────────────────────────────────── */
+	@media (prefers-reduced-motion: reduce) {
+		.reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+		.page-hero { animation: none; opacity: 1; transform: none; }
+		.tmpl-card, .saved-template-tile, .carousel-card, .tmpl-more {
+			transition: border-color 0.2s, box-shadow 0.2s;
+		}
+	}
 </style>

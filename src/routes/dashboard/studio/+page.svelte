@@ -4070,6 +4070,13 @@ tweetTopImagePanYBySlide,
 			lastTemplateUsed = contentTemplate;
 
 			if (fillExistingDeck) {
+				// Sync article metadata with this fetch even when we preserve layout — otherwise variants,
+				// Vertex prompts, and the circle image still reference the previous story.
+				if (newsContentMode === 'news') {
+					articleUrl = nextArticleUrl;
+					articleTitle = nextArticleTitle;
+					articleSnippet = rawText;
+				}
 				// If the user is mid-inline-edit on News, clear the live buffer so the replacement is visible immediately.
 				if (newsHeadlineLive !== null) newsHeadlineLive = null;
 				// Preserve current slideTemplates, media, overlays. Only write copy to *existing* fields.
@@ -4117,7 +4124,17 @@ tweetTopImagePanYBySlide,
 					pushUndo(t.template, t.slide);
 					applyPrimaryClampedToSlide(t.slide, t.template, strings[k] ?? (k === 0 ? hookText : ''));
 				}
-				// Do not auto-generate images or circles — user may have a designed layout already.
+				// Prior fetch left media URLs → `hasAnyMedia` stays true and this branch runs again.
+				// User expects new hero / slide images / circle for each live news fetch on an all‑News deck.
+				const allNewsDeck =
+					newsContentMode === 'news' &&
+					!opts.fillOnly &&
+					!hasMixedTemplates &&
+					slideTemplates.length > 0 &&
+					slideTemplates.every((t) => coerceTemplateId(t) === 'news');
+				if (allNewsDeck) {
+					await refreshNewsDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
+				}
 			} else {
 				slideTemplates = Array.from({ length: n }, () => contentTemplate);
 
@@ -4364,6 +4381,45 @@ tweetTopImagePanYBySlide,
 		} catch (e: any) {
 			bgError = e.message;
 			setBgGeneratingFlag(template, slideIdx, false);
+		}
+	}
+
+	/**
+	 * Like `generateAllSlideImages` but does not wipe overlays — used when "Fetch Live News"
+	 * runs again on a deck that already had backgrounds (fillExistingDeck).
+	 */
+	async function refreshNewsDeckImagesAfterFetch(articleImageUrl?: string) {
+		const template: TemplateId = 'news';
+		const n = Math.max(1, slides.length);
+		const blankBgRow = new Array(n).fill('');
+		bgImagesByTemplate = { ...bgImagesByTemplate, [template]: blankBgRow };
+		bgVideosByTemplate = { ...bgVideosByTemplate, [template]: new Array(n).fill('') };
+		newsSolidBgBySlide = Array.from({ length: n }, () => '');
+		generatingImagesByTemplate = {
+			...generatingImagesByTemplate,
+			[template]: new Array(n).fill(true),
+		};
+
+		const articleSrc = String(articleImageUrl ?? '').trim();
+		if (articleSrc && templateAcceptsArticleHeroBackground(template)) {
+			applyNewsSeedBackgroundLayout();
+			const safe = await toExportSafeImageUrl(articleSrc);
+			if (String(safe ?? '').trim()) {
+				applyNewsSeedBackgroundLayout();
+				setSlideImage(0, safe, template);
+			}
+		}
+
+		const promises = Array.from({ length: n }, (_, i) => {
+			if (i === 0 && articleSrc && templateAcceptsArticleHeroBackground(template)) return Promise.resolve();
+			const cleanText = primarySlideTextForPrompt(template, i);
+			const prompt = i === 0 ? (articleTitle || cleanText) : cleanText;
+			return generateBackground(i, prompt, template);
+		});
+		await Promise.all(promises);
+
+		if (showCircleBySlide[0] ?? false) {
+			await generateCircleImage(0);
 		}
 	}
 

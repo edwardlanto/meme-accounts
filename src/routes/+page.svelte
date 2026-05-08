@@ -19,7 +19,7 @@
 	const featured = [
 		{ title: 'Viral Hooks', creator: 'Maya Carter', initials: 'MC',
 		  bg: '#7B2D26', img: '/placeholders/placeholder-square.jpeg' },
-		{ title: 'Brand Carousel', creator: 'Avery James', initials: 'AJ',
+		{ title: 'Carousels', creator: 'Avery James', initials: 'AJ',
 		  bg: '#D67862', img: '/placeholders/placeholder-square.jpeg' },
 		{ title: 'News Studio', creator: 'Sienna Cole', initials: 'SC',
 		  bg: '#3D6B8C', img: '/placeholders/placeholder-square.jpeg' },

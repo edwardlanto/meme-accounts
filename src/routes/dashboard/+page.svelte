@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
-		ArrowRight, ImagePlus, Sparkles, Layers, Wand2, BarChart3, Trash2, ArrowUpRight
+		ArrowRight, ImagePlus, Sparkles, Layers, BarChart3, Trash2, ArrowUpRight
 	} from 'lucide-svelte';
 
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
@@ -19,7 +19,7 @@
 
 	const primaryCards = [
 		{ href: '/dashboard/branding',       icon: Sparkles,  label: 'Generate Image', sub: 'Branding generator',  accent: '#7c3aed', tint: '#f3e8ff' },
-		{ href: '/dashboard/brand-carousel', icon: Wand2,     label: 'Brand Carousel', sub: 'Brand‑style carousels', accent: '#0891b2', tint: '#cffafe' },
+		{ href: '/dashboard/carousels',      icon: ImagePlus, label: 'Carousels', sub: 'Templates & layouts', accent: '#0891b2', tint: '#cffafe' },
 		{ href: '/dashboard/studio?template=news', icon: Layers, label: 'News Studio', sub: 'News → post', accent: '#ea580c', tint: '#ffedd5' },
 		{ href: '/dashboard/analytics',      icon: BarChart3, label: 'Analytics',      sub: 'Track performance',    accent: '#16a34a', tint: '#dcfce7' },
 	] as const;

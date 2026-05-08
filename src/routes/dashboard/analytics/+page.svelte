@@ -42,7 +42,7 @@
 	];
 
 	const contentTypes = [
-		{ label: 'Brand Carousel', pct: 34, color: '#8B5CF6' },
+		{ label: 'Carousels', pct: 34, color: '#8B5CF6' },
 		{ label: 'News Template',  pct: 22, color: '#06B6D4' },
 		{ label: 'Tweet Carousel', pct: 18, color: '#E8FF48' },
 		{ label: 'Text Carousel',  pct: 14, color: '#F97316' },
