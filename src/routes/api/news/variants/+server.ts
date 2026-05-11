@@ -11,22 +11,33 @@ function truncate(text: string, max = MAX_WORDS): string {
 	return words.length <= max ? text.trim() : words.slice(0, max).join(' ');
 }
 
+type VariantContentMode = 'news' | 'fact' | 'story';
+
 export const POST: RequestHandler = async ({ request }) => {
-	const { count = 3, title = '', text = '', sourceUrl = '', autoHighlight = true } =
-		await request.json();
+	const body = await request.json();
+	const {
+		count = 3,
+		title = '',
+		text = '',
+		sourceUrl = '',
+		autoHighlight = true,
+		contentMode: contentModeRaw,
+	} = body;
 
 	if (!text.trim()) return json({ error: 'Missing article text' }, { status: 400 });
 
 	const slideCount = Math.max(1, Math.min(10, Math.floor(Number(count))));
+	const contentMode: VariantContentMode =
+		contentModeRaw === 'fact' || contentModeRaw === 'story' ? contentModeRaw : 'news';
 
 	if (!env.OPENROUTER_API_KEY) {
 		// Return mock variants
-		return json({ variants: getMockVariants(slideCount, title) });
+		return json({ variants: getMockVariants(slideCount, title, contentMode) });
 	}
 
 	try {
 		// ── Generate all slide texts in one call ──────────────────────────────
-		const systemPrompt =
+		const newsSystem =
 			`You write short Instagram carousel overlay copy. Output ONLY valid JSON. ` +
 			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
 			`Structure rules: ` +
@@ -37,10 +48,33 @@ export const POST: RequestHandler = async ({ request }) => {
 			`Each slide feels like the NEXT PANEL in the same carousel. ` +
 			`No near-duplicates. No quotes, markdown, emojis, or hashtags.`;
 
+		const factSystem =
+			`You write short Instagram carousel overlay copy for a DID-YOU-KNOW / science explainer (not a story). Output ONLY valid JSON. ` +
+			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
+			`Slide 1 = punchy hook. Slides 2–N each reveal a different facet: mechanism, numbers, comparison, common misconception, stakes, cautious takeaway. ` +
+			`No fake dialogue. No plot beats. No near-duplicates. ALL CAPS. No quotes, markdown, emojis, or hashtags.`;
+
+		const storySystem =
+			`You write Instagram carousel overlay copy for a SHORT STORY (fiction or tight real-life anecdote), not a news article and not self-help tips. Output ONLY valid JSON. ` +
+			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
+			`Slide 1 = the hook (may echo the title). ` +
+			`Slides 2–N are the NEXT SCENES in the same narrative: same character(s), chronological or clearly causal order. ` +
+			`Each slide is ONE beat: a moment, a reversal, a choice, a consequence, a revelation, or the aftermath. ` +
+			`Ban listicle framing ("three lessons…", "here is why…") unless it is clearly spoken in-scene. ` +
+			`Each slide must advance plot or emotional truth — never paraphrase an earlier slide. ` +
+			`ALL CAPS. No quotes, markdown, emojis, or hashtags.`;
+
+		const systemPrompt =
+			contentMode === 'story' ? storySystem : contentMode === 'fact' ? factSystem : newsSystem;
+
 		const userPrompt =
-			`Source: ${sourceUrl}\nTitle: ${title}\n\nArticle text:\n${text.slice(0, 12000)}\n\n` +
-			`Write the carousel overlay copy for all ${slideCount} slides following the structure rules. ` +
-			`Slide 1 = headline hook. Every later slide must add NEW information or a new implication.`;
+			contentMode === 'story'
+				? `Title: ${title || 'Untitled'}\n\nStory bible + narrative context (this is fiction or a tight anecdote — not a news article):\n${text.slice(0, 12000)}\n\n` +
+					`Write all ${slideCount} slides as ONE continuous mini-story. Slide 1 = the hook. Each later slide is the next beat: same characters, forward motion, rising stakes or emotional truth. ` +
+					`Do not pivot into tips, statistics, or unrelated angles unless they appear inside the scene.`
+				: `Source: ${sourceUrl}\nTitle: ${title}\n\nArticle text:\n${text.slice(0, 12000)}\n\n` +
+					`Write the carousel overlay copy for all ${slideCount} slides following the structure rules. ` +
+					`Slide 1 = headline hook. Every later slide must add NEW information or a new implication.`;
 
 		const res = await fetch(OPENROUTER_API, {
 			method: 'POST',
@@ -56,8 +90,8 @@ export const POST: RequestHandler = async ({ request }) => {
 					{ role: 'system', content: systemPrompt },
 					{ role: 'user', content: userPrompt },
 				],
-				temperature: 0.8,
-				max_tokens: 1000,
+				temperature: contentMode === 'story' ? 0.92 : contentMode === 'fact' ? 0.82 : 0.8,
+				max_tokens: contentMode === 'story' ? 1200 : 1000,
 			}),
 		});
 
@@ -85,7 +119,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// ── Optional second pass: add [[highlights]] to each slide ───────────
 		if (autoHighlight && variants.length > 0) {
-			const highlighted = await addHighlights(variants, title);
+			const highlighted = await addHighlights(variants, title, contentMode);
 			return json({ variants: highlighted });
 		}
 
@@ -96,15 +130,24 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 };
 
-async function addHighlights(slides: string[], title: string): Promise<string[]> {
+async function addHighlights(
+	slides: string[],
+	title: string,
+	contentMode: VariantContentMode,
+): Promise<string[]> {
 		const system =
 			`You add emphasis markers to Instagram slide overlay text. Output ONLY a JSON array of strings — one per slide — with emphasis added. ` +
 			`Rules: wrap 1–3 short phrases per slide in [[double brackets]], e.g. [[key idea]] or [[33%]]. ` +
 			`Use ONLY plain [[phrase]] markers — never grad(, marker(, pattern(, or #hex: inside brackets. ` +
 			`Those spans render in the accent color. Preserve wording and line breaks. ` +
-			`Keep word count ≤ ${MAX_WORDS} per slide. No hashtags, emojis, or other markdown. No nested brackets.`;
+			`Keep word count ≤ ${MAX_WORDS} per slide. No hashtags, emojis, or other markdown. No nested brackets.` +
+			(contentMode === 'story'
+				? ` For story carousels, highlight turning-point words (revelations, stakes, choices) more than scenery.`
+				: '');
 
-	const user = `Article title: ${title}\n\nSlides:\n${JSON.stringify(slides, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases.`;
+	const user =
+		(contentMode === 'story' ? `Story title: ${title}\n\n` : `Article title: ${title}\n\n`) +
+		`Slides:\n${JSON.stringify(slides, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases.`;
 
 	try {
 		const res = await fetch(OPENROUTER_API, {
@@ -140,14 +183,29 @@ async function addHighlights(slides: string[], title: string): Promise<string[]>
 	}
 }
 
-function getMockVariants(count: number, title: string): string[] {
-	const mock = [
+function getMockVariants(count: number, title: string, contentMode: VariantContentMode = 'news'): string[] {
+	const newsMock = [
 		title || '[[Silicon Valley]] controls startup exits',
 		'[[33%]] of all acquisitions since 2000 came from 5 companies',
 		'Google, Apple and Meta [[outpace]] every other buyer combined',
 		'Private equity is [[losing ground]] to Big Tech acquirers',
 		'[[Founders]] increasingly build to be acquired — not to IPO',
 	];
+	const factMock = [
+		title || 'YOUR BRAIN CAN RECOGNIZE A FAMILIAR FACE IN [[150 MILLISECONDS]]',
+		'THAT SPEED PRIORITIZES [[SOCIAL SIGNALS]] OVER RANDOM OBJECTS',
+		'STUDIES USE [[RAPID SERIAL PRESENTATION]] TO MEASURE RECOGNITION',
+		'THE TRADE-OFF: FAST READS CAN [[MISFIRE]] UNDER STRESS OR BLUR',
+		'IT LIKELY EVOLVED FOR [[COOPERATION]] AND THREAT DETECTION IN GROUPS',
+	];
+	const storyMock = [
+		title || 'SHE FOUND THE [[KEY]] UNDER THE FLOWERPOT — THE LOCK WAS ALREADY OPEN',
+		'INSIDE: [[COLD COFFEE]], A NOTE HALF WRITTEN, THE WINDOW [[AJAR]]',
+		'FOOTPRINTS LED TO THE [[FIRE ESCAPE]] — RAIN WIPED HALF OF THEM',
+		'ON THE ROOF HE STOOD WITH HER [[RING]] IN HIS PALM — HANDS SHAKING',
+		'NOT A THIEF, HE SAID — A [[PROPOSAL]] THAT WENT SIDEWAYS IN TEN MINUTES',
+	];
+	const mock = contentMode === 'story' ? storyMock : contentMode === 'fact' ? factMock : newsMock;
 	const out = mock.slice(0, count);
 	while (out.length < count) out.push(out[out.length - 1]!);
 	return out;

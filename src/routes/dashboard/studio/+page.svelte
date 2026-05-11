@@ -4136,9 +4136,18 @@ tweetTopImagePanYBySlide,
 			lastTemplateUsed = contentTemplate;
 
 			if (fillExistingDeck) {
-				// Sync article metadata with this fetch even when we preserve layout — otherwise variants,
-				// Vertex prompts, and the circle image still reference the previous story.
-				if (newsContentMode === 'news') {
+				const allNewsSlidesDeck =
+					slideTemplates.length > 0 &&
+					slideTemplates.every((t) => coerceTemplateId(t) === 'news') &&
+					!hasMixedTemplates;
+
+				// Sync article metadata so variants / Vertex / circle prompts are not stuck on the previous run.
+				if (allNewsSlidesDeck) {
+					articleUrl = nextArticleUrl;
+					articleTitle = nextArticleTitle;
+					articleSnippet = rawText;
+					source = nextSource;
+				} else if (newsContentMode === 'news') {
 					articleUrl = nextArticleUrl;
 					articleTitle = nextArticleTitle;
 					articleSnippet = rawText;
@@ -4164,15 +4173,20 @@ tweetTopImagePanYBySlide,
 				const strings = await (async () => {
 					if (want <= 1) return [hookText];
 					try {
+						const variantBodyText =
+							newsContentMode === 'story'
+								? `HOOK (slide 1 overlay):\n${hookText}\n\nNARRATIVE CONTEXT (continue this story across slides; do not turn it into a news explainer):\n${rawText || articleTitle}`
+								: rawText || articleTitle;
 						const res = await fetch('/api/news/variants', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
 							body: JSON.stringify({
 								count: want,
 								title: articleTitle,
-								text: rawText || articleTitle,
+								text: variantBodyText,
 								sourceUrl: articleUrl,
 								autoHighlight: studioTextHighlightsEnabled,
+								contentMode: newsContentMode,
 							}),
 						});
 						const data = await res.json();
@@ -4190,15 +4204,13 @@ tweetTopImagePanYBySlide,
 					pushUndo(t.template, t.slide);
 					applyPrimaryClampedToSlide(t.slide, t.template, strings[k] ?? (k === 0 ? hookText : ''));
 				}
-				// Prior fetch left media URLs → `hasAnyMedia` stays true and this branch runs again.
-				// User expects new hero / slide images / circle for each live news fetch on an all‑News deck.
-				const allNewsDeck =
-					newsContentMode === 'news' &&
+				// Deck already had media → fillExistingDeck. Still regenerate backgrounds for a full
+				// News-studio fetch (news / fact / story): Load & Fill should replace imagery, not only headlines.
+				const refreshNewsDeckOnFetch =
 					!opts.fillOnly &&
-					!hasMixedTemplates &&
-					slideTemplates.length > 0 &&
-					slideTemplates.every((t) => coerceTemplateId(t) === 'news');
-				if (allNewsDeck) {
+					allNewsSlidesDeck &&
+					(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story');
+				if (refreshNewsDeckOnFetch) {
 					await refreshNewsDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
 				}
 			} else {
@@ -4401,15 +4413,20 @@ tweetTopImagePanYBySlide,
 	// ── Generate supporting slide variants ────────────────────────────────
 	async function generateVariants(hookText: string, rawText: string, template: TemplateId = 'news') {
 		try {
+			const variantBodyText =
+				newsContentMode === 'story'
+					? `HOOK (slide 1 overlay):\n${hookText}\n\nNARRATIVE CONTEXT (continue this story across slides; do not turn it into a news explainer):\n${rawText || articleTitle}`
+					: rawText || articleTitle;
 			const res = await fetch('/api/news/variants', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					count: slideCount,
 					title: articleTitle,
-					text: rawText || articleTitle,
+					text: variantBodyText,
 					sourceUrl: articleUrl,
 					autoHighlight: studioTextHighlightsEnabled,
+					contentMode: newsContentMode,
 				}),
 			});
 			const data = await res.json();
@@ -5617,18 +5634,21 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<div class="rounded-2xl bg-neutral-950 border border-neutral-800 p-3">
 				<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Content</Label>
 				<Tabs bind:value={newsContentMode} class="w-full">
-					<TabsList class="grid h-auto w-full grid-cols-3 gap-1 p-1 rounded-lg bg-neutral-950 border border-neutral-800">
+					<TabsList
+						variant="line"
+						class="grid h-auto w-full grid-cols-3 gap-1.5 rounded-none border-0 bg-transparent p-0 shadow-none ring-0"
+					>
 						<TabsTrigger
 							value="news"
-							class="px-1 py-2 text-[10px] font-semibold rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-900 data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
+							class="rounded-md px-2 py-2 text-[10px] font-semibold text-neutral-300 after:hidden hover:bg-neutral-900 hover:text-neutral-100 data-[state=active]:rounded-[50px] data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
 						>News</TabsTrigger>
 						<TabsTrigger
 							value="fact"
-							class="px-1 py-2 text-[10px] font-semibold rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-900 data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
+							class="rounded-md px-2 py-2 text-[10px] font-semibold text-neutral-300 after:hidden hover:bg-neutral-900 hover:text-neutral-100 data-[state=active]:rounded-[50px] data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
 						>Random fact</TabsTrigger>
 						<TabsTrigger
 							value="story"
-							class="px-1 py-2 text-[10px] font-semibold rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-900 data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
+							class="rounded-md px-2 py-2 text-[10px] font-semibold text-neutral-300 after:hidden hover:bg-neutral-900 hover:text-neutral-100 data-[state=active]:rounded-[50px] data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
 						>Random story</TabsTrigger>
 					</TabsList>
 				</Tabs>

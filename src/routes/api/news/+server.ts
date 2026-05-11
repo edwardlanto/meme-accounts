@@ -211,11 +211,12 @@ function demoSynthetic(mode: 'fact' | 'story', storyCategory: string, syntheticH
 		const themeLabel = cat.charAt(0).toUpperCase() + cat.slice(1).toLowerCase();
 		const [a, b] = wordsFromHint(hStory, 2);
 		const hook = `THEY KEPT RETURNING TO [[${a}]] — UNTIL [[${b}]] FORCED A NEW CHAPTER`;
+		const angle = hStory.slice(0, 280).trim();
 		return {
 			text: hook,
 			imageUrl: null,
 			title: `${themeLabel}: ${hStory.slice(0, 80)}`,
-			description: `Theme: ${themeLabel}. Your direction: ${hStory.slice(0, 500)} Build tension, a choice, and one twist that still feels true to ${themeLabel.toLowerCase()} stories.`,
+			description: `Two people who used to trust each other collide over something that matters for ${themeLabel.toLowerCase()}: ${angle || 'a secret they both pretended not to see.'} It starts with a small dodge to keep the peace, then a message that should have been deleted, then a witness who does not want sides. One of them risks looking dramatic to drag the truth into the light. The fallout is awkward and specific—not a list of lessons, but scenes: where they meet, what they almost say, what they finally say, and what breaks or mends afterward.`,
 			source: themeLabel,
 			url: null,
 			uuid: 'demo-story-topic',
@@ -271,14 +272,21 @@ Rules for "hook":
 - Opening beat of a micro-story, max 28 words
 - ALL CAPS
 - No hashtags, no emojis
-- Strong narrative hook aligned with the theme
+- Drop the reader into a specific moment (who, where, what is going wrong or about to change)
 
 Rules for "context":
-- 6–10 full sentences in normal sentence case
-- Continue the story world: character tension, a turning point, stakes, and a lesson or twist writers can split across carousel slides
+- 8–14 full sentences in normal sentence case — this MUST read as a tiny story, not self-help bullets
+- Use one clear POV (one named person OR a tight "they" couple) and keep the same cast through the whole context
+- Tell a chain of scenes in order: ordinary world → inciting incident → rising pressure → a choice or revelation → consequence → emotional landing (lesson, irony, or quiet win)
+- Include at least one concrete sensory or physical detail per paragraph (sound, place, object, time of day)
+- No "three tips", "here is why", or generic motivational slogans unless tied to a specific plot beat
 - Do not paste the hook verbatim as the first sentence${hintBlock}`;
 
-	const jsonRaw = await openRouterComplete([{ role: 'user', content: userPrompt }], 0.88, 500);
+	const jsonRaw = await openRouterComplete(
+		[{ role: 'user', content: userPrompt }],
+		mode === 'story' ? 0.92 : 0.88,
+		mode === 'story' ? 720 : 500,
+	);
 	let overlayText = '';
 	let description = '';
 
@@ -294,7 +302,7 @@ Rules for "context":
 		description =
 			mode === 'fact'
 				? 'Research in cognitive neuroscience suggests humans process familiar faces faster than many other visual patterns. The brain prioritizes social information. Studies using rapid serial visual presentation measure how quickly recognition occurs. This speed may have evolved for cooperation and threat detection in groups.'
-				: `The protagonist had stability on paper but felt stalled. Friends questioned the timing. Small steps replaced big announcements: savings, boundaries, and one risky project on weekends. Doubt showed up weekly. Progress was uneven but directional. By the end of the season, the bet was not success—it was agency.`;
+				: `On a Tuesday she still cannot name, she lied once to keep the room calm. The lie bought a week of quiet, then a voicemail she should have deleted, then a friend who stopped making eye contact. She followed the trail of small evasions until it led to a door she did not want to open. What waited inside was not scandal—it was the ordinary cruelty of people choosing comfort over honesty. She said the hardest sentence out loud anyway. The group did not applaud; some walked away. Months later, the air in her chest felt different: thinner, but hers.`;
 	}
 
 	const title = titleFromHook(overlayText);
