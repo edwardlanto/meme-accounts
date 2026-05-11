@@ -49,7 +49,7 @@ export const TEXT_CAROUSEL_DEFAULTS = {
 	name: 'Captains of industry',
 	handle: '@captainsofindustryy',
 	body:
-		'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.',
+		'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
 } as const;
 
 export const IMAGE_QUOTE_DEFAULTS = {

@@ -87,15 +87,45 @@ function titleFromHook(hook: string): string {
 	return plain.slice(0, 120) || 'Generated';
 }
 
-function demoSynthetic(mode: 'fact' | 'story', storyCategory: string) {
+/** Pull uppercase tokens from user hint for demo hooks when OpenRouter is off. */
+function wordsFromHint(hint: string, minCount: number): string[] {
+	const raw = hint.replace(/[^a-zA-Z0-9\s]/g, ' ').trim();
+	const w = raw.split(/\s+/).filter(Boolean).map((x) => x.toUpperCase().slice(0, 24));
+	const fill = ['IDEAS', 'SCIENCE', 'CHANGE', 'DISCOVERY', 'QUESTIONS'];
+	let i = 0;
+	while (w.length < minCount) {
+		w.push(fill[i % fill.length]!);
+		i++;
+	}
+	return w;
+}
+
+function demoSynthetic(mode: 'fact' | 'story', storyCategory: string, syntheticHint: string) {
 	const cat = (storyCategory || 'health').toLowerCase();
 	if (mode === 'fact') {
+		const h = syntheticHint.trim();
+		if (h) {
+			const [a, b, c] = wordsFromHint(h, 3);
+			const hook = `${a} SHOWS UP IN [[HEADLINES AND LABS]] — WHAT SHOULD READERS KNOW ABOUT [[${b}]] AND [[${c}]]?`;
+			return {
+				text: hook,
+				imageUrl: null,
+				title: titleFromHook(hook),
+				description: `Use follow-up slides to define ${h.slice(0, 120)}, where it matters in real life, and what experts still debate. Add one myth to puncture and one cautious takeaway. Full topic: ${h.slice(0, 500)}`,
+				source: 'Did you know',
+				url: null,
+				uuid: 'demo-fact-topic',
+				categories: [],
+				demo: true,
+			};
+		}
+		const factDesc =
+			'Honey is naturally acidic and low in moisture, which prevents bacteria and mold from growing. Archaeologists have found pots of honey in Egyptian tombs that were still safe to eat after thousands of years. Enzymes from bees also contribute to its stability. This is why honey is one of the few foods that can last indefinitely when stored sealed.';
 		return {
 			text: 'HONEY NEVER [[SPOILS]] — ARCHAEOLOGISTS FOUND EDIBLE JARS IN ANCIENT TOMBS',
 			imageUrl: null,
 			title: 'Honey never spoils',
-			description:
-				'Honey is naturally acidic and low in moisture, which prevents bacteria and mold from growing. Archaeologists have found pots of honey in Egyptian tombs that were still safe to eat after thousands of years. Enzymes from bees also contribute to its stability. This is why honey is one of the few foods that can last indefinitely when stored sealed.',
+			description: factDesc,
 			source: 'Did you know',
 			url: null,
 			uuid: 'demo-fact',
@@ -176,6 +206,23 @@ function demoSynthetic(mode: 'fact' | 'story', storyCategory: string) {
 			uuid: 'demo-story-money',
 		},
 	};
+	const hStory = syntheticHint.trim();
+	if (hStory) {
+		const themeLabel = cat.charAt(0).toUpperCase() + cat.slice(1).toLowerCase();
+		const [a, b] = wordsFromHint(hStory, 2);
+		const hook = `THEY KEPT RETURNING TO [[${a}]] — UNTIL [[${b}]] FORCED A NEW CHAPTER`;
+		return {
+			text: hook,
+			imageUrl: null,
+			title: `${themeLabel}: ${hStory.slice(0, 80)}`,
+			description: `Theme: ${themeLabel}. Your direction: ${hStory.slice(0, 500)} Build tension, a choice, and one twist that still feels true to ${themeLabel.toLowerCase()} stories.`,
+			source: themeLabel,
+			url: null,
+			uuid: 'demo-story-topic',
+			categories: [] as string[],
+			demo: true,
+		};
+	}
 	const row = byTheme[cat] ?? byTheme.health;
 	return {
 		...row,
@@ -186,9 +233,18 @@ function demoSynthetic(mode: 'fact' | 'story', storyCategory: string) {
 	};
 }
 
-async function syntheticContent(mode: 'fact' | 'story', storyCategory: string, autoHighlight: boolean) {
+async function syntheticContent(
+	mode: 'fact' | 'story',
+	storyCategory: string,
+	autoHighlight: boolean,
+	syntheticHint: string,
+) {
 	const theme = (storyCategory || 'health').trim() || 'health';
 	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
+	const hintBlock =
+		syntheticHint.trim().length > 0
+			? `\n\nUser topic / direction (follow closely; keep claims plausible):\n"""${syntheticHint.replace(/"/g, "'").slice(0, 600)}"""\n`
+			: '';
 
 	const userPrompt =
 		mode === 'fact'
@@ -204,7 +260,7 @@ Rules for "hook":
 Rules for "context":
 - 5–8 full sentences in normal sentence case
 - Expand the fact with vivid, concrete detail a carousel writer can mine for follow-up slides
-- Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications`
+- Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications${hintBlock}`
 
 			: `You write viral Instagram micro-stories for overlay text. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
@@ -220,7 +276,7 @@ Rules for "hook":
 Rules for "context":
 - 6–10 full sentences in normal sentence case
 - Continue the story world: character tension, a turning point, stakes, and a lesson or twist writers can split across carousel slides
-- Do not paste the hook verbatim as the first sentence`;
+- Do not paste the hook verbatim as the first sentence${hintBlock}`;
 
 	const jsonRaw = await openRouterComplete([{ role: 'user', content: userPrompt }], 0.88, 500);
 	let overlayText = '';
@@ -275,12 +331,17 @@ export const POST: RequestHandler = async ({ request }) => {
 	const mode: ContentMode =
 		body.mode === 'fact' || body.mode === 'story' ? body.mode : 'news';
 	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
+	const syntheticHint =
+		typeof body.syntheticHint === 'string' ? String(body.syntheticHint).trim().slice(0, 600) : '';
 
 	if (mode === 'fact' || mode === 'story') {
 		if (!env.OPENROUTER_API_KEY) {
-			return json(demoSynthetic(mode, storyCategory), { status: 200 });
+			return json(demoSynthetic(mode, storyCategory, syntheticHint), { status: 200 });
 		}
-		return json(await syntheticContent(mode, storyCategory, autoHighlight !== false), { status: 200 });
+		return json(
+			await syntheticContent(mode, storyCategory, autoHighlight !== false, syntheticHint),
+			{ status: 200 },
+		);
 	}
 
 	// ── News mode: fetch from TheNewsAPI ──────────────────────────────────

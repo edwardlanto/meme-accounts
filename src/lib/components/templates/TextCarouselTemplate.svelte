@@ -56,7 +56,7 @@
 		ringColor = '#c9b97a',
 		bgColor   = '',
 		templateTheme = 'light',
-		text      = 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.',
+		text      = 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
 		showSwipe = false,
 		canvasW   = 1080,
 		canvasH   = 1350,

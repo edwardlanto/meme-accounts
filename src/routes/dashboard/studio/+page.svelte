@@ -15,6 +15,7 @@ import JSZip from 'jszip';
 	import StudioTextOverlays from '$lib/components/studio/StudioTextOverlays.svelte';
 	import StudioImageStickers from '$lib/components/studio/StudioImageStickers.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
+	import LoadingLines from '$lib/components/LoadingLines.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import TextCarouselAvatarToolbar from '$lib/components/TextCarouselAvatarToolbar.svelte';
 	import TweetMediaToolbar from '$lib/components/TweetMediaToolbar.svelte';
@@ -84,7 +85,7 @@ import JSZip from 'jszip';
 		type ExternalSlideMergeMode,
 	} from '$lib/studio/external-slide-merge';
 	import {
-		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle, Bookmark,
+		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper
 	} from 'lucide-svelte';
@@ -92,6 +93,12 @@ import JSZip from 'jszip';
 	/** Default full-bleed asset for the Black text carousel template. */
 	/** Empty: solid `#000` from the template. Avoid a JPEG that already contains the sample copy — it would stack under live text and look doubled. */
 	const BLACK_TEXT_BG_DEFAULT = '';
+
+	/** Fresh `/dashboard/studio` sessions start with this many slides (filmstrip + News fetch deck). */
+	const DEFAULT_STUDIO_SLIDE_COUNT = 3;
+
+	const emptySlides = <T,>(factory: (i: number) => T): T[] =>
+		Array.from({ length: DEFAULT_STUDIO_SLIDE_COUNT }, (_, i) => factory(i));
 
 	// ── Mock data ─────────────────────────────────────────────────────────
 	const MOCK_NEWS = [
@@ -145,15 +152,23 @@ import JSZip from 'jszip';
 	type NewsStudioContentMode = 'news' | 'fact' | 'story';
 	let newsContentMode = $state<NewsStudioContentMode>('news');
 	let storyCategory = $state('health');
-	let slideCount = $state(3); // 1–10
+	/** Sent to /api/news as syntheticHint when Random fact is selected. */
+	let factTopicPrompt = $state('');
+	/** Sent to /api/news as syntheticHint with the story theme when Random story is selected. */
+	let storyTopicPrompt = $state('');
+	let slideCount = $state(DEFAULT_STUDIO_SLIDE_COUNT); // 1–10
 
 	// Preview/edit view toggle for the canvas area.
 	let fetchingNews = $state(false);
 	let generatingVariants = $state(false);
+	/** Keeps the full-canvas loader up for one paint flush after Vertex flags drop (avoids a one-frame flash). */
+	let studioImageGenPaintHold = $state(false);
+	/** >0 while `generateAllSlideImages` / `refreshNewsDeckImagesAfterFetch` run (skip per-slide paint hold). */
+	let studioImageGenBatchDepth = 0;
 	let newsError = $state('');
 
 	// Multi-slide state
-	let slides = $state<string[]>([NEWS_PLACEHOLDER_HEADLINE]);
+	let slides = $state<string[]>(emptySlides(() => NEWS_PLACEHOLDER_HEADLINE));
 	let activeSlide = $state(0);
 	/** When set, main canvas renders this slide for PNG capture without changing `activeSlide` (no UI “slide show”). */
 	let canvasRasterSlide = $state<number | null>(null);
@@ -178,7 +193,7 @@ import JSZip from 'jszip';
 		}
 		return rows;
 	});
-	let slideTemplates = $state<TemplateId[]>(['news']);
+	let slideTemplates = $state<TemplateId[]>(emptySlides(() => 'news'));
 	let lastTemplateUsed = $state<TemplateId>('news');
 	const activeTemplate = $derived(coerceTemplateId(slideTemplates[activeSlide]));
 
@@ -910,43 +925,45 @@ import JSZip from 'jszip';
 	let source = $state('Markets');
 	let sourceLogoSrc = $state(''); // optional logo for News "source label"
 	let sourceLabelMode = $state<'text' | 'logo'>('text');
+	/** Max width in px for source logo (News template). */
+	let sourceLogoWidth = $state(260);
 	let articleUrl = $state('');
 	let articleTitle = $state('');
 
 	// Background media — per template, per slide (keep EVERYTHING independent).
 	let bgImagesByTemplate = $state<Record<TemplateId, string[]>>({
-		blank: [''],
-		news: [],
-		tweet: [],
-		article: [],
-		textCarousel: [],
-		imageQuote: [],
-		videoStory: [],
-		blackText: [BLACK_TEXT_BG_DEFAULT],
+		blank: emptySlides(() => ''),
+		news: emptySlides(() => ''),
+		tweet: emptySlides(() => ''),
+		article: emptySlides(() => ''),
+		textCarousel: emptySlides(() => ''),
+		imageQuote: emptySlides(() => ''),
+		videoStory: emptySlides(() => ''),
+		blackText: emptySlides(() => BLACK_TEXT_BG_DEFAULT),
 	});
 	let bgVideosByTemplate = $state<Record<TemplateId, string[]>>({
-		blank: [''],
-		news: [],
-		tweet: [],
-		article: [],
-		textCarousel: [],
-		imageQuote: [],
-		videoStory: [],
-		blackText: [],
+		blank: emptySlides(() => ''),
+		news: emptySlides(() => ''),
+		tweet: emptySlides(() => ''),
+		article: emptySlides(() => ''),
+		textCarousel: emptySlides(() => ''),
+		imageQuote: emptySlides(() => ''),
+		videoStory: emptySlides(() => ''),
+		blackText: emptySlides(() => ''),
 	}); // blob URLs — per template, per slide
 	let generatingImagesByTemplate = $state<Record<TemplateId, boolean[]>>({
-		blank: [false],
-		news: [],
-		tweet: [],
-		article: [],
-		textCarousel: [],
-		imageQuote: [],
-		videoStory: [],
-		blackText: [],
+		blank: emptySlides(() => false),
+		news: emptySlides(() => false),
+		tweet: emptySlides(() => false),
+		article: emptySlides(() => false),
+		textCarousel: emptySlides(() => false),
+		imageQuote: emptySlides(() => false),
+		videoStory: emptySlides(() => false),
+		blackText: emptySlides(() => false),
 	}); // per template, per slide
 
 	/** News template only: solid canvas fill when slide has no photo/video (hex or ''). */
-	let newsSolidBgBySlide = $state<string[]>(['']);
+	let newsSolidBgBySlide = $state<string[]>(emptySlides(() => ''));
 
 	// Video trim (per slide, seconds) — used for preview and later export.
 	let videoTrimStartSecBySlide = $state<number[]>([]);
@@ -1079,7 +1096,7 @@ import JSZip from 'jszip';
 	const activeShowCutout = $derived(showCutout[activeSlide] ?? false);
 	const activeCutting = $derived(cuttingOut[activeSlide] ?? false);
 	/** Primary news circle: per-slide visibility (slide 0 defaults on; add Shape on other slides if desired). */
-	let showCircleBySlide = $state<boolean[]>([true]);
+	let showCircleBySlide = $state<boolean[]>(emptySlides((i) => i === 0));
 	// Circle images are per-slide (so each slide can have its own badge photo).
 	let circleImages = $state<string[]>([]);
 	let circleBorderColor = $state('#FFFFFF');
@@ -1285,9 +1302,9 @@ import JSZip from 'jszip';
 	let circle2Y    = $state(80);
 	let circle2Size = $state(220);
 
-	// Background pan (0–100 %)
-	let bgOffsetX = $state(0); // horizontal: 0=left, 100=right (matches NEWS_DEFAULT_LAYOUT)
-	let bgOffsetY = $state(50); // vertical:   0=top,  100=bottom
+	// Background pan (extended range for extra drag headroom; template clamps)
+	let bgOffsetX = $state(0); // horizontal focal point (≈0–100 typical; wider allowed)
+	let bgOffsetY = $state(50); // vertical focal point
 	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in (cover mode only)
 	let bgFitMode = $state<'cover' | 'contain'>('cover'); // contain = full image visible + optional magnify
 	let bgContainMagnify = $state(100); // 50–200%, only when bgFitMode === 'contain'
@@ -1299,14 +1316,14 @@ import JSZip from 'jszip';
 
 	// Image overlays — per slide, per template (so templates are independent)
 	let slideOverlaysByTemplate = $state<Record<TemplateId, Overlay[][]>>({
-		blank: [[]],
-		news: [[]],
-		tweet: [[]],
-		article: [[]],
-		textCarousel: [[]],
-		imageQuote: [[]],
-		videoStory: [[]],
-		blackText: [[]],
+		blank: emptySlides(() => []),
+		news: emptySlides(() => []),
+		tweet: emptySlides(() => []),
+		article: emptySlides(() => []),
+		textCarousel: emptySlides(() => []),
+		imageQuote: emptySlides(() => []),
+		videoStory: emptySlides(() => []),
+		blackText: emptySlides(() => []),
 	});
 	const activeOverlays = $derived((slideOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? []);
 
@@ -1364,14 +1381,14 @@ import JSZip from 'jszip';
 
 	// Text overlays — per slide, per template (so templates are independent)
 	let slideTextOverlaysByTemplate = $state<Record<TemplateId, TextOverlay[][]>>({
-		blank: [[]],
-		news: [[]],
-		tweet: [[]],
-		article: [[]],
-		textCarousel: [[]],
-		imageQuote: [[]],
-		videoStory: [[]],
-		blackText: [[]],
+		blank: emptySlides(() => []),
+		news: emptySlides(() => []),
+		tweet: emptySlides(() => []),
+		article: emptySlides(() => []),
+		textCarousel: emptySlides(() => []),
+		imageQuote: emptySlides(() => []),
+		videoStory: emptySlides(() => []),
+		blackText: emptySlides(() => []),
 	});
 	const activeTextOverlays = $derived((slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? []);
 
@@ -1525,14 +1542,14 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 
 	// ── Per-slide text styles (Canva-style toolbar) ──────────────────────
 	let stylesByTemplateBySlide = $state<Record<TemplateId, Partial<Record<TextElementKind, TextStyle>>[]>>({
-		blank: [{}],
-		news: [{}],
-		article: [{}],
-		textCarousel: [{}],
-		tweet: [{}],
-		imageQuote: [{}],
-		videoStory: [{}],
-		blackText: [{}],
+		blank: emptySlides(() => ({})),
+		news: emptySlides(() => ({})),
+		article: emptySlides(() => ({})),
+		textCarousel: emptySlides(() => ({})),
+		tweet: emptySlides(() => ({})),
+		imageQuote: emptySlides(() => ({})),
+		videoStory: emptySlides(() => ({})),
+		blackText: emptySlides(() => ({})),
 	});
 	// Tweet has multiple independent text fields; keep their styles separate.
 	type TweetKind =
@@ -1542,61 +1559,67 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 		| 'tweetBottomName'
 		| 'tweetBottomHandle'
 		| 'tweetBottomText';
-	let tweetStylesBySlide = $state<Partial<Record<TweetKind, TextStyle>>[]>([{}]);
+	let tweetStylesBySlide = $state<Partial<Record<TweetKind, TextStyle>>[]>(emptySlides(() => ({})));
 
 	// ── Per-template extra text fields (per slide) ───────────────────────
-	let tweetTopNameBySlide = $state<string[]>(['Chef 👨‍🍳']);
-	let tweetTopHandleBySlide = $state<string[]>(['@chefsevenn']);
-	let tweetBottomNameBySlide = $state<string[]>(['Mo Mohler']);
-	let tweetBottomHandleBySlide = $state<string[]>(['@MoMohler']);
-	let tweetTopTextBySlide = $state<string[]>(['Ketchup or mayo or mustard?']);
-	let tweetBottomTextBySlide = $state<string[]>([TWEET_DEFAULTS.bottomText]);
-	let tweetReplyCountBySlide = $state<string[]>(['4.2K']);
-	let tweetRepostCountBySlide = $state<string[]>(['12.8K']);
-	let tweetLikeCountBySlide = $state<string[]>(['89.4K']);
+	let tweetTopNameBySlide = $state<string[]>(emptySlides(() => 'Chef 👨‍🍳'));
+	let tweetTopHandleBySlide = $state<string[]>(emptySlides(() => '@chefsevenn'));
+	let tweetBottomNameBySlide = $state<string[]>(emptySlides(() => 'Mo Mohler'));
+	let tweetBottomHandleBySlide = $state<string[]>(emptySlides(() => '@MoMohler'));
+	let tweetTopTextBySlide = $state<string[]>(emptySlides(() => 'Ketchup or mayo or mustard?'));
+	let tweetBottomTextBySlide = $state<string[]>(emptySlides(() => TWEET_DEFAULTS.bottomText));
+	let tweetReplyCountBySlide = $state<string[]>(emptySlides(() => '4.2K'));
+	let tweetRepostCountBySlide = $state<string[]>(emptySlides(() => '12.8K'));
+	let tweetLikeCountBySlide = $state<string[]>(emptySlides(() => '89.4K'));
 	// Tweet attached image frame controls (per slide)
-	let tweetTopImageHeightBySlide = $state<number[]>([720]);
-	let tweetTopImageWidthBySlide = $state<number[]>([920]);
-	let tweetTopImageZoomBySlide = $state<number[]>([1]);
-	let tweetTopImagePanXBySlide = $state<number[]>([50]);
-	let tweetTopImagePanYBySlide = $state<number[]>([50]);
+	let tweetTopImageHeightBySlide = $state<number[]>(emptySlides(() => 720));
+	let tweetTopImageWidthBySlide = $state<number[]>(emptySlides(() => 920));
+	let tweetTopImageZoomBySlide = $state<number[]>(emptySlides(() => 1));
+	let tweetTopImagePanXBySlide = $state<number[]>(emptySlides(() => 50));
+	let tweetTopImagePanYBySlide = $state<number[]>(emptySlides(() => 50));
 	/** Tweet profile circles — image URL / inner fill / optional label (else initials from name). */
-	let tweetTopAvatarImageBySlide = $state<string[]>(['']);
-	let tweetTopAvatarInnerBgBySlide = $state<string[]>(['']);
-	let tweetTopAvatarLabelBySlide = $state<string[]>(['']);
-	let tweetBottomAvatarImageBySlide = $state<string[]>(['']);
-	let tweetBottomAvatarInnerBgBySlide = $state<string[]>(['']);
-	let tweetBottomAvatarLabelBySlide = $state<string[]>(['']);
-	let articleTextBySlide = $state<string[]>([
-		"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
-	]);
-	let textCarouselTextBySlide = $state<string[]>([
-		'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.',
-	]);
-	let imageQuoteTextBySlide = $state<string[]>([
-		'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
-	]);
-	let textCarouselNameBySlide = $state<string[]>(['Captains of industry']);
-	let textCarouselHandleBySlide = $state<string[]>(['@captainsofindustryy']);
+	let tweetTopAvatarImageBySlide = $state<string[]>(emptySlides(() => ''));
+	let tweetTopAvatarInnerBgBySlide = $state<string[]>(emptySlides(() => ''));
+	let tweetTopAvatarLabelBySlide = $state<string[]>(emptySlides(() => ''));
+	let tweetBottomAvatarImageBySlide = $state<string[]>(emptySlides(() => ''));
+	let tweetBottomAvatarInnerBgBySlide = $state<string[]>(emptySlides(() => ''));
+	let tweetBottomAvatarLabelBySlide = $state<string[]>(emptySlides(() => ''));
+	let articleTextBySlide = $state<string[]>(
+		emptySlides(
+			() =>
+				"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
+		),
+	);
+	let textCarouselTextBySlide = $state<string[]>(
+		emptySlides(
+			() =>
+				'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
+		),
+	);
+	let imageQuoteTextBySlide = $state<string[]>(
+		emptySlides(() => 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.'),
+	);
+	let textCarouselNameBySlide = $state<string[]>(emptySlides(() => 'Captains of industry'));
+	let textCarouselHandleBySlide = $state<string[]>(emptySlides(() => '@captainsofindustryy'));
 	/** Text carousel profile circle: image URL / inner fill / optional label (else initials from name). */
-	let textCarouselAvatarImageBySlide = $state<string[]>(['']);
-	let textCarouselAvatarInnerBgBySlide = $state<string[]>(['']);
-	let textCarouselAvatarLabelBySlide = $state<string[]>(['']);
-	let imageQuoteFooterLeftBySlide = $state<string[]>(['$']);
-	let imageQuoteFooterRightBySlide = $state<string[]>(['BRAND']);
-	let articleSwipeTextBySlide = $state<string[]>(['«« Swipe']);
+	let textCarouselAvatarImageBySlide = $state<string[]>(emptySlides(() => ''));
+	let textCarouselAvatarInnerBgBySlide = $state<string[]>(emptySlides(() => ''));
+	let textCarouselAvatarLabelBySlide = $state<string[]>(emptySlides(() => ''));
+	let imageQuoteFooterLeftBySlide = $state<string[]>(emptySlides(() => '$'));
+	let imageQuoteFooterRightBySlide = $state<string[]>(emptySlides(() => 'BRAND'));
+	let articleSwipeTextBySlide = $state<string[]>(emptySlides(() => '«« Swipe'));
 	/** Article bottom-bar logo image per slide (empty = template default glyph). */
-	let articleLogoSrcBySlide = $state<string[]>(['']);
+	let articleLogoSrcBySlide = $state<string[]>(emptySlides(() => ''));
 
-	let videoStoryHeadlineBySlide = $state<string[]>([VIDEO_STORY_DEFAULTS.headline]);
-	let videoStoryWatermarkBySlide = $state<string[]>([VIDEO_STORY_DEFAULTS.watermark]);
-	let blackTextHeadlineBySlide = $state<string[]>([BLACK_TEXT_CAROUSEL_DEFAULTS.headline]);
-	let blackTextBodyBySlide = $state<string[]>([BLACK_TEXT_CAROUSEL_DEFAULTS.body]);
+	let videoStoryHeadlineBySlide = $state<string[]>(emptySlides(() => VIDEO_STORY_DEFAULTS.headline));
+	let videoStoryWatermarkBySlide = $state<string[]>(emptySlides(() => VIDEO_STORY_DEFAULTS.watermark));
+	let blackTextHeadlineBySlide = $state<string[]>(emptySlides(() => BLACK_TEXT_CAROUSEL_DEFAULTS.headline));
+	let blackTextBodyBySlide = $state<string[]>(emptySlides(() => BLACK_TEXT_CAROUSEL_DEFAULTS.body));
 
 	// Stable ids per slide, used as keys for filmstrip reordering.
 	let _slideUid = 0;
 	function newSlideId() { return `s_${++_slideUid}_${Date.now().toString(36)}`; }
-	let slideIds = $state<string[]>([newSlideId()]);
+	let slideIds = $state<string[]>(emptySlides(() => newSlideId()));
 	$effect(() => {
 		// Keep slideIds length in sync with slideCount (pad only).
 		// We intentionally avoid trimming here because it can make a slide
@@ -2508,6 +2531,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			: textColor,
 	);
 
+	/** Full-canvas loading overlay: article fetch/fill/variants or any slide still generating for the previewed template. */
+	const studioCanvasBusyLoading = $derived(
+		fetchingNews ||
+			generatingVariants ||
+			studioImageGenPaintHold ||
+			(generatingImagesByTemplate[previewTemplate] ?? []).some((g) => !!g),
+	);
+
 	// ── Draft persistence (Supabase) ──────────────────────────────────────
 	type DraftRow = { id: string; kind: string; state: any; updated_at: string };
 	/** Workspace draft rows — keep in sync with `STUDIO_WORKSPACE_DRAFT_KIND` on `carousels/+page.svelte`. */
@@ -2547,12 +2578,16 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			newsContentMode = s.newsContentMode;
 		}
 		if (typeof s.storyCategory === 'string') storyCategory = s.storyCategory;
+		if (typeof (s as any).factTopicPrompt === 'string') factTopicPrompt = String((s as any).factTopicPrompt ?? '');
+		if (typeof (s as any).storyTopicPrompt === 'string') storyTopicPrompt = String((s as any).storyTopicPrompt ?? '');
 		if (typeof s.search === 'string') search = s.search;
 		if (typeof s.source === 'string') source = s.source;
 		if (typeof (s as any).sourceLogoSrc === 'string') sourceLogoSrc = String((s as any).sourceLogoSrc ?? '').trim();
 		if ((s as any).sourceLabelMode === 'text' || (s as any).sourceLabelMode === 'logo') {
 			sourceLabelMode = (s as any).sourceLabelMode;
 		}
+		const slw = Number((s as any).sourceLogoWidth);
+		if (Number.isFinite(slw)) sourceLogoWidth = Math.round(Math.max(80, Math.min(400, slw)));
 		if (typeof s.articleUrl === 'string') articleUrl = s.articleUrl;
 		if (typeof s.articleTitle === 'string') articleTitle = s.articleTitle;
 		if (typeof s.articleSnippet === 'string') articleSnippet = s.articleSnippet;
@@ -2952,6 +2987,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	/** `applyBlankCanvas()` resets headline/solid fills, kills shadow, and hides the circle chrome — restore readable News starters (gradient, hook circle ring, vignette). */
 	function seedNewsStarterPlaceholderLayout() {
 		if (coerceTemplateId(slideTemplates[0] ?? 'news') !== 'news') return;
+		while (slides.length < DEFAULT_STUDIO_SLIDE_COUNT) addSlide();
 		const n = Math.max(1, slides.length);
 		slides = slides.map((row, i) =>
 			String(row ?? '').trim() ? row : i === 0 ? NEWS_PLACEHOLDER_HEADLINE : row
@@ -3345,10 +3381,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			category,
 			newsContentMode,
 			storyCategory,
+			factTopicPrompt,
+			storyTopicPrompt,
 			search,
 			source,
 			sourceLogoSrc,
 			sourceLabelMode,
+			sourceLogoWidth,
 			articleUrl,
 			articleTitle,
 			articleSnippet,
@@ -3635,16 +3674,19 @@ tweetTopImagePanYBySlide,
 				// loaders set draftError; swallow to keep UI responsive.
 			})
 			.finally(() => {
-				draftRestoring = false;
-				if (forcedBlankFromQuery) {
-					applyBlankCanvas();
-				} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
-					// Fresh session from template carousel / `?template=` — never overlay last autosave.
-					applyBlankCanvas();
-					applyTemplateToAll(forcedTemplateFromQuery);
-					seedNewsStarterPlaceholderLayout();
-				}
-				// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
+				void (async () => {
+					await flushStudioLoadingPaint();
+					draftRestoring = false;
+					if (forcedBlankFromQuery) {
+						applyBlankCanvas();
+					} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
+						// Fresh session from template carousel / `?template=` — never overlay last autosave.
+						applyBlankCanvas();
+						applyTemplateToAll(forcedTemplateFromQuery);
+						seedNewsStarterPlaceholderLayout();
+					}
+					// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
+				})();
 			});
 	});
 
@@ -3941,6 +3983,14 @@ tweetTopImagePanYBySlide,
 	}
 
 	// ── Fetch news ────────────────────────────────────────────────────────
+	/** After heavy async work, flush Svelte DOM and wait one frame so images/layout paint before hiding loading overlays. */
+	async function flushStudioLoadingPaint() {
+		await tick();
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+	}
+
 	async function fetchNews(opts: { fillOnly?: boolean } = {}) {
 		fetchingNews = true;
 		newsError = '';
@@ -3988,8 +4038,39 @@ tweetTopImagePanYBySlide,
 			let nextArticleUrl = '';
 			let nextArticleTitle = '';
 
-			if (useTestData) {
-				// ── Mock mode ────────────────────────────────────────────────
+			const syntheticHintStr =
+				newsContentMode === 'fact'
+					? factTopicPrompt.trim().slice(0, 600)
+					: newsContentMode === 'story'
+						? storyTopicPrompt.trim().slice(0, 600)
+						: '';
+
+			/** Random fact/story without a topic still use bundled mocks; any topic hits /api/news. */
+			const useBundledFactStoryMock =
+				useTestData &&
+				(newsContentMode === 'fact' || newsContentMode === 'story') &&
+				!syntheticHintStr;
+
+			if (useTestData && newsContentMode === 'news') {
+				// ── Mock mode: news articles only ───────────────────────────
+				await new Promise((r) => setTimeout(r, 400));
+				const pool = search
+					? MOCK_NEWS.filter(
+							(a) =>
+								a.title.toLowerCase().includes(search.toLowerCase()) ||
+								a.description.toLowerCase().includes(search.toLowerCase()),
+						)
+					: MOCK_NEWS;
+				const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
+
+				hookText = article.title;
+				rawText = `${article.title}. ${article.description}. ${article.snippet}`;
+				nextSource = sourceLabels[category] ?? article.source ?? 'News';
+				nextArticleUrl = article.url;
+				nextArticleTitle = article.title;
+				articleImageUrl = article.image_url;
+			} else if (useBundledFactStoryMock) {
+				// ── Mock mode: canned fact/story when no custom topic ─────────
 				await new Promise((r) => setTimeout(r, 400));
 				if (newsContentMode === 'fact') {
 					const pick = MOCK_FACTS[Math.floor(Math.random() * MOCK_FACTS.length)] ?? MOCK_FACTS[0];
@@ -3999,7 +4080,7 @@ tweetTopImagePanYBySlide,
 					nextArticleUrl = '';
 					nextArticleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
 					articleImageUrl = '';
-				} else if (newsContentMode === 'story') {
+				} else {
 					const pool = MOCK_STORIES[storyCategory] ?? MOCK_STORIES.health;
 					const pick = pool[Math.floor(Math.random() * pool.length)] ?? pool[0];
 					hookText = pick.hookText;
@@ -4008,25 +4089,9 @@ tweetTopImagePanYBySlide,
 					nextArticleUrl = '';
 					nextArticleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
 					articleImageUrl = '';
-				} else {
-					const pool = search
-						? MOCK_NEWS.filter(
-								(a) =>
-									a.title.toLowerCase().includes(search.toLowerCase()) ||
-									a.description.toLowerCase().includes(search.toLowerCase()),
-							)
-						: MOCK_NEWS;
-					const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
-
-					hookText = article.title;
-					rawText = `${article.title}. ${article.description}. ${article.snippet}`;
-					nextSource = sourceLabels[category] ?? article.source ?? 'News';
-					nextArticleUrl = article.url;
-					nextArticleTitle = article.title;
-					articleImageUrl = article.image_url;
 				}
 			} else {
-				// ── Live mode ────────────────────────────────────────────────
+				// ── API: live news, or fact/story (including with Test data + topic) ─
 				const res = await fetch('/api/news', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -4037,6 +4102,7 @@ tweetTopImagePanYBySlide,
 						categories: newsContentMode === 'news' ? category : undefined,
 						autoHighlight: studioTextHighlightsEnabled,
 						pick: 'first',
+						syntheticHint: syntheticHintStr || undefined,
 					}),
 				});
 				const data = await res.json();
@@ -4186,8 +4252,8 @@ tweetTopImagePanYBySlide,
 				applyHeadlineStringsToTemplate(contentTemplate, normalizeHeadlineVariants([], hookText, n));
 
 				// Generate supporting slide variants (refines slide 2+ when slideCount > 1)
+				// Keep `fetchingNews` true through variants + imaging so the canvas overlay never drops early.
 				if (slideCount > 1) {
-					fetchingNews = false;
 					generatingVariants = true;
 					await generateVariants(hookText, rawText, contentTemplate);
 					generatingVariants = false;
@@ -4219,6 +4285,7 @@ tweetTopImagePanYBySlide,
 			newsError = e.message;
 		}
 
+		await flushStudioLoadingPaint();
 		fetchingNews = false;
 		generatingVariants = false;
 	}
@@ -4235,36 +4302,42 @@ tweetTopImagePanYBySlide,
 		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: nextRows };
 	}
 
-	function collectFillSlots(): FillSlot[] {
-		// Fill should overwrite whatever text is currently on the canvas.
-		// To keep it predictable, only operate on the ACTIVE slide.
+	function collectFillSlots(skipPrimary = false): FillSlot[] {
+		// Collect fill targets across ALL slides so every template gets populated correctly.
 		const out: FillSlot[] = [];
 		const n = Math.max(1, slides.length);
-		const i = Math.max(0, Math.min(activeSlide, n - 1));
-		const tpl = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
-
-		// Primary template text (e.g. News headline) always counts as a fill target.
-		out.push({ kind: 'primary', template: tpl, slide: i });
-
-		// All text overlays on the active slide (blank canvas / custom text boxes).
-		const overlays = (slideTextOverlaysByTemplate[tpl] ?? [])[i] ?? [];
-		for (const o of overlays) {
-			out.push({ kind: 'textOverlay', template: tpl, slide: i, overlayId: o.id });
+		for (let i = 0; i < n; i++) {
+			const tpl = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
+			// Primary template text (e.g. News headline / main text field) counts as a fill target.
+			if (!skipPrimary) out.push({ kind: 'primary', template: tpl, slide: i });
+			// All text overlays on this slide (blank canvas / custom text boxes).
+			const overlays = (slideTextOverlaysByTemplate[tpl] ?? [])[i] ?? [];
+			for (const o of overlays) {
+				out.push({ kind: 'textOverlay', template: tpl, slide: i, overlayId: o.id });
+			}
 		}
 		return out;
 	}
 
-	async function fillInTextFromTopic() {
+	/** Fill all template text slots with AI copy derived from `topic`.
+	 *  When called without arguments it uses the current `search` input value.
+	 *  Pass an explicit topic (e.g. article content) to drive the fill from loaded article data.
+	 *  `skipPrimary`: only fill text overlays — use after `fetchNews` so headlines stay article/variant copy. */
+	async function fillInTextFromTopic(
+		explicitTopic?: string,
+		opts?: { skipPrimary?: boolean },
+	) {
 		fetchingNews = true;
 		newsError = '';
 		try {
-			const topic = String(search || '').trim();
+			const topic = (explicitTopic ?? String(search || '')).trim();
 			if (!topic) {
 				newsError = 'Add a topic to fill in text.';
 				return;
 			}
 
-			const slots = collectFillSlots();
+			const slots = collectFillSlots(!!opts?.skipPrimary);
+			if (!slots.length) return;
 			// One generated slide can provide multiple lines (headline/subheadline/body).
 			const count = Math.max(1, Math.min(8, slots.length));
 			const res = await fetch('/api/generate-slides', {
@@ -4308,7 +4381,20 @@ tweetTopImagePanYBySlide,
 		} catch (e: any) {
 			newsError = e?.message ?? String(e);
 		} finally {
+			await flushStudioLoadingPaint();
 			fetchingNews = false;
+		}
+	}
+
+	/** Load an article (or generate content) then immediately fill every template text slot.
+	 *  This combines the old two-step workflow into one action. */
+	async function loadAndFill() {
+		await fetchNews();
+		// After the article is loaded, also fill all template slots using the article content
+		// so every slide (including custom text overlays) gets populated in one click.
+		const fillTopic = (articleSnippet || articleTitle || search || '').trim();
+		if (fillTopic) {
+			await fillInTextFromTopic(fillTopic, { skipPrimary: true });
 		}
 	}
 
@@ -4371,6 +4457,11 @@ tweetTopImagePanYBySlide,
 			const data = await res.json();
 			if (data.dataUrl) {
 				setSlideImage(slideIdx, data.dataUrl, template);
+				if (studioImageGenBatchDepth === 0) {
+					studioImageGenPaintHold = true;
+					await flushStudioLoadingPaint();
+					studioImageGenPaintHold = false;
+				}
 			} else if (data.demo) {
 				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
 				setBgGeneratingFlag(template, slideIdx, false);
@@ -4389,6 +4480,8 @@ tweetTopImagePanYBySlide,
 	 * runs again on a deck that already had backgrounds (fillExistingDeck).
 	 */
 	async function refreshNewsDeckImagesAfterFetch(articleImageUrl?: string) {
+		studioImageGenBatchDepth++;
+		try {
 		const template: TemplateId = 'news';
 		const n = Math.max(1, slides.length);
 		const blankBgRow = new Array(n).fill('');
@@ -4421,10 +4514,19 @@ tweetTopImagePanYBySlide,
 		if (showCircleBySlide[0] ?? false) {
 			await generateCircleImage(0);
 		}
+
+		studioImageGenPaintHold = true;
+		await flushStudioLoadingPaint();
+		studioImageGenPaintHold = false;
+		} finally {
+			studioImageGenBatchDepth--;
+		}
 	}
 
 	// ── Generate unique images for all slides in parallel ─────────────────
 	async function generateAllSlideImages(articleImageUrl?: string, template: TemplateId = 'news') {
+		studioImageGenBatchDepth++;
+		try {
 		const blankBgRow =
 			template === 'blackText'
 				? new Array(slides.length).fill(BLACK_TEXT_BG_DEFAULT)
@@ -4491,6 +4593,20 @@ tweetTopImagePanYBySlide,
 		});
 
 		await Promise.all(promises);
+
+		if (template === 'blackText') {
+			generatingImagesByTemplate = {
+				...generatingImagesByTemplate,
+				[template]: new Array(slides.length).fill(false),
+			};
+		}
+
+		studioImageGenPaintHold = true;
+		await flushStudioLoadingPaint();
+		studioImageGenPaintHold = false;
+		} finally {
+			studioImageGenBatchDepth--;
+		}
 	}
 
 	// ── Subject cutout (AI background removal) ────────────────────────────
@@ -4894,8 +5010,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	}
 
 	let newsBgToolbarPoint = $state<{ x: number; y: number } | null>(null);
-	let newsBgToolbarImageInput = $state<HTMLInputElement | null>(null);
-	let newsBgToolbarVideoInput = $state<HTMLInputElement | null>(null);
+	let newsBgToolbarMediaInput = $state<HTMLInputElement | null>(null);
 
 	const newsBgToolbarAnchor = $derived(
 		newsBgToolbarPoint ? new DOMRect(newsBgToolbarPoint.x - 1, newsBgToolbarPoint.y - 1, 2, 2) : null,
@@ -4920,16 +5035,29 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
-	function handleNewsBgToolbarImageChange(e: Event) {
-		handleBgUpload(e);
-		const el = e.target as HTMLInputElement;
-		el.value = '';
-	}
-
-	function handleNewsBgToolbarVideoChange(e: Event) {
-		handleVideoUpload(e);
-		const el = e.target as HTMLInputElement;
-		el.value = '';
+	function handleNewsBgToolbarMediaChange(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		const idx = activeSlide;
+		const t = activeTemplate;
+		const extOk = /\.(mp4|mov|webm|m4v|mkv|avi)$/i.test(file.name ?? '');
+		const isVideo =
+			file.type.startsWith('video/') ||
+			file.type === 'application/mp4' ||
+			(file.type === 'application/octet-stream' && extOk) ||
+			extOk;
+		if (isVideo) {
+			const url = URL.createObjectURL(file);
+			setSlideVideo(idx, url, t);
+		} else {
+			const reader = new FileReader();
+			reader.onload = () => {
+				setSlideImage(idx, reader.result as string, t);
+			};
+			reader.readAsDataURL(file);
+		}
 	}
 
 	$effect(() => {
@@ -5460,6 +5588,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		exportingZip: exporting,
 		onExportZip: () => void exportPng(),
 		onBurnMusicClick: () => void navigateToBurnMusicPage(),
+		onSaveTemplate: () => {
+			showSaveTemplatePanel = true;
+			studioTemplateFeedback = '';
+			if (!studioTemplateName.trim()) {
+				studioTemplateName = `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`;
+			}
+		},
 		onPost: async () => {
 			const n = await exportAllSlidesToDraft();
 			if (!n) {
@@ -5474,9 +5609,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 <div class="flex h-full overflow-hidden">
 
 	<!-- ── Left panel: controls ──────────────────────────────────────────── -->
-	<div class="w-80 flex-shrink-0 border-r border-neutral-800 bg-black text-neutral-50 flex flex-col overflow-y-auto studio-left">
+	<div class="w-80 flex-shrink-0 border-r border-neutral-800 bg-black text-neutral-50 flex min-h-0 flex-col overflow-hidden studio-left">
 
-		<div class="flex flex-col gap-4 p-4">
+		<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
 
 			<!-- Content type (News template generator) -->
 			<div class="rounded-2xl bg-neutral-950 border border-neutral-800 p-3">
@@ -5528,24 +5663,58 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							</div>
 						</div>
 					{:else if newsContentMode === 'story'}
-						<div>
-							<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Story theme</Label>
-							<Select type="single" bind:value={storyCategory}>
-								<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50">
-									{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
-								</SelectTrigger>
-								<SelectContent>
-									{#each storyThemes as th}
-										<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-							<p class="text-neutral-400 mt-1.5 text-[10px] font-body leading-relaxed">Generate uses this theme for the micro-story hook and carousel context.</p>
+						<div class="space-y-3">
+							<div>
+								<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Story theme</Label>
+								<Select type="single" bind:value={storyCategory}>
+									<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50">
+										{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
+									</SelectTrigger>
+									<SelectContent>
+										{#each storyThemes as th}
+											<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
+										{/each}
+									</SelectContent>
+								</Select>
+								<p class="text-neutral-400 mt-1.5 text-[10px] font-body leading-relaxed">Sets the emotional lane for the hook and body copy.</p>
+							</div>
+							<div>
+								<Label for="story-topic-prompt" class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">
+									Story direction (optional)
+								</Label>
+								<textarea
+									id="story-topic-prompt"
+									bind:value={storyTopicPrompt}
+									rows={3}
+									placeholder="e.g. two friends launch a podcast, betrayal at a wedding, first day as a nurse…"
+									class="min-h-[5rem] w-full resize-y rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm font-body text-neutral-50 placeholder:text-neutral-500 focus:border-violet-500/40 focus:outline-none"
+								></textarea>
+								<p class="text-neutral-500 mt-1 text-[10px] font-body leading-relaxed">
+									With a direction here, we always call the generator (even if <span class="font-mono text-neutral-400">Test data</span> is on). Leave empty for bundled sample stories only.
+								</p>
+							</div>
 						</div>
 					{:else}
-						<p class="text-[10px] font-body text-neutral-400/80 leading-relaxed">
-							One surprising fact-style line plus context for follow-up slides. No news API required.
-						</p>
+						<div class="space-y-2">
+							<p class="text-[10px] font-body text-neutral-400/80 leading-relaxed">
+								One surprising fact-style line plus context for follow-up slides. No news API required.
+							</p>
+							<div>
+								<Label for="fact-topic-prompt" class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">
+									Topic or angle (optional)
+								</Label>
+								<textarea
+									id="fact-topic-prompt"
+									bind:value={factTopicPrompt}
+									rows={3}
+									placeholder="e.g. deep-sea creatures, Roman roads, why we forget dreams…"
+									class="min-h-[5rem] w-full resize-y rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm font-body text-neutral-50 placeholder:text-neutral-500 focus:border-violet-500/40 focus:outline-none"
+								></textarea>
+								<p class="text-neutral-500 mt-1 text-[10px] font-body leading-relaxed">
+									With a topic here, we always call the generator (even if <span class="font-mono text-neutral-400">Test data</span> is on). Leave empty for bundled sample facts only.
+								</p>
+							</div>
+						</div>
 					{/if}
 				</div>
 			</div>
@@ -5566,60 +5735,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					class="shrink-0"
 				/>
 			</div>
-
-			<!-- Fetch / Generate button -->
-			<Button
-				onclick={() => void fetchNews()}
-				disabled={fetchingNews}
-				class="h-auto w-full gap-2 rounded-xl bg-[#E8FF48] py-2.5 font-body text-sm font-semibold text-[#0a0a0a] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)]"
-			>
-				{#if fetchingNews}
-					<Loader size={13} class="animate-spin" />
-					{#if useTestData}
-						Loading mock…
-					{:else if newsContentMode === 'news'}
-						Fetching + Rewriting…
-					{:else}
-						Generating…
-					{/if}
-				{:else}
-					{#if useTestData}
-						<FlaskConical size={13} />
-						{#if newsContentMode === 'news'}
-							Load Test Article
-						{:else}
-							Generate (test)
-						{/if}
-					{:else if newsContentMode === 'news'}
-						<Newspaper size={13} /> Fetch Live News
-					{:else}
-						<Sparkles size={13} /> Generate
-					{/if}
-				{/if}
-			</Button>
-
-			<!-- Fill existing/custom canvas with text only (no layout/media/source changes) -->
-			<div class="rounded-2xl bg-neutral-950 border border-neutral-800 p-3 space-y-2">
-				<Button
-					type="button"
-					variant="outline"
-					onclick={() => void fillInTextFromTopic()}
-					disabled={fetchingNews}
-					class="h-auto w-full gap-2 rounded-xl border-neutral-800 bg-neutral-950 py-2.5 font-body text-sm font-semibold text-neutral-200 hover:bg-neutral-900"
-				>
-					<Type size={13} /> Fill in text
-				</Button>
-				<p class="text-[10px] font-body text-neutral-500 leading-relaxed">
-					Fills your empty text elements with AI copy using the topic above. Does not change layout, media, or source label.
-				</p>
-			</div>
-
-			{#if newsError}
-				<div class="flex items-start gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 mt-1">
-					<AlertCircle size={12} class="text-red-400 shrink-0 mt-0.5" />
-					<p class="text-[11px] font-body text-red-400 leading-relaxed">{newsError}</p>
-				</div>
-			{/if}
 
 			<Separator class="my-3" />
 
@@ -5701,6 +5816,19 @@ if (tweetTopImageHeightBySlide.length !== n) {
 									<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
 								</div>
 							{/if}
+						</div>
+						<div class="flex min-w-0 items-center gap-2 pt-0.5">
+							<Label for="source-logo-width" class="w-12 shrink-0 font-mono text-[9px] text-muted-foreground">Width</Label>
+							<Slider
+								id="source-logo-width"
+								type="single"
+								bind:value={sourceLogoWidth}
+								min={80}
+								max={400}
+								step={4}
+								class="min-w-0 flex-1"
+							/>
+							<span class="w-10 shrink-0 text-right font-mono text-[9px] text-muted-foreground">{sourceLogoWidth}px</span>
 						</div>
 					{/if}
 				</div>
@@ -5952,8 +6080,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 								<Slider
 									type="single"
 									bind:value={bgOffsetX}
-									min={0}
-									max={100}
+									min={-55}
+									max={155}
 									step={0.5}
 									class="min-w-0 flex-1"
 								/>
@@ -5965,8 +6093,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 								<Slider
 									type="single"
 									bind:value={bgOffsetY}
-									min={0}
-									max={100}
+									min={-55}
+									max={155}
 									step={0.5}
 									class="min-w-0 flex-1"
 								/>
@@ -5974,79 +6102,31 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							</div>
 
 							<div class="mt-2 flex flex-col gap-1.5">
-								<p class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Background fit</p>
-								<Tabs
-									bind:value={bgFitMode}
-									class="w-full"
-									onValueChange={(v) => {
-										if (v === 'contain') bgContainMagnify = 100;
-									}}
-								>
-									<TabsList class="grid h-auto w-full grid-cols-2 gap-0.5 p-1">
-										<TabsTrigger value="cover" class="px-1 py-2 text-[10px] font-semibold">Fill frame</TabsTrigger>
-										<TabsTrigger value="contain" class="px-1 py-2 text-[10px] font-semibold">Show all</TabsTrigger>
-									</TabsList>
-								</Tabs>
-
-								{#if bgFitMode === 'contain'}
-									<p class="text-[9px] font-body leading-snug text-muted-foreground/80">
-										Shows the whole image (letterboxed). Magnify zooms that uncropped view; position still pans the focal point.
-									</p>
-									<div class="mb-0.5 mt-0.5 flex items-center justify-between">
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											class="h-auto p-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-violet-400"
-											onclick={() => (bgContainMagnify = 100)}
-											title="Reset magnify to 100%"
-										>Magnify</Button>
-										<span class="font-mono text-[9px] text-muted-foreground">{bgContainMagnify}%</span>
-									</div>
-									<div class="flex min-w-0 items-center gap-2.5">
-										<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">−</span>
-										<Slider
-											type="single"
-											bind:value={bgContainMagnify}
-											min={50}
-											max={200}
-											step={1}
-											class="min-w-0 flex-1"
-										/>
-										<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">+</span>
-									</div>
-								{:else}
-									<!-- Zoom: <100% shrinks (letterboxed on dark bg),
-									     >100% zooms in. At 100%, template still overscans to 105% for clean PNG edges. -->
-									<p class="-mb-0.5 text-[9px] font-body leading-snug text-muted-foreground/80">
-										At 100% zoom the image is drawn at 105% of the frame (overscan) so exports don’t pick up thin black lines at the sides.
-									</p>
-									<div class="mb-0.5 mt-1 flex items-center justify-between">
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											class="h-auto p-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-violet-400"
-											onclick={() => (bgZoom = 100)}
-											title="Reset zoom to 100%"
-										>
-											Zoom
-										</Button>
-										<span class="font-mono text-[9px] text-muted-foreground">{bgZoom}%</span>
-									</div>
-									<div class="flex min-w-0 items-center gap-2.5">
-										<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">−</span>
-										<Slider
-											type="single"
-											bind:value={bgZoom}
-											min={30}
-											max={300}
-											step={1}
-											class="min-w-0 flex-1"
-										/>
-										<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">+</span>
-									</div>
-								{/if}
+								<div class="mb-0.5 flex items-center justify-between">
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										class="h-auto p-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-violet-400"
+										onclick={() => (bgZoom = 100)}
+										title="Reset zoom to 100%"
+									>
+										Zoom
+									</Button>
+									<span class="font-mono text-[9px] text-muted-foreground">{bgZoom}%</span>
+								</div>
+								<div class="flex min-w-0 items-center gap-2.5">
+									<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">−</span>
+									<Slider
+										type="single"
+										bind:value={bgZoom}
+										min={30}
+										max={300}
+										step={1}
+										class="min-w-0 flex-1"
+									/>
+									<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">+</span>
+								</div>
 							</div>
 						</div>
 					{/if}
@@ -6077,6 +6157,41 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</a>
 			{/if}
 		</div>
+
+		<!-- Primary action pinned to bottom of sidebar -->
+		<div class="shrink-0 space-y-2 border-t border-neutral-800 bg-black p-4 pt-3">
+			{#if newsError}
+				<div class="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-2.5">
+					<AlertCircle size={12} class="mt-0.5 shrink-0 text-red-400" />
+					<p class="text-[11px] font-body leading-relaxed text-red-400">{newsError}</p>
+				</div>
+			{/if}
+			<Button
+				onclick={() => void loadAndFill()}
+				disabled={fetchingNews}
+				class="h-auto w-full gap-2 rounded-xl bg-[#E8FF48] py-2.5 font-body text-sm font-semibold text-[#0a0a0a] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)]"
+			>
+				{#if fetchingNews}
+					<Loader size={13} class="animate-spin" />
+					{#if useTestData}
+						Loading…
+					{:else if newsContentMode === 'news'}
+						Fetching…
+					{:else}
+						Generating…
+					{/if}
+				{:else}
+					{#if useTestData}
+						<FlaskConical size={13} />
+					{:else if newsContentMode === 'news'}
+						<Newspaper size={13} />
+					{:else}
+						<Sparkles size={13} />
+					{/if}
+					Load & Fill
+				{/if}
+			</Button>
+		</div>
 	</div>
 
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
@@ -6084,29 +6199,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		class="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#080808] p-6 gap-3 studio-right"
 		style="background: var(--app-bg);"
 	>
+	{#if draftError}
 		<div class="relative z-40 flex w-full max-w-full shrink-0 flex-wrap items-center justify-end gap-2 gap-y-1 px-1 pb-1">
-			<Button
-				type="button"
-				variant="outline"
-				size="sm"
-				class="h-8 gap-1.5 rounded-lg border-neutral-700 bg-neutral-950 text-[11px] font-semibold text-neutral-200 hover:bg-neutral-900"
-				onclick={() => {
-					showSaveTemplatePanel = true;
-					studioTemplateFeedback = '';
-					if (!studioTemplateName.trim()) {
-						studioTemplateName = `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`;
-					}
-				}}
-				title="Save current layout as a reusable template"
-			>
-				<Bookmark size={12} /> Save template
-			</Button>
-			{#if draftError}
-				<p class="max-w-[min(22rem,70vw)] min-w-0 text-right text-[10px] font-body leading-snug text-red-400/90">
-					{draftError}
-				</p>
-			{/if}
+			<p class="max-w-[min(22rem,70vw)] min-w-0 text-right text-[10px] font-body leading-snug text-red-400/90">
+				{draftError}
+			</p>
 		</div>
+	{/if}
 
 		<!-- Editor dock + format dock — in document flow so the canvas never stacks over them -->
 		<div class="relative z-30 flex w-full max-w-full shrink-0 flex-wrap items-center justify-center gap-3 px-1 py-1">
@@ -6122,21 +6221,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			/>
 			<input
 				type="file"
-				accept="image/*"
+				accept="image/*,video/mp4,video/webm,video/quicktime,video/x-m4v"
 				class="sr-only"
 				tabindex={-1}
 				aria-hidden="true"
-				bind:this={newsBgToolbarImageInput}
-				onchange={handleNewsBgToolbarImageChange}
-			/>
-			<input
-				type="file"
-				accept="video/mp4,video/webm,video/quicktime"
-				class="sr-only"
-				tabindex={-1}
-				aria-hidden="true"
-				bind:this={newsBgToolbarVideoInput}
-				onchange={handleNewsBgToolbarVideoChange}
+				bind:this={newsBgToolbarMediaInput}
+				onchange={handleNewsBgToolbarMediaChange}
 			/>
 			<DockToolbar items={dockItems} inline />
 			<TemplateDockToolbar
@@ -6177,53 +6267,40 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					class="relative rounded-2xl {previewCanvasOverflowClass}"
 				>
 
-			{#if filmstripBulkCapturing && slides.length >= 1}
+		{#if studioCanvasBusyLoading}
+			<!-- Full-canvas loading overlay — fetch/fill, variants, per-slide image gen (all templates) -->
+			<div
+				class="absolute inset-0 z-[22] flex flex-col items-center justify-center rounded-2xl"
+				style="background: rgba(0,0,0,0.82); backdrop-filter: blur(6px);"
+				aria-live="polite"
+				aria-busy="true"
+			>
+				<LoadingLines />
+			</div>
+		{/if}
+		{#if filmstripBulkCapturing && slides.length >= 1}
+			<div
+				class="absolute inset-0 z-[19] flex flex-col items-center justify-center gap-2 rounded-2xl"
+				style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
+				aria-live="polite"
+				aria-busy="true"
+			>
+				<Loader size={18} class="animate-spin text-violet-400" />
+				<p class="text-[10px] font-mono" style="color: var(--app-text-muted);">Updating filmstrip…</p>
+			</div>
+		{/if}
+			{#if studioBooting}
+				<!-- Initial boot overlay — same loader as fetch / image gen -->
 				<div
-					class="absolute inset-0 z-[19] flex flex-col items-center justify-center gap-2 rounded-2xl"
-					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
+					class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-2xl px-4"
+					style="background: rgba(0,0,0,0.82); backdrop-filter: blur(6px);"
 					aria-live="polite"
 					aria-busy="true"
 				>
-					<Loader size={18} class="animate-spin text-violet-400" />
-					<p class="text-[10px] font-mono" style="color: var(--app-text-muted);">Updating filmstrip…</p>
-				</div>
-			{/if}
-			{#if studioBooting}
-				<!-- Initial boot overlay: avoid template "jump" while restoring draft -->
-				<div class="absolute inset-0 rounded-2xl z-20 flex items-center justify-center" style="background: var(--app-surface-2); border: 1px solid var(--app-border);">
-					<div class="w-[78%] max-w-[420px]">
-						<div class="flex items-center gap-2 mb-3">
-							<Loader size={16} class="animate-spin text-violet-400" />
-							<p class="text-xs font-mono" style="color: var(--app-text-muted);">
-								Loading Studio…
-							</p>
-						</div>
-						<div class="boot-skel rounded-2xl p-4">
-							<div class="h-3 w-2/3 rounded-lg bg-white/10 mb-3"></div>
-							<div class="h-3 w-5/6 rounded-lg bg-white/10 mb-2"></div>
-							<div class="h-3 w-3/4 rounded-lg bg-white/10 mb-6"></div>
-							<div class="h-24 rounded-2xl bg-white/8 mb-4"></div>
-							<div class="flex items-center justify-between">
-								<div class="h-2 w-24 rounded bg-white/10"></div>
-								<div class="h-2 w-16 rounded bg-white/10"></div>
-							</div>
-						</div>
-						<p class="text-[10px] font-body mt-3 leading-relaxed" style="color: var(--app-text-muted);">
-							Restoring your last edit so nothing gets lost.
-						</p>
-					</div>
-				</div>
-			{/if}
-			{#if (generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide]}
-				<!-- Image loading overlay -->
-				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
-					<Loader size={20} class="animate-spin text-violet-400" />
-					<p class="text-xs font-mono" style="color: var(--app-text-muted);">Generating image…</p>
-				</div>
-			{:else if generatingVariants && activeSlide > 0 && !slides[activeSlide]}
-				<div class="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-3 z-10" style="background: var(--app-surface-3); border: 1px solid var(--app-border);">
-					<Loader size={20} class="animate-spin text-amber-400" />
-					<p class="text-xs font-mono" style="color: var(--app-text-muted);">Writing slide {activeSlide + 1}…</p>
+					<LoadingLines />
+					<p class="max-w-[min(22rem,85%)] text-center text-[10px] font-body leading-relaxed text-white/55">
+						Restoring your last edit so nothing gets lost.
+					</p>
 				</div>
 			{/if}
 			{#if previewTemplate === 'blank'}
@@ -6306,6 +6383,7 @@ showSubjectCutout={canvasShowCutout}
 					source={source}
 					sourceLogoSrc={sourceLogoSrc}
 					sourceLabelMode={sourceLabelMode}
+					sourceLogoWidth={sourceLogoWidth}
 					highlightColor={highlightColor}
 					textColor={canvasHeadlineInk}
 					w={CANVAS_W}
@@ -6716,6 +6794,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					source={source}
 					sourceLogoSrc={sourceLogoSrc}
 					sourceLabelMode={sourceLabelMode}
+					sourceLogoWidth={sourceLogoWidth}
 					highlightColor={highlightColor}
 					textColor={canvasHeadlineInk}
 					w={CANVAS_W}
@@ -7413,14 +7492,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 <NewsBackgroundToolbar
 	anchor={newsBgToolbarAnchor}
 	showCutout={!!String(canvasBackgroundImage ?? '').trim() && !String(canvasBackgroundVideo ?? '').trim()}
-	isVideoBackground={!!String(canvasBackgroundVideo ?? '').trim()}
 	onAi={() => void generateBackground(activeSlide, undefined, 'news')}
 	aiDisabled={!!(generatingImagesByTemplate.news ?? [])[activeSlide]}
 	onCutOut={() => void cutOutSubject(activeSlide)}
-	onReplace={() => {
-		if (canvasBackgroundVideo.trim()) newsBgToolbarVideoInput?.click();
-		else newsBgToolbarImageInput?.click();
-	}}
+	onReplace={() => newsBgToolbarMediaInput?.click()}
 	onApplySolid={(hex) => {
 		pushUndo('news', activeSlide);
 		applyNewsSolidBg(hex);
@@ -7642,17 +7717,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 />
 
 <style>
-	.boot-skel {
-		background:
-			linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.10), rgba(255,255,255,0.05));
-		background-size: 220% 100%;
-		animation: bootShimmer 1.1s ease-in-out infinite;
-		border: 1px solid color-mix(in oklab, var(--app-border) 70%, transparent);
-	}
-	@keyframes bootShimmer {
-		0% { background-position: 0% 0%; }
-		100% { background-position: 100% 0%; }
-	}
 	/* ─── Studio left panel — light theme makeover ──────────────────
 	   Forces a soft #fafafa surface and flips every dark utility
 	   class inside the panel to a matching light counterpart.

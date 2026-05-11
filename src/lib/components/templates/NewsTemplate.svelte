@@ -84,6 +84,8 @@
 		sourceLogoSrc?: string;
 		/** Whether to render the source as text or logo. */
 		sourceLabelMode?: 'text' | 'logo';
+		/** Max width in px for the source logo (aspect ratio preserved). Default 260. */
+		sourceLogoWidth?: number;
 		highlightColor?: string;
 		textColor?: string;
 		scale?: number;
@@ -93,8 +95,8 @@
 		circleX?: number;     // left position in template px (bindable)
 		circleY?: number;     // top position in template px (bindable)
 		circleSize?: number;  // diameter in template px (bindable)
-		bgOffsetX?: number;   // background horizontal position 0–100% (bindable)
-		bgOffsetY?: number;   // background vertical position 0–100% (bindable)
+		bgOffsetX?: number;   // horizontal focal % (≈0–100 typical; wider range supported for pan)
+		bgOffsetY?: number;   // vertical focal % (same)
 		/** Background zoom as a percentage of frame size. 100 = fill frame
 		 *  (object-fit cover at 100% box); >100 enlarges the media for crop-style
 		 *  zoom-in; <100 letterboxes. Pan sliders move the layer when zoom ≠ 100.
@@ -179,6 +181,7 @@
 		source = 'Markets',
 		sourceLogoSrc = '',
 		sourceLabelMode = 'text',
+		sourceLogoWidth = 260,
 		highlightColor = '#F5A623',
 		textColor = templateTheme === 'light' ? '#0a0a0a' : '#FFFFFF',
 		scale = 1,
@@ -437,17 +440,16 @@
 	// object-fit: cover. Minimum overscan to 105% at low zoom avoids gaps that
 	// show as black lines on the sides when rasterizing (e.g. html-to-image export).
 	const bgZoomPct = $derived(Math.max(30, Math.min(300, Number(bgZoom) || 100)));
-	const BG_COVER_MIN_BLEED = 105; // % of frame — overscan past clip for clean PNG export
+	/** Minimum cover scale (% of frame). Must stay ≥ `100 +` usable pan range or pan math exposes gutters. */
+	const BG_COVER_MIN_BLEED = 115;
 	/** Extra scale on cover media so raster export (html-to-image) doesn’t leave 1px side gutters */
 	const BG_COVER_RASTER_PAD = 1.03;
 	const bgRenderSize = $derived(
 		bgFitMode === 'contain' ? bgZoomPct : Math.max(bgZoomPct, BG_COVER_MIN_BLEED),
 	);
-	const bgRenderOverflowPct = $derived(Math.max(0, bgRenderSize - 100)); // strict cover overscan
-	/** Extra pan range at 100% zoom so drag-pan doesn’t feel dead; can show a sliver of letterbox at extremes. */
-	// Give more pan room near 100% zoom so it doesn't feel "stuck".
-	const BG_MIN_PAN_ROOM_PCT = 70;
-	const bgPanRangePct = $derived(Math.max(BG_MIN_PAN_ROOM_PCT, bgRenderOverflowPct));
+	const bgRenderOverflowPct = $derived(Math.max(0.01, bgRenderSize - 100)); // strict cover overscan
+	/** Pan travel (0–100 offsets) is limited to actual overscan so the layer always covers the clip. */
+	const bgPanRangePct = $derived(bgRenderOverflowPct);
 	// Natural panning: slide an oversized layer inside the frame.
 	//  - bgOffsetX/Y = 0  → show left/top edge
 	//  - bgOffsetX/Y = 100→ show right/bottom edge
@@ -1073,11 +1075,18 @@
 	let bgPanStartY = 0;
 	const BG_SLOP_PX = 6;
 	/** Pointer drag sensitivity — higher = move background farther per pixel */
-	const BG_PAN_DRAG_SENS = 9;
+	const BG_PAN_DRAG_SENS = 13;
+	/** Allow pan “past” the frame edges (object-position / translate headroom). */
+	const BG_OFFSET_MIN = -55;
+	const BG_OFFSET_MAX = 155;
 	/** Alt+drag anywhere on the canvas (capture) to pan — avoids the z-index-2 dead zone under text/circle. */
 	let bgAltPanActive = $state(false);
 
 	const bgPanCursor = $derived(bgDragging || bgAltPanActive ? 'grabbing' : 'default');
+
+	function clampBgOffset(v: number) {
+		return Math.max(BG_OFFSET_MIN, Math.min(BG_OFFSET_MAX, v));
+	}
 
 	function applyBgPanPixels(dx: number, dy: number) {
 		// Convert pixel drag → percent, then scale by how much pan room the current zoom actually has.
@@ -1086,8 +1095,8 @@
 		const panRoom = Math.max(16, Number(bgPanRangePct) || 0); // percent of extra image beyond frame
 		const xPerPx = (100 / Math.max(1, W)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
 		const yPerPx = (100 / Math.max(1, H)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
-		bgOffsetX = Math.max(0, Math.min(100, bgOffsetX - dx * xPerPx));
-		bgOffsetY = Math.max(0, Math.min(100, bgOffsetY - dy * yPerPx));
+		bgOffsetX = clampBgOffset(bgOffsetX - dx * xPerPx);
+		bgOffsetY = clampBgOffset(bgOffsetY - dy * yPerPx);
 	}
 
 	function removeBgAltPanListeners() {
@@ -2133,9 +2142,10 @@
 								draggable="false"
 								style="
 									display: block;
-									height: 44px;
+									max-width: {Math.max(40, sourceLogoWidth)}px;
+									max-height: 52px;
 									width: auto;
-									max-width: 260px;
+									height: auto;
 									object-fit: contain;
 									filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18));
 								"

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Music, Calendar, X, Send, LoaderCircle, Download } from 'lucide-svelte';
+	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 
 	interface $$Props {
@@ -15,6 +15,8 @@
 		exportingZip?: boolean;
 		/** When set, "Burn Music" opens this flow instead of the inline panel. */
 		onBurnMusicClick?: () => void | Promise<void>;
+		/** When set, shows "Save template" as the leftmost action (e.g. Studio). */
+		onSaveTemplate?: () => void | Promise<void>;
 	}
 
 	let {
@@ -28,6 +30,7 @@
 		onExportZip = undefined,
 		exportingZip = false,
 		onBurnMusicClick = undefined,
+		onSaveTemplate = undefined,
 	} = ($props() as $$Props);
 
 	interface SlideMusicSettings { song: string; seconds: number; }
@@ -80,6 +83,24 @@
 		class="fixed flex flex-row items-end gap-2"
 		style="right:{rightOffsetPx}px;bottom:{bottomOffsetPx}px;z-index:{zIndex};"
 	>
+		{#if typeof onSaveTemplate === 'function'}
+			<button
+				type="button"
+				onclick={() => void onSaveTemplate?.()}
+				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
+				style="
+					background: color-mix(in oklab, var(--app-text) 6%, transparent);
+					border-color: var(--app-border);
+					color: var(--app-text-2);
+					cursor: pointer;
+				"
+				title="Save current layout as a reusable template"
+			>
+				<Bookmark size={14} />
+				Save template
+			</button>
+		{/if}
+
 		<!-- POST button + panel -->
 		<div class="relative">
 			{#if showPostPanel}

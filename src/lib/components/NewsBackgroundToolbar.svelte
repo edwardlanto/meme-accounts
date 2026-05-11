@@ -20,8 +20,8 @@
 		anchor: DOMRect | null;
 		/** Show “Cut out subject” — only for photo backgrounds */
 		showCutout: boolean;
-		/** Photo vs video replace label */
-		isVideoBackground: boolean;
+		/** @deprecated Kept for compatibility; label is always “Image / video”. */
+		isVideoBackground?: boolean;
 		/** Optional: generate / regenerate background via AI */
 		onAi?: () => void;
 		aiDisabled?: boolean;
@@ -37,7 +37,7 @@
 	let {
 		anchor,
 		showCutout,
-		isVideoBackground,
+		isVideoBackground = false,
 		onAi,
 		aiDisabled = false,
 		onCutOut,
@@ -54,9 +54,10 @@
 
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
-		let tw = showCutout ? 300 : 200;
+		let tw = showCutout ? 320 : 220;
 		if (onAi) tw += 128;
 		if (onApplySolid) tw += 108;
+		tw += 40; // “Image / video” combined control
 		const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
 		let top = anchor.top - TOOLBAR_H - 14;
 		if (top < 12) top = anchor.bottom + 14;
@@ -198,18 +199,16 @@
 			variant="ghost"
 			size="sm"
 			class="h-11 shrink-0 rounded-full px-3 text-xs font-semibold"
+			title="Upload a photo or video background"
 			onclick={() => {
 				onReplace();
 				onClose();
 			}}
 		>
-			{#if isVideoBackground}
-				<Clapperboard size={18} class="text-cyan-500" strokeWidth={2} />
-				Replace video
-			{:else}
-				<ImagePlus size={18} class="text-violet-500" strokeWidth={2} />
-				Replace image
-			{/if}
+			<ImagePlus size={18} class="text-violet-500" strokeWidth={2} />
+			<Clapperboard size={16} class="-ml-1 text-cyan-500" strokeWidth={2} />
+			<span class="hidden sm:inline">Image / video</span>
+			<span class="sm:hidden">Media</span>
 		</Button>
 	</div>
 {/if}

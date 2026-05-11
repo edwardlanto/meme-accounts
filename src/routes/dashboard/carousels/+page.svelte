@@ -568,7 +568,7 @@
 									templateTheme={uiTheme}
 									name="Captains of industry"
 									handle="@captainsofindustryy"
-									text={"Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable."}
+									text={"Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you."}
 									showSwipe={false}
 									scale={templateScale}
 									interactive={false}

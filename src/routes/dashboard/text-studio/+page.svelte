@@ -30,7 +30,7 @@
 	let slides = $state<TextSlide[]>([
 		{
 			id: crypto.randomUUID(),
-			text: 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nAdd a third line only if you need a closing detail.',
+			text: 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
 			showSwipe: true,
 		},
 	]);
