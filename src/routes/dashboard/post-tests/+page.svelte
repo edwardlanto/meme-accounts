@@ -102,13 +102,12 @@
 				.from('social_connections')
 				.select('id,user_id,provider,provider_account_id,provider_account_label,access_token,scopes,meta')
 				.eq('user_id', userId)
-				.in('provider', ['meta', 'tiktok']);
+				.eq('provider', 'zernio');
 			if (connErr) throw connErr;
 			const all = (conns ?? []) as DbSocialConnection[];
-			const allMeta = all.filter((c) => c.provider === 'meta');
-			fbConn = allMeta.find((c) => c.meta?.kind === 'facebook_page') ?? null;
-			igConn = allMeta.find((c) => c.meta?.kind === 'instagram_business') ?? null;
-			ttConn = all.find((c) => c.provider === 'tiktok') ?? null;
+			fbConn = all.find((c) => String(c.meta?.platform ?? '') === 'facebook') ?? null;
+			igConn = all.find((c) => String(c.meta?.platform ?? '') === 'instagram') ?? null;
+			ttConn = all.find((c) => String(c.meta?.platform ?? '') === 'tiktok') ?? null;
 
 			const [imgRes, vidRes] = await Promise.all([
 				fetch('/api/post-tests/images').then((r) => r.json()),
@@ -154,7 +153,7 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					userId,
-					connectionProvider: 'meta',
+					connectionProvider: 'zernio',
 					connectionProviderAccountId: fbConn.provider_account_id,
 					scheduledAt: when.toISOString(),
 					content: {
@@ -303,7 +302,7 @@
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
 						userId,
-						connectionProvider: 'meta',
+						connectionProvider: 'zernio',
 						connectionProviderAccountId: fbConn.provider_account_id,
 						scheduledAt: when.toISOString(),
 					content: {
@@ -369,7 +368,7 @@
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
 						userId,
-						connectionProvider: 'meta',
+						connectionProvider: 'zernio',
 						connectionProviderAccountId: fbConn.provider_account_id,
 						scheduledAt: when.toISOString(),
 						content: {
@@ -429,7 +428,7 @@
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
-						connectionProvider: 'meta',
+						connectionProvider: 'zernio',
 						connectionProviderAccountId: fbConn.provider_account_id,
 						scheduledAt: when.toISOString(),
 						content,
@@ -481,7 +480,7 @@
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
-						connectionProvider: 'meta',
+						connectionProvider: 'zernio',
 						connectionProviderAccountId: fbConn.provider_account_id,
 						scheduledAt: when.toISOString(),
 						content,
@@ -533,7 +532,7 @@
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
-						connectionProvider: 'meta',
+						connectionProvider: 'zernio',
 						connectionProviderAccountId: fbConn.provider_account_id,
 						scheduledAt: when.toISOString(),
 						content,
@@ -553,9 +552,9 @@
 		}
 	}
 
-	function connectMeta() {
+	function connectZernio(platform: 'facebook' | 'instagram' | 'tiktok') {
 		if (!userId) return;
-		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-tests')}`;
+		window.location.href = `/api/auth/zernio/start?platform=${platform}&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-tests')}`;
 	}
 
 	let debugLoading = $state(false);
@@ -565,28 +564,16 @@
 	async function debugMeta() {
 		debugLoading = true;
 		debugError = null;
-		debugData = null;
-		try {
-			const res = await authFetch('/api/debug/meta');
-			const data = await res.json().catch(() => ({}));
-			if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
-			debugData = data;
-		} catch (e: any) {
-			debugError = e?.message ?? 'Unknown error';
-		} finally {
-			debugLoading = false;
-		}
+		debugData = { note: 'Meta Graph debug was removed. Manage accounts in the Zernio dashboard.' };
+		debugLoading = false;
 	}
 
 	function connectTikTok() {
-		if (!userId) return;
-		window.location.href = `/api/auth/tiktok/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-tests')}`;
+		connectZernio('tiktok');
 	}
 
-	// Does the connected TikTok scope allow direct posting? If not, only "inbox" (drafts) works.
 	function ttCanDirectPost(): boolean {
-		const scopes = (ttConn?.scopes ?? []) as unknown as string[];
-		return Array.isArray(scopes) && scopes.some((s) => String(s).toLowerCase() === 'video.publish');
+		return true;
 	}
 
 	async function postTikTok() {
@@ -622,10 +609,8 @@
 			const data = await res.json().catch(() => ({ ok: false, error: `Non-JSON (${res.status})` }));
 			lastResult = { status: res.status, data };
 			if (!res.ok || !data?.ok) throw new Error(data?.error ?? `TikTok publish failed (${res.status})`);
-			ttLastPublishId = String(data?.publishId ?? '');
-			info = data?.note
-				? `${data.note} (publish_id=${ttLastPublishId})`
-				: `TikTok ${data?.mode ?? 'upload'} sent. publish_id=${ttLastPublishId}`;
+			ttLastPublishId = String(data?.result?.post?._id ?? data?.result?.post?.id ?? '');
+			info = `TikTok request sent via Zernio (${data?.mode ?? 'direct'}). Check Zernio dashboard for status.`;
 		} catch (e: any) {
 			console.error('[post-tests] tiktok error', e);
 			error = e?.message ?? 'Unknown error';
@@ -635,17 +620,7 @@
 	}
 
 	async function refreshTikTokStatus() {
-		if (!ttConn || !ttLastPublishId) return;
-		try {
-			const params = new URLSearchParams({ openId: ttConn.provider_account_id, publishId: ttLastPublishId });
-			const res = await authFetch(`/api/publish/tiktok?${params.toString()}`);
-			const data = await res.json().catch(() => ({ ok: false }));
-			lastResult = { status: res.status, data };
-			if (data?.ok) info = `TikTok status: ${data.status}`;
-			else error = data?.error ?? 'Status check failed';
-		} catch (e: any) {
-			error = e?.message ?? 'Status check failed';
-		}
+		info = 'TikTok publish status is tracked in Zernio; local polling was removed.';
 	}
 
 	// =========================================================================
@@ -657,7 +632,7 @@
 
 	function requireIgReady(): string | null {
 		if (!userId) return 'Not signed in.';
-		if (!igConn) return 'No Instagram Business connection found. Connect Meta and make sure your Facebook Page has a linked IG Business/Creator account.';
+		if (!igConn) return 'No Instagram connection found. Connect Instagram via Zernio (Business/Creator).';
 		if (!publicBaseReady) return 'PUBLIC_APP_URL is not set to a public HTTPS URL. IG Graph API cannot fetch localhost media — set PUBLIC_APP_URL in your .env (e.g. an ngrok URL) and reload.';
 		return null;
 	}
@@ -685,7 +660,7 @@
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
-				connectionProvider: 'meta',
+				connectionProvider: 'zernio',
 				connectionProviderAccountId: igConn.provider_account_id,
 				scheduledAt: when.toISOString(),
 				content: workerContent,
@@ -981,7 +956,7 @@
 				</div>
 				<button
 					type="button"
-					onclick={connectMeta}
+					onclick={() => connectZernio('instagram')}
 					disabled={!userId}
 					class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-linear-to-r from-fuchsia-500/30 via-pink-500/25 to-amber-400/25 border border-fuchsia-500/40 text-sm font-mono text-fuchsia-50 hover:from-fuchsia-500/40 hover:via-pink-500/35 hover:to-amber-400/35 disabled:opacity-50 transition-all shadow-[0_4px_20px_-4px_rgba(232,121,249,0.35)]"
 				>
@@ -1240,7 +1215,7 @@
 				</div>
 				<button
 					type="button"
-					onclick={connectMeta}
+					onclick={() => connectZernio('facebook')}
 					disabled={!userId}
 					class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-linear-to-r from-sky-500/30 via-blue-500/25 to-indigo-500/25 border border-sky-500/40 text-sm font-mono text-sky-50 hover:from-sky-500/40 hover:via-blue-500/35 hover:to-indigo-500/35 disabled:opacity-50 transition-all shadow-[0_4px_20px_-4px_rgba(56,189,248,0.35)]"
 				>

@@ -9,7 +9,7 @@
 	} from 'lucide-svelte';
 
 	type Status = { ok: boolean; missing: string[]; present: string[] };
-	let metaStatus     = $state<Status | null>(null);
+	let zernioStatus   = $state<Status | null>(null);
 	let linkedinStatus = $state<Status | null>(null);
 	let gmbStatus      = $state<Status | null>(null);
 	let blueskyStatus  = $state<Status | null>(null);
@@ -43,8 +43,8 @@
 		userName  = data.user?.user_metadata?.full_name ?? '';
 
 		try {
-			const [metaRes, liRes, gmbRes, bskyRes, snapRes, redditRes, ytRes] = await Promise.all([
-				fetch('/api/integrations/meta/status'),
+			const [zernioRes, liRes, gmbRes, bskyRes, snapRes, redditRes, ytRes] = await Promise.all([
+				fetch('/api/integrations/zernio/status'),
 				fetch('/api/integrations/linkedin/status'),
 				fetch('/api/integrations/gmb/status'),
 				fetch('/api/integrations/bluesky/status'),
@@ -52,7 +52,7 @@
 				fetch('/api/integrations/reddit/status'),
 				fetch('/api/integrations/youtube/status'),
 			]);
-			metaStatus     = await metaRes.json();
+			zernioStatus   = await zernioRes.json();
 			linkedinStatus = await liRes.json();
 			gmbStatus      = await gmbRes.json();
 			blueskyStatus  = await bskyRes.json();
@@ -60,7 +60,7 @@
 			redditStatus   = await redditRes.json();
 			youtubeStatus  = await ytRes.json();
 		} catch {
-			metaStatus     = { ok: false, missing: ['(failed)'], present: [] };
+			zernioStatus   = { ok: false, missing: ['(failed)'], present: [] };
 			linkedinStatus = { ok: false, missing: ['(failed)'], present: [] };
 			gmbStatus      = { ok: false, missing: ['(failed)'], present: [] };
 			blueskyStatus  = { ok: false, missing: ['(failed)'], present: [] };
@@ -77,10 +77,10 @@
 		setTimeout(() => { copied = null; }, 2000);
 	}
 
-	function connectInstagram() {
+	function connectZernio(platform: 'instagram' | 'facebook' | 'tiktok') {
 		if (!userId) { goto('/login'); return; }
-		if (!metaStatus?.ok) return;
-		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+		if (!zernioStatus?.ok) return;
+		window.location.href = `/api/auth/zernio/start?platform=${platform}&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
 	function connectLinkedIn(mode: 'member' | 'org' | 'both') {
 		if (!userId) { goto('/login'); return; }
@@ -139,14 +139,14 @@
 		}
 	}
 
-	const metaEnvSnippet = `META_APP_ID=\nMETA_APP_SECRET=\nMETA_REDIRECT_URI=`;
+	const zernioEnvSnippet = `ZERNIO_API_KEY=\nPUBLIC_APP_URL=https://your-domain.com`;
 	const linkedinEnvSnippet = `LINKEDIN_CLIENT_ID=\nLINKEDIN_CLIENT_SECRET=\nLINKEDIN_REDIRECT_URI=`;
 	const gmbEnvSnippet = `GMB_CLIENT_ID=\nGMB_CLIENT_SECRET=\nGMB_REDIRECT_URI=`;
 	const snapchatEnvSnippet = `SNAPCHAT_CLIENT_ID=\nSNAPCHAT_CLIENT_SECRET=\nSNAPCHAT_REDIRECT_URI=\nSNAPCHAT_SCOPES=snapchat-profile-api`;
 	const redditEnvSnippet = `REDDIT_CLIENT_ID=\nREDDIT_CLIENT_SECRET=\nREDDIT_REDIRECT_URI=\nREDDIT_SCOPES=identity submit\nREDDIT_USER_AGENT=yourappname/1.0 (by u/yourusername)`;
 	const youtubeEnvSnippet = `YOUTUBE_CLIENT_ID=\nYOUTUBE_CLIENT_SECRET=\nYOUTUBE_REDIRECT_URI=\nYOUTUBE_SCOPES=https://www.googleapis.com/auth/youtube.upload openid email profile`;
 
-	const metaStatusDerived    = $derived(metaStatus);
+	const zernioStatusDerived    = $derived(zernioStatus);
 	const linkedinStatusDerived = $derived(linkedinStatus);
 	const gmbStatusDerived      = $derived(gmbStatus);
 	const blueskyStatusDerived  = $derived(blueskyStatus);
@@ -156,18 +156,18 @@
 
 	const integrations = $derived([
 		{
-			id: 'meta',
-			title: 'Instagram / Facebook',
-			desc: 'Publish carousels and reels to Instagram Business and Facebook Pages.',
-			color: '#E1306C',
-			bg: 'rgba(225,48,108,0.08)',
-			status: metaStatusDerived,
-			snippet: metaEnvSnippet,
-			onConnect: connectInstagram,
+			id: 'zernio',
+			title: 'Instagram · Facebook · TikTok',
+			desc: 'OAuth and posting run through Zernio. Use the buttons below or Analytics → channel tabs.',
+			color: '#7C3AED',
+			bg: 'rgba(124,58,237,0.10)',
+			status: zernioStatusDerived,
+			snippet: zernioEnvSnippet,
+			onConnect: () => connectZernio('instagram'),
 			btnLabel: 'Connect Instagram',
-			btnColor: '#E1306C',
-			docs: 'https://developers.facebook.com/docs/instagram-platform',
-			docsLabel: 'Meta API docs',
+			btnColor: '#7C3AED',
+			docs: 'https://docs.zernio.com/',
+			docsLabel: 'Zernio docs',
 		},
 		{
 			id: 'linkedin',
@@ -438,6 +438,34 @@
 											Connect both
 										</button>
 									</div>
+								{:else if intg.id === 'zernio'}
+									<div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+										<button
+											type="button"
+											class="btn-connect"
+											style="--c:{intg.btnColor}"
+											disabled={!st?.ok}
+											onclick={() => connectZernio('instagram')}
+										>
+											Instagram
+										</button>
+										<button
+											type="button"
+											class="btn-connect-outline"
+											disabled={!st?.ok}
+											onclick={() => connectZernio('facebook')}
+										>
+											Facebook
+										</button>
+										<button
+											type="button"
+											class="btn-connect-outline"
+											disabled={!st?.ok}
+											onclick={() => connectZernio('tiktok')}
+										>
+											TikTok
+										</button>
+									</div>
 								{:else}
 									<button
 										type="button"
@@ -460,12 +488,8 @@
 			{/if}
 
 			<div class="settings-card settings-card--info">
-				<h2 class="card-title">TikTok</h2>
-				<p class="card-desc">TikTok OAuth is available in the Analytics page. Connect via <a href="/dashboard/analytics?channel=tiktok" class="inline-link">Analytics → TikTok</a>.</p>
-				<a href="/dashboard/analytics?channel=tiktok" class="btn-secondary-sm">
-					Go to TikTok connect
-					<ChevronRight size={13} />
-				</a>
+				<h2 class="card-title">Channel overview</h2>
+				<p class="card-desc">Use <a href="/dashboard/analytics" class="inline-link">Analytics</a> to connect from channel tabs, or the Zernio card above.</p>
 			</div>
 		</div>
 

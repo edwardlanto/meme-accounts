@@ -117,7 +117,7 @@
 	}
 
 	// Connection & status
-	let metaStatus      = $state<Status | null>(null);
+	let zernioStatus      = $state<Status | null>(null);
 	let linkedinStatus  = $state<Status | null>(null);
 	let gmbStatus       = $state<Status | null>(null);
 	let statusLoading   = $state(true);
@@ -131,16 +131,16 @@
 	async function loadIntegrationStatuses() {
 		statusLoading = true;
 		try {
-			const [mr, lr, gr] = await Promise.all([
-				fetch('/api/integrations/meta/status'),
+			const [zr, lr, gr] = await Promise.all([
+				fetch('/api/integrations/zernio/status'),
 				fetch('/api/integrations/linkedin/status'),
 				fetch('/api/integrations/gmb/status'),
 			]);
-			metaStatus     = await mr.json();
+			zernioStatus     = await zr.json();
 			linkedinStatus = await lr.json();
 			gmbStatus      = await gr.json();
 		} catch {
-			metaStatus     = { ok: false, missing: ['(failed to load status)'], present: [] };
+			zernioStatus     = { ok: false, missing: ['(failed to load status)'], present: [] };
 			linkedinStatus = { ok: false, missing: ['(failed to load status)'], present: [] };
 			gmbStatus      = { ok: false, missing: ['(failed to load status)'], present: [] };
 		}
@@ -160,19 +160,19 @@
 			const ch = sp.get('channel');
 			if (isChannel(ch)) tab = ch;
 
-			const err = sp.get('meta_error') ?? sp.get('linkedin_error') ?? sp.get('gmb_error') ?? sp.get('tiktok_error');
+			const err = sp.get('zernio_error') ?? sp.get('linkedin_error') ?? sp.get('gmb_error') ?? sp.get('tiktok_error');
 			const errDesc = sp.get('desc');
 			if (err) {
 				let t = decodeURIComponent(err.replace(/\+/g, ' '));
 				if (errDesc) t += ` — ${decodeURIComponent(errDesc.replace(/\+/g, ' '))}`;
 				banner = { kind: 'err', text: t };
 			}
-			if (sp.get('meta_connected') || sp.get('linkedin_connected') || sp.get('gmb_connected') || sp.get('tiktok_connected')) {
+			if (sp.get('zernio_connected') || sp.get('linkedin_connected') || sp.get('gmb_connected') || sp.get('tiktok_connected')) {
 				await invalidateAll();
 				if (!err) {
-					const ig = sp.get('ig_found'), loc = sp.get('locations');
+					const loc = sp.get('locations');
 					let msg = 'Connected successfully.';
-					if (sp.get('meta_connected')) msg = ig === '1' ? 'Meta connected — Instagram account saved.' : 'Meta connected.';
+					if (sp.get('zernio_connected')) msg = 'Zernio connected — accounts synced.';
 					if (sp.get('linkedin_connected')) msg = 'LinkedIn connected.';
 					if (sp.get('gmb_connected')) msg = loc ? `Google Business Profile connected (${loc} locations).` : 'Google Business Profile connected.';
 					if (sp.get('tiktok_connected')) msg = 'TikTok connected.';
@@ -189,13 +189,13 @@
 		setTimeout(() => { animateChart = true; }, 100);
 	});
 
-	async function ensureMetaOk(): Promise<boolean> {
+	async function ensureZernioOk(): Promise<boolean> {
 		try {
-			const res = await fetch('/api/integrations/meta/status');
+			const res = await fetch('/api/integrations/zernio/status');
 			const st = (await res.json()) as Status;
-			if (!st.ok) { banner = { kind: 'err', text: `Meta is not configured yet. Missing: ${st.missing.join(', ')}` }; return false; }
+			if (!st.ok) { banner = { kind: 'err', text: `Zernio is not configured yet. Missing: ${st.missing.join(', ')}` }; return false; }
 			return true;
-		} catch { banner = { kind: 'err', text: 'Could not verify Meta credentials.' }; return false; }
+		} catch { banner = { kind: 'err', text: 'Could not verify Zernio credentials.' }; return false; }
 	}
 	async function ensureLinkedinOk(): Promise<boolean> {
 		try {
@@ -214,20 +214,21 @@
 		} catch { banner = { kind: 'err', text: 'Could not verify Google Business credentials.' }; return false; }
 	}
 
-	async function connectInstagram() { if (!(await ensureMetaOk())) return; if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(oauthNext('instagram'))}`; }
-	async function connectFacebook()  { if (!(await ensureMetaOk())) return; if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(oauthNext('facebook'))}`; }
-	function connectTiktok() { if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/tiktok/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(oauthNext('tiktok'))}`; }
+	async function connectInstagram() { if (!(await ensureZernioOk())) return; if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/zernio/start?platform=instagram&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(oauthNext('instagram'))}`; }
+	async function connectFacebook()  { if (!(await ensureZernioOk())) return; if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/zernio/start?platform=facebook&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(oauthNext('facebook'))}`; }
+	async function connectTiktok() { if (!(await ensureZernioOk())) return; if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/zernio/start?platform=tiktok&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(oauthNext('tiktok'))}`; }
 	async function connectLinkedin(mode: 'member'|'org'|'both') { if (!(await ensureLinkedinOk())) return; if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/linkedin/start?userId=${encodeURIComponent(userId)}&mode=${encodeURIComponent(mode)}&next=${encodeURIComponent(oauthNext('linkedin'))}`; }
 	async function connectGmb() { if (!(await ensureGmbOk())) return; if (!userId) { goto('/login'); return; } window.location.href = `/api/auth/gmb/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent(oauthNext('gmb'))}`; }
 
 	function connectionsFor(tabId: AnalyticsPlatform): ConnectionSummary[] {
 		const list = data.connections ?? [];
-		if (tabId === 'tiktok') return list.filter((c) => c.provider === 'tiktok');
+		if (tabId === 'tiktok') return list.filter((c) => c.provider === 'zernio' && String((c.meta as { platform?: string } | null)?.platform) === 'tiktok');
 		if (tabId === 'linkedin') return list.filter((c) => c.provider === 'linkedin');
 		if (tabId === 'gmb') return list.filter((c) => c.provider === 'gmb');
-		const meta = list.filter((c) => c.provider === 'meta');
-		if (tabId === 'facebook') return meta.filter(c => String(c.provider_account_id ?? '').startsWith('fbpage:') || String((c.meta as {kind?:string}|null)?.kind ?? '') === 'facebook_page');
-		return meta.filter(c => { const acct = String(c.provider_account_id ?? ''); const kind = String((c.meta as {kind?:string}|null)?.kind ?? ''); if (acct.startsWith('fbpage:') || kind === 'facebook_page') return false; if (acct === 'me') return false; return true; });
+		const z = list.filter((c) => c.provider === 'zernio');
+		if (tabId === 'facebook') return z.filter((c) => String((c.meta as { platform?: string } | null)?.platform) === 'facebook');
+		if (tabId === 'instagram') return z.filter((c) => String((c.meta as { platform?: string } | null)?.platform) === 'instagram');
+		return [];
 	}
 
 	function statsFor(tabId: AnalyticsPlatform): PostStats {
@@ -237,7 +238,7 @@
 	const activeConnections = $derived(connectionsFor(tab));
 	const activeStats       = $derived(statsFor(tab));
 	const tabLabel          = $derived(platforms.find((x) => x.id === tab)?.label ?? 'Channel');
-	const metaReady         = $derived(!!metaStatus?.ok);
+	const zernioReady         = $derived(!!zernioStatus?.ok);
 	const linkedinReady     = $derived(!!linkedinStatus?.ok);
 	const gmbReady          = $derived(!!gmbStatus?.ok);
 
@@ -602,35 +603,40 @@
 			</div>
 		{:else if tab === 'instagram'}
 			<div class="conn-card">
-				<p class="conn-desc">Sign in with Meta to link an Instagram Business account to your Facebook Page.</p>
-				{#if metaReady}
-					<div class="cred-ok"><CheckCircle2 size={14}/><span>Meta app credentials look good.</span></div>
+				<p class="conn-desc">Connect Instagram through <a href="https://docs.zernio.com/" target="_blank" rel="noreferrer" class="underline">Zernio</a> (Business/Creator). Requires <code>ZERNIO_API_KEY</code> and <code>PUBLIC_APP_URL</code> on the server.</p>
+				{#if zernioReady}
+					<div class="cred-ok"><CheckCircle2 size={14}/><span>Zernio configuration looks good.</span></div>
 				{:else}
-					<div class="cred-bad"><AlertTriangle size={14}/><span>Server env missing: <code>{metaStatus?.missing?.join(', ') ?? 'unknown'}</code></span></div>
+					<div class="cred-bad"><AlertTriangle size={14}/><span>Server env missing: <code>{zernioStatus?.missing?.join(', ') ?? 'unknown'}</code></span></div>
 				{/if}
 				<div class="conn-btns">
-					<button type="button" class="btn-connect" disabled={!metaReady} onclick={() => void connectInstagram()}>Connect Instagram</button>
-					<a href="/dashboard/docs/instagram" class="btn-link">Setup guide</a>
+					<button type="button" class="btn-connect" disabled={!zernioReady} onclick={() => void connectInstagram()}>Connect Instagram</button>
+					<a href="https://docs.zernio.com/platforms/instagram" target="_blank" rel="noreferrer" class="btn-link">Zernio Instagram <ExternalLink size={11}/></a>
 				</div>
 			</div>
 		{:else if tab === 'facebook'}
 			<div class="conn-card">
-				<p class="conn-desc">Uses the same Meta login as Instagram. After authorizing, we save your Facebook Pages.</p>
-				{#if metaReady}
-					<div class="cred-ok"><CheckCircle2 size={14}/><span>Meta app credentials look good.</span></div>
+				<p class="conn-desc">Connect a Facebook Page via Zernio. After OAuth, pick your Page in Zernio’s flow; we sync the account into Carousel Studio.</p>
+				{#if zernioReady}
+					<div class="cred-ok"><CheckCircle2 size={14}/><span>Zernio configuration looks good.</span></div>
 				{:else}
-					<div class="cred-bad"><AlertTriangle size={14}/><span>Server env missing: <code>{metaStatus?.missing?.join(', ') ?? 'unknown'}</code></span></div>
+					<div class="cred-bad"><AlertTriangle size={14}/><span>Server env missing: <code>{zernioStatus?.missing?.join(', ') ?? 'unknown'}</code></span></div>
 				{/if}
 				<div class="conn-btns">
-					<button type="button" class="btn-connect" disabled={!metaReady} onclick={() => void connectFacebook()}>Connect Facebook Page</button>
-					<a href="https://developers.facebook.com/docs/graph-api/reference/page" target="_blank" rel="noreferrer" class="btn-link">Page API docs <ExternalLink size={11}/></a>
+					<button type="button" class="btn-connect" disabled={!zernioReady} onclick={() => void connectFacebook()}>Connect Facebook Page</button>
+					<a href="https://docs.zernio.com/platforms/facebook" target="_blank" rel="noreferrer" class="btn-link">Zernio Facebook <ExternalLink size={11}/></a>
 				</div>
 			</div>
 		{:else if tab === 'tiktok'}
 			<div class="conn-card">
-				<p class="conn-desc">OAuth opens TikTok's consent screen. For local dev you need HTTPS and matching redirect URIs.</p>
+				<p class="conn-desc">TikTok uses the same Zernio OAuth flow. Direct posts require the consent flags Zernio sends on your behalf.</p>
+				{#if zernioReady}
+					<div class="cred-ok"><CheckCircle2 size={14}/><span>Zernio configuration looks good.</span></div>
+				{:else}
+					<div class="cred-bad"><AlertTriangle size={14}/><span>Server env missing: <code>{zernioStatus?.missing?.join(', ') ?? 'unknown'}</code></span></div>
+				{/if}
 				<div class="conn-btns">
-					<button type="button" class="btn-connect" onclick={connectTiktok}>Connect TikTok</button>
+					<button type="button" class="btn-connect" disabled={!zernioReady} onclick={() => void connectTiktok()}>Connect TikTok</button>
 					<a href="/dashboard/post-tests" class="btn-link">Test posting</a>
 				</div>
 			</div>

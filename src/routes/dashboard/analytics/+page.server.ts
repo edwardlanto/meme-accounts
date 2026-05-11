@@ -22,12 +22,28 @@ export type PostStats = {
 function classifyScheduledPost(row: {
 	connection_provider: string;
 	connection_provider_account_id: string;
+	content?: { meta?: { platform?: string } } | null;
 }): AnalyticsPlatform | null {
 	const p = (row.connection_provider ?? '').toLowerCase();
 	const acct = String(row.connection_provider_account_id ?? '');
 	if (p === 'tiktok') return 'tiktok';
 	if (p === 'linkedin') return 'linkedin';
 	if (p === 'gmb') return 'gmb';
+	if (p === 'zernio') {
+		const c = row.content ?? {};
+		let zp = String((c as any).meta?.platform ?? '').toLowerCase();
+		if (!zp && (c as any).igType) zp = 'instagram';
+		if (!zp && ((c as any).images || (c as any).message || (c as any).video || (c as any).videos || (c as any).kind)) {
+			const k = String((c as any).kind ?? '').toLowerCase();
+			if (k.startsWith('ig_')) zp = 'instagram';
+			else zp = 'facebook';
+		}
+		if (!zp && (c as any).videoUrl && !(c as any).igType) zp = 'tiktok';
+		if (zp === 'instagram') return 'instagram';
+		if (zp === 'facebook') return 'facebook';
+		if (zp === 'tiktok') return 'tiktok';
+		return null;
+	}
 	if (p === 'meta') {
 		if (acct.startsWith('fbpage:')) return 'facebook';
 		return 'instagram';
@@ -58,7 +74,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.order('updated_at', { ascending: false }),
 		sb
 			.from('scheduled_posts')
-			.select('status, connection_provider, connection_provider_account_id')
+			.select('status, connection_provider, connection_provider_account_id, content')
 			.eq('user_id', user.id),
 	]);
 

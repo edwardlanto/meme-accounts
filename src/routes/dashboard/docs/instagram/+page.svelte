@@ -83,29 +83,28 @@
 			<div class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
 				<p class="text-sm font-display font-semibold text-white/85">Admin / advanced (for the app owner)</p>
 				<a
-					href="https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/content-publishing"
+					href="https://docs.zernio.com/platforms/instagram"
 					target="_blank"
 					rel="noreferrer"
 					class="text-[11px] font-mono text-white/35 hover:text-white/70 transition-colors inline-flex items-center gap-1.5"
 				>
-					Meta docs <ExternalLink size={12} />
+					Zernio docs <ExternalLink size={12} />
 				</a>
 			</div>
 			<div class="p-5 space-y-4">
 				<div class="rounded-2xl bg-white/2 border border-white/8 p-4">
-					<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest mb-2">Meta app & env vars (server-side)</p>
-					<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">META_APP_ID=
-META_APP_SECRET=
-META_REDIRECT_URI=https://your-domain.com/api/auth/meta/callback
+					<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest mb-2">Server env (Zernio)</p>
+					<pre class="text-[11px] leading-relaxed font-mono text-white/50 bg-black/30 border border-white/10 rounded-xl p-3 overflow-auto">ZERNIO_API_KEY=sk_...
+PUBLIC_APP_URL=https://your-domain.com
 
 SUPABASE_URL=
 SUPABASE_SERVICE_KEY=</pre>
+					<p class="text-[11px] font-body text-white/40 mt-2">OAuth returns to <code class="text-white/55">/api/auth/zernio/callback</code> (PUBLIC_APP_URL must match how users reach your app).</p>
 				</div>
 				<div class="rounded-2xl bg-white/2 border border-white/8 p-4">
 					<p class="text-[11px] font-mono text-white/40 uppercase tracking-widest mb-2">Permissions</p>
 					<p class="text-sm font-body text-white/55">
-						Common scopes: <code class="font-mono text-white/70">pages_show_list</code>, <code class="font-mono text-white/70">pages_read_engagement</code>, <code class="font-mono text-white/70">instagram_basic</code>, <code class="font-mono text-white/70">instagram_content_publish</code>.
-						Meta App Review is usually required to onboard real customers at scale.
+						Instagram publishing runs through Zernio; platform OAuth and token refresh are handled there. You still need an Instagram Business or Creator account.
 					</p>
 				</div>
 				<div class="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 flex items-start gap-3">

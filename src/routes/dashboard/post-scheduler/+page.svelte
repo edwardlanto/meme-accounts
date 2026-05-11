@@ -212,25 +212,21 @@
 	onMount(async () => {
 		loadDismissed();
 
-		// Surface Meta OAuth redirect results (callback appends query params).
+		// Surface Zernio OAuth redirect results (callback appends query params).
 		const params = new URLSearchParams(window.location.search);
-		const metaError = params.get('meta_error');
-		const igFound = params.get('ig_found');
-		const metaConnected = params.get('meta_connected');
-		if (metaError) {
+		const zernioError = params.get('zernio_error');
+		const zernioConnected = params.get('zernio_connected');
+		if (zernioError) {
 			metaBanner = {
 				kind: 'error',
 				message:
-					`Meta connect failed: ${metaError}` +
-					(params.get('desc') ? ` — ${params.get('desc')}` : '') +
-					(params.get('reason') ? ` (${params.get('reason')})` : ''),
+					`Zernio connect failed: ${zernioError}` +
+					(params.get('desc') ? ` — ${params.get('desc')}` : ''),
 			};
-		} else if (metaConnected === '1') {
+		} else if (zernioConnected === '1') {
 			metaBanner = {
 				kind: 'success',
-				message: igFound === '1'
-					? 'Meta connected. Instagram business account found.'
-					: 'Meta connected. No Instagram business account found yet (link IG to a Facebook Page).',
+				message: 'Zernio account synced. Your Facebook, Instagram, or TikTok connection should appear under channels.',
 			};
 		}
 
@@ -338,7 +334,7 @@
 			.from('social_connections')
 			.select('id,user_id,provider,provider_account_id,provider_account_label,access_token,meta')
 			.eq('user_id', userId)
-			.eq('provider', 'meta');
+			.eq('provider', 'zernio');
 		if (error) {
 			connectionsError = error.message ?? 'Failed to load connections';
 			return;
@@ -347,9 +343,10 @@
 
 		const nextConnected = new Set<ChannelId>();
 		for (const c of connections) {
-			const kind = String(c?.meta?.kind ?? '');
-			if (kind === 'instagram_business') nextConnected.add('instagramBusiness');
-			if (kind === 'facebook_page') nextConnected.add('facebookPage');
+			const p = String(c?.meta?.platform ?? '').toLowerCase();
+			if (p === 'instagram') nextConnected.add('instagramBusiness');
+			if (p === 'facebook') nextConnected.add('facebookPage');
+			if (p === 'tiktok') nextConnected.add('tiktok');
 		}
 		connected = Array.from(nextConnected);
 	}
@@ -358,27 +355,27 @@
 		if (!userId) return;
 
 		const label =
-			id === 'instagramBusiness' ? 'Instagram (Business)' :
+			id === 'instagramBusiness' ? 'Instagram' :
 			id === 'facebookPage' ? 'Facebook Page' :
+			id === 'tiktok' ? 'TikTok' :
 			id;
 
 		if (!confirm(`Disconnect ${label}? You can reconnect anytime.`)) return;
 
-		// Delete only the relevant connection rows.
-		// Note: IG publishing relies on a Page link, so disconnecting the Page may also require reconnecting IG later.
-		const kind =
-			id === 'instagramBusiness' ? 'instagram_business' :
-			id === 'facebookPage' ? 'facebook_page' :
+		const platform =
+			id === 'instagramBusiness' ? 'instagram' :
+			id === 'facebookPage' ? 'facebook' :
+			id === 'tiktok' ? 'tiktok' :
 			'';
 
 		try {
-			if (!kind) return;
+			if (!platform) return;
 			const { error } = await (supabase as any)
 				.from('social_connections')
 				.delete()
 				.eq('user_id', userId)
-				.eq('provider', 'meta')
-				.contains('meta', { kind });
+				.eq('provider', 'zernio')
+				.contains('meta', { platform });
 			if (error) throw error;
 
 			// Refresh UI state
@@ -390,9 +387,12 @@
 	}
 
 	function postChannelsFromProvider(provider: string, acct: string, meta: any): ChannelId[] {
-		if (provider === 'meta') {
-			if (acct.startsWith('fbpage:') || meta?.kind === 'facebook_page') return ['facebookPage'];
-			return ['instagramBusiness'];
+		if (provider === 'zernio') {
+			const p = String(meta?.platform ?? '').toLowerCase();
+			if (p === 'facebook') return ['facebookPage'];
+			if (p === 'instagram') return ['instagramBusiness'];
+			if (p === 'tiktok') return ['tiktok'];
+			return [];
 		}
 		if (provider === 'gmb') return ['gmb'];
 		if (provider === 'linkedin') return ['linkedin'];
@@ -411,7 +411,8 @@
 		// Worker IG content uses `igType` + sometimes `kind: ig_*`.
 		const igType = String(c.igType ?? '').toLowerCase();
 		const rawKind = String(c.kind ?? '').toLowerCase();
-		const isIg = provider === 'meta' && typeof acct === 'string' && !acct.startsWith('fbpage:');
+		const zPlatform = String(c?.meta?.platform ?? '').toLowerCase();
+		const isIg = provider === 'zernio' && zPlatform === 'instagram';
 
 		let kind = '';
 		if (rawKind === 'reel') kind = 'Reel';
@@ -429,7 +430,7 @@
 		else if (imgs === 1) kind = 'Photo';
 		else if (vids > 1) kind = `Videos (${vids})`;
 		else if (vids === 1) kind = 'Video';
-		else kind = provider === 'meta' && acct.startsWith('fbpage:') ? 'FB text' : isIg ? 'IG' : 'Post';
+		else kind = provider === 'zernio' && zPlatform === 'facebook' ? 'FB text' : isIg ? 'IG' : provider === 'zernio' && zPlatform === 'tiktok' ? 'TikTok' : 'Post';
 
 		return (msg ? `${kind} — ${msg}` : kind).slice(0, 120);
 	}
@@ -493,17 +494,16 @@
 	}
 
 	async function connectInstagramBusiness() {
-		// Credential check endpoint tells us if env is missing
 		try {
-			const res = await fetch('/api/integrations/meta/status');
+			const res = await fetch('/api/integrations/zernio/status');
 			const st = (await res.json()) as { ok: boolean; missing: string[] };
 			if (!st.ok) {
-				alert(`Instagram connect needs credentials: ${st.missing.join(', ')}.\n\nGo to Settings → Integrations to add them.`);
+				alert(`Zernio needs: ${st.missing.join(', ')} (set in server env).`);
 				goto('/dashboard/settings?integrations=1#instagram');
 				return;
 			}
 		} catch {
-			alert('Could not verify Meta credentials. Open Settings → Integrations.');
+			alert('Could not verify Zernio configuration. Open Settings → Integrations.');
 			goto('/dashboard/settings?integrations=1#instagram');
 			return;
 		}
@@ -514,21 +514,20 @@
 			return;
 		}
 
-		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+		window.location.href = `/api/auth/zernio/start?platform=instagram&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
 
 	async function connectFacebookPages() {
-		// Uses the same Meta OAuth; callback now saves Facebook Page connections too.
 		try {
-			const res = await fetch('/api/integrations/meta/status');
+			const res = await fetch('/api/integrations/zernio/status');
 			const st = (await res.json()) as { ok: boolean; missing: string[] };
 			if (!st.ok) {
-				alert(`Facebook connect needs credentials: ${st.missing.join(', ')}.\n\nGo to Settings → Integrations to add them.`);
+				alert(`Zernio needs: ${st.missing.join(', ')} (set in server env).`);
 				goto('/dashboard/settings?integrations=1#instagram');
 				return;
 			}
 		} catch {
-			alert('Could not verify Meta credentials. Open Settings → Integrations.');
+			alert('Could not verify Zernio configuration. Open Settings → Integrations.');
 			goto('/dashboard/settings?integrations=1#instagram');
 			return;
 		}
@@ -539,7 +538,27 @@
 			return;
 		}
 
-		window.location.href = `/api/auth/meta/start?userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+		window.location.href = `/api/auth/zernio/start?platform=facebook&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
+	}
+
+	async function connectTiktokZernio() {
+		try {
+			const res = await fetch('/api/integrations/zernio/status');
+			const st = (await res.json()) as { ok: boolean; missing: string[] };
+			if (!st.ok) {
+				alert(`Zernio needs: ${st.missing.join(', ')} (set in server env).`);
+				goto('/dashboard/settings?integrations=1');
+				return;
+			}
+		} catch {
+			alert('Could not verify Zernio configuration.');
+			return;
+		}
+		if (!userId) {
+			goto('/login');
+			return;
+		}
+		window.location.href = `/api/auth/zernio/start?platform=tiktok&userId=${encodeURIComponent(userId)}&next=${encodeURIComponent('/dashboard/post-scheduler')}`;
 	}
 
 	async function connectLinkedIn(mode: 'member' | 'org' | 'both') {
@@ -732,12 +751,15 @@
 	}
 	function today() { anchor = new Date(); }
 
-	function pickMetaConnectionForChannel(channel: ChannelId): DbSocialConnection | null {
+	function pickZernioConnectionForChannel(channel: ChannelId): DbSocialConnection | null {
 		if (channel === 'facebookPage') {
-			return connections.find((c) => String(c?.meta?.kind ?? '') === 'facebook_page') ?? null;
+			return connections.find((c) => String(c?.meta?.platform ?? '') === 'facebook') ?? null;
 		}
 		if (channel === 'instagramBusiness') {
-			return connections.find((c) => String(c?.meta?.kind ?? '') === 'instagram_business') ?? null;
+			return connections.find((c) => String(c?.meta?.platform ?? '') === 'instagram') ?? null;
+		}
+		if (channel === 'tiktok') {
+			return connections.find((c) => String(c?.meta?.platform ?? '') === 'tiktok') ?? null;
 		}
 		return null;
 	}
@@ -749,13 +771,14 @@
 		}
 
 		// Choose first channel in the draft that we can actually schedule
-		const target = draft.channels.find((c) => c === 'facebookPage' || c === 'instagramBusiness') ?? null;
+		const target =
+			draft.channels.find((c) => c === 'facebookPage' || c === 'instagramBusiness' || c === 'tiktok') ?? null;
 		if (!target) {
 			alert('This draft has no supported channel yet.');
 			return;
 		}
 
-		const conn = pickMetaConnectionForChannel(target);
+		const conn = pickZernioConnectionForChannel(target);
 		if (!conn) {
 			alert(`No connection found for ${target}. Click “Add Channel” and connect first.`);
 			return;
@@ -765,17 +788,41 @@
 		if (target === 'facebookPage') {
 			const message = `Scheduled from Social Poster — ${new Date().toLocaleString()}`;
 			if (draft.images?.length) {
-				content = { message, images: draft.images };
+				content = { message, images: draft.images, meta: { platform: 'facebook' } };
 				if (draft.imageCaptions?.length) content.imageCaptions = draft.imageCaptions;
 			} else if (draft.video) {
-				content = { message, video: draft.video };
+				content = { message, video: draft.video, meta: { platform: 'facebook' } };
 			} else {
-				content = { message };
+				content = { message, meta: { platform: 'facebook' } };
 			}
-		} else {
-			// IG needs a public URL; we don't have asset upload wired on this page yet.
-			alert('Instagram auto-publish requires a public image/video URL. For now, test scheduling/cancel with a Facebook Page connection.');
-			return;
+		} else if (target === 'instagramBusiness') {
+			const caption = `Scheduled from Social Poster — ${new Date().toLocaleString()}`;
+			if (draft.igType === 'carousel' && draft.images && draft.images.length >= 2) {
+				content = {
+					igType: 'carousel',
+					caption,
+					children: draft.images.map((url) => ({ imageUrl: url })),
+					meta: { platform: 'instagram' },
+				};
+			} else if (draft.igType === 'reel' && draft.video) {
+				content = { igType: 'reel', caption, videoUrl: draft.video, meta: { platform: 'instagram' } };
+			} else if (draft.images?.[0]) {
+				content = { igType: 'post', caption, imageUrl: draft.images[0], meta: { platform: 'instagram' } };
+			} else {
+				alert('Instagram scheduling needs at least one public image URL, a carousel (2+ images), or a video URL.');
+				return;
+			}
+		} else if (target === 'tiktok') {
+			if (!draft.video) {
+				alert('TikTok scheduling needs a public video URL on the draft.');
+				return;
+			}
+			content = {
+				videoUrl: draft.video,
+				mode: 'direct',
+				title: `Scheduled — ${new Date().toLocaleString()}`,
+				meta: { platform: 'tiktok' },
+			};
 		}
 
 		try {
@@ -784,7 +831,7 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					userId,
-					connectionProvider: 'meta',
+					connectionProvider: 'zernio',
 					connectionProviderAccountId: conn.provider_account_id,
 					scheduledAt: when.toISOString(),
 					content,
@@ -804,19 +851,20 @@
 			return;
 		}
 
-		const target = draft.channels.find((c) => c === 'facebookPage' || c === 'instagramBusiness') ?? null;
+		const target =
+			draft.channels.find((c) => c === 'facebookPage' || c === 'instagramBusiness' || c === 'tiktok') ?? null;
 		if (!target) {
 			alert('This draft has no supported channel yet.');
 			return;
 		}
 
-		const conn = pickMetaConnectionForChannel(target);
+		const conn = pickZernioConnectionForChannel(target);
 		if (!conn) {
 			alert(`No connection found for ${target}. Click “Add Channel” and connect first.`);
 			return;
 		}
 
-		// Fast path: Facebook Page → direct Graph API call (no worker required).
+		// Fast path: Facebook Page → Zernio
 		if (target === 'facebookPage') {
 			metaBanner = { kind: 'success', message: 'Posting to Facebook now…' };
 			try {
@@ -838,10 +886,14 @@
 				});
 				const data = await res.json().catch(() => ({ ok: false, error: `Non-JSON (${res.status})` }));
 				if (!res.ok || !data?.ok) throw new Error(data?.error ?? `Post failed (${res.status})`);
-				const postId = data?.result?.id ?? data?.result?.post_id ?? '';
+				const zid =
+					data?.results?.[0]?.post?._id ??
+					data?.results?.[0]?.post?.id ??
+					data?.results?.[0]?._id ??
+					'';
 				metaBanner = {
 					kind: 'success',
-					message: `Posted to Facebook${postId ? ` (post_id=${postId})` : ''}. Check your Page.`,
+					message: `Posted via Zernio${zid ? ` (post ${zid})` : ''}. Check your Page.`,
 				};
 				// Optional: remove the draft from the UI so the user sees it's done.
 				dismissDraftId(draft.id);
@@ -852,8 +904,7 @@
 			return;
 		}
 
-		// Instagram (and any other channel): fall back to the scheduled-queue path.
-		// This still requires the worker to be running to actually publish.
+		// Instagram / TikTok: scheduled-queue path (worker must be running).
 		const when = new Date(Date.now() + 2000);
 		metaBanner = { kind: 'success', message: 'Posting now via scheduler… (worker must be running)' };
 		await scheduleDraft(draft, when);
@@ -1613,6 +1664,8 @@ style="background: var(--app-surface-2); border-color: var(--app-border);"
 											? connectInstagramBusiness()
 											: ch.id === 'facebookPage'
 												? connectFacebookPages()
+												: ch.id === 'tiktok'
+													? connectTiktokZernio()
 											: ch.id === 'linkedin'
 												? connectLinkedIn('member')
 												: ch.id === 'linkedinPage'
@@ -1630,7 +1683,7 @@ style="background: var(--app-surface-2); border-color: var(--app-border);"
 								</button>
 							{/each}
 						</div>
-						<p class="mt-4 text-[11px] font-body text-white/25">UI-only for now. Real connections will use OAuth per platform.</p>
+						<p class="mt-4 text-[11px] font-body text-white/25">Facebook, Instagram, and TikTok connect via <a class="underline text-white/40 hover:text-white/60" href="https://docs.zernio.com/">Zernio</a> (server needs ZERNIO_API_KEY and PUBLIC_APP_URL).</p>
 					</div>
 				</div>
 			</div>
