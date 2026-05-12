@@ -71,7 +71,7 @@
 		justify-content: center;
 		min-width: 0;
 		min-height: 38px;
-		padding: 10px 8px;
+		padding: 10px 15px;
 		border: none;
 		border-radius: 12px;
 		background: transparent;
@@ -97,8 +97,9 @@
 	}
 
 	.format-dock-btn--active {
-		color: rgba(91, 33, 182, 0.95);
-		background: rgba(139, 92, 246, 0.18);
+		color: #fff;
+		border-radius:50px;
+		background: #000;
 	}
 
 	.format-dock-btn--active:hover {

@@ -243,7 +243,7 @@
 		if (params.get('from') === 'studio' && params.get('exported') === '1' && studioDraftId) {
 			metaBanner = {
 				kind: 'success',
-				message: 'Studio export ready. Use the top “News Studio: carousel …” draft to post images to Facebook.',
+				message: 'Studio export ready. Use the top "News Studio: carousel …" draft to post images to Facebook.',
 			};
 		}
 
@@ -271,7 +271,7 @@
 				scrollCalendarToHour(when.getHours());
 				metaBanner = {
 					kind: 'success',
-					message: `Scheduled for ${when.toLocaleString()}. Look for the violet “Scheduled” pill on the calendar below.`,
+					message: `Scheduled for ${when.toLocaleString()}. Look for the violet "Scheduled" pill on the calendar below.`,
 				};
 			} else {
 				metaBanner = {
@@ -780,7 +780,7 @@
 
 		const conn = pickZernioConnectionForChannel(target);
 		if (!conn) {
-			alert(`No connection found for ${target}. Click “Add Channel” and connect first.`);
+			alert(`No connection found for ${target}. Click "Add Channel" and connect first.`);
 			return;
 		}
 
@@ -860,7 +860,7 @@
 
 		const conn = pickZernioConnectionForChannel(target);
 		if (!conn) {
-			alert(`No connection found for ${target}. Click “Add Channel” and connect first.`);
+			alert(`No connection found for ${target}. Click "Add Channel" and connect first.`);
 			return;
 		}
 
@@ -962,40 +962,41 @@
 </script>
 
 <div class="scheduler-root h-[calc(100vh-0px)] w-full flex overflow-hidden" style="background: var(--app-bg); color: var(--app-text);">
+	<!-- ═══ LEFT SIDEBAR ════════════════════════════════════════════════════ -->
 	<aside class="w-72 shrink-0 border-r flex flex-col" style="background: var(--app-surface-2); border-color: var(--app-border);">
-		<div class="p-4 border-b border-white/5">
-			<div class="flex items-center gap-2">
-				<button onclick={() => history.length > 1 ? history.back() : goto('/dashboard')}
-					class="w-9 h-9 rounded-xl bg-white/4 hover:bg-white/7 border border-white/8 flex items-center justify-center text-white/40 hover:text-white/80 transition-all"
-					aria-label="Go back">
-					<ArrowLeft size={16} />
-				</button>
-				<div class="min-w-0">
-					<p class="text-xs font-mono text-white/30 uppercase tracking-widest">Calendar</p>
-					<p class="text-sm font-display font-semibold text-white/80 truncate">Scheduler</p>
-				</div>
+		<!-- Header -->
+		<div class="px-4 py-3.5 border-b flex items-center gap-2.5" style="border-color: var(--app-border);">
+			<button onclick={() => history.length > 1 ? history.back() : goto('/dashboard')}
+				class="cal-icon-btn"
+				aria-label="Go back">
+				<ArrowLeft size={15} />
+			</button>
+			<div class="min-w-0 flex-1">
+				<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Schedule</p>
+				<p class="text-sm font-sans font-semibold leading-tight" style="color: var(--app-text);">Calendar</p>
 			</div>
 		</div>
 
-		<div class="p-4 border-b border-white/5">
-			<div class="flex items-center justify-between mb-3">
-				<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Channels</p>
+		<!-- Channels -->
+		<div class="px-4 py-3 border-b" style="border-color: var(--app-border);">
+			<div class="flex items-center justify-between mb-2.5">
+				<p class="text-[10px] font-sans uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Channels</p>
 				<button onclick={() => (showAddChannel = true)}
-					class="px-2 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[10px] font-mono text-violet-300 hover:bg-violet-500/15 transition-colors flex items-center gap-1.5">
-					<Plus size={12} /> Add
+					class="cal-chip-btn violet flex items-center gap-1">
+					<Plus size={11} /> Add
 				</button>
 			</div>
 
 			{#if connectionsError}
-				<div class="rounded-2xl bg-red-500/10 border border-red-500/20 p-3 mb-3">
-					<p class="text-[11px] font-body text-red-300/80">{connectionsError}</p>
+				<div class="rounded-xl border p-2.5 mb-2.5" style="background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.18);">
+					<p class="text-[11px] font-sans" style="color: rgba(248,113,113,.9);">{connectionsError}</p>
 				</div>
 			{/if}
 
 			{#if userId && connected.length === 0 && !connectionsError}
-				<div class="rounded-2xl bg-white/2 border border-white/6 p-3 mb-3">
-					<p class="text-xs font-body text-white/70">No connected channels yet.</p>
-					<p class="text-[11px] font-body text-white/35 mt-1 leading-relaxed">
+				<div class="rounded-xl border p-2.5 mb-2.5" style="background: var(--app-surface-3); border-color: var(--app-border);">
+					<p class="text-xs font-sans" style="color: var(--app-text-2);">No connected channels yet.</p>
+					<p class="text-[11px] font-sans mt-1 leading-relaxed" style="color: var(--app-text-3);">
 						If you just connected Meta, make sure `SUPABASE_SERVICE_KEY` is valid so the server can save `social_connections`.
 					</p>
 				</div>
@@ -1009,24 +1010,26 @@
 						tabindex="0"
 						onclick={() => toggleConnected(id)}
 						onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleConnected(id)}
-						class="group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-white/6 bg-white/2 hover:bg-white/4 transition-colors text-left"
+						class="group flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-colors text-left"
+						style="border-color: var(--app-border); background: var(--app-surface-3);"
 					>
-						<div class="w-9 h-9 rounded-xl bg-white/3 border border-white/6 flex items-center justify-center">
+						<div class="w-9 h-9 rounded-xl border flex items-center justify-center" style="background: var(--app-surface-2); border-color: var(--app-border);">
 							<div class="opacity-90">{@html ch?.icon(true) ?? ''}</div>
 						</div>
 						<div class="min-w-0 flex-1">
-							<p class="text-xs font-body text-white/75 truncate">{ch?.label ?? id}</p>
-							<p class="text-[10px] font-mono text-white/25 truncate">{ch?.kind ?? 'channel'}</p>
+							<p class="text-xs font-sans truncate" style="color: var(--app-text);">{ch?.label ?? id}</p>
+							<p class="text-[10px] font-sans truncate" style="color: var(--app-text-3);">{ch?.kind ?? 'channel'}</p>
 						</div>
 						<div class="flex items-center gap-2">
-							<div class="w-2 h-2 rounded-full {ch?.accent ?? 'bg-white/30'}"></div>
+							<div class="w-2 h-2 rounded-full {ch ? ch.accent : 'bg-white/30'}"></div>
 							<button
 								onclick={(e) => { e.stopPropagation(); void disconnectChannel(id); }}
-								class="w-7 h-7 rounded-xl bg-white/2 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/30 hover:text-red-200 transition-all flex items-center justify-center"
+								class="w-7 h-7 rounded-lg border flex items-center justify-center transition-all"
+								style="background: transparent; border-color: var(--app-border); color: var(--app-text-3);"
 								aria-label={`Disconnect ${ch?.label ?? id}`}
 								title="Disconnect"
 							>
-								<X size={14} />
+								<X size={13} />
 							</button>
 						</div>
 					</div>
@@ -1034,21 +1037,22 @@
 			</div>
 		</div>
 
-		<div class="p-4 flex-1 overflow-auto">
-			<div class="flex items-center justify-between mb-3">
-				<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Drafts</p>
-				<p class="text-[10px] font-mono text-white/20">drag to calendar</p>
+		<!-- Drafts -->
+		<div class="px-4 py-3 flex-1 overflow-auto">
+			<div class="flex items-center justify-between mb-2.5">
+				<p class="text-[10px] font-sans uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Drafts</p>
+				<p class="text-[10px] font-sans" style="color: var(--app-text-3);">drag to calendar</p>
 			</div>
 			<div class="flex flex-col gap-2">
 				{#if drafts.length === 0}
-					<div class="rounded-2xl bg-white/2 border border-white/6 p-3">
-						<p class="text-xs font-body text-white/70">No drafts yet.</p>
-						<p class="text-[11px] font-body text-white/35 mt-1 leading-relaxed">
-							Connect a channel (Facebook Page / Instagram Business) to generate starter drafts you can drag onto the calendar.
+					<div class="rounded-xl border p-3" style="background: var(--app-surface-3); border-color: var(--app-border);">
+						<p class="text-xs font-sans" style="color: var(--app-text-2);">No drafts yet.</p>
+						<p class="text-[11px] font-sans mt-1 leading-relaxed" style="color: var(--app-text-3);">
+							Connect a channel to generate starter drafts you can drag onto the calendar.
 						</p>
 						<button
 							onclick={() => (showAddChannel = true)}
-							class="mt-3 w-full px-3 py-2 rounded-xl bg-violet-500/15 border border-violet-500/25 text-xs font-mono text-violet-200 hover:bg-violet-500/20 transition-colors"
+							class="mt-3 w-full px-3 py-2 rounded-xl text-xs font-sans cal-chip-btn violet"
 						>
 							Connect channel
 						</button>
@@ -1056,108 +1060,111 @@
 				{/if}
 
 				{#each drafts as d (d.id)}
-					<div role="listitem" class="select-none rounded-2xl bg-white/2 border border-white/6 hover:bg-white/3 transition-colors overflow-hidden">
-						<!-- Drag handle (so users know where to grab) -->
+					<div role="listitem" class="select-none rounded-xl border overflow-hidden transition-colors" style="border-color: var(--app-border); background: var(--app-surface-3);">
+						<!-- Drag handle -->
 						<div
 							role="button"
 							tabindex="0"
 							draggable="true"
 							ondragstart={(e) => dragStartDraft(e, d.id)}
-							class="cursor-grab active:cursor-grabbing px-3 py-2 bg-white/2 border-b border-white/6 flex items-center gap-2"
+							class="cursor-grab active:cursor-grabbing px-3 py-2 border-b flex items-center gap-2"
+							style="border-color: var(--app-border); background: var(--app-surface-2);"
 							title="Drag onto a calendar slot to schedule"
 						>
-							<GripVertical size={14} class="text-white/35" />
-							<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Drag to schedule</p>
+							<GripVertical size={13} style="color: var(--app-text-3);" />
+							<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Drag to schedule</p>
 						</div>
 
 						<div class="p-3">
-						<div class="flex items-start justify-between gap-2 mb-2">
-							<p class="text-xs font-body text-white/75">{d.title}</p>
-							<div class="flex items-center gap-2 shrink-0">
-								<button
-									onclick={(e) => { e.stopPropagation(); deleteDraft(d.id); }}
-									class="w-7 h-7 rounded-xl bg-white/2 border border-white/6 hover:bg-red-500/15 hover:border-red-500/25 text-white/30 hover:text-red-200 transition-all flex items-center justify-center"
-									aria-label="Delete draft"
-									title="Delete draft"
-								>
-									<X size={14} />
-								</button>
-								<button
-									onclick={(e) => { e.stopPropagation(); void postNow(d); }}
-									class="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-mono text-emerald-200 hover:bg-emerald-500/20 transition-colors"
-									title="Publish immediately"
-								>
-									Post now
-								</button>
-								<button
-									onclick={(e) => { e.stopPropagation(); void pickTimeAndSchedule(d); }}
-									class="px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-mono text-cyan-200/80 hover:bg-cyan-500/15 transition-colors"
-									title="Schedule without dragging"
-								>
-									Pick time
-								</button>
-								<span class="text-[9px] font-mono px-2 py-1 rounded-lg border {igTypePillClass(d.igType)}">
-									{igTypeLabel(d.igType)}
-								</span>
-							</div>
-						</div>
-						{#if (d.images?.length ?? 0) > 0}
-							<div class="mb-2">
-								<div class="flex items-center justify-between">
-									<p class="text-[10px] font-mono text-white/25 uppercase tracking-widest">Preview</p>
+							<div class="flex items-start justify-between gap-2 mb-2">
+								<p class="text-xs font-sans" style="color: var(--app-text);">{d.title}</p>
+								<div class="flex items-center gap-1.5 shrink-0 flex-wrap">
 									<button
-										type="button"
-										onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], 0, d.title); }}
-										class="text-[10px] font-mono text-violet-200/70 hover:text-violet-200 transition-colors"
+										onclick={(e) => { e.stopPropagation(); deleteDraft(d.id); }}
+										class="w-6 h-6 rounded-lg border flex items-center justify-center transition-all"
+										style="background: transparent; border-color: var(--app-border); color: var(--app-text-3);"
+										aria-label="Delete draft"
 									>
-										Open →
+										<X size={12} />
 									</button>
+									<button
+										onclick={(e) => { e.stopPropagation(); void postNow(d); }}
+										class="cal-chip-btn green"
+										title="Publish immediately"
+									>
+										Post now
+									</button>
+									<button
+										onclick={(e) => { e.stopPropagation(); void pickTimeAndSchedule(d); }}
+										class="cal-chip-btn cyan"
+										title="Schedule without dragging"
+									>
+										Pick time
+									</button>
+									<span class="text-[9px] font-sans px-2 py-1 rounded-lg border {igTypePillClass(d.igType)}">
+										{igTypeLabel(d.igType)}
+									</span>
 								</div>
-								<div class="mt-2 flex items-center gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
-									{#each (d.images ?? []).slice(0, 8) as src, i (src + ':' + i)}
+							</div>
+							{#if (d.images?.length ?? 0) > 0}
+								<div class="mb-2">
+									<div class="flex items-center justify-between">
+										<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Preview</p>
 										<button
 											type="button"
-											onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], i, d.title); }}
-											class="shrink-0 relative w-12 h-12 rounded-xl overflow-hidden border border-white/10 bg-white/5 hover:opacity-95 transition-opacity"
-											title="Click to preview"
+											onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], 0, d.title); }}
+											class="text-[10px] font-sans transition-colors"
+											style="color: var(--color-violet);"
 										>
-											<img src={src} alt={`Draft image ${i + 1}`} class="w-full h-full object-cover" />
-											<div class="absolute bottom-1 left-1 text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-black/55 text-white/80 border border-white/10">
-												{i + 1}
-											</div>
+											Open →
 										</button>
-									{/each}
-									{#if (d.images?.length ?? 0) > 8}
-										<div class="shrink-0 text-[10px] font-mono text-white/25 px-2">+{(d.images?.length ?? 0) - 8}</div>
-									{/if}
+									</div>
+									<div class="mt-2 flex items-center gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
+										{#each (d.images ?? []).slice(0, 8) as src, i (src + ':' + i)}
+											<button
+												type="button"
+												onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], i, d.title); }}
+												class="shrink-0 relative w-12 h-12 rounded-xl overflow-hidden border hover:opacity-95 transition-opacity"
+												style="border-color: var(--app-border); background: var(--app-surface-2);"
+												title="Click to preview"
+											>
+												<img src={src} alt={`Draft image ${i + 1}`} class="w-full h-full object-cover" />
+												<div class="absolute bottom-1 left-1 text-[9px] font-sans px-1.5 py-0.5 rounded-md bg-black/55 text-white/80">
+													{i + 1}
+												</div>
+											</button>
+										{/each}
+										{#if (d.images?.length ?? 0) > 8}
+											<div class="shrink-0 text-[10px] font-sans px-2" style="color: var(--app-text-3);">+{(d.images?.length ?? 0) - 8}</div>
+										{/if}
+									</div>
 								</div>
+							{/if}
+							<div class="flex items-center justify-between gap-2 mb-2">
+								<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">IG type</p>
+								<select
+									value={d.igType}
+									onchange={(e) => {
+										const v = (e.target as HTMLSelectElement).value as IgContentType;
+										drafts = drafts.map((x) => (x.id === d.id ? { ...x, igType: v } : x));
+									}}
+									class="cal-select"
+								>
+									<option value="post">Post</option>
+									<option value="reel">Reel</option>
+									<option value="carousel">Carousel</option>
+									<option value="story">Story (manual)</option>
+								</select>
 							</div>
-						{/if}
-						<div class="flex items-center justify-between gap-2 mb-2">
-							<p class="text-[10px] font-mono text-white/25 uppercase tracking-widest">Instagram type</p>
-							<select
-								value={d.igType}
-								onchange={(e) => {
-									const v = (e.target as HTMLSelectElement).value as IgContentType;
-									drafts = drafts.map((x) => (x.id === d.id ? { ...x, igType: v } : x));
-								}}
-								class="bg-white/3 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-mono text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors cursor-pointer"
-							>
-								<option value="post">Post</option>
-								<option value="reel">Reel</option>
-								<option value="carousel">Carousel</option>
-								<option value="story">Story (manual)</option>
-							</select>
-						</div>
-						<div class="flex items-center gap-1.5 flex-wrap">
-							{#each d.channels as cid (cid)}
-								{@const c = channelById(cid)}
-								<span class="text-[9px] font-mono text-white/45 bg-white/3 border border-white/6 px-2 py-1 rounded-lg flex items-center gap-1.5">
-									<span class="w-1.5 h-1.5 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
-									{c?.label ?? cid}
-								</span>
-							{/each}
-						</div>
+							<div class="flex items-center gap-1.5 flex-wrap">
+								{#each d.channels as cid (cid)}
+									{@const c = channelById(cid)}
+									<span class="text-[9px] font-sans px-2 py-1 rounded-lg border flex items-center gap-1.5" style="border-color: var(--app-border); color: var(--app-text-2);">
+										<span class="w-1.5 h-1.5 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
+										{c?.label ?? cid}
+									</span>
+								{/each}
+							</div>
 						</div>
 					</div>
 				{/each}
@@ -1165,53 +1172,46 @@
 		</div>
 	</aside>
 
-	<main class="flex-1 overflow-hidden" style="background: var(--app-bg);">
+	<!-- ═══ MAIN CALENDAR AREA ═══════════════════════════════════════════════ -->
+	<main class="flex-1 overflow-hidden flex flex-col" style="background: var(--app-bg);">
+
+		<!-- ── Top banners ── -->
 		{#if metaBanner}
-			<div class="px-6 py-3 border-b border-white/5">
-				<div class="rounded-2xl p-3 text-sm font-body border
+			<div class="px-5 pt-3 pb-0">
+				<div class="rounded-xl border p-3 text-sm font-sans flex items-start justify-between gap-3
 					{metaBanner.kind === 'error'
-						? 'bg-red-500/10 border-red-500/20 text-red-300/80'
-						: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200/80'}">
-					<div class="flex items-start justify-between gap-3">
-						<p class="min-w-0">{metaBanner.message}</p>
-						<button
-							onclick={() => (metaBanner = null)}
-							class="shrink-0 w-8 h-8 rounded-xl bg-white/3 border border-white/8 hover:bg-white/6 text-white/45 hover:text-white/80 transition-all flex items-center justify-center"
-							aria-label="Dismiss"
-						>
-							<X size={14} />
-						</button>
-					</div>
+						? 'bg-red-500/8 border-red-500/20 text-red-400'
+						: 'bg-emerald-500/8 border-emerald-500/20 text-emerald-500'}">
+					<p class="min-w-0 text-[13px]">{metaBanner.message}</p>
+					<button
+						onclick={() => (metaBanner = null)}
+						class="cal-icon-btn shrink-0"
+						aria-label="Dismiss"
+					>
+						<X size={13} />
+					</button>
 				</div>
 			</div>
 		{/if}
 
 		{#if studioExportPreview.length > 0}
-			<div class="px-6 pt-4">
-				<div class="rounded-2xl bg-white/3 border border-white/10 p-4">
-					<div class="flex items-start justify-between gap-3">
-						<div class="min-w-0">
-							<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Ready to upload</p>
-							<p class="text-sm font-display font-semibold text-white/85">
-								{studioExportPreview.length} PNG{studioExportPreview.length === 1 ? '' : 's'} exported from Studio
-							</p>
-							<p class="text-[11px] font-body text-white/35 mt-1 leading-relaxed">
-								These are the exact images that will be uploaded when you post the “News Studio: carousel …” draft.
-							</p>
-						</div>
-					</div>
+			<div class="px-5 pt-3">
+				<div class="rounded-xl border p-4" style="background: var(--app-surface-2); border-color: var(--app-border);">
+					<p class="text-[10px] font-sans uppercase tracking-widest mb-1" style="color: var(--app-text-3);">Ready to upload</p>
+					<p class="text-sm font-sans font-semibold" style="color: var(--app-text);">
+						{studioExportPreview.length} PNG{studioExportPreview.length === 1 ? '' : 's'} exported from Studio
+					</p>
 					<div class="mt-3 flex items-center gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
 						{#each studioExportPreview as src, i (i)}
 							<button
 								type="button"
 								onclick={() => openLightbox(studioExportPreview, i, 'Studio export')}
-								class="shrink-0 relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-white/5 hover:opacity-95 transition-opacity"
+								class="shrink-0 relative w-14 h-14 rounded-xl overflow-hidden border hover:opacity-95 transition-opacity"
+								style="border-color: var(--app-border);"
 								title="Click to preview"
 							>
 								<img src={src} alt={`Slide ${i + 1}`} class="w-full h-full object-cover" />
-								<div class="absolute bottom-1 left-1 text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-black/55 text-white/80 border border-white/10">
-									{i + 1}
-								</div>
+								<div class="absolute bottom-1 left-1 text-[9px] font-sans px-1.5 py-0.5 rounded-md bg-black/55 text-white/80">{i + 1}</div>
 							</button>
 						{/each}
 					</div>
@@ -1220,33 +1220,33 @@
 		{/if}
 
 		{#if recentPosts.length > 0}
-			<div class="px-6 pt-4">
-				<details class="rounded-2xl bg-white/3 border border-white/10 p-3">
-					<summary class="cursor-pointer text-[10px] font-mono text-white/45 uppercase tracking-widest flex items-center justify-between">
+			<div class="px-5 pt-3">
+				<details class="rounded-xl border p-3" style="background: var(--app-surface-2); border-color: var(--app-border);">
+					<summary class="cursor-pointer text-[10px] font-sans uppercase tracking-widest flex items-center justify-between" style="color: var(--app-text-2);">
 						<span>Recent activity (last 10)</span>
-						<span class="text-white/25 normal-case">click to toggle</span>
+						<span class="normal-case" style="color: var(--app-text-3);">click to toggle</span>
 					</summary>
 					<div class="mt-3 space-y-2">
 						{#each recentPosts as r (r.id)}
-							<div class="flex items-start justify-between gap-3 rounded-xl bg-white/3 border border-white/5 px-3 py-2 text-[12px] font-mono">
+							<div class="flex items-start justify-between gap-3 rounded-xl border px-3 py-2 text-[12px] font-sans" style="border-color: var(--app-border); background: var(--app-surface-3);">
 								<div class="min-w-0 flex-1">
 									<div class="flex items-center gap-2">
 										<span class={
-											r.status === 'published' ? 'text-emerald-300/80' :
-											r.status === 'failed' ? 'text-red-300/80' :
-											r.status === 'publishing' ? 'text-amber-300/80' :
-											r.status === 'cancelled' ? 'text-white/40' :
-											'text-sky-300/80'
+											r.status === 'published' ? 'text-emerald-500' :
+											r.status === 'failed' ? 'text-red-500' :
+											r.status === 'publishing' ? 'text-amber-500' :
+											r.status === 'cancelled' ? 'text-gray-400' :
+											'text-sky-500'
 										}>● {r.status}</span>
-										<span class="text-white/30">·</span>
-										<span class="text-white/70 truncate">{r.title}</span>
+										<span style="color: var(--app-text-3);">·</span>
+										<span class="truncate" style="color: var(--app-text);">{r.title}</span>
 									</div>
-									<p class="text-[11px] text-white/35 mt-0.5">
+									<p class="text-[11px] mt-0.5" style="color: var(--app-text-3);">
 										scheduled: {new Date(r.scheduled_at).toLocaleString()}
 										{#if r.published_at} · published: {new Date(r.published_at).toLocaleString()}{/if}
 									</p>
 									{#if r.last_error}
-										<p class="text-[11px] text-red-300/70 mt-1 whitespace-pre-wrap wrap-break-word">error: {r.last_error}</p>
+										<p class="text-[11px] text-red-500 mt-1 whitespace-pre-wrap break-words">error: {r.last_error}</p>
 									{/if}
 								</div>
 								<button
@@ -1257,10 +1257,10 @@
 										await tick();
 										scrollCalendarToHour(when.getHours());
 									}}
-									class="shrink-0 px-2 py-1 rounded-lg text-[10px] font-mono bg-sky-500/15 border border-sky-500/25 text-sky-200 hover:bg-sky-500/20 transition-colors"
+									class="cal-chip-btn cyan shrink-0 whitespace-nowrap"
 									title="Jump calendar to this time"
 								>
-									show on calendar →
+									show →
 								</button>
 							</div>
 						{/each}
@@ -1268,7 +1268,8 @@
 					<button
 						type="button"
 						onclick={() => loadRecentPosts()}
-						class="mt-3 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-mono text-white/60 hover:bg-white/8 transition-colors"
+						class="mt-3 px-3 py-1.5 rounded-lg border text-[11px] font-sans transition-colors"
+						style="background: var(--app-surface-3); border-color: var(--app-border); color: var(--app-text-2);"
 					>
 						Refresh
 					</button>
@@ -1276,290 +1277,301 @@
 			</div>
 		{/if}
 
-		<div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
-			<div class="flex items-center gap-3">
-				<div class="w-9 h-9 rounded-xl bg-white/3 border border-white/6 flex items-center justify-center">
-					<Calendar size={16} class="text-white/55" />
+		<!-- ── Calendar toolbar (Postiz style) ── -->
+		<div class="px-5 py-3 flex items-center justify-between border-b shrink-0" style="border-color: var(--app-border);">
+			<!-- Left: month + nav -->
+			<div class="flex items-center gap-2">
+				<div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--app-surface-3);">
+					<Calendar size={15} style="color: var(--app-text-2);" />
 				</div>
-				<div>
-					<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">Schedule</p>
-					<p class="text-sm font-display font-semibold text-white/80">{fmtMonth(anchor)}</p>
+				<span class="text-[15px] font-sans font-semibold" style="color: var(--app-text);">{fmtMonth(anchor)}</span>
+				<div class="flex items-center gap-1 ml-2">
+					<button onclick={prev} class="cal-icon-btn" aria-label="Previous">
+						<ChevronLeft size={15} />
+					</button>
+					<button onclick={today} class="px-2.5 py-1 rounded-lg text-[11px] font-sans transition-colors" style="background: var(--app-surface-3); color: var(--app-text-2);">Today</button>
+					<button onclick={next} class="cal-icon-btn" aria-label="Next">
+						<ChevronRight size={15} />
+					</button>
 				</div>
 			</div>
 
-			<div class="flex items-center gap-2">
-				<button onclick={today} class="px-3 py-2 rounded-xl bg-white/2 border border-white/6 text-xs font-mono text-white/55 hover:bg-white/4 transition-colors">Today</button>
-				<button onclick={prev} class="w-10 h-10 rounded-xl bg-white/2 border border-white/6 text-white/45 hover:text-white/80 hover:bg-white/4 transition-colors" aria-label="Previous">‹</button>
-				<button onclick={next} class="w-10 h-10 rounded-xl bg-white/2 border border-white/6 text-white/45 hover:text-white/80 hover:bg-white/4 transition-colors" aria-label="Next">›</button>
-				<div class="ml-2 flex items-center rounded-xl bg-white/2 border border-white/6 overflow-hidden">
-					<button onclick={() => (view = 'day')} class="px-3 py-2 text-xs font-mono {view === 'day' ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}">Day</button>
-					<button onclick={() => (view = 'week')} class="px-3 py-2 text-xs font-mono {view === 'week' ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}">Week</button>
-					<button onclick={() => (view = 'month')} class="px-3 py-2 text-xs font-mono {view === 'month' ? 'bg-violet-500/20 text-violet-200' : 'text-white/45 hover:text-white/80'}">Month</button>
+			<!-- Right: view switcher + loading -->
+			<div class="flex items-center gap-3">
+				{#if loadingPosts}
+					<span class="text-[11px] font-sans" style="color: var(--app-text-3);">Loading…</span>
+				{/if}
+				{#if postsError}
+					<span class="text-[11px] font-sans text-red-500">{postsError}</span>
+				{/if}
+				<div class="flex items-center rounded-lg overflow-hidden border" style="border-color: var(--app-border); background: var(--app-surface-2);">
+					<button onclick={() => (view = 'day')} class="px-3 py-1.5 text-[12px] font-sans transition-colors {view === 'day' ? 'cal-view-active' : 'cal-view-inactive'}">Day</button>
+					<button onclick={() => (view = 'week')} class="px-3 py-1.5 text-[12px] font-sans transition-colors border-l border-r {view === 'week' ? 'cal-view-active' : 'cal-view-inactive'}" style="border-color: var(--app-border);">Week</button>
+					<button onclick={() => (view = 'month')} class="px-3 py-1.5 text-[12px] font-sans transition-colors {view === 'month' ? 'cal-view-active' : 'cal-view-inactive'}">Month</button>
 				</div>
 			</div>
 		</div>
 
-		{#if postsError}
-			<div class="px-6 py-3 border-b border-white/5">
-				<div class="rounded-2xl bg-red-500/10 border border-red-500/20 p-3 text-sm font-body text-red-300/80">
-					{postsError}
-				</div>
-			</div>
-		{/if}
-
-		<div bind:this={calendarScrollEl} class="h-[calc(100%-73px)] overflow-auto">
-			<div class="min-w-[980px]">
-				{#if loadingPosts}
-					<div class="px-6 py-6 text-sm font-body text-white/40">Loading scheduled posts…</div>
-				{/if}
+		<!-- ── Calendar body ── -->
+		<div bind:this={calendarScrollEl} class="flex-1 overflow-auto">
+			<div class="min-w-[860px]">
+				<!-- ════ MONTH VIEW ════ -->
 				{#if view === 'month'}
-					<div class="grid" style="grid-template-columns: repeat(7, 1fr);">
+					<!-- Day-of-week headers (sticky) -->
+					<div class="grid grid-cols-7 sticky top-0 z-20">
 						{#each ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as wd (wd)}
-							<div class="h-12 border-b px-3 flex items-center" style="border-color: {calLine};">
-								<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">{wd}</p>
+							<div class="h-[62px] flex items-center justify-center rounded-lg m-0.5" style="background: var(--app-surface-3);">
+								<p class="text-[13px] font-sans font-medium" style="color: var(--app-text-2);">{wd}</p>
 							</div>
 						{/each}
 					</div>
-					<div class="grid" style="grid-template-columns: repeat(7, 1fr);">
+					<!-- Month cells -->
+					<div class="grid grid-cols-7">
 						{#each monthDays as d (d.toISOString())}
 							{@const inMonth = d.getMonth() === anchor.getMonth()}
 							{@const isToday = d.toDateString() === new Date().toDateString()}
 							{@const dayPosts = postsForDay(d)}
 							<div
 								role="presentation"
-								class="relative h-28 border-b border-l hover:bg-white/2 transition-colors overflow-hidden"
-								style="border-color: {calLine}; background: {inMonth ? 'transparent' : 'color-mix(in oklab, var(--app-text) 2%, transparent)'};"
+								class="relative border-b border-r min-h-[110px] transition-colors"
+								style="
+									border-color: {calLine};
+									background: {isToday ? 'color-mix(in oklab, var(--color-violet) 5%, var(--app-bg))' : inMonth ? 'var(--app-bg)' : 'var(--app-surface-2)'};
+								"
 								ondragover={(e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; }}
 								ondrop={(e) => dropToSlot(e, d, 9)}
 							>
-								<div class="absolute top-2 left-2">
-									<span class="text-[11px] font-mono px-2 py-0.5 rounded-lg border"
+								<!-- Day number -->
+								<div class="pt-2 px-2 pb-1">
+									<span
+										class="inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] font-sans font-medium"
 										style="
-											border-color: {isToday ? 'rgba(139,92,246,0.35)' : 'transparent'};
-											background: {isToday ? 'rgba(139,92,246,0.12)' : 'transparent'};
-											color: {inMonth ? 'var(--app-text-2)' : 'var(--app-text-3)'};
+											background: {isToday ? 'var(--color-violet)' : 'transparent'};
+											color: {isToday ? '#fff' : inMonth ? 'var(--app-text-2)' : 'var(--app-text-3)'};
 										"
 									>{fmtDayNum(d)}</span>
 								</div>
-								<div class="pt-10 px-2 pb-2 flex flex-col gap-1">
+								<!-- Posts -->
+								<div class="px-1.5 pb-2 flex flex-col gap-1">
 									{#each dayPosts.slice(0, 3) as p (p.id)}
-										<div class="rounded-lg border px-2 py-1 bg-white/3"
-											style="border-color: {calLine};"
+										{@const isDone = p.status === 'published'}
+										{@const isFailed = p.status === 'failed'}
+										<div
+											class="rounded-[6px] overflow-hidden border cursor-pointer group"
+											style="border-color: {isDone ? 'rgba(34,197,94,.3)' : isFailed ? 'rgba(239,68,68,.3)' : 'rgba(139,92,246,.3)'};"
 											title={p.title}
 										>
-											<p class="text-[10px] font-body text-white/75 leading-tight line-clamp-1">{p.title}</p>
+											<div class="h-1.5 w-full" style="background: {isDone ? 'rgb(34,197,94)' : isFailed ? 'rgb(239,68,68)' : 'var(--color-violet)'};"></div>
+											<div class="px-2 py-1" style="background: {isDone ? 'rgba(34,197,94,.06)' : isFailed ? 'rgba(239,68,68,.06)' : 'rgba(139,92,246,.06)'};">
+												<p class="text-[11px] font-sans leading-tight line-clamp-1" style="color: var(--app-text);">{p.title}</p>
+											</div>
 										</div>
 									{/each}
 									{#if dayPosts.length > 3}
-										<p class="text-[10px] font-mono text-white/25 px-1">+{dayPosts.length - 3} more</p>
+										<p class="text-[10px] font-sans px-1" style="color: var(--app-text-3);">+{dayPosts.length - 3} more</p>
 									{/if}
 								</div>
 							</div>
 						{/each}
 					</div>
+
+				<!-- ════ DAY VIEW ════ -->
 				{:else if view === 'day'}
-					<div class="grid" style="grid-template-columns: 72px 1fr;">
-						<div class="h-14 border-b" style="border-color: {calLine};"></div>
-						<div class="h-14 border-b px-3 flex items-center justify-between" style="border-color: {calLine};">
-							<div>
-								<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">{fmtDayLabel(dayOnly)}</p>
-								<p class="text-sm font-display font-semibold text-white/75">{dayOnly.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+					{@const isDayToday = dayOnly.toDateString() === new Date().toDateString()}
+					<!-- Sticky header -->
+					<div class="grid sticky top-0 z-20" style="grid-template-columns: 80px 1fr;">
+						<div class="h-[62px]"></div>
+						<div class="h-[62px] rounded-lg m-0.5 flex flex-col items-center justify-center" style="background: {isDayToday ? 'color-mix(in oklab, var(--color-violet) 12%, var(--app-surface-3))' : 'var(--app-surface-3)'};">
+							<p class="text-[13px] font-sans font-medium" style="color: var(--app-text-2);">{fmtDayLabel(dayOnly)}</p>
+							<div class="flex items-center gap-1.5">
+								{#if isDayToday}<div class="w-1.5 h-1.5 rounded-full" style="background: var(--color-violet);"></div>{/if}
+								<p class="text-[14px] font-sans font-semibold" style="color: {isDayToday ? 'var(--color-violet)' : 'var(--app-text)'};">{dayOnly.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
 							</div>
 						</div>
 					</div>
-					<div class="grid" style="grid-template-columns: 72px 1fr;">
+					<!-- Hour rows -->
+					<div class="grid" style="grid-template-columns: 80px 1fr;">
 						{#each hours as hr (hr)}
 							{@const slotPosts = postsForDay(dayOnly)
 								.filter(p => new Date(p.startISO).getHours() === hr)
 								.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
-							<div class="h-20 border-b pr-3 flex items-start justify-end pt-2" style="border-color: {calLine};">
-								<span class="text-[10px] font-mono text-white/20">{hr === 12 ? '12 PM' : hr < 12 ? `${hr} AM` : `${hr - 12} PM`}</span>
+							<!-- Time label -->
+							<div class="h-20 pr-3 flex items-center justify-end border-b" style="border-color: {calLine};">
+								<span class="text-[11px] font-sans" style="color: var(--app-text-3);">{hr === 12 ? '12 PM' : hr < 12 ? `${hr}:00` : `${hr - 12}:00`}</span>
 							</div>
+							<!-- Slot -->
 							<div
 								role="presentation"
-								class="relative h-20 border-b border-l hover:bg-white/2 transition-colors overflow-y-auto overflow-x-hidden scrollbar-thin"
+								class="relative h-20 border-b border-l transition-colors cal-slot"
 								style="border-color: {calLine};"
 								ondragover={allowDrop}
 								ondrop={(e) => dropToSlot(e, dayOnly, hr)}
 							>
-								<div class="flex flex-col gap-1 p-1">
-									{#each slotPosts as p, idx (p.id)}
+								<div class="flex flex-col gap-1 p-1.5 h-full">
+									{#each slotPosts as p (p.id)}
 										{@const isDone = p.status === 'published'}
 										{@const isFailed = p.status === 'failed'}
 										{@const isPublishing = p.status === 'publishing'}
-										{@const pillClass =
-											isDone ? 'bg-emerald-500/12 border-emerald-500/25' :
-											isFailed ? 'bg-red-500/12 border-red-500/25' :
-											isPublishing ? 'bg-amber-500/12 border-amber-500/25' :
-											'bg-violet-500/14 border-violet-500/25'}
-										{@const statusLabel =
-											isDone ? 'Posted' :
-											isFailed ? 'Failed' :
-											isPublishing ? 'Publishing…' :
-											'Scheduled'}
-										{@const statusLabelClass =
-											isDone ? 'text-emerald-200/80 bg-emerald-500/10 border-emerald-500/25' :
-											isFailed ? 'text-red-200/80 bg-red-500/10 border-red-500/25' :
-											isPublishing ? 'text-amber-200/80 bg-amber-500/10 border-amber-500/25' :
-											'text-sky-200/70 bg-sky-500/10 border-sky-500/20'}
+										{@const accentColor = isDone ? 'rgb(34,197,94)' : isFailed ? 'rgb(239,68,68)' : isPublishing ? 'rgb(245,158,11)' : 'var(--color-violet)'}
+										{@const statusLabel = isDone ? 'Posted' : isFailed ? 'Failed' : isPublishing ? 'Publishing…' : 'Scheduled'}
 										<div
 											role="button"
 											tabindex="0"
 											draggable={!isDone && !isFailed && !isPublishing}
 											ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
-											class="shrink-0 rounded-xl border {pillClass} p-2 {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} select-none shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.45)] transition-shadow"
+											class="cal-post-card group {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}"
+											style="border-color: color-mix(in oklab, {accentColor} 40%, transparent);"
 											title={isFailed && p.lastError ? `Failed: ${p.lastError}\n\n${p.title}` : p.title}
 										>
-											<div class="flex items-start justify-between gap-2 mb-1.5">
-												<p class="text-[11px] font-body text-white/85 leading-tight line-clamp-1 flex-1 min-w-0">{p.title}</p>
-												<div class="flex items-center gap-1 shrink-0">
-													<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {statusLabelClass}">
-														{statusLabel}
-													</span>
+											<!-- Colored header bar -->
+											<div class="cal-post-header flex items-center justify-between px-2 py-1 gap-2"
+												style="background: {accentColor};">
+												<span class="text-[10px] font-sans text-white font-medium truncate">{statusLabel}</span>
+												<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 													{#if !isDone && !isPublishing}
 														<button
 															onclick={(e) => {
 																e.stopPropagation();
-																const msg = isFailed ? 'Remove this failed post from the calendar?' : 'Unschedule this post?';
+																const msg = isFailed ? 'Remove this failed post?' : 'Unschedule this post?';
 																if (confirm(msg)) unschedulePost(p.id);
 															}}
-															class="w-5 h-5 rounded-md bg-white/5 border border-white/10 hover:bg-red-500/20 hover:border-red-500/30 text-white/40 hover:text-red-200 transition-all flex items-center justify-center"
+															class="w-4 h-4 rounded flex items-center justify-center text-white/80 hover:text-white hover:bg-black/20 transition-all"
 															aria-label={isFailed ? 'Remove failed post' : 'Unschedule post'}
-															title={isFailed ? 'Remove from calendar' : 'Unschedule'}
 														>
 															<X size={10} />
 														</button>
 													{/if}
 												</div>
 											</div>
-											<div class="flex items-center gap-1 flex-wrap">
-												<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {igTypePillClass(p.igType)}">
-													{igTypeLabel(p.igType)}
-												</span>
-												{#each p.channels as cid (cid)}
-													{@const c = channelById(cid)}
-													<span class="text-[9px] font-mono text-white/55 bg-white/3 border border-white/6 px-1.5 py-0.5 rounded-md flex items-center gap-1">
-														<span class="w-1 h-1 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
-														{c?.label ?? cid}
-													</span>
-												{/each}
+											<!-- Body -->
+											<div class="px-2 py-1.5" style="background: color-mix(in oklab, {accentColor} 8%, var(--app-surface-3));">
+												<p class="text-[11px] font-sans leading-tight line-clamp-2" style="color: var(--app-text);">{p.title}</p>
+												<div class="flex items-center gap-1 flex-wrap mt-1">
+													<span class="text-[9px] font-sans px-1.5 py-0.5 rounded border {igTypePillClass(p.igType)}">{igTypeLabel(p.igType)}</span>
+													{#each p.channels as cid (cid)}
+														{@const c = channelById(cid)}
+														<span class="text-[9px] font-sans px-1.5 py-0.5 rounded border flex items-center gap-1" style="border-color: var(--app-border); color: var(--app-text-2);">
+															<span class="w-1 h-1 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
+															{c?.label ?? cid}
+														</span>
+													{/each}
+												</div>
 											</div>
 										</div>
 									{/each}
+									<!-- Drop zone "+" hint -->
+									{#if slotPosts.length === 0}
+										<div class="cal-plus-hint flex-1 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity"
+											style="border-color: var(--app-border);">
+											<span class="text-[20px] font-light" style="color: var(--app-text-3);">+</span>
+										</div>
+									{/if}
 								</div>
-							</div>
-						{/each}
-					</div>
-				{:else}
-					<!-- Week view -->
-					<div class="grid" style="grid-template-columns: 72px repeat(7, 1fr);">
-						<div class="h-14 border-b" style="border-color: {calLine};"></div>
-						{#each weekDays as d (d.toISOString())}
-							<div class="h-14 border-b px-3 flex items-center justify-between" style="border-color: {calLine};">
-								<div>
-									<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">{fmtDayLabel(d)}</p>
-									<p class="text-sm font-display font-semibold text-white/75">{fmtDayNum(d)}</p>
-								</div>
-								<div class="w-2 h-2 rounded-full bg-white/8"></div>
 							</div>
 						{/each}
 					</div>
 
-					<div class="grid" style="grid-template-columns: 72px repeat(7, 1fr);">
-						{#each hours as hr (hr)}
-							<div class="h-20 border-b pr-3 flex items-start justify-end pt-2" style="border-color: {calLine};">
-								<span class="text-[10px] font-mono text-white/20">{hr === 12 ? '12 PM' : hr < 12 ? `${hr} AM` : `${hr - 12} PM`}</span>
+				<!-- ════ WEEK VIEW ════ -->
+				{:else}
+					<!-- Sticky day headers -->
+					<div class="grid sticky top-0 z-20" style="grid-template-columns: 80px repeat(7, minmax(0,1fr));">
+						<div class="h-[62px]"></div>
+						{#each weekDays as d (d.toISOString())}
+							{@const isToday = d.toDateString() === new Date().toDateString()}
+							<div class="h-[62px] rounded-lg m-0.5 flex flex-col items-center justify-center"
+								style="background: {isToday ? 'color-mix(in oklab, var(--color-violet) 12%, var(--app-surface-3))' : 'var(--app-surface-3)'};">
+								<p class="text-[12px] font-sans font-medium" style="color: var(--app-text-2);">{fmtDayLabel(d)}</p>
+								<div class="flex items-center gap-1.5 mt-0.5">
+									{#if isToday}<div class="w-1.5 h-1.5 rounded-full" style="background: var(--color-violet);"></div>{/if}
+									<p class="text-[13px] font-sans font-semibold" style="color: {isToday ? 'var(--color-violet)' : 'var(--app-text)'};">{fmtDayNum(d)}</p>
+								</div>
 							</div>
+						{/each}
+					</div>
+
+					<!-- Hour rows -->
+					<div class="grid" style="grid-template-columns: 80px repeat(7, minmax(0,1fr));">
+						{#each hours as hr (hr)}
+							<!-- Time label -->
+							<div class="h-20 pr-3 flex items-center justify-end border-b" style="border-color: {calLine};">
+								<span class="text-[11px] font-sans" style="color: var(--app-text-3);">{hr === 12 ? '12 PM' : hr < 12 ? `${hr}:00` : `${hr - 12}:00`}</span>
+							</div>
+							<!-- Day slots -->
 							{#each weekDays as d (d.toISOString() + ':' + hr)}
 								{@const slotPosts = postsForDay(d)
 									.filter(p => new Date(p.startISO).getHours() === hr)
 									.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
 								<div
 									role="presentation"
-									class="relative h-20 border-b border-l hover:bg-white/2 transition-colors overflow-y-auto overflow-x-hidden scrollbar-thin"
+									class="relative h-20 border-b border-l transition-colors cal-slot"
 									style="border-color: {calLine};"
 									ondragover={allowDrop}
 									ondrop={(e) => dropToSlot(e, d, hr)}
 								>
-									<div class="flex flex-col gap-1 p-1">
-									{#each slotPosts as p, idx (p.id)}
-									{@const isDone = p.status === 'published'}
-									{@const isFailed = p.status === 'failed'}
-									{@const isPublishing = p.status === 'publishing'}
-									{@const pillClass =
-										isDone ? 'bg-emerald-500/12 border-emerald-500/25' :
-										isFailed ? 'bg-red-500/12 border-red-500/25' :
-										isPublishing ? 'bg-amber-500/12 border-amber-500/25' :
-										'bg-violet-500/14 border-violet-500/25'}
-									{@const statusLabel =
-										isDone ? 'Posted' :
-										isFailed ? 'Failed' :
-										isPublishing ? 'Publishing…' :
-										'Scheduled'}
-									{@const statusLabelClass =
-										isDone ? 'text-emerald-200/80 bg-emerald-500/10 border-emerald-500/25' :
-										isFailed ? 'text-red-200/80 bg-red-500/10 border-red-500/25' :
-										isPublishing ? 'text-amber-200/80 bg-amber-500/10 border-amber-500/25' :
-										'text-sky-200/70 bg-sky-500/10 border-sky-500/20'}
-									<div
-										role="button"
-										tabindex="0"
-										draggable={!isDone && !isFailed && !isPublishing}
-										ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
-										class="shrink-0 rounded-xl border {pillClass} p-2 {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} select-none shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.45)] transition-shadow"
-										title={isFailed && p.lastError ? `Failed: ${p.lastError}\n\n${p.title}` : p.title}
-									>
-										<div class="flex items-start justify-between gap-2 mb-1.5">
-											<p class="text-[11px] font-body text-white/85 leading-tight line-clamp-1 flex-1 min-w-0">{p.title}</p>
-											<div class="flex items-center gap-1 shrink-0">
-												<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {statusLabelClass}">
-													{statusLabel}
-												</span>
-												{#if !isDone && !isPublishing}
-													<button
-														onclick={(e) => {
-															e.stopPropagation();
-															const msg = isFailed ? 'Remove this failed post from the calendar?' : 'Unschedule this post?';
-															if (confirm(msg)) unschedulePost(p.id);
-														}}
-														class="w-5 h-5 rounded-md bg-white/5 border border-white/10 hover:bg-red-500/20 hover:border-red-500/30 text-white/40 hover:text-red-200 transition-all flex items-center justify-center"
-														aria-label={isFailed ? 'Remove failed post' : 'Unschedule post'}
-														title={isFailed ? 'Remove from calendar' : 'Unschedule'}
-													>
-														<X size={10} />
-													</button>
-												{/if}
+									<div class="flex flex-col gap-0.5 p-1 h-full">
+										{#each slotPosts as p (p.id)}
+											{@const isDone = p.status === 'published'}
+											{@const isFailed = p.status === 'failed'}
+											{@const isPublishing = p.status === 'publishing'}
+											{@const accentColor = isDone ? 'rgb(34,197,94)' : isFailed ? 'rgb(239,68,68)' : isPublishing ? 'rgb(245,158,11)' : 'var(--color-violet)'}
+											{@const statusLabel = isDone ? 'Posted' : isFailed ? 'Failed' : isPublishing ? 'Publishing…' : 'Scheduled'}
+											<div
+												role="button"
+												tabindex="0"
+												draggable={!isDone && !isFailed && !isPublishing}
+												ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
+												class="cal-post-card group {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}"
+												style="border-color: color-mix(in oklab, {accentColor} 40%, transparent);"
+												title={isFailed && p.lastError ? `Failed: ${p.lastError}\n\n${p.title}` : p.title}
+											>
+												<!-- Colored header bar -->
+												<div class="cal-post-header flex items-center justify-between px-1.5 gap-1"
+													style="background: {accentColor};">
+													<span class="text-[9px] font-sans text-white font-medium truncate">{statusLabel}</span>
+													<div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+														{#if !isDone && !isPublishing}
+															<button
+																onclick={(e) => {
+																	e.stopPropagation();
+																	const msg = isFailed ? 'Remove this failed post?' : 'Unschedule this post?';
+																	if (confirm(msg)) unschedulePost(p.id);
+																}}
+																class="w-3.5 h-3.5 rounded flex items-center justify-center text-white/80 hover:text-white hover:bg-black/20 transition-all"
+															>
+																<X size={9} />
+															</button>
+														{/if}
+													</div>
+												</div>
+												<!-- Body -->
+												<div class="px-1.5 py-1" style="background: color-mix(in oklab, {accentColor} 8%, var(--app-surface-3));">
+													<p class="text-[10px] font-sans leading-tight line-clamp-2" style="color: var(--app-text);">{p.title}</p>
+												</div>
 											</div>
-										</div>
-										<div class="flex items-center gap-1 flex-wrap">
-											<span class="text-[9px] font-mono px-1.5 py-0.5 rounded-md border {igTypePillClass(p.igType)}">
-												{igTypeLabel(p.igType)}
-											</span>
-											{#each p.channels as cid (cid)}
-												{@const c = channelById(cid)}
-												<span class="text-[9px] font-mono text-white/55 bg-white/3 border border-white/6 px-1.5 py-0.5 rounded-md flex items-center gap-1">
-													<span class="w-1 h-1 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
-													{c?.label ?? cid}
-												</span>
-											{/each}
-										</div>
+										{/each}
+										<!-- Drop zone hint -->
+										{#if slotPosts.length === 0}
+											<div class="cal-plus-hint flex-1 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity"
+												style="border-color: var(--app-border);">
+												<span class="text-lg font-light" style="color: var(--app-text-3);">+</span>
+											</div>
+										{/if}
 									</div>
-								{/each}
 								</div>
-							</div>
+							{/each}
 						{/each}
-					{/each}
-				</div>
+					</div>
 				{/if}
 			</div>
 		</div>
 	</main>
 
+	<!-- ═══ LIGHTBOX ═══════════════════════════════════════════════════════== -->
 	{#if lightbox.open}
 		<div
 			role="button"
 			tabindex="0"
-			class="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm"
+			class="fixed inset-0 z-[200] bg-black/75 backdrop-blur-sm"
 			onclick={closeLightbox}
 			onkeydown={(e) => {
 				if (e.key === 'Escape') closeLightbox();
@@ -1572,66 +1584,43 @@
 				<div
 					role="dialog"
 					aria-modal="true"
-					class="w-full max-w-5xl rounded-2xl overflow-hidden border bg-black/40"
-					style="border-color: color-mix(in oklab, var(--app-text) 16%, transparent);"
+					class="w-full max-w-5xl rounded-2xl overflow-hidden border"
+					style="background: var(--app-surface-2); border-color: var(--app-border);"
 					tabindex="-1"
 					onclick={(e) => e.stopPropagation()}
 					onkeydown={(e) => e.stopPropagation()}
 				>
-					<div
-						class="px-4 py-3 flex items-center justify-between gap-3 border-b"
-						style="border-color: color-mix(in oklab, var(--app-text) 12%, transparent);"
-					>
+					<div class="px-4 py-3 flex items-center justify-between gap-3 border-b" style="border-color: var(--app-border);">
 						<div class="min-w-0">
-							<p class="text-[10px] font-mono text-white/35 uppercase tracking-widest">Preview</p>
-							<p class="text-xs font-body text-white/80 truncate">
+							<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Preview</p>
+							<p class="text-xs font-sans" style="color: var(--app-text);">
 								{lightbox.title ?? 'Images'} · {lightbox.index + 1}/{lightbox.images.length}
 							</p>
 						</div>
-						<button
-							type="button"
-							onclick={closeLightbox}
-							class="w-8 h-8 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/50 hover:text-white/90 transition-all flex items-center justify-center"
-							aria-label="Close"
-						>
-							<X size={14} />
-						</button>
+						<button type="button" onclick={closeLightbox} class="cal-icon-btn" aria-label="Close"><X size={14} /></button>
 					</div>
-					<div class="relative bg-black/30">
-						<button
-							type="button"
-							onclick={lbPrev}
-							class="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 flex items-center justify-center"
-							aria-label="Previous image"
-							title="Previous (←)"
-						>
+					<div class="relative" style="background: rgba(0,0,0,.3);">
+						<button type="button" onclick={lbPrev}
+							class="absolute left-3 top-1/2 -translate-y-1/2 cal-icon-btn" aria-label="Previous image">
 							<ChevronLeft size={18} />
 						</button>
-						<button
-							type="button"
-							onclick={lbNext}
-							class="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 flex items-center justify-center"
-							aria-label="Next image"
-							title="Next (→)"
-						>
+						<button type="button" onclick={lbNext}
+							class="absolute right-3 top-1/2 -translate-y-1/2 cal-icon-btn" aria-label="Next image">
 							<ChevronRight size={18} />
 						</button>
-						<img
-							src={lightbox.images[lightbox.index]}
-							alt="Preview"
-							class="w-full max-h-[78vh] object-contain block"
-						/>
+						<img src={lightbox.images[lightbox.index]} alt="Preview" class="w-full max-h-[78vh] object-contain block" />
 					</div>
 				</div>
 			</div>
 		</div>
 	{/if}
 
+	<!-- ═══ ADD CHANNEL MODAL ════════════════════════════════════════════════ -->
 	{#if showAddChannel}
 		<div
 			role="button"
 			tabindex="0"
-			class="fixed inset-0 z-100 bg-black/60 backdrop-blur-sm"
+			class="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
 			onclick={() => (showAddChannel = false)}
 			onkeydown={(e) => (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') && (showAddChannel = false)}
 			aria-label="Close add channel modal"
@@ -1640,16 +1629,16 @@
 				<div
 					role="dialog"
 					aria-modal="true"
-class="w-full max-w-3xl rounded-2xl border shadow-2xl overflow-hidden"
-style="background: var(--app-surface-2); border-color: var(--app-border);"
+					class="w-full max-w-3xl rounded-2xl border shadow-2xl overflow-hidden"
+					style="background: var(--app-surface-2); border-color: var(--app-border);"
 					onclick={(e) => e.stopPropagation()}
 					onkeydown={(e) => e.stopPropagation()}
 					tabindex="-1"
 				>
-					<div class="px-5 py-4 border-b border-white/6 flex items-center justify-between">
-						<p class="text-sm font-display font-semibold text-white/85">Add Channel</p>
+					<div class="px-5 py-4 border-b flex items-center justify-between" style="border-color: var(--app-border);">
+						<p class="text-sm font-sans font-semibold" style="color: var(--app-text);">Add Channel</p>
 						<button onclick={() => (showAddChannel = false)}
-							class="w-9 h-9 rounded-xl bg-white/3 border border-white/8 hover:bg-white/6 text-white/50 hover:text-white/80 transition-all flex items-center justify-center"
+							class="cal-icon-btn"
 							aria-label="Close">
 							<X size={16} />
 						</button>
@@ -1674,16 +1663,18 @@ style="background: var(--app-surface-2); border-color: var(--app-border);"
 														? connectGmb()
 													: toggleConnected(ch.id)
 									}
-									class="group rounded-2xl bg-white/2 border border-white/6 hover:bg-white/4 transition-colors p-3 flex flex-col items-center gap-2">
-									<div class="w-11 h-11 rounded-2xl bg-white/3 border border-white/6 flex items-center justify-center">
+									class="group rounded-2xl border hover:bg-white/3 transition-colors p-3 flex flex-col items-center gap-2"
+									style="background: var(--app-surface-3); border-color: var(--app-border);"
+								>
+									<div class="w-11 h-11 rounded-2xl border flex items-center justify-center" style="background: var(--app-surface-2); border-color: var(--app-border);">
 										<div>{@html ch.icon(connected.includes(ch.id))}</div>
 									</div>
-									<p class="text-[10px] font-mono text-white/55 text-center leading-tight">{ch.label}</p>
-									<p class="text-[9px] font-mono text-white/20">{connected.includes(ch.id) ? 'Connected' : 'Connect'}</p>
+									<p class="text-[10px] font-sans text-center leading-tight" style="color: var(--app-text-2);">{ch.label}</p>
+									<p class="text-[9px] font-sans" style="color: var(--app-text-3);">{connected.includes(ch.id) ? 'Connected' : 'Connect'}</p>
 								</button>
 							{/each}
 						</div>
-						<p class="mt-4 text-[11px] font-body text-white/25">Facebook, Instagram, and TikTok connect via <a class="underline text-white/40 hover:text-white/60" href="https://docs.zernio.com/">Zernio</a> (server needs ZERNIO_API_KEY and PUBLIC_APP_URL).</p>
+						<p class="mt-4 text-[11px] font-sans" style="color: var(--app-text-3);">Facebook, Instagram, and TikTok connect via <a class="underline hover:opacity-80" href="https://docs.zernio.com/" style="color: var(--color-violet);">Zernio</a> (server needs ZERNIO_API_KEY and PUBLIC_APP_URL).</p>
 					</div>
 				</div>
 			</div>
@@ -1692,12 +1683,116 @@ style="background: var(--app-surface-2); border-color: var(--app-border);"
 </div>
 
 <style>
-	/* Make faint text utilities more readable on this page (light theme). */
-	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/20) { color: var(--app-text-3) !important; }
-	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/25) { color: var(--app-text-3) !important; }
-	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/30) { color: var(--app-text-2) !important; }
-	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/35) { color: var(--app-text-2) !important; }
-	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/40) { color: var(--app-text-2) !important; }
-	:global(:root:not([data-theme="dark"]) .scheduler-root .text-white\/45) { color: var(--app-text-2) !important; }
+	/* ── Icon button ── */
+	:global(.cal-icon-btn) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		border: 1px solid var(--app-border);
+		background: var(--app-surface-3);
+		color: var(--app-text-2);
+		transition: background 0.15s, color 0.15s;
+		cursor: pointer;
+	}
+	:global(.cal-icon-btn:hover) {
+		background: color-mix(in oklab, var(--app-text) 8%, transparent);
+		color: var(--app-text);
+	}
+
+	/* ── Chip buttons ── */
+	:global(.cal-chip-btn) {
+		padding: 3px 8px;
+		border-radius: 8px;
+		border: 1px solid var(--app-border);
+		font-size: 10px;
+		font-family: var(--font-sans);
+		background: var(--app-surface-3);
+		color: var(--app-text-2);
+		cursor: pointer;
+		transition: background 0.15s;
+		white-space: nowrap;
+	}
+	:global(.cal-chip-btn.violet) {
+		background: rgba(139,92,246,.12);
+		border-color: rgba(139,92,246,.25);
+		color: #a78bfa;
+	}
+	:global(.cal-chip-btn.violet:hover) { background: rgba(139,92,246,.18); }
+	:global(.cal-chip-btn.green) {
+		background: rgba(34,197,94,.10);
+		border-color: rgba(34,197,94,.25);
+		color: #4ade80;
+	}
+	:global(.cal-chip-btn.green:hover) { background: rgba(34,197,94,.16); }
+	:global(.cal-chip-btn.cyan) {
+		background: rgba(6,182,212,.10);
+		border-color: rgba(6,182,212,.25);
+		color: #22d3ee;
+	}
+	:global(.cal-chip-btn.cyan:hover) { background: rgba(6,182,212,.16); }
+
+	/* ── Select ── */
+	:global(.cal-select) {
+		background: var(--app-surface-3);
+		border: 1px solid var(--app-border);
+		border-radius: 8px;
+		padding: 3px 8px;
+		font-size: 10px;
+		font-family: var(--font-sans);
+		color: var(--app-text-2);
+		cursor: pointer;
+		outline: none;
+		transition: border-color 0.15s;
+	}
+	:global(.cal-select:focus) { border-color: rgba(139,92,246,.5); }
+
+	/* ── View switcher active/inactive ── */
+	:global(.cal-view-active) {
+		background: rgba(139,92,246,.15);
+		color: #a78bfa;
+	}
+	:global(.cal-view-inactive) {
+		background: transparent;
+		color: var(--app-text-2);
+	}
+	:global(.cal-view-inactive:hover) {
+		background: color-mix(in oklab, var(--app-text) 5%, transparent);
+		color: var(--app-text);
+	}
+
+	/* ── Calendar slot hover ── */
+	:global(.cal-slot:hover) {
+		background: color-mix(in oklab, var(--app-text) 2%, transparent);
+	}
+
+	/* ── "+" hint on empty slots ── */
+	:global(.cal-plus-hint) {
+		border: 1px dashed transparent;
+		transition: opacity 0.15s, border-color 0.15s;
+	}
+	:global(.cal-slot:hover .cal-plus-hint) {
+		opacity: 1 !important;
+		border-color: var(--app-border-hover);
+	}
+
+	/* ── Post card (Postiz style) ── */
+	:global(.cal-post-card) {
+		border-radius: 8px;
+		border: 1px solid transparent;
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+	:global(.cal-post-header) {
+		min-height: 22px;
+	}
+
+	/* Light theme overrides – keep text readable when app-text is dark */
+	:global(:root:not([data-theme="dark"]) .scheduler-root) {
+		--calLine: rgba(10,10,10,.08);
+	}
+
 </style>
 

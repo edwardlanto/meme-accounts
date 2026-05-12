@@ -4135,23 +4135,28 @@ tweetTopImagePanYBySlide,
 			slideCount = n;
 			lastTemplateUsed = contentTemplate;
 
-			if (fillExistingDeck) {
-				const allNewsSlidesDeck =
-					slideTemplates.length > 0 &&
-					slideTemplates.every((t) => coerceTemplateId(t) === 'news') &&
-					!hasMixedTemplates;
+		if (fillExistingDeck) {
+			const allNewsSlidesDeck =
+				slideTemplates.length > 0 &&
+				slideTemplates.every((t) => coerceTemplateId(t) === 'news') &&
+				!hasMixedTemplates;
+			// True when at least one slide uses the news template (covers mixed decks too).
+			const hasNewsSlides =
+				slideTemplates.length > 0 &&
+				slideTemplates.some((t) => coerceTemplateId(t) === 'news');
 
-				// Sync article metadata so variants / Vertex / circle prompts are not stuck on the previous run.
-				if (allNewsSlidesDeck) {
-					articleUrl = nextArticleUrl;
-					articleTitle = nextArticleTitle;
-					articleSnippet = rawText;
-					source = nextSource;
-				} else if (newsContentMode === 'news') {
-					articleUrl = nextArticleUrl;
-					articleTitle = nextArticleTitle;
-					articleSnippet = rawText;
-				}
+			// Sync article metadata so variants / Vertex / circle prompts are not stuck on the previous run.
+			if (hasNewsSlides) {
+				// Always sync for any deck that has news slides, regardless of content mode.
+				articleUrl = nextArticleUrl;
+				articleTitle = nextArticleTitle;
+				articleSnippet = rawText;
+				source = nextSource;
+			} else if (newsContentMode === 'news') {
+				articleUrl = nextArticleUrl;
+				articleTitle = nextArticleTitle;
+				articleSnippet = rawText;
+			}
 				// If the user is mid-inline-edit on News, clear the live buffer so the replacement is visible immediately.
 				if (newsHeadlineLive !== null) newsHeadlineLive = null;
 				// Preserve current slideTemplates, media, overlays. Only write copy to *existing* fields.
@@ -4204,15 +4209,15 @@ tweetTopImagePanYBySlide,
 					pushUndo(t.template, t.slide);
 					applyPrimaryClampedToSlide(t.slide, t.template, strings[k] ?? (k === 0 ? hookText : ''));
 				}
-				// Deck already had media → fillExistingDeck. Still regenerate backgrounds for a full
-				// News-studio fetch (news / fact / story): Load & Fill should replace imagery, not only headlines.
-				const refreshNewsDeckOnFetch =
-					!opts.fillOnly &&
-					allNewsSlidesDeck &&
-					(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story');
-				if (refreshNewsDeckOnFetch) {
-					await refreshNewsDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
-				}
+			// Deck has news slides → regenerate their backgrounds on every Load & Fill.
+			// Text-only templates (tweet, blackText, etc.) only get text updates (handled above).
+			const refreshNewsDeckOnFetch =
+				!opts.fillOnly &&
+				hasNewsSlides &&
+				(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story');
+			if (refreshNewsDeckOnFetch) {
+				await refreshNewsDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
+			}
 			} else {
 				slideTemplates = Array.from({ length: n }, () => contentTemplate);
 
@@ -4501,6 +4506,9 @@ tweetTopImagePanYBySlide,
 		try {
 		const template: TemplateId = 'news';
 		const n = Math.max(1, slides.length);
+		const firstNewsSlide = slideTemplates.findIndex((t) => coerceTemplateId(t) === 'news');
+		const circleSlide = firstNewsSlide >= 0 ? firstNewsSlide : 0;
+
 		const blankBgRow = new Array(n).fill('');
 		bgImagesByTemplate = { ...bgImagesByTemplate, [template]: blankBgRow };
 		bgVideosByTemplate = { ...bgVideosByTemplate, [template]: new Array(n).fill('') };
@@ -4509,6 +4517,14 @@ tweetTopImagePanYBySlide,
 			...generatingImagesByTemplate,
 			[template]: new Array(n).fill(true),
 		};
+
+		// Clear the prior badge and force visibility on the first News slide so mixed decks
+		// (tweet slide 0 + news slide 1) and repeat Load & Fill both pick up the new image.
+		circleImages = Array.from({ length: n }, (_, i) => (i === circleSlide ? '' : (circleImages[i] ?? '')));
+		showCircleBySlide = Array.from({ length: n }, (_, i) =>
+			i === circleSlide ? true : (showCircleBySlide[i] ?? false),
+		);
+		await tick();
 
 		const articleSrc = String(articleImageUrl ?? '').trim();
 		if (articleSrc && templateAcceptsArticleHeroBackground(template)) {
@@ -4526,21 +4542,19 @@ tweetTopImagePanYBySlide,
 			const prompt = i === 0 ? (articleTitle || cleanText) : cleanText;
 			return generateBackground(i, prompt, template);
 		});
-		await Promise.all(promises);
+	await Promise.all(promises);
 
-		if (showCircleBySlide[0] ?? false) {
-			await generateCircleImage(0);
-		}
+	await generateCircleImage(circleSlide);
 
-		studioImageGenPaintHold = true;
-		await flushStudioLoadingPaint();
-		studioImageGenPaintHold = false;
-		} finally {
-			studioImageGenBatchDepth--;
-		}
+	studioImageGenPaintHold = true;
+	await flushStudioLoadingPaint();
+	studioImageGenPaintHold = false;
+	} finally {
+		studioImageGenBatchDepth--;
 	}
+}
 
-	// ── Generate unique images for all slides in parallel ─────────────────
+// ── Generate unique images for all slides in parallel ─────────────────
 	async function generateAllSlideImages(articleImageUrl?: string, template: TemplateId = 'news') {
 		studioImageGenBatchDepth++;
 		try {
@@ -4858,7 +4872,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	async function generateCircleImage(slideIdx: number = activeSlide) {
 		generatingCircle = true;
 		try {
-			const context = articleTitle || overlayText.replace(/\[\[|\]\]/g, '');
+			const headline = stripHighlightMarkers(primarySlideTextForPrompt('news', slideIdx));
+			const snippet = String(articleSnippet ?? '')
+				.trim()
+				.replace(/\s+/g, ' ')
+				.slice(0, 280);
+			const context =
+				String(articleTitle ?? '').trim() ||
+				headline ||
+				snippet ||
+				stripHighlightMarkers(slides[slideIdx] ?? '') ||
+				'editorial subject';
 			const prompt = `Bold editorial close-up photo representing: "${context}". Square crop, single strong subject, dramatic lighting, no text.`;
 			const res = await fetch('/api/vertex', {
 				method: 'POST',
@@ -4870,6 +4894,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				const n = Math.max(slides.length, slideIdx + 1);
 				const padded = Array.from({ length: n }, (_, i) => circleImages[i] ?? '');
 				circleImages = padded.map((v, i) => (i === slideIdx ? data.dataUrl : v));
+			} else if (data.demo) {
+				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
+			} else if (data.error) {
+				bgError = String(data.error);
 			}
 		} catch { /* ignore */ }
 		generatingCircle = false;
@@ -5756,7 +5784,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				/>
 			</div>
 
-			<Separator class="my-3" />
+			<!-- <Separator class="my-3" /> -->
 
 				{#if overlayText.split(/\s+/).filter(Boolean).length > 28}
 					<p class="text-[10px] font-mono text-amber-400 mt-1">
@@ -5912,7 +5940,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</div>
 			</div>
 
-			<Separator class="my-3" />
+			<!-- <Separator class="my-3" /> -->
 
 			<!-- Text color control removed (use floating text toolbar instead) -->
 
@@ -6298,17 +6326,16 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				<LoadingLines />
 			</div>
 		{/if}
-		{#if filmstripBulkCapturing && slides.length >= 1}
-			<div
-				class="absolute inset-0 z-[19] flex flex-col items-center justify-center gap-2 rounded-2xl"
-				style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
-				aria-live="polite"
-				aria-busy="true"
-			>
-				<Loader size={18} class="animate-spin text-violet-400" />
-				<p class="text-[10px] font-mono" style="color: var(--app-text-muted);">Updating filmstrip…</p>
-			</div>
-		{/if}
+	{#if filmstripBulkCapturing && slides.length >= 1}
+		<div
+			class="absolute inset-0 z-[19] flex flex-col items-center justify-center rounded-2xl"
+			style="background: rgba(0,0,0,0.82); backdrop-filter: blur(6px);"
+			aria-live="polite"
+			aria-busy="true"
+		>
+			<LoadingLines />
+		</div>
+	{/if}
 			{#if studioBooting}
 				<!-- Initial boot overlay — same loader as fetch / image gen -->
 				<div
