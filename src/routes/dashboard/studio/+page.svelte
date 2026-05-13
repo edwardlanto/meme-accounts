@@ -4294,18 +4294,22 @@ tweetTopImagePanYBySlide,
 
 				await imagePromise;
 
-				// Badge circle: always fill on a fresh news fetch (same as refresh path). Brief pause after
-				// parallel Vertex slide gens reduces 429 rate limits starving the circle request.
+				// Badge circle: fill every News slide that has the circle on (or first News if none). Brief
+				// pause after parallel Vertex slide gens reduces 429s; stagger per-slide circle calls.
 				if (contentTemplate === 'news') {
-					const firstNews = slideTemplates.findIndex((t) => coerceTemplateId(t) === 'news');
-					const circleSlide = firstNews >= 0 ? firstNews : 0;
-					if (showCircleBySlide.length < n || !(showCircleBySlide[circleSlide] ?? false)) {
+					const circleIdxs = newsSlidesWithPrimaryCircle(n);
+					if (circleIdxs.length) {
 						showCircleBySlide = Array.from({ length: n }, (_, i) =>
-							i === circleSlide ? true : (showCircleBySlide[i] ?? false),
+							circleIdxs.includes(i) ? true : (showCircleBySlide[i] ?? false),
 						);
 					}
 					await new Promise<void>((r) => setTimeout(r, 500));
-					await generateCircleImage(circleSlide);
+					for (let k = 0; k < circleIdxs.length; k++) {
+						await generateCircleImage(circleIdxs[k]);
+						if (k < circleIdxs.length - 1) {
+							await new Promise<void>((r) => setTimeout(r, 350));
+						}
+					}
 				}
 			}
 
@@ -4425,18 +4429,23 @@ tweetTopImagePanYBySlide,
 			await fillInTextFromTopic(fillTopic, { skipPrimary: true });
 		}
 		// Second pass: parallel slide Vertex calls can 429 the circle; overlay fill can also shift
-		// scheduling. If the badge is still empty, retry circle once after everything settles.
-		const firstNews = slideTemplates.findIndex((t) => coerceTemplateId(t) === 'news');
-		if (
-			firstNews >= 0 &&
-			(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story')
-		) {
+		// scheduling. If any News badge is still empty, retry those slides after everything settles.
+		const n = Math.max(1, slides.length);
+		if (newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story') {
 			await tick();
-			const circleOn = showCircleBySlide[firstNews] ?? false;
-			const hasCircleMedia = String(resolveMediaUrl(circleImages[firstNews] ?? '')).trim().length > 0;
-			if (circleOn && !hasCircleMedia) {
+			const needCircle: number[] = [];
+			for (let i = 0; i < n; i++) {
+				if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) !== 'news') continue;
+				if (!(showCircleBySlide[i] ?? false)) continue;
+				const hasCircleMedia = String(resolveMediaUrl(circleImages[i] ?? '')).trim().length > 0;
+				if (!hasCircleMedia) needCircle.push(i);
+			}
+			for (let k = 0; k < needCircle.length; k++) {
 				await new Promise<void>((r) => setTimeout(r, 400));
-				await generateCircleImage(firstNews, true);
+				await generateCircleImage(needCircle[k], true);
+				if (k < needCircle.length - 1) {
+					await new Promise<void>((r) => setTimeout(r, 350));
+				}
 			}
 		}
 	}
@@ -4535,6 +4544,24 @@ tweetTopImagePanYBySlide,
 	}
 
 	/**
+	 * News slides that have the primary circle badge on (per-slide “Shape” / circle toggle).
+	 * If none are on but the deck has at least one News slide, use the first News slide so hook
+	 * decks still get a default badge (matches prior single-slide behavior).
+	 */
+	function newsSlidesWithPrimaryCircle(n: number): number[] {
+		const out: number[] = [];
+		for (let i = 0; i < n; i++) {
+			if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) !== 'news') continue;
+			if (showCircleBySlide[i] ?? false) out.push(i);
+		}
+		if (!out.length) {
+			const first = slideTemplates.findIndex((t) => coerceTemplateId(t) === 'news');
+			if (first >= 0) out.push(first);
+		}
+		return out;
+	}
+
+	/**
 	 * Like `generateAllSlideImages` but does not wipe overlays — used when "Fetch Live News"
 	 * runs again on a deck that already had backgrounds (fillExistingDeck).
 	 */
@@ -4543,8 +4570,12 @@ tweetTopImagePanYBySlide,
 		try {
 		const template: TemplateId = 'news';
 		const n = Math.max(1, slides.length);
-		const firstNewsSlide = slideTemplates.findIndex((t) => coerceTemplateId(t) === 'news');
-		const circleSlide = firstNewsSlide >= 0 ? firstNewsSlide : 0;
+		const circleIdxs = newsSlidesWithPrimaryCircle(n);
+		if (circleIdxs.length) {
+			showCircleBySlide = Array.from({ length: n }, (_, i) =>
+				circleIdxs.includes(i) ? true : (showCircleBySlide[i] ?? false),
+			);
+		}
 
 		const blankBgRow = new Array(n).fill('');
 		bgImagesByTemplate = { ...bgImagesByTemplate, [template]: blankBgRow };
@@ -4555,12 +4586,9 @@ tweetTopImagePanYBySlide,
 			[template]: new Array(n).fill(true),
 		};
 
-		// Clear the prior badge and force visibility on the first News slide so mixed decks
-		// (tweet slide 0 + news slide 1) and repeat Load & Fill both pick up the new image.
-		circleImages = Array.from({ length: n }, (_, i) => (i === circleSlide ? '' : (circleImages[i] ?? '')));
-		showCircleBySlide = Array.from({ length: n }, (_, i) =>
-			i === circleSlide ? true : (showCircleBySlide[i] ?? false),
-		);
+		// Clear badge images for every News slide that shows a circle so Load & Fill can refill all of them.
+		const clearIdx = new Set(circleIdxs);
+		circleImages = Array.from({ length: n }, (_, i) => (clearIdx.has(i) ? '' : (circleImages[i] ?? '')));
 		await tick();
 
 		const articleSrc = String(articleImageUrl ?? '').trim();
@@ -4583,7 +4611,12 @@ tweetTopImagePanYBySlide,
 
 	// Space out circle vs N parallel slide requests so Vertex quota is less likely to 429 the badge.
 	await new Promise<void>((r) => setTimeout(r, 1200));
-	await generateCircleImage(circleSlide, true);
+	for (let k = 0; k < circleIdxs.length; k++) {
+		await generateCircleImage(circleIdxs[k], true);
+		if (k < circleIdxs.length - 1) {
+			await new Promise<void>((r) => setTimeout(r, 350));
+		}
+	}
 
 	studioImageGenPaintHold = true;
 	await flushStudioLoadingPaint();
