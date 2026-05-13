@@ -14,6 +14,10 @@ function cacheSet(key: string, val: string) {
 	cache.set(key, val);
 }
 
+function sleep(ms: number) {
+	return new Promise<void>((r) => setTimeout(r, ms));
+}
+
 async function getAccessToken(): Promise<string> {
 	const { readFileSync, existsSync } = await import('fs');
 	const { homedir } = await import('os');
@@ -92,12 +96,12 @@ async function getAccessToken(): Promise<string> {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-	const { prompt, aspect = '3:4', context } = await request.json();
+	const { prompt, aspect = '3:4', context, skipCache } = await request.json();
 
 	if (!prompt) return json({ error: 'Missing prompt' }, { status: 400 });
 
 	const cacheKey = `${prompt}:${aspect}`;
-	if (cache.has(cacheKey)) {
+	if (!skipCache && cache.has(cacheKey)) {
 		return json({ dataUrl: cache.get(cacheKey), cached: true });
 	}
 
@@ -145,37 +149,54 @@ Quality: 8K, professional editorial photography, award-winning photojournalism.`
 
 		const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`;
 
-		const res = await fetch(endpoint, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-				'Content-Type': 'application/json; charset=utf-8',
+		const requestBody = JSON.stringify({
+			instances: [{ prompt: fullPrompt }],
+			parameters: {
+				sampleCount: 1,
+				aspectRatio: imagenAspect,
+				safetyFilterLevel: 'block_some',
+				personGeneration: 'allow_adult',
 			},
-			body: JSON.stringify({
-				instances: [{ prompt: fullPrompt }],
-				parameters: {
-					sampleCount: 1,
-					aspectRatio: imagenAspect,
-					safetyFilterLevel: 'block_some',
-					personGeneration: 'allow_adult',
-				},
-			}),
 		});
 
-		if (!res.ok) {
-			const err = await res.text();
-			console.error('[api/vertex] generation error:', err);
-			return json({ error: `Vertex error: ${res.status}`, details: err }, { status: 500 });
+		const maxAttempts = 5;
+		let lastBody = '';
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			const res = await fetch(endpoint, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					'Content-Type': 'application/json; charset=utf-8',
+				},
+				body: requestBody,
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+				const b64 = data?.predictions?.[0]?.bytesBase64Encoded;
+				if (!b64) return json({ error: 'No image returned from Vertex' }, { status: 500 });
+
+				const dataUrl = `data:image/png;base64,${b64}`;
+				if (!skipCache) cacheSet(cacheKey, dataUrl);
+
+				return json({ dataUrl, model });
+			}
+
+			lastBody = await res.text();
+			const retryable = res.status === 429 || res.status === 503 || res.status === 502;
+			if (retryable && attempt < maxAttempts - 1) {
+				const ra = res.headers.get('Retry-After');
+				const fromHeader =
+					ra && /^\d+$/.test(ra.trim()) ? parseInt(ra.trim(), 10) * 1000 : null;
+				const backoff = fromHeader ?? Math.min(12_000, 600 * 2 ** attempt);
+				console.warn(`[api/vertex] HTTP ${res.status}, retry ${attempt + 2}/${maxAttempts} after ${backoff}ms`);
+				await sleep(backoff);
+				continue;
+			}
+
+			console.error('[api/vertex] generation error:', lastBody);
+			return json({ error: `Vertex error: ${res.status}`, details: lastBody }, { status: 500 });
 		}
-
-		const data = await res.json();
-		const b64 = data?.predictions?.[0]?.bytesBase64Encoded;
-		if (!b64) return json({ error: 'No image returned from Vertex' }, { status: 500 });
-
-		const dataUrl = `data:image/png;base64,${b64}`;
-		cacheSet(cacheKey, dataUrl);
-
-		return json({ dataUrl, model });
 	} catch (err: any) {
 		console.error('[api/vertex]', err.message);
 		return json({ error: err.message }, { status: 500 });

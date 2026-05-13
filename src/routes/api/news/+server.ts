@@ -239,12 +239,18 @@ async function syntheticContent(
 	storyCategory: string,
 	autoHighlight: boolean,
 	syntheticHint: string,
+	regenNonce = '',
 ) {
 	const theme = (storyCategory || 'health').trim() || 'health';
 	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
 	const hintBlock =
 		syntheticHint.trim().length > 0
 			? `\n\nUser topic / direction (follow closely; keep claims plausible):\n"""${syntheticHint.replace(/"/g, "'").slice(0, 600)}"""\n`
+			: '';
+
+	const regenBlock =
+		typeof regenNonce === 'string' && regenNonce.trim().length > 0
+			? `\n\nStudio repeat-load: vary the hook and context substantially vs prior outputs (session ${regenNonce.replace(/"/g, "'").slice(0, 32)}).\n`
 			: '';
 
 	const userPrompt =
@@ -261,7 +267,7 @@ Rules for "hook":
 Rules for "context":
 - 5–8 full sentences in normal sentence case
 - Expand the fact with vivid, concrete detail a carousel writer can mine for follow-up slides
-- Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications${hintBlock}`
+- Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications${hintBlock}${regenBlock}`
 
 			: `You write viral Instagram micro-stories for overlay text. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
@@ -280,7 +286,7 @@ Rules for "context":
 - Tell a chain of scenes in order: ordinary world → inciting incident → rising pressure → a choice or revelation → consequence → emotional landing (lesson, irony, or quiet win)
 - Include at least one concrete sensory or physical detail per paragraph (sound, place, object, time of day)
 - No "three tips", "here is why", or generic motivational slogans unless tied to a specific plot beat
-- Do not paste the hook verbatim as the first sentence${hintBlock}`;
+- Do not paste the hook verbatim as the first sentence${hintBlock}${regenBlock}`;
 
 	const jsonRaw = await openRouterComplete(
 		[{ role: 'user', content: userPrompt }],
@@ -346,8 +352,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (!env.OPENROUTER_API_KEY) {
 			return json(demoSynthetic(mode, storyCategory, syntheticHint), { status: 200 });
 		}
+		const regenNonce =
+			typeof body.studioRegenAt === 'number' && Number.isFinite(body.studioRegenAt)
+				? String(Math.floor(body.studioRegenAt))
+				: '';
 		return json(
-			await syntheticContent(mode, storyCategory, autoHighlight !== false, syntheticHint),
+			await syntheticContent(mode, storyCategory, autoHighlight !== false, syntheticHint, regenNonce),
 			{ status: 200 },
 		);
 	}

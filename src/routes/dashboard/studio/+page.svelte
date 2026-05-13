@@ -1239,7 +1239,7 @@ import JSZip from 'jszip';
 	}
 
 	function clearSlideBackground(i: number) {
-		const template = activeTemplate;
+		const template = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
 		const { images, videos } = templateMediaArraysPadded(template, i);
 		const old = videos[i];
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
@@ -3991,7 +3991,7 @@ tweetTopImagePanYBySlide,
 		});
 	}
 
-	async function fetchNews(opts: { fillOnly?: boolean } = {}) {
+	async function fetchNews(opts: { fillOnly?: boolean; preferExistingDeck?: boolean } = {}) {
 		fetchingNews = true;
 		newsError = '';
 		activeSlide = 0;
@@ -4011,6 +4011,7 @@ tweetTopImagePanYBySlide,
 		const hasMixedTemplates = new Set(slideTemplates.map((t) => coerceTemplateId(t))).size > 1;
 		const fillExistingDeck =
 			!!opts.fillOnly ||
+			!!opts.preferExistingDeck ||
 			forcedBlankFromQuery ||
 			hasMixedTemplates ||
 			hasAnyOverlays ||
@@ -4101,8 +4102,9 @@ tweetTopImagePanYBySlide,
 						search: newsContentMode === 'news' ? search || undefined : undefined,
 						categories: newsContentMode === 'news' ? category : undefined,
 						autoHighlight: studioTextHighlightsEnabled,
-						pick: 'first',
+						pick: newsContentMode === 'news' ? 'random' : 'first',
 						syntheticHint: syntheticHintStr || undefined,
+						studioRegenAt: Date.now(),
 					}),
 				});
 				const data = await res.json();
@@ -4292,9 +4294,18 @@ tweetTopImagePanYBySlide,
 
 				await imagePromise;
 
-				// After a fetched story (including test article), fill the badge circle — not on idle studio boot.
-				if (contentTemplate === 'news' && (showCircleBySlide[0] ?? false)) {
-					await generateCircleImage(0);
+				// Badge circle: always fill on a fresh news fetch (same as refresh path). Brief pause after
+				// parallel Vertex slide gens reduces 429 rate limits starving the circle request.
+				if (contentTemplate === 'news') {
+					const firstNews = slideTemplates.findIndex((t) => coerceTemplateId(t) === 'news');
+					const circleSlide = firstNews >= 0 ? firstNews : 0;
+					if (showCircleBySlide.length < n || !(showCircleBySlide[circleSlide] ?? false)) {
+						showCircleBySlide = Array.from({ length: n }, (_, i) =>
+							i === circleSlide ? true : (showCircleBySlide[i] ?? false),
+						);
+					}
+					await new Promise<void>((r) => setTimeout(r, 500));
+					await generateCircleImage(circleSlide);
 				}
 			}
 
@@ -4406,7 +4417,7 @@ tweetTopImagePanYBySlide,
 	/** Load an article (or generate content) then immediately fill every template text slot.
 	 *  This combines the old two-step workflow into one action. */
 	async function loadAndFill() {
-		await fetchNews();
+		await fetchNews({ preferExistingDeck: true });
 		// After the article is loaded, also fill all template slots using the article content
 		// so every slide (including custom text overlays) gets populated in one click.
 		const fillTopic = (articleSnippet || articleTitle || search || '').trim();
@@ -4457,11 +4468,22 @@ tweetTopImagePanYBySlide,
 		};
 	}
 
-	async function generateBackground(slideIdx: number, promptOverride?: string, template: TemplateId = 'news') {
+	async function generateBackground(
+		slideIdx: number,
+		promptOverride?: string,
+		template: TemplateId = 'news',
+		skipVertexCache = false,
+	) {
 		setBgGeneratingFlag(template, slideIdx, true);
 		bgError = '';
 
 		try {
+			// Solid fill paints above “no image” in NewsTemplate — clear it before Vertex so AI results show.
+			if (template === 'news') {
+				newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
+					idx === slideIdx ? '' : (newsSolidBgBySlide[idx] ?? ''),
+				);
+			}
 			const slideText = primarySlideTextForPrompt(template, slideIdx);
 			const title = String(articleTitle ?? '').trim();
 			// `??` skips only null/undefined — an empty headline must still fall back, or /api/vertex returns 400 "Missing prompt".
@@ -4473,7 +4495,7 @@ tweetTopImagePanYBySlide,
 			const res = await fetch('/api/vertex', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ prompt, aspect: '3:4', context: title || undefined }),
+				body: JSON.stringify({ prompt, aspect: '3:4', context: title || undefined, skipCache: skipVertexCache }),
 			});
 
 			const data = await res.json();
@@ -4540,11 +4562,13 @@ tweetTopImagePanYBySlide,
 			if (i === 0 && articleSrc && templateAcceptsArticleHeroBackground(template)) return Promise.resolve();
 			const cleanText = primarySlideTextForPrompt(template, i);
 			const prompt = i === 0 ? (articleTitle || cleanText) : cleanText;
-			return generateBackground(i, prompt, template);
+			return generateBackground(i, prompt, template, true);
 		});
 	await Promise.all(promises);
 
-	await generateCircleImage(circleSlide);
+	// Space out circle vs N parallel slide requests so Vertex quota is less likely to 429 the badge.
+	await new Promise<void>((r) => setTimeout(r, 600));
+	await generateCircleImage(circleSlide, true);
 
 	studioImageGenPaintHold = true;
 	await flushStudioLoadingPaint();
@@ -4869,7 +4893,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	});
 
 	// ── Generate circle image via Vertex ─────────────────────────────────
-	async function generateCircleImage(slideIdx: number = activeSlide) {
+	async function generateCircleImage(slideIdx: number = activeSlide, skipVertexCache = false) {
 		generatingCircle = true;
 		try {
 			const headline = stripHighlightMarkers(primarySlideTextForPrompt('news', slideIdx));
@@ -4887,7 +4911,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			const res = await fetch('/api/vertex', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ prompt, aspect: '1:1' }),
+				body: JSON.stringify({ prompt, aspect: '1:1', skipCache: skipVertexCache }),
 			});
 			const data = await res.json();
 			if (data.dataUrl) {
@@ -4984,20 +5008,20 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		return '#0a0a0a';
 	}
 
-	function applyNewsSolidBg(hex: string) {
-		if (activeTemplate !== 'news') return;
+	function applyNewsSolidBg(hex: string, slideIdx = activeSlide) {
+		if (coerceTemplateId(slideTemplates[slideIdx] ?? 'news') !== 'news') return;
 		const c = normalizeSolidHex(hex);
-		clearSlideBackground(activeSlide);
+		clearSlideBackground(slideIdx);
 		newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
-			i === activeSlide ? c : (newsSolidBgBySlide[i] ?? '')
+			i === slideIdx ? c : (newsSolidBgBySlide[i] ?? '')
 		);
 		solidBgPopoverOpen = false;
 	}
 
-	function resetNewsSolidToGradient() {
-		if (activeTemplate !== 'news') return;
+	function resetNewsSolidToGradient(slideIdx = activeSlide) {
+		if (coerceTemplateId(slideTemplates[slideIdx] ?? 'news') !== 'news') return;
 		newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
-			i === activeSlide ? '' : (newsSolidBgBySlide[i] ?? '')
+			i === slideIdx ? '' : (newsSolidBgBySlide[i] ?? '')
 		);
 		solidBgPopoverOpen = false;
 	}
@@ -5085,8 +5109,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		const file = input.files?.[0];
 		input.value = '';
 		if (!file) return;
-		const idx = activeSlide;
-		const t = activeTemplate;
+		const idx = paintSlide;
+		const t = coerceTemplateId(slideTemplates[idx] ?? lastTemplateUsed);
 		const extOk = /\.(mp4|mov|webm|m4v|mkv|avi)$/i.test(file.name ?? '');
 		const isVideo =
 			file.type.startsWith('video/') ||
@@ -7539,13 +7563,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 <NewsBackgroundToolbar
 	anchor={newsBgToolbarAnchor}
 	showCutout={!!String(canvasBackgroundImage ?? '').trim() && !String(canvasBackgroundVideo ?? '').trim()}
-	onAi={() => void generateBackground(activeSlide, undefined, 'news')}
-	aiDisabled={!!(generatingImagesByTemplate.news ?? [])[activeSlide]}
-	onCutOut={() => void cutOutSubject(activeSlide)}
+	onAi={() => void generateBackground(paintSlide, undefined, 'news')}
+	aiDisabled={!!(generatingImagesByTemplate.news ?? [])[paintSlide]}
+	onCutOut={() => void cutOutSubject(paintSlide)}
 	onReplace={() => newsBgToolbarMediaInput?.click()}
 	onApplySolid={(hex) => {
-		pushUndo('news', activeSlide);
-		applyNewsSolidBg(hex);
+		pushUndo('news', paintSlide);
+		applyNewsSolidBg(hex, paintSlide);
 		closeNewsBgToolbar();
 	}}
 	solidPresets={NEWS_SOLID_PRESETS}
