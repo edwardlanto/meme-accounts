@@ -4424,6 +4424,21 @@ tweetTopImagePanYBySlide,
 		if (fillTopic) {
 			await fillInTextFromTopic(fillTopic, { skipPrimary: true });
 		}
+		// Second pass: parallel slide Vertex calls can 429 the circle; overlay fill can also shift
+		// scheduling. If the badge is still empty, retry circle once after everything settles.
+		const firstNews = slideTemplates.findIndex((t) => coerceTemplateId(t) === 'news');
+		if (
+			firstNews >= 0 &&
+			(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story')
+		) {
+			await tick();
+			const circleOn = showCircleBySlide[firstNews] ?? false;
+			const hasCircleMedia = String(resolveMediaUrl(circleImages[firstNews] ?? '')).trim().length > 0;
+			if (circleOn && !hasCircleMedia) {
+				await new Promise<void>((r) => setTimeout(r, 400));
+				await generateCircleImage(firstNews, true);
+			}
+		}
 	}
 
 	// ── Generate supporting slide variants ────────────────────────────────
@@ -4567,7 +4582,7 @@ tweetTopImagePanYBySlide,
 	await Promise.all(promises);
 
 	// Space out circle vs N parallel slide requests so Vertex quota is less likely to 429 the badge.
-	await new Promise<void>((r) => setTimeout(r, 600));
+	await new Promise<void>((r) => setTimeout(r, 1200));
 	await generateCircleImage(circleSlide, true);
 
 	studioImageGenPaintHold = true;
@@ -4893,8 +4908,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	});
 
 	// ── Generate circle image via Vertex ─────────────────────────────────
-	async function generateCircleImage(slideIdx: number = activeSlide, skipVertexCache = false) {
+	/** Returns true when a `dataUrl` was applied to `circleImages[slideIdx]`. */
+	async function generateCircleImage(slideIdx: number = activeSlide, skipVertexCache = false): Promise<boolean> {
 		generatingCircle = true;
+		let ok = false;
 		try {
 			const headline = stripHighlightMarkers(primarySlideTextForPrompt('news', slideIdx));
 			const snippet = String(articleSnippet ?? '')
@@ -4907,24 +4924,55 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				snippet ||
 				stripHighlightMarkers(slides[slideIdx] ?? '') ||
 				'editorial subject';
-			const prompt = `Bold editorial close-up photo representing: "${context}". Square crop, single strong subject, dramatic lighting, no text.`;
-			const res = await fetch('/api/vertex', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ prompt, aspect: '1:1', skipCache: skipVertexCache }),
-			});
-			const data = await res.json();
-			if (data.dataUrl) {
-				const n = Math.max(slides.length, slideIdx + 1);
-				const padded = Array.from({ length: n }, (_, i) => circleImages[i] ?? '');
-				circleImages = padded.map((v, i) => (i === slideIdx ? data.dataUrl : v));
-			} else if (data.demo) {
-				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
-			} else if (data.error) {
-				bgError = String(data.error);
+			const basePrompt = `Bold editorial close-up photo representing: "${context}". Square crop, single strong subject, dramatic lighting, no text.`;
+
+			const maxAttempts = 4;
+			for (let attempt = 0; attempt < maxAttempts; attempt++) {
+				const prompt =
+					attempt === 0 ? basePrompt : `${basePrompt} (unique render ${Date.now()}-${attempt})`;
+				const res = await fetch('/api/vertex', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ prompt, aspect: '1:1', skipCache: skipVertexCache }),
+				});
+				let data: { dataUrl?: string; demo?: boolean; message?: string; error?: string } = {};
+				try {
+					data = await res.json();
+				} catch {
+					data = {};
+				}
+				if (data.dataUrl) {
+					const url = data.dataUrl;
+					const n = Math.max(slides.length, slideIdx + 1);
+					const padded = Array.from({ length: n }, (_, i) => circleImages[i] ?? '');
+					circleImages = padded.map((v, i) => (i === slideIdx ? url : v));
+					ok = true;
+					break;
+				}
+				if (data.demo) {
+					bgError = data.message ?? 'Configure Google credentials to enable AI images.';
+					break;
+				}
+				const errStr = String(data.error ?? (res.ok ? '' : `Request failed (${res.status})`));
+				if (data.error) bgError = errStr;
+				const retryable =
+					attempt < maxAttempts - 1 &&
+					(res.status === 429 ||
+						res.status === 503 ||
+						res.status === 502 ||
+						/429|503|502|rate|quota/i.test(errStr));
+				if (retryable) {
+					const backoff = Math.min(10_000, 450 * 2 ** attempt);
+					await new Promise<void>((r) => setTimeout(r, backoff));
+					continue;
+				}
+				break;
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 		generatingCircle = false;
+		return ok;
 	}
 
 	async function generateCircleFromPrompt(which: 1 | 2) {
