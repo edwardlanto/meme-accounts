@@ -555,7 +555,7 @@
 		justify-content: center;
 		padding: 1rem;
 		color: var(--ap-text-3);
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 0.7rem;
 		text-align: center;
 	}
@@ -595,7 +595,7 @@
 		margin-top: 18px;
 		font-size: 12px;
 		color: var(--ap-text-3);
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 	}
 
 	/* ─── motion ────────────────────────────────────────────── */

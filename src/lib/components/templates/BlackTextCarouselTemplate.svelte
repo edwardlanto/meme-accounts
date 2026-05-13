@@ -70,7 +70,7 @@
 		return {
 			...s,
 			color: s.color ?? headlineColor,
-			fontFamily: s.fontFamily ?? 'Inter',
+			fontFamily: s.fontFamily ?? 'Impact',
 			fontSize: s.fontSize ?? 52,
 			fontWeight: s.fontWeight ?? 700,
 			lineHeight: s.lineHeight ?? 1.2,
@@ -82,7 +82,7 @@
 		return {
 			...s,
 			color: s.color ?? bodyColor,
-			fontFamily: s.fontFamily ?? 'Inter',
+			fontFamily: s.fontFamily ?? 'Impact',
 			fontSize: s.fontSize ?? 34,
 			fontWeight: s.fontWeight ?? 400,
 			lineHeight: s.lineHeight ?? 1.45,
@@ -91,7 +91,7 @@
 
 	function styleBits(s: TextStyle): string {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', system-ui, sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', Impact, 'Arial Black', sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');

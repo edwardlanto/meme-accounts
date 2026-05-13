@@ -75,9 +75,6 @@
 
 <svelte:head>
 	<title>Sign in — Carousel Studio</title>
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 </svelte:head>
 
 <div class="root" class:mounted>
@@ -215,7 +212,7 @@
 		display: flex;
 		background: #0e0e0e;
 		color: #ffffff;
-		font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 		opacity: 0;
 		transition: opacity 0.5s ease;
 		box-sizing: border-box;
@@ -274,7 +271,7 @@
 		box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
 	}
 	.logo-text {
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 17px;
 		font-weight: 800;
 		letter-spacing: -0.02em;
@@ -293,7 +290,7 @@
 
 	.form-title {
 		margin: 0;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 40px;
 		font-weight: 500;
 		letter-spacing: -0.8px;
@@ -474,7 +471,7 @@
 
 	.marquee-title {
 		margin: 0;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 36px;
 		font-weight: 500;
 		line-height: 1.18;
@@ -567,7 +564,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 12px;
 		font-weight: 800;
 		letter-spacing: 0.02em;

@@ -120,11 +120,11 @@
   --color-text-mid:    rgba(10, 10, 10, 0.55);
   --color-text-faint:  rgba(10, 10, 10, 0.35);
 
-  /* Typography */
-  --font-display: 'Lexend', sans-serif;
-  --font-body:    'Lexend', sans-serif;
-  --font-mono:    'Space Mono', monospace;
-  --font-sans:    'Lexend', sans-serif;
+  /* Typography — self-hosted Satoshi only (see @font-face above) */
+  --font-display: 'Satoshi', sans-serif;
+  --font-body:    'Satoshi', sans-serif;
+  --font-mono:    'Satoshi', sans-serif;
+  --font-sans:    'Satoshi', sans-serif;
   --color-sidebar-ring:    var(--sidebar-ring);
   --color-sidebar-border:    var(--sidebar-border);
   --color-sidebar-accent-foreground:    var(--sidebar-accent-foreground);
@@ -308,7 +308,7 @@ select {
   font-family: inherit;
 }
 
-/* Headings use display token (currently Lexend) */
+/* Headings use display token */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
 }

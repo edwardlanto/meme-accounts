@@ -122,10 +122,15 @@
 		}
 	});
 
-	function hlCss(s: TextStyle, baseSize: number, weight = 800) {
+	function hlCss(
+		s: TextStyle,
+		baseSize: number,
+		weight = 800,
+		baseFamily = `Impact, 'Arial Black', ui-sans-serif, system-ui, sans-serif`,
+	) {
 		const bits: string[] = [];
-		bits.push(`font-family: 'Lexend', ui-sans-serif, system-ui, sans-serif;`);
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Lexend', sans-serif;`);
+		bits.push(`font-family: ${baseFamily};`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', ${baseFamily};`);
 		bits.push(`font-size: ${s.fontSize ?? baseSize}px;`);
 		bits.push(`font-weight: ${s.fontWeight ?? weight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -138,7 +143,9 @@
 	}
 
 	const headlineCss = $derived(hlCss(headlineStyle, 52, 800));
-	const watermarkCss = $derived(hlCss(watermarkStyle, 22, 700));
+	const watermarkCss = $derived(
+		hlCss(watermarkStyle, 22, 700, `'Satoshi', ui-sans-serif, system-ui, sans-serif`),
+	);
 </script>
 
 <div
@@ -185,7 +192,7 @@
 						rows={4}
 						minHeight="0px"
 						ariaLabel="Video headline"
-						fontFamily={headlineStyle.fontFamily ?? 'Lexend'}
+						fontFamily={headlineStyle.fontFamily ?? 'Impact'}
 						fontSize={headlineStyle.fontSize ?? 52}
 						{showToolbar}
 						onTextChange={onHeadlineChange}
@@ -284,7 +291,7 @@
 								rows={1}
 								minHeight="0px"
 								ariaLabel="Watermark"
-								fontFamily={watermarkStyle.fontFamily ?? 'Lexend'}
+								fontFamily={watermarkStyle.fontFamily ?? 'Satoshi'}
 								fontSize={watermarkStyle.fontSize ?? 22}
 								{showToolbar}
 								onTextChange={onWatermarkChange}

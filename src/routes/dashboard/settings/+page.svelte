@@ -630,7 +630,7 @@
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.5rem 1rem; border-radius: 9px; border: none;
 		background: transparent; color: var(--t-muted);
-		font-family: 'DM Sans', sans-serif; font-size: 0.8125rem; font-weight: 500;
+		font-family: 'Satoshi', sans-serif; font-size: 0.8125rem; font-weight: 500;
 		cursor: pointer; transition: all 0.15s; white-space: nowrap;
 	}
 	.tab-btn:hover { color: var(--t-strong); background: var(--panel-bg-2); }
@@ -654,7 +654,7 @@
 	.card-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
 	.card-title--danger { color: #f87171; }
 	.card-desc  { font-size: 0.8125rem; line-height: 1.55; color: var(--t); margin: 0; }
-	.card-note  { font-size: 0.75rem; color: var(--t-muted); font-family: 'Space Mono', monospace; padding: 0.65rem 0.85rem; border-radius: 8px; background: var(--panel-bg); border: 1px solid var(--panel-border); }
+	.card-note  { font-size: 0.75rem; color: var(--t-muted); font-family: 'Satoshi', sans-serif; padding: 0.65rem 0.85rem; border-radius: 8px; background: var(--panel-bg); border: 1px solid var(--panel-border); }
 
 	/* ── Profile ───────────────────────────────────────────────── */
 	.profile-row { display: flex; align-items: center; gap: 1rem; }
@@ -662,26 +662,26 @@
 		width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
 		background: rgba(232,255,72,0.12); border: 2px solid rgba(232,255,72,0.25);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Space Mono', monospace; font-size: 18px; font-weight: 700; color: #E8FF48;
+		font-family: 'Satoshi', sans-serif; font-size: 18px; font-weight: 700; color: #E8FF48;
 	}
 	.profile-info { flex: 1; }
 	.profile-name  { font-size: 0.9375rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.2rem; }
-	.profile-email { font-size: 0.8125rem; color: var(--t-muted); margin: 0; font-family: 'Space Mono', monospace; }
+	.profile-email { font-size: 0.8125rem; color: var(--t-muted); margin: 0; font-family: 'Satoshi', sans-serif; }
 	.profile-plan-badge {
 		padding: 3px 10px; border-radius: 6px;
 		background: rgba(232,255,72,0.12); border: 1px solid rgba(232,255,72,0.2);
-		font-size: 0.7rem; font-family: 'Space Mono', monospace; font-weight: 700; color: #E8FF48;
+		font-size: 0.7rem; font-family: 'Satoshi', sans-serif; font-weight: 700; color: #E8FF48;
 		text-transform: uppercase; letter-spacing: 0.07em;
 	}
 
 	.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
 	.form-field { display: flex; flex-direction: column; gap: 0.4rem; }
-	.form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--t-muted); font-family: 'Space Mono', monospace; }
+	.form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--t-muted); font-family: 'Satoshi', sans-serif; }
 	.form-input {
 		padding: 0.55rem 0.85rem; border-radius: 9px;
 		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
 		color: var(--t-strong); font-size: 0.8125rem;
-		font-family: 'DM Sans', sans-serif; outline: none; width: 100%;
+		font-family: 'Satoshi', sans-serif; outline: none; width: 100%;
 	}
 	.input-copy-wrap { position: relative; }
 	.input-copy-wrap .form-input { padding-right: 2.5rem; }
@@ -700,13 +700,13 @@
 	.pref-row:last-child { border-bottom: none; }
 	.pref-label { font-size: 0.875rem; color: var(--t-strong); font-weight: 500; margin: 0 0 0.2rem; }
 	.pref-sub   { font-size: 0.75rem; color: var(--t-muted); margin: 0; }
-	.pref-value { font-size: 0.75rem; font-family: 'Space Mono', monospace; color: var(--t); white-space: nowrap; }
+	.pref-value { font-size: 0.75rem; font-family: 'Satoshi', sans-serif; color: var(--t); white-space: nowrap; }
 
 	.btn-danger {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.55rem 1rem; border-radius: 9px; border: 1px solid rgba(239,68,68,0.3);
 		background: rgba(239,68,68,0.08); color: #f87171;
-		font-size: 0.8125rem; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; cursor: pointer; font-family: 'Satoshi', sans-serif;
 		transition: all 0.15s;
 	}
 	.btn-danger:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.5); }
@@ -739,7 +739,7 @@
 	.intg-status-badge {
 		display: inline-flex; align-items: center; gap: 0.3rem;
 		padding: 4px 10px; border-radius: 6px;
-		font-size: 0.65rem; font-family: 'Space Mono', monospace; font-weight: 700;
+		font-size: 0.65rem; font-family: 'Satoshi', sans-serif; font-weight: 700;
 		text-transform: uppercase; letter-spacing: 0.06em;
 		white-space: nowrap; flex-shrink: 0;
 	}
@@ -752,13 +752,13 @@
 	}
 	.env-block-head {
 		display: flex; align-items: center; gap: 0.4rem;
-		font-size: 0.65rem; font-family: 'Space Mono', monospace;
+		font-size: 0.65rem; font-family: 'Satoshi', sans-serif;
 		text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.3);
 		margin-bottom: 0.6rem;
 	}
 	.env-code-wrap { position: relative; }
 	.env-code {
-		font-family: 'Space Mono', monospace; font-size: 0.7rem;
+		font-family: 'Satoshi', sans-serif; font-size: 0.7rem;
 		color: rgba(255,255,255,0.5); line-height: 1.7;
 		background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.07);
 		border-radius: 8px; padding: 0.75rem 2.5rem 0.75rem 0.85rem;
@@ -770,13 +770,13 @@
 		color: rgba(255,255,255,0.4); cursor: pointer; border-radius: 5px; transition: all 0.15s;
 	}
 	.env-copy:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
-	.env-hint { font-size: 0.7rem; color: rgba(255,255,255,0.28); margin: 0.5rem 0 0; font-family: 'Space Mono', monospace; }
+	.env-hint { font-size: 0.7rem; color: rgba(255,255,255,0.28); margin: 0.5rem 0 0; font-family: 'Satoshi', sans-serif; }
 
 	.intg-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
 	.btn-connect {
 		padding: 0.55rem 1.1rem; border-radius: 9px; border: none;
-		font-size: 0.8125rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
 		cursor: pointer; background: var(--c, #E8FF48); color: white;
 		transition: opacity 0.12s, transform 0.12s;
 	}
@@ -785,7 +785,7 @@
 
 	.btn-connect-outline {
 		padding: 0.55rem 1rem; border-radius: 9px;
-		font-size: 0.8125rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
 		cursor: pointer; background: rgba(255,255,255,0.06);
 		color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.1);
 		transition: background 0.12s;
@@ -840,7 +840,7 @@
 	}
 	.modal-close:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
 	.modal-sub { margin: 0; font-size: 0.8125rem; line-height: 1.5; color: rgba(255,255,255,0.45); }
-	.mono { font-family: 'Space Mono', monospace; }
+	.mono { font-family: 'Satoshi', sans-serif; }
 	.modal-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
 	@media (min-width: 640px) { .modal-grid { grid-template-columns: 1fr 1fr; } }
 	.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.25rem; }
@@ -884,12 +884,12 @@
 		width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
 		background: rgba(232,255,72,0.12); border: 1px solid rgba(232,255,72,0.25);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700;
+		font-family: 'Satoshi', sans-serif; font-size: 11px; font-weight: 700;
 		color: #E8FF48; text-transform: uppercase; letter-spacing: 0.08em;
 	}
 	.plan-name  { font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; font-size: 0.9375rem; }
 	.plan-price { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
-	.plan-price span { font-size: 0.875rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; }
+	.plan-price span { font-size: 0.875rem; color: rgba(255,255,255,0.4); font-family: 'Satoshi', sans-serif; }
 
 	.plan-features { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 	.plan-feature  { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: rgba(255,255,255,0.6); }
@@ -901,7 +901,7 @@
 		border: 1px solid rgba(255,255,255,0.1);
 		background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.65);
 		font-size: 0.8125rem; font-weight: 500; cursor: pointer;
-		font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+		font-family: 'Satoshi', sans-serif; transition: all 0.15s;
 	}
 	.btn-outline-sm:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
 
@@ -909,13 +909,13 @@
 		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 2rem; font-weight: 900;
 		color: #fff; letter-spacing: -0.03em;
 	}
-	.upgrade-price span { font-size: 1rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; font-weight: 400; }
+	.upgrade-price span { font-size: 1rem; color: rgba(255,255,255,0.4); font-family: 'Satoshi', sans-serif; font-weight: 400; }
 	.btn-upgrade {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.65rem 1.25rem; border-radius: 10px; border: none;
 		background: #E8FF48; color: #0a0a0a;
 		font-size: 0.875rem; font-weight: 600; cursor: pointer;
-		font-family: 'DM Sans', sans-serif; transition: all 0.15s; width: fit-content;
+		font-family: 'Satoshi', sans-serif; transition: all 0.15s; width: fit-content;
 	}
 	.btn-upgrade:hover { background: #f0ff70; transform: translateY(-1px); }
 </style>

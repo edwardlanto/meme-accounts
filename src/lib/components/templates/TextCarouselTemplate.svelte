@@ -4,6 +4,7 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
+	import { loadGoogleFont } from '$lib/fonts';
 
 	interface Props {
 		name?: string;
@@ -56,7 +57,11 @@
 		ringColor = '#c9b97a',
 		bgColor   = '',
 		templateTheme = 'light',
-		text      = 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
+		text      =
+			'Beijing and Washington will reaffirm plans to reopen the Strait of Hormuz together.\n\n' +
+			'The announcement follows months of quiet negotiation between regional partners and shipping insurers. Officials stressed that stability through the strait remains critical for energy markets — and for consumers far beyond the Gulf.\n\n' +
+			'Analysts expect a joint statement outlining timelines, escort protocols, and coordination with commercial fleets. Until routes normalize, volatility in futures markets may persist; traders are watching every headline.\n\n' +
+			'What this means for operators: supply chains that depend on Gulf transit should scenario-plan for both a quick reopening and a phased rollout. Clear communication to customers beats surprise every time.',
 		showSwipe = false,
 		canvasW   = 1080,
 		canvasH   = 1350,
@@ -101,8 +106,25 @@
 		return ink === s.color ? s : { ...s, color: ink };
 	}
 
+	const bodyDisplayText = $derived((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body);
+
+	/** When body font size isn’t set in the toolbar, scale down for long API-fed copy so it still fits the card. */
+	function autoCarouselBodyFontPx(body: string): number {
+		const t = String(body ?? '').trim();
+		if (!t) return DEFAULT_BODY_SIZE;
+		const compact = t.replace(/\s+/g, ' ').length;
+		const breakParas = (t.match(/\n\s*\n/g) ?? []).length + 1;
+		const score = compact + breakParas * 100;
+		if (score <= 480) return 72;
+		if (score <= 780) return 64;
+		if (score <= 1150) return 56;
+		if (score <= 1700) return 50;
+		if (score <= 2400) return 44;
+		return 38;
+	}
+
 	/** Body = headlineStyle ∪ textCarouselBody; defaults folded in so styleCss always emits weight/size/line-height (toolbar overrides win). */
-	/** Match Floating toolbar “Default” + Tweet template: Lexend variable font (100–900) is in `app.html`. */
+	/** Default slide typography — Lexend (variable Google Font), same as pre–Impact change */
 	const DEFAULT_BODY_FONT = 'Lexend';
 
 	const mergedBodyStyle = $derived.by(() => {
@@ -114,14 +136,18 @@
 			...merged,
 			fontFamily: merged.fontFamily ?? DEFAULT_BODY_FONT,
 			fontWeight: merged.fontWeight ?? 400,
-			fontSize: merged.fontSize ?? DEFAULT_BODY_SIZE,
+			fontSize: merged.fontSize ?? autoCarouselBodyFontPx(bodyDisplayText),
 			lineHeight: merged.lineHeight ?? 1.38,
 		};
 	});
 
+	$effect(() => {
+		void loadGoogleFont('Lexend', mergedBodyStyle.fontWeight ?? 400);
+	});
+
 	function styleCss(s: TextStyle, opts?: { omitBlockBg?: boolean }) {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', -apple-system, 'SF Pro Display', sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Lexend', -apple-system, 'SF Pro Display', sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -148,8 +174,6 @@
 	);
 	const nameForInitials = $derived((name && name.trim()) ? name : TEXT_CAROUSEL_DEFAULTS.name);
 	const discText = $derived((avatarLabel && avatarLabel.trim()) || initials(nameForInitials));
-
-	const bodyDisplayText = $derived((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body);
 
 	const BASE_W = 1080;
 	const BASE_H = 1350;
@@ -344,8 +368,8 @@
 						toolbarKind="textCarouselBody"
 						rows={10}
 						ariaLabel="Carousel text"
-						fontFamily={textCarouselStyles.textCarouselBody?.fontFamily ?? headlineStyle.fontFamily}
-						fontSize={textCarouselStyles.textCarouselBody?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_BODY_SIZE}
+						fontFamily={mergedBodyStyle.fontFamily}
+						fontSize={mergedBodyStyle.fontSize}
 						{showToolbar}
 						onTextChange={onTextChange}
 						onTextSelect={onTextSelect}

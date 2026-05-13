@@ -111,23 +111,12 @@
 	});
 
 	// ── Font loading ──────────────────────────────────────────────────────────
-	async function loadFonts(names: string[]) {
-		const toLoad = (names ?? []).filter(Boolean);
-		if (!toLoad.length) return;
-		const q = toLoad.map((f) => `family=${encodeURIComponent(f)}:wght@400;700;900`).join('&');
-		const url = `https://fonts.googleapis.com/css2?${q}&display=swap`;
-		const key = toLoad.join(',');
-		if (!document.querySelector(`link[data-gf="${key}"]`)) {
-			const link = document.createElement('link');
-			link.rel = 'stylesheet';
-			link.href = url;
-			link.dataset.gf = key;
-			document.head.appendChild(link);
-		}
+	async function loadFonts(_names: string[]) {
+		/* Slides use self-hosted Satoshi only — no remote font CSS. */
 		try {
 			await document.fonts.ready;
 		} catch {}
-		await new Promise((r) => setTimeout(r, 350));
+		await new Promise((r) => setTimeout(r, 80));
 	}
 
 	// ── Render a full slide ───────────────────────────────────────────────────

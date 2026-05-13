@@ -1072,7 +1072,7 @@
 		justify-content: center;
 		padding: 1rem;
 		color: var(--t-muted);
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 0.7rem;
 		text-align: center;
 		background: color-mix(in oklab, var(--panel-bg) 70%, transparent);
@@ -1188,7 +1188,7 @@
 		background: rgba(0, 0, 0, 0.55);
 		color: rgba(255, 255, 255, 0.92);
 		font-size: 0.58rem;
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
@@ -1213,7 +1213,7 @@
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.35rem 0.8rem; border-radius: 7px; border: none;
 		background: transparent; color: var(--t-muted);
-		font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 500;
+		font-family: 'Satoshi', sans-serif; font-size: 0.78rem; font-weight: 500;
 		cursor: pointer; transition: all 0.12s;
 	}
 	.filter-tab:hover { color: var(--t-strong); }
@@ -1222,7 +1222,7 @@
 		display: inline-flex; align-items: center; justify-content: center;
 		width: 18px; height: 18px; border-radius: 5px;
 		background: var(--panel-bg-2); font-size: 0.65rem;
-		font-family: 'Space Mono', monospace; color: var(--t);
+		font-family: 'Satoshi', sans-serif; color: var(--t);
 	}
 	.filter-tab--on .filter-count { background: rgba(232,255,72,0.15); color: #E8FF48; }
 
@@ -1269,7 +1269,7 @@
 		position: absolute; top: 0.5rem; right: 0.5rem;
 		padding: 2px 7px; border-radius: 5px;
 		background: rgba(0,0,0,0.65); color: rgba(255,255,255,0.45);
-		font-size: 0.6rem; font-family: 'Space Mono', monospace;
+		font-size: 0.6rem; font-family: 'Satoshi', sans-serif;
 		backdrop-filter: blur(4px);
 	}
 
@@ -1277,7 +1277,7 @@
 		position: absolute; top: 0.5rem; left: 0.5rem;
 		display: inline-flex; align-items: center; gap: 0.25rem;
 		padding: 2px 7px; border-radius: 5px;
-		font-size: 0.6rem; font-family: 'Space Mono', monospace; font-weight: 700;
+		font-size: 0.6rem; font-family: 'Satoshi', sans-serif; font-weight: 700;
 		text-transform: capitalize; backdrop-filter: blur(4px);
 		opacity: 0; transition: opacity 0.2s;
 	}
@@ -1293,7 +1293,7 @@
 	}
 	.card-info { flex: 1; min-width: 0; }
 	.card-title-text { font-size: 0.78rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.card-time        { font-size: 0.6rem; color: var(--t-muted); font-family: 'Space Mono', monospace; margin: 0; }
+	.card-time        { font-size: 0.6rem; color: var(--t-muted); font-family: 'Satoshi', sans-serif; margin: 0; }
 
 	.card-actions { display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.2s; }
 	.carousel-card:hover .card-actions { opacity: 1; }
@@ -1323,7 +1323,7 @@
 		transition: transform 0.2s;
 	}
 	.new-card-btn:hover .new-card-icon { transform: scale(1.1); }
-	.new-card-label { font-size: 0.72rem; font-family: 'Space Mono', monospace; }
+	.new-card-label { font-size: 0.72rem; font-family: 'Satoshi', sans-serif; }
 
 	/* Empty states */
 	.empty-state {
@@ -1343,7 +1343,7 @@
 		padding: 0.6rem 1.2rem; border-radius: 10px; border: none;
 		background: linear-gradient(135deg, #7c3aed, #06b6d4);
 		color: #fff; font-size: 0.8125rem; font-weight: 600; cursor: pointer;
-		font-family: 'DM Sans', sans-serif; margin-top: 0.5rem;
+		font-family: 'Satoshi', sans-serif; margin-top: 0.5rem;
 		transition: opacity 0.15s, transform 0.15s;
 	}
 	:root:not([data-theme="dark"]) .empty-cta { color: #ffffff; }

@@ -1,11 +1,11 @@
 <script lang="ts">
 	/**
-	 * Renders a string containing `[[...]]` highlight markup as styled spans,
-	 * so users never see raw brackets. Templates that used to print `{text}`
-	 * directly should route through this component to stay consistent with
-	 * NewsTemplate (the only template that previously parsed markup).
+	 * Renders a string containing `[[...]]` highlight markup as styled spans when
+	 * `parseHighlights` is true. **NewsTemplate** is the only slide type that should
+	 * use highlight markup in Studio; all other templates pass `parseHighlights={false}`
+	 * so `[[...]]` stays literal plain text.
 	 *
-	 * Supported syntax (shared across every template):
+	 * When `parseHighlights` is true, supported syntax:
 	 *   [[WORD]]                  → colored with `defaultColor`
 	 *   [[#hex: WORD]]            → colored with explicit hex
 	 *   [[grad(#a,#b): WORD]]     → linear gradient fill on the text
@@ -17,6 +17,8 @@
 	interface Props {
 		text: string;
 		defaultColor?: string;
+		/** If false, `[[...]]` is shown as plain text (no accent spans). Default false — only News uses markup. */
+		parseHighlights?: boolean;
 		/** Optional wrapper tag name for the rendered text. Defaults to span. */
 		as?: 'span' | 'div' | 'p';
 		/** Pass-through style string on the wrapping element. */
@@ -28,12 +30,17 @@
 	let {
 		text,
 		defaultColor = '#F5A623',
+		parseHighlights = false,
 		as = 'span',
 		style = '',
 		class: klass = '',
 	}: Props = $props();
 
-	const segments = $derived(segmentText(parseHighlightMarkup(text, defaultColor)));
+	const segments = $derived(
+		parseHighlights
+			? segmentText(parseHighlightMarkup(text, defaultColor))
+			: [{ text, highlighted: false as const }],
+	);
 
 	function patternStyle(img: string | undefined): string {
 		if (!img) return '';

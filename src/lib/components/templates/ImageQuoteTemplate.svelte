@@ -66,7 +66,7 @@
 	const quoteTypeCss = $derived.by(() => {
 		const s = headlineStyle;
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', Impact, 'Arial Black', 'Inter', system-ui, sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', Impact, 'Arial Black', sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -112,7 +112,7 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			background: {baseBg};
-			font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+			font-family: Impact, 'Arial Black', sans-serif;
 			overflow: hidden;
 		"
 	>
@@ -193,7 +193,7 @@
 										as="div"
 										text={line}
 										defaultColor={highlightColor}
-										style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,{isLight ? 0.10 : 0.4}); font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif; {quoteTypeCss}"
+										style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,{isLight ? 0.10 : 0.4}); font-family: Impact, 'Arial Black', sans-serif; {quoteTypeCss}"
 									/>
 								{/each}
 							</div>
@@ -235,7 +235,7 @@
 							onTextSelect={onTextSelect}
 						>
 							{#snippet display()}
-								<span style="font-size: 44px; font-weight: 900; color: {baseText}; font-family: Impact, 'Arial Black', 'Inter', system-ui, sans-serif;">
+								<span style="font-size: 44px; font-weight: 900; color: {baseText}; font-family: Impact, 'Arial Black', sans-serif;">
 									{footerLeft}
 								</span>
 							{/snippet}
@@ -259,13 +259,13 @@
 							toolbarKind="imageQuoteFooterRight"
 							selected={selectedText === 'imageQuoteFooterRight'}
 							ariaLabel="Footer right"
-							fontFamily={headlineStyle.fontFamily ?? 'Inter'}
+							fontFamily={headlineStyle.fontFamily ?? 'Impact'}
 							fontSize={26}
 							onTextChange={onFooterRightChange}
 							onTextSelect={onTextSelect}
 						>
 							{#snippet display()}
-								<span style="font-size: 26px; font-weight: 800; color: {baseText}; letter-spacing: 0.08em; font-family: 'Inter', system-ui, sans-serif;">
+								<span style="font-size: 26px; font-weight: 800; color: {baseText}; letter-spacing: 0.08em; font-family: 'Satoshi', system-ui, sans-serif;">
 									{footerRight}
 								</span>
 							{/snippet}

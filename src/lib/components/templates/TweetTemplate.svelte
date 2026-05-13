@@ -285,7 +285,7 @@ let {
 
 	function styleCss(s: TextStyle) {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Lexend', system-ui, sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Satoshi', system-ui, sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -371,7 +371,7 @@ let {
 			background: {card};
 			transform: scale({scale});
 			transform-origin: top left;
-			font-family: 'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+			font-family: 'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 			box-sizing: border-box;
 			overflow: hidden;
 		"
@@ -443,7 +443,7 @@ let {
 									rows={1}
 									{showToolbar}
 									ariaLabel="Top name"
-									fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+									fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 									fontSize={tweetStyles.tweetTopName?.fontSize ?? 38}
 									onTextChange={onTopNameChange}
 								>
@@ -469,7 +469,7 @@ let {
 								rows={1}
 								{showToolbar}
 								ariaLabel="Top handle"
-								fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 30}
 								onTextChange={onTopHandleChange}
 							>
@@ -506,7 +506,7 @@ let {
 							minHeight="0px"
 							{showToolbar}
 							ariaLabel="Tweet text"
-							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
 							fontSize={tweetStyles.tweetTopText?.fontSize ?? 44}
 							onTextChange={onTopTextChange}
 						>
@@ -700,7 +700,7 @@ let {
 									rows={1}
 									{showToolbar}
 									ariaLabel="Bottom name"
-							fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+							fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 38}
 									onTextChange={onBottomNameChange}
 								>
@@ -726,7 +726,7 @@ let {
 								rows={1}
 								{showToolbar}
 								ariaLabel="Bottom handle"
-						fontFamily="'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+						fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 30}
 								onTextChange={onBottomHandleChange}
 							>
@@ -762,7 +762,7 @@ let {
 						minHeight="0px"
 						{showToolbar}
 						ariaLabel="Reply text"
-						fontFamily={headlineStyle.fontFamily ?? "'Lexend', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+						fontFamily={headlineStyle.fontFamily ?? "'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
 						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 44}
 						onTextChange={onBottomTextChange}
 					>

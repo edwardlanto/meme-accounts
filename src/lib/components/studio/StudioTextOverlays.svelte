@@ -9,6 +9,7 @@
 		interactive?: boolean;
 		highlightColor?: string;
 		textOverlays: TextOverlay[];
+		parseHighlightMarkup?: boolean;
 		/** Which studio text target is active (not the DOM selection API). */
 		activeTextKind: TextElementKind | null;
 		/** Null when nothing selected; mirrors `TextOverlayLayer.selectedId`. */
@@ -25,6 +26,7 @@
 		interactive = true,
 		highlightColor = '#F5A623',
 		textOverlays,
+		parseHighlightMarkup = false,
 		activeTextKind,
 		activeTextOverlayId,
 		onRangeSelect,
@@ -42,6 +44,7 @@
 	{scale}
 	{interactive}
 	{highlightColor}
+	{parseHighlightMarkup}
 	textOverlays={textOverlays ?? []}
 	{selectedId}
 	{onRangeSelect}

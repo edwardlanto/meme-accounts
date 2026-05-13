@@ -5,13 +5,18 @@
 	 */
 	import type { Snippet } from 'svelte';
 	import type { TextElementKind, TypographySnapshot } from '$lib/types';
-	import { parseHighlightMarkup, plainRangeFromSelection } from '$lib/highlight';
+	import { plainRangeFromSelection } from '$lib/highlight';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 
 	interface Props {
 		value: string;
 		interactive?: boolean;
 		defaultColor?: string;
+		/**
+		 * When true, double-click editing uses HighlightEditor (`[[…]]` markup).
+		 * News headline uses a different path; other templates keep this false.
+		 */
+		allowHighlightMarkup?: boolean;
 		/** When true, show violet focus ring (toolbar selection). */
 		selected?: boolean;
 		toolbarKind?: TextElementKind;
@@ -33,6 +38,7 @@
 		value,
 		interactive = false,
 		defaultColor = '#F59E0B',
+		allowHighlightMarkup = false,
 		selected = false,
 		toolbarKind = 'headline',
 		rows = 6,
@@ -129,6 +135,7 @@
 		editing = true;
 		setTimeout(() => {
 			const ce = editableEl?.querySelector<HTMLElement>('[contenteditable="true"]');
+			const ta = editableEl?.querySelector<HTMLTextAreaElement>('textarea.plain-canvas-textarea');
 			if (ce) {
 				ce.focus();
 				const range = document.createRange();
@@ -137,6 +144,10 @@
 				const s = window.getSelection();
 				s?.removeAllRanges();
 				s?.addRange(range);
+			} else if (ta) {
+				ta.focus();
+				const n = ta.value.length;
+				ta.setSelectionRange(n, n);
 			}
 			// Anchor the toolbar to a fixed rect at the top of the editable area
 			// during inline editing so it doesn't vanish as the editor expands.
@@ -171,6 +182,17 @@
 		});
 	}
 
+	function syncPlainTextareaSelection() {
+		const ta = editableEl?.querySelector<HTMLTextAreaElement>('textarea.plain-canvas-textarea');
+		if (!ta || !onHeadlineRangeSelect) return;
+		const a = ta.selectionStart;
+		const b = ta.selectionEnd;
+		const start = Math.min(a, b);
+		const end = Math.max(a, b);
+		if (end > start) onHeadlineRangeSelect(start, end);
+		else onHeadlineRangeSelect(-1, -1);
+	}
+
 	function onEditKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') exitEditMode();
 		if (e.key === 'Enter' && e.shiftKey) {
@@ -193,24 +215,54 @@
 		onmousedown={(e) => e.stopPropagation()}
 		style="margin: 0; padding: 0; color: {editTextColor ?? 'inherit'}; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55); border-radius: 4px; cursor: text; touch-action: manipulation;"
 	>
-		<HighlightEditor
-			value={value}
-			{rows}
-			{defaultColor}
-			{uppercase}
-			{fontFamily}
-			{fontSize}
-			typographySnapshot={editTypography}
-			{showToolbar}
-			{ariaLabel}
-			{minHeight}
-			onChange={(v) => onTextChange?.(v)}
-			onBlur={finishEdit}
-			onSelectionChange={(has, r) => {
-				if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
-				else onHeadlineRangeSelect?.(-1, -1);
-			}}
-		/>
+		{#if allowHighlightMarkup}
+			<HighlightEditor
+				value={value}
+				{rows}
+				{defaultColor}
+				{uppercase}
+				{fontFamily}
+				{fontSize}
+				typographySnapshot={editTypography}
+				{showToolbar}
+				{ariaLabel}
+				{minHeight}
+				onChange={(v) => onTextChange?.(v)}
+				onBlur={finishEdit}
+				onSelectionChange={(has, r) => {
+					if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
+					else onHeadlineRangeSelect?.(-1, -1);
+				}}
+			/>
+		{:else}
+			<textarea
+				{rows}
+				aria-label={ariaLabel}
+				class="plain-canvas-textarea"
+				value={value}
+				style="
+					display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 6px 8px;
+					min-height: {minHeight ?? `${Math.max(2, rows) * 1.35}em`};
+					resize: vertical;
+					border: none; outline: none; background: transparent;
+					color: {editTextColor ?? 'inherit'};
+					font-family: {editTypography?.fontFamily ?? (fontFamily ? `'${fontFamily}', sans-serif` : 'inherit')};
+					font-size: {editTypography?.fontSize ?? (fontSize ? `${fontSize}px` : 'inherit')};
+					font-weight: {editTypography?.fontWeight ?? 'inherit'};
+					line-height: {editTypography?.lineHeight ?? 1.35};
+					letter-spacing: {editTypography?.letterSpacing ?? 'inherit'};
+					font-style: {editTypography?.fontStyle ?? 'inherit'};
+					text-decoration: {editTypography?.textDecoration ?? 'inherit'};
+					text-align: {editTypography?.textAlign ?? 'inherit'};
+					{uppercase ? 'text-transform: uppercase;' : ''}
+				"
+				oninput={(e) => onTextChange?.((e.target as HTMLTextAreaElement).value)}
+				onselect={syncPlainTextareaSelection}
+				onkeyup={syncPlainTextareaSelection}
+				onmouseup={syncPlainTextareaSelection}
+				onblur={finishEdit}
+			></textarea>
+		{/if}
 	</div>
 {:else}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->

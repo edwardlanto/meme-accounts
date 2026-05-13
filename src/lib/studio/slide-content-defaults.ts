@@ -49,7 +49,10 @@ export const TEXT_CAROUSEL_DEFAULTS = {
 	name: 'Captains of industry',
 	handle: '@captainsofindustryy',
 	body:
-		'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
+		'Beijing and Washington will reaffirm plans to reopen the Strait of Hormuz together.\n\n' +
+		'The announcement follows months of quiet negotiation between regional partners and shipping insurers. Officials stressed that stability through the strait remains critical for energy markets — and for consumers far beyond the Gulf.\n\n' +
+		'Analysts expect a joint statement outlining timelines, escort protocols, and coordination with commercial fleets. Until routes normalize, volatility in futures markets may persist; traders are watching every headline.\n\n' +
+		'What this means for operators: supply chains that depend on Gulf transit should scenario-plan for both a quick reopening and a phased rollout. Clear communication to customers beats surprise every time.',
 } as const;
 
 export const IMAGE_QUOTE_DEFAULTS = {
@@ -70,7 +73,7 @@ export const VIDEO_STORY_DEFAULTS = {
 	videoUrl: '/videos/video-template.mp4',
 	watermark: 'BUSINESS FOUNDERS',
 	headline:
-		'[[#22c55e: He messed up, but ]] [[#ef4444: the Boss]]\n[[#ffffff: taught him a ]] [[#eab308: Lesson]] [[#ffffff: instead 🙌]]',
+		'He messed up — but the boss taught him a lesson instead.\n\nThe moment went viral for a reason: leadership is rarely loud, and growth rarely looks perfect on camera.',
 } as const;
 
 /** Labels for docs / error messages when extending templates. */

@@ -347,7 +347,7 @@
 
 							<!-- Y labels -->
 							{#each [0, 5, 10, 15, 20] as v, i}
-								<text x="32" y={220 - i * 55 + 4} font-size="10" fill="rgba(255,255,255,0.25)" text-anchor="end" font-family="Space Mono">{v}</text>
+								<text x="32" y={220 - i * 55 + 4} font-size="10" fill="rgba(255,255,255,0.25)" text-anchor="end" font-family="Satoshi, sans-serif">{v}</text>
 							{/each}
 
 							<!-- Reach area (scaled) -->
@@ -386,7 +386,7 @@
 							{#each weekLabels as label, i}
 								{#if i % 2 === 0}
 									{@const x = 40 + (i / (weekLabels.length - 1)) * (740 - 80)}
-									<text x={x} y="215" font-size="9" fill="rgba(255,255,255,0.2)" text-anchor="middle" font-family="Space Mono">{label}</text>
+									<text x={x} y="215" font-size="9" fill="rgba(255,255,255,0.2)" text-anchor="middle" font-family="Satoshi, sans-serif">{label}</text>
 								{/if}
 							{/each}
 						</svg>
@@ -449,8 +449,8 @@
 								<path d={seg.path} fill={seg.color} opacity="0.9" class="donut-seg"/>
 							{/each}
 							<circle cx="80" cy="80" r="40" fill="#111111"/>
-							<text x="80" y="76" font-size="22" font-weight="700" fill="white" text-anchor="middle" font-family="Lexend, system-ui, sans-serif">124</text>
-							<text x="80" y="93" font-size="9" fill="rgba(255,255,255,0.4)" text-anchor="middle" font-family="Space Mono">POSTS</text>
+							<text x="80" y="76" font-size="22" font-weight="700" fill="white" text-anchor="middle" font-family="Satoshi, system-ui, sans-serif">124</text>
+							<text x="80" y="93" font-size="9" fill="rgba(255,255,255,0.4)" text-anchor="middle" font-family="Satoshi, sans-serif">POSTS</text>
 						</svg>
 					</div>
 					<div class="donut-legend">
@@ -741,7 +741,7 @@
 		display: flex; align-items: center; gap: 0.4rem;
 		padding: 0.45rem 0.85rem; border-radius: 8px;
 		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
-		font-size: 0.75rem; color: var(--t); font-family: 'Space Mono', monospace;
+		font-size: 0.75rem; color: var(--t); font-family: 'Satoshi', sans-serif;
 	}
 
 	.btn-primary-sm {
@@ -749,7 +749,7 @@
 		padding: 0.55rem 1rem; border-radius: 10px;
 		background: #E8FF48; color: #0a0a0a;
 		font-size: 0.8125rem; font-weight: 600; text-decoration: none;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 		transition: transform 0.12s, box-shadow 0.12s;
 	}
 	.btn-primary-sm:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(232,255,72,0.2); }
@@ -790,7 +790,7 @@
 	}
 	.kpi-change {
 		display: inline-flex; align-items: center; gap: 3px;
-		font-size: 0.65rem; font-family: 'Space Mono', monospace;
+		font-size: 0.65rem; font-family: 'Satoshi', sans-serif;
 		padding: 2px 6px; border-radius: 4px; font-weight: 700;
 	}
 	.kpi-change--up   { background: rgba(16,185,129,0.12); color: #34d399; }
@@ -799,7 +799,7 @@
 		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem;
 		font-weight: 900; color: var(--t-strong); line-height: 1;
 	}
-	.kpi-label { font-size: 0.7rem; color: var(--t-muted); font-family: 'Space Mono', monospace; text-transform: uppercase; letter-spacing: 0.07em; }
+	.kpi-label { font-size: 0.7rem; color: var(--t-muted); font-family: 'Satoshi', sans-serif; text-transform: uppercase; letter-spacing: 0.07em; }
 
 	/* ── Chart section ─────────────────────────────────────────── */
 	.chart-section {
@@ -814,7 +814,7 @@
 	}
 	.chart-tab {
 		padding: 0.85rem 1.25rem; border: none; background: transparent;
-		color: var(--t-muted); font-size: 0.8125rem; font-family: 'DM Sans', sans-serif;
+		color: var(--t-muted); font-size: 0.8125rem; font-family: 'Satoshi', sans-serif;
 		font-weight: 500; cursor: pointer; white-space: nowrap;
 		border-bottom: 2px solid transparent; transition: all 0.15s;
 	}
@@ -827,7 +827,7 @@
 	.chart-line-wrap { display: flex; flex-direction: column; gap: 1rem; }
 	.chart-legend { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 0.25rem; }
 	.legend-dot { width: 8px; height: 8px; border-radius: 2px; }
-	.legend-label { font-size: 0.75rem; color: var(--t); font-family: 'Space Mono', monospace; }
+	.legend-label { font-size: 0.75rem; color: var(--t); font-family: 'Satoshi', sans-serif; }
 	.chart-area { width: 100%; overflow: hidden; }
 
 	:global(.chart-line) { stroke-dashoffset: 1000; transition: stroke-dashoffset 1.5s ease; }
@@ -839,7 +839,7 @@
 
 	/* Bar chart */
 	.chart-bar-wrap { display: flex; flex-direction: column; gap: 1rem; }
-	.chart-label { font-size: 0.75rem; color: var(--t-muted); font-family: 'Space Mono', monospace; text-transform: uppercase; letter-spacing: 0.08em; }
+	.chart-label { font-size: 0.75rem; color: var(--t-muted); font-family: 'Satoshi', sans-serif; text-transform: uppercase; letter-spacing: 0.08em; }
 	.bar-chart { display: flex; flex-direction: column; gap: 0.85rem; }
 	.bar-row { display: grid; grid-template-columns: 110px 1fr 70px; align-items: center; gap: 1rem; }
 	.bar-platform { font-size: 0.8125rem; font-weight: 500; color: var(--t-strong); }
@@ -848,8 +848,8 @@
 		height: 100%; border-radius: 6px; display: flex; align-items: center;
 		min-width: 2px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); position: relative;
 	}
-	.bar-value { position: absolute; right: 8px; font-size: 0.75rem; font-family: 'Space Mono', monospace; font-weight: 700; color: rgba(0,0,0,0.7); white-space: nowrap; }
-	.bar-posts { font-size: 0.7rem; color: var(--t-muted); font-family: 'Space Mono', monospace; text-align: right; }
+	.bar-value { position: absolute; right: 8px; font-size: 0.75rem; font-family: 'Satoshi', sans-serif; font-weight: 700; color: rgba(0,0,0,0.7); white-space: nowrap; }
+	.bar-posts { font-size: 0.7rem; color: var(--t-muted); font-family: 'Satoshi', sans-serif; text-align: right; }
 
 	/* Donut chart */
 	.chart-donut-wrap { display: grid; grid-template-columns: 200px 1fr; gap: 2.5rem; align-items: center; }
@@ -860,7 +860,7 @@
 	.donut-item { display: grid; grid-template-columns: 10px 1fr 40px 120px; align-items: center; gap: 0.65rem; }
 	.donut-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 	.donut-label { font-size: 0.8125rem; color: var(--t); }
-	.donut-pct { font-size: 0.75rem; font-family: 'Space Mono', monospace; color: var(--t-strong); font-weight: 700; text-align: right; }
+	.donut-pct { font-size: 0.75rem; font-family: 'Satoshi', sans-serif; color: var(--t-strong); font-weight: 700; text-align: right; }
 	.donut-bar-track { height: 4px; background: color-mix(in oklab, var(--app-text) 10%, transparent); border-radius: 2px; overflow: hidden; }
 	.donut-bar-fill { height: 100%; border-radius: 2px; width: 0; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
 	.donut-bar-fill--on { }
@@ -871,8 +871,8 @@
 	.heat-col { display: flex; flex-direction: column; gap: 4px; }
 	.heat-col--labels { }
 	.heat-hour-spacer { height: 20px; }
-	.heat-hour-label { font-size: 9px; color: var(--t-muted); font-family: 'Space Mono', monospace; height: 24px; display: flex; align-items: center; white-space: nowrap; }
-	.heat-day-label { font-size: 9px; color: var(--t-muted); font-family: 'Space Mono', monospace; height: 24px; display: flex; align-items: center; padding-right: 8px; }
+	.heat-hour-label { font-size: 9px; color: var(--t-muted); font-family: 'Satoshi', sans-serif; height: 24px; display: flex; align-items: center; white-space: nowrap; }
+	.heat-day-label { font-size: 9px; color: var(--t-muted); font-family: 'Satoshi', sans-serif; height: 24px; display: flex; align-items: center; padding-right: 8px; }
 	.heat-cell {
 		width: 32px; height: 24px; border-radius: 4px;
 		border: 1px solid;
@@ -881,7 +881,7 @@
 	}
 	.heat-cell:hover { transform: scale(1.15); opacity: 0.9; }
 	.heat-legend { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; }
-	.heat-legend-label { font-size: 9px; color: var(--t-muted); font-family: 'Space Mono', monospace; }
+	.heat-legend-label { font-size: 9px; color: var(--t-muted); font-family: 'Satoshi', sans-serif; }
 	.heat-legend-bar { width: 120px; height: 8px; border-radius: 4px; display: flex; overflow: hidden; }
 
 	/* Insight chips */
@@ -911,7 +911,7 @@
 		font-weight: 700; color: var(--t-strong); margin: 0;
 	}
 	.section-badge {
-		font-size: 0.65rem; font-family: 'Space Mono', monospace;
+		font-size: 0.65rem; font-family: 'Satoshi', sans-serif;
 		padding: 2px 8px; border-radius: 4px;
 		background: var(--panel-bg-2); color: var(--t-muted);
 	}
@@ -920,7 +920,7 @@
 	.posts-table-head {
 		display: grid; grid-template-columns: 1fr 120px 80px 90px 90px 80px;
 		padding: 0.6rem 1.5rem;
-		font-size: 0.65rem; font-family: 'Space Mono', monospace;
+		font-size: 0.65rem; font-family: 'Satoshi', sans-serif;
 		text-transform: uppercase; letter-spacing: 0.08em;
 		color: var(--t-muted);
 		border-bottom: 1px solid var(--panel-border);
@@ -938,12 +938,12 @@
 
 	.col-wide { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
 	.col { display: flex; align-items: center; gap: 0.3rem; }
-	.col-stat { font-size: 0.8125rem; color: rgba(255,255,255,0.6); font-family: 'Space Mono', monospace; }
+	.col-stat { font-size: 0.8125rem; color: rgba(255,255,255,0.6); font-family: 'Satoshi', sans-serif; }
 	.post-num {
 		width: 22px; height: 22px; border-radius: 6px;
 		background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
 		display: flex; align-items: center; justify-content: center;
-		font-size: 0.65rem; font-family: 'Space Mono', monospace; color: rgba(255,255,255,0.3);
+		font-size: 0.65rem; font-family: 'Satoshi', sans-serif; color: rgba(255,255,255,0.3);
 		flex-shrink: 0;
 	}
 	.post-title {
@@ -953,7 +953,7 @@
 
 	.platform-badge {
 		display: inline-flex; padding: 2px 8px; border-radius: 5px;
-		font-size: 0.65rem; font-family: 'Space Mono', monospace; font-weight: 600;
+		font-size: 0.65rem; font-family: 'Satoshi', sans-serif; font-weight: 600;
 	}
 	.platform-badge--instagram { background: rgba(225,48,108,0.15); color: #f472b6; }
 	.platform-badge--tiktok   { background: rgba(0,0,0,0.3); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.08); }
@@ -976,7 +976,7 @@
 	.link-muted {
 		display: inline-flex; align-items: center; gap: 0.35rem;
 		font-size: 0.75rem; color: rgba(255,255,255,0.3); text-decoration: none;
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 	}
 	.link-muted:hover { color: #E8FF48; }
 
@@ -989,7 +989,7 @@
 		display: inline-flex; align-items: center; gap: 0.45rem;
 		padding: 0.5rem 0.85rem; border-radius: 8px; border: none;
 		background: transparent; color: rgba(255,255,255,0.38);
-		font-family: 'DM Sans', sans-serif; font-size: 0.8125rem; font-weight: 500;
+		font-family: 'Satoshi', sans-serif; font-size: 0.8125rem; font-weight: 500;
 		cursor: pointer; transition: all 0.12s;
 	}
 	.ptab:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.04); }
@@ -1004,10 +1004,10 @@
 		background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
 	}
 	.qkpi-val {
-		display: block; font-family: 'Space Mono', monospace;
+		display: block; font-family: 'Satoshi', sans-serif;
 		font-size: 1.2rem; font-weight: 700; color: #fff; line-height: 1.2;
 	}
-	.qkpi-label { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(255,255,255,0.28); font-family: 'Space Mono', monospace; margin-top: 0.2rem; }
+	.qkpi-label { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(255,255,255,0.28); font-family: 'Satoshi', sans-serif; margin-top: 0.2rem; }
 	.qkpi--warn .qkpi-val { color: #fb923c; }
 	.qkpi--muted .qkpi-val { color: rgba(255,255,255,0.3); }
 	.qkpi--total { border-color: rgba(232,255,72,0.18); background: rgba(232,255,72,0.03); }
@@ -1036,7 +1036,7 @@
 
 	.btn-connect {
 		padding: 0.55rem 1.1rem; border-radius: 10px; border: none;
-		font-size: 0.8125rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
 		cursor: pointer; background: #E8FF48; color: #0a0a0a; transition: opacity 0.12s, transform 0.12s;
 	}
 	.btn-connect:hover:not(:disabled) { transform: translateY(-1px); }
@@ -1044,7 +1044,7 @@
 
 	.btn-secondary {
 		padding: 0.55rem 1rem; border-radius: 10px;
-		font-size: 0.8125rem; font-weight: 600; font-family: 'DM Sans', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
 		cursor: pointer; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.8);
 		border: 1px solid rgba(255,255,255,0.1); transition: background 0.12s;
 	}
@@ -1056,7 +1056,7 @@
 	.accounts-section { display: flex; flex-direction: column; gap: 0.65rem; }
 	.accounts-title {
 		font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em;
-		color: rgba(255,255,255,0.28); font-family: 'Space Mono', monospace; font-weight: 600;
+		color: rgba(255,255,255,0.28); font-family: 'Satoshi', sans-serif; font-weight: 600;
 	}
 	.empty-accounts {
 		text-align: center; padding: 1.5rem;
@@ -1077,9 +1077,9 @@
 		width: 34px; height: 34px; border-radius: 50%;
 		background: rgba(232,255,72,0.1); border: 1px solid rgba(232,255,72,0.2);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Space Mono', monospace; font-size: 12px; color: #E8FF48;
+		font-family: 'Satoshi', sans-serif; font-size: 12px; color: #E8FF48;
 		flex-shrink: 0; font-weight: 700;
 	}
 	.acct-label { font-size: 0.875rem; color: rgba(255,255,255,0.82); margin: 0 0 0.15rem; font-weight: 500; }
-	.acct-meta { font-size: 0.7rem; color: rgba(255,255,255,0.3); margin: 0; font-family: 'Space Mono', monospace; }
+	.acct-meta { font-size: 0.7rem; color: rgba(255,255,255,0.3); margin: 0; font-family: 'Satoshi', sans-serif; }
 </style>

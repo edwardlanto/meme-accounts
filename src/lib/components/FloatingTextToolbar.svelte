@@ -264,9 +264,9 @@
 				<Type size={13} class="ftb-muted" />
 				<span
 					class="ftb-strong flex-1 truncate text-left text-xs"
-					style="font-family: '{style.fontFamily ?? 'Lexend'}', sans-serif;"
+					style="font-family: '{style.fontFamily ?? 'Satoshi'}', sans-serif;"
 				>
-					{style.fontFamily ?? 'Default'}
+					{style.fontFamily ?? 'Satoshi'}
 				</span>
 				<ChevronDown size={12} class="ftb-muted" />
 			</PopoverTrigger>

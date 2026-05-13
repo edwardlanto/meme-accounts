@@ -338,10 +338,10 @@
 						<div class="inline-block mb-4 px-2 py-0.5 rounded-full border" style="border-color:{activeSlide.textColor}22;background:{activeSlide.textColor}11">
 							<span class="text-[10px] font-mono" style="color:{activeSlide.textColor}88">{activeSlide.type.toUpperCase()} · {activeIdx+1}/{slides.length}</span>
 						</div>
-						<p class="leading-tight" style="color:{activeSlide.textColor};font-size:{activeSlide.fontSize}px;font-family:'Syne',sans-serif;font-weight:{activeSlide.bold?800:600};word-break:break-word">
+						<p class="leading-tight" style="color:{activeSlide.textColor};font-size:{activeSlide.fontSize}px;font-family:Impact,'Arial Black',sans-serif;font-weight:{activeSlide.bold?800:600};word-break:break-word">
 							{activeSlide.text || 'Click to edit text →'}
 						</p>
-						{#if activeSlide.subtext}<p class="mt-3 text-sm leading-relaxed" style="color:{activeSlide.textColor}99;font-family:'DM Sans',sans-serif">{activeSlide.subtext}</p>{/if}
+						{#if activeSlide.subtext}<p class="mt-3 text-sm leading-relaxed" style="color:{activeSlide.textColor}99;font-family:'Satoshi',sans-serif">{activeSlide.subtext}</p>{/if}
 					</div>
 				</div>
 			{/if}

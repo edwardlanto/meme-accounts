@@ -676,7 +676,7 @@
 		height: 100vh;
 		background: #070707;
 		overflow: hidden;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 	}
 
 	/* ── Header ──────────────────────────────────────────────────────────── */
@@ -705,7 +705,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 12px;
 		color: rgba(255,255,255,0.5);
 	}
@@ -730,7 +730,7 @@
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.15s;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 	}
 	.export-btn:hover:not(:disabled) { background: #f0ff6e; }
 	.export-btn:disabled { opacity: 0.3; cursor: not-allowed; }
@@ -754,7 +754,7 @@
 		transition: width 0.3s;
 	}
 	.progress-label {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 11px;
 		color: rgba(255,255,255,0.3);
 	}
@@ -792,7 +792,7 @@
 		gap: 6px;
 		padding: 14px 16px;
 		border-bottom: 1px solid rgba(255,255,255,0.04);
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
@@ -816,7 +816,7 @@
 	}
 
 	.tiny-label {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.2);
 		text-transform: uppercase;
@@ -844,7 +844,7 @@
 	}
 	.dur-stepper button:hover { background: rgba(255,255,255,0.08); }
 	.dur-stepper span {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 11px;
 		color: rgba(255,255,255,0.5);
 		min-width: 28px;
@@ -852,7 +852,7 @@
 	}
 
 	.apply-all {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(232,255,72,0.5);
 		background: transparent;
@@ -904,7 +904,7 @@
 		text-overflow: ellipsis;
 	}
 	.slide-row-type {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 9px;
 		color: rgba(255,255,255,0.2);
 		text-transform: uppercase;
@@ -931,7 +931,7 @@
 	}
 	.dur-mini button:hover { background: rgba(255,255,255,0.07); }
 	.dur-mini span {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.4);
 		min-width: 22px;
@@ -987,7 +987,7 @@
 		position: absolute;
 		top: 10px;
 		left: 10px;
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.5);
 		background: rgba(0,0,0,0.6);
@@ -1031,7 +1031,7 @@
 		display: flex;
 		align-items: center;
 		gap: 5px;
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.25);
 		text-transform: uppercase;
@@ -1084,7 +1084,7 @@
 	}
 
 	.audio-drop-sub {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.2);
 		margin: 0;
@@ -1099,7 +1099,7 @@
 		color: rgba(255,255,255,0.5);
 		font-size: 12px;
 		cursor: pointer;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 		transition: all 0.15s;
 	}
 	.browse-btn:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
@@ -1108,7 +1108,7 @@
 		padding: 0 14px 14px;
 	}
 	.tip-head {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
@@ -1171,7 +1171,7 @@
 		text-overflow: ellipsis;
 	}
 	.audio-dur {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.3);
 		margin: 0;
@@ -1227,7 +1227,7 @@
 	}
 
 	.vol-label {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.3);
 	}
@@ -1252,7 +1252,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
@@ -1268,7 +1268,7 @@
 	.export-stat {
 		display: flex;
 		justify-content: space-between;
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 	}
 	.ekey { color: rgba(255,255,255,0.2); text-transform: uppercase; }
@@ -1289,7 +1289,7 @@
 		border: none;
 		cursor: pointer;
 		transition: all 0.15s;
-		font-family: 'DM Sans', sans-serif;
+		font-family: 'Satoshi', sans-serif;
 	}
 	.big-export-btn:hover:not(:disabled) {
 		background: #f0ff6e;
@@ -1348,13 +1348,13 @@
 		transition: width 0.4s ease;
 	}
 	.render-phase {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
 		color: rgba(255,255,255,0.3);
 		margin: 0;
 	}
 	.render-pct {
-		font-family: 'Space Mono', monospace;
+		font-family: 'Satoshi', sans-serif;
 		font-size: 13px;
 		color: #E8FF48;
 		margin: 0;

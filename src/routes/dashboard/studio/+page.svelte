@@ -1971,20 +1971,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (!hasRangeSelection) return false;
 		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
 		if (!range) return false;
-		if (
-			selectedText !== 'headline' &&
-			selectedText !== 'articleBody' &&
-			selectedText !== 'textCarouselBody' &&
-			selectedText !== 'tweetBottomText' &&
-			selectedText !== 'tweetTopText' &&
-			selectedText !== 'videoStoryHeadline' &&
-			selectedText !== 'videoStoryWatermark' &&
-			selectedText !== 'blackTextHeadline' &&
-			selectedText !== 'blackTextBody' &&
-			selectedText !== 'textOverlay'
-		) {
-			return false;
-		}
+		if (previewTemplate !== 'news') return false;
+		if (selectedText !== 'headline' && selectedText !== 'textOverlay') return false;
 		const raw = toolbarHighlightableRaw();
 		if (!raw) return false;
 		const base = getActiveStyleForSelection().color ?? textColor;
@@ -1995,6 +1983,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const toolbarFloatingStyle = $derived.by(() => {
 		const base = getActiveStyleForSelection();
 		if (!hasRangeSelection || toolbarTextColorMixed) return base;
+		if (previewTemplate !== 'news' || (selectedText !== 'headline' && selectedText !== 'textOverlay')) return base;
 		const raw = toolbarHighlightableRaw();
 		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
 		if (!raw || !range || range.end <= range.start) return base;
@@ -2068,16 +2057,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start)) return;
 
 		const appliesMarkup =
-			selectedText === 'headline' ||
-			selectedText === 'articleBody' ||
-			selectedText === 'textCarouselBody' ||
-			selectedText === 'tweetBottomText' ||
-			selectedText === 'tweetTopText' ||
-			selectedText === 'videoStoryHeadline' ||
-			selectedText === 'videoStoryWatermark' ||
-			selectedText === 'blackTextHeadline' ||
-			selectedText === 'blackTextBody' ||
-			(selectedText === 'textOverlay' && !!selectedTextOverlayId);
+			previewTemplate === 'news' &&
+			(selectedText === 'headline' ||
+				(selectedText === 'textOverlay' && !!selectedTextOverlayId));
 		if (!appliesMarkup) return;
 
 		pushUndo(activeTemplate, activeSlide);
@@ -2373,8 +2355,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const raw = toolbarHighlightableRaw();
 		if (
 			studioTextHighlightsEnabled &&
+			previewTemplate === 'news' &&
+			selectedText === 'headline' &&
 			raw &&
-			selectedText &&
 			selectedText !== 'textOverlay'
 		) {
 			if ('color' in patch && patch.color !== undefined) {
@@ -3839,7 +3822,8 @@ tweetTopImagePanYBySlide,
 		/** Main tweet body above media (~3–4 lines at default size in a 9:16 card). */
 		tweetTop: 230,
 		article: 520,
-		textCarousel: 260,
+		/** Long-form carousel body from APIs (OpenRouter, etc.); paragraphs preserved in clamp. */
+		textCarousel: 6000,
 		imageQuote: 130,
 		videoStory: 320,
 		blackText: 200,
@@ -3860,6 +3844,20 @@ tweetTopImagePanYBySlide,
 		return `${plain.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
 	}
 
+	/** Text carousel: keep \\n\\n paragraph breaks (plain clamp collapses whitespace). */
+	function clampFetchedTextCarouselBody(text: string, maxLen: number): string {
+		const raw = String(text ?? '').trim();
+		if (!maxLen) return '';
+		let s = stripHighlightMarkers(raw);
+		s = s.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+		if (s.length <= maxLen) return s;
+		const budget = Math.max(1, maxLen - 1);
+		let cut = budget;
+		while (cut > 0 && s[cut] !== ' ' && s[cut] !== '\n') cut--;
+		if (cut < Math.floor(budget * 0.45)) cut = budget;
+		return `${s.slice(0, Math.max(1, cut)).trimEnd()}…`;
+	}
+
 	/** Tweet main post: keep short enough to sit above media without crowding the card. */
 	function clampTweetTopFetched(text: string): string {
 		return clampFetchedPlainLength(text, FETCH_TEXT_CLIP.tweetTop);
@@ -3873,7 +3871,7 @@ tweetTopImagePanYBySlide,
 			case 'article':
 				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.article);
 			case 'textCarousel':
-				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.textCarousel);
+				return clampFetchedTextCarouselBody(raw, FETCH_TEXT_CLIP.textCarousel);
 			case 'imageQuote':
 				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.imageQuote);
 			case 'videoStory':
@@ -6479,6 +6477,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{:else if previewTemplate === 'news'}
 				<NewsTemplate
@@ -6599,6 +6598,7 @@ showSubjectCutout={canvasShowCutout}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{:else if previewTemplate === 'article'}
 				<ArticleTemplate
@@ -6651,6 +6651,7 @@ showSubjectCutout={canvasShowCutout}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{:else if previewTemplate === 'tweet'}
 				<!-- Tweet: minimal integration for now (top tweet text = slide text). -->
@@ -6731,6 +6732,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{:else if previewTemplate === 'textCarousel'}
 				<TextCarouselTemplate
@@ -6783,6 +6785,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{:else if previewTemplate === 'videoStory'}
 				<VideoStoryTemplate
@@ -6869,6 +6872,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						setSlideTextOverlays(paintSlide, o, previewTemplate);
 					}}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{:else if previewTemplate === 'blackText'}
 				<BlackTextCarouselTemplate
@@ -6929,6 +6933,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						setSlideTextOverlays(paintSlide, o, previewTemplate);
 					}}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{:else if previewTemplate === 'imageQuote'}
 				<!-- Image Quote template removed from public UI. Keep a safe fallback. -->
@@ -6989,6 +6994,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
 			{/if}
 				</div>
@@ -7053,8 +7059,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					{@const isVideo = !!item.vid || hasMusic}
 					{@const thumbFontFamily =
 						tplate === 'news'
-							? `'Bebas Neue', ui-sans-serif, system-ui, sans-serif`
-							: `'Lexend', ui-sans-serif, system-ui, sans-serif`}
+							? `'Bebas Neue', Impact, ui-sans-serif, sans-serif`
+							: `'Satoshi', ui-sans-serif, system-ui, sans-serif`}
 					{@const thumbFontSize = tplate === 'news' ? '8px' : '7.5px'}
 					{@const thumbImgOpacity = tplate === 'tweet' && item.img ? '0.92' : '0.78'}
 					{@const rasterThumb = filmstripPreviewUrls[item.slideIndex] ?? ''}
@@ -7253,8 +7259,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{@const tDrag = slideTemplates[di.slideIndex] ?? 'news'}
 							{@const dragFont =
 								tDrag === 'news'
-									? `'Bebas Neue', ui-sans-serif, system-ui, sans-serif`
-									: `'Lexend', ui-sans-serif, system-ui, sans-serif`}
+									? `'Bebas Neue', Impact, ui-sans-serif, sans-serif`
+									: `'Satoshi', ui-sans-serif, system-ui, sans-serif`}
 							{@const dragFs = tDrag === 'news' ? '8px' : '7.5px'}
 							{@const dragImgOp = tDrag === 'tweet' && di.img ? '0.92' : '0.78'}
 							{@const dragRaster = filmstripPreviewUrls[di.slideIndex] ?? ''}
@@ -7837,24 +7843,12 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	autoFontSize={toolbarAutoFontSize ?? (selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined)}
 	deleteOnly={selectedText === 'articleImage' || selectedText === 'articleLogo'}
 	supportsHighlights={studioTextHighlightsEnabled &&
-		((selectedText === 'headline' ||
-			selectedText === 'articleBody' ||
-			selectedText === 'textCarouselBody' ||
-			selectedText === 'tweetTopName' ||
-			selectedText === 'tweetTopHandle' ||
-			selectedText === 'tweetTopText' ||
-			selectedText === 'tweetBottomName' ||
-			selectedText === 'tweetBottomHandle' ||
-			selectedText === 'tweetBottomText' ||
-			selectedText === 'videoStoryHeadline' ||
-			selectedText === 'videoStoryWatermark' ||
-			selectedText === 'blackTextHeadline' ||
-			selectedText === 'blackTextBody') ||
-			selectedText === 'textOverlay')}
+		previewTemplate === 'news' &&
+		(selectedText === 'headline' || (selectedText === 'textOverlay' && !!selectedTextOverlayId))}
 	hasRangeSelection={hasRangeSelection}
 	textColorMixed={toolbarTextColorMixed}
 	onChange={onFloatingToolbarChange}
-	onHighlight={studioTextHighlightsEnabled ? onHighlight : undefined}
+	onHighlight={studioTextHighlightsEnabled && previewTemplate === 'news' ? onHighlight : undefined}
 	onClose={closeToolbar}
 	onDelete={
 		selectedText &&

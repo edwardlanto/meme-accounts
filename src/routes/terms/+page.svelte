@@ -89,7 +89,7 @@
 		min-height: 100vh;
 		background: var(--app-bg);
 		color: var(--app-text);
-		font-family: "DM Sans", system-ui, sans-serif;
+		font-family: "Satoshi", system-ui, sans-serif;
 		padding: 48px 24px 96px;
 	}
 	.doc {
@@ -103,7 +103,7 @@
 		font-size: 13px;
 		color: var(--app-text-2);
 		text-decoration: none;
-		font-family: "Space Mono", monospace;
+		font-family: "Satoshi", sans-serif;
 	}
 	.back:hover {
 		color: var(--app-text);
@@ -118,7 +118,7 @@
 	.meta {
 		font-size: 13px;
 		color: var(--app-text-3);
-		font-family: "Space Mono", monospace;
+		font-family: "Satoshi", sans-serif;
 		margin: 0 0 48px;
 	}
 	h2 {

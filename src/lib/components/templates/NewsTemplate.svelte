@@ -363,8 +363,9 @@
 		editingTextOverlayId = null;
 	}
 
-	// Preload Google Fonts used by the overrides so they're ready for render + export.
+	// Preload display + override fonts (Bebas Neue = default news headline).
 	$effect(() => {
+		void loadGoogleFont('Bebas Neue', 400);
 		if (headlineStyle.fontFamily) void loadGoogleFont(headlineStyle.fontFamily);
 		if (sourceStyle.fontFamily) void loadGoogleFont(sourceStyle.fontFamily);
 	});
@@ -1562,7 +1563,7 @@
 							background: transparent;
 							border: 1px dashed rgba(255,255,255,0.28);
 							color: {css.color ?? '#FFFFFF'};
-							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'DM Sans', system-ui, -apple-system, sans-serif`};
+							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'Satoshi', system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;
 							font-weight: {css.fontWeight ?? 700};
 							text-align: {css.align ?? 'left'};
@@ -2105,7 +2106,7 @@
 				<div style="
 					position: absolute;
 					top: 14px; right: 18px;
-					font-family: 'DM Sans', sans-serif;
+					font-family: 'Satoshi', sans-serif;
 					font-size: 20px;
 					color: rgba(255,255,255,0.4);
 					pointer-events: none;

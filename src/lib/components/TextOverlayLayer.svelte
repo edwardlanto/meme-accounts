@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
-	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
+	import { parseHighlightMarkup as parseHighlightToSegments, segmentText } from '$lib/highlight';
 	import type { TextOverlay } from '$lib/types';
 	import { patternStyleForUrl } from '$lib/components/textOverlayPattern';
 
@@ -14,6 +14,8 @@
 		/** Currently-selected text overlay id (for showing selection outline). */
 		selectedId?: string | null;
 		highlightColor?: string;
+		/** When false, overlay text is plain (no `[[…]]` rendering or HighlightEditor). */
+		parseHighlightMarkup?: boolean;
 		/** Plain-text selection range inside the active overlay editor. */
 		onRangeSelect?: (plainStart: number, plainEnd: number) => void;
 		onTextOverlaysChange?: (next: TextOverlay[]) => void;
@@ -28,6 +30,7 @@
 		textOverlays = [],
 		selectedId = null,
 		highlightColor = '#F5A623',
+		parseHighlightMarkup = false,
 		onRangeSelect,
 		onTextOverlaysChange,
 		onTextSelect,
@@ -224,35 +227,83 @@
 						onclick={(e) => e.stopPropagation()}
 						role="presentation"
 					>
-						<HighlightEditor
-							value={t.text}
-							rows={1}
-							minHeight="0px"
-							showToolbar={false}
-							defaultColor={highlightColor}
-							fontFamily={css.fontFamily}
-							fontSize={css.fontSize ?? 42}
-							ariaLabel="Text overlay editor"
-							onSelectionChange={(has, r) => {
-								if (!has || !r) onRangeSelect?.(-1, -1);
-								else onRangeSelect?.(r.start, r.end);
-							}}
-							onFocus={() => {
-								// Re-assert selection when the editor gains focus (keeps floating toolbar stable).
-								const box = document.querySelector<HTMLElement>(`[data-text-overlay-id="${CSS.escape(t.id)}"]`);
-								if (box) {
-									try { box.dataset.textOverlayId = t.id; } catch {}
-									onTextSelect?.('textOverlay', box);
-								}
-							}}
-							onChange={(v) => {
-								// HighlightEditor can leave a trailing newline on blur/commit; strip it so overlays
-								// don't "grow" by one empty line after editing.
-								const next = String(v ?? '').replace(/\n$/, '');
-								onTextOverlaysChange?.(textOverlays.map((o) => (o.id === t.id ? { ...o, text: next } : o)));
-							}}
-							onBlur={(e) => finishEdit(t.id, e)}
-						/>
+						{#if parseHighlightMarkup}
+							<HighlightEditor
+								value={t.text}
+								rows={1}
+								minHeight="0px"
+								showToolbar={false}
+								defaultColor={highlightColor}
+								fontFamily={css.fontFamily}
+								fontSize={css.fontSize ?? 42}
+								ariaLabel="Text overlay editor"
+								onSelectionChange={(has, r) => {
+									if (!has || !r) onRangeSelect?.(-1, -1);
+									else onRangeSelect?.(r.start, r.end);
+								}}
+								onFocus={() => {
+									// Re-assert selection when the editor gains focus (keeps floating toolbar stable).
+									const box = document.querySelector<HTMLElement>(`[data-text-overlay-id="${CSS.escape(t.id)}"]`);
+									if (box) {
+										try { box.dataset.textOverlayId = t.id; } catch {}
+										onTextSelect?.('textOverlay', box);
+									}
+								}}
+								onChange={(v) => {
+									// HighlightEditor can leave a trailing newline on blur/commit; strip it so overlays
+									// don't "grow" by one empty line after editing.
+									const next = String(v ?? '').replace(/\n$/, '');
+									onTextOverlaysChange?.(textOverlays.map((o) => (o.id === t.id ? { ...o, text: next } : o)));
+								}}
+								onBlur={(e) => finishEdit(t.id, e)}
+							/>
+						{:else}
+							<textarea
+								rows={3}
+								aria-label="Text overlay editor"
+								class="w-full min-h-[2.5em] resize-y border-0 bg-transparent p-0 outline-none"
+								style="
+									color: {css.color ?? '#FFFFFF'};
+									font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
+									font-size: {css.fontSize ?? 42}px;
+									font-weight: {css.fontWeight ?? 700};
+									text-align: {css.align ?? 'left'};
+									line-height: {css.lineHeight ?? 1.15};
+									letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+								"
+								value={t.text}
+								oninput={(e) => {
+									const next = (e.target as HTMLTextAreaElement).value.replace(/\n$/, '');
+									onTextOverlaysChange?.(textOverlays.map((o) => (o.id === t.id ? { ...o, text: next } : o)));
+								}}
+								onselect={(e) => {
+									const ta = e.target as HTMLTextAreaElement;
+									const a = ta.selectionStart;
+									const b = ta.selectionEnd;
+									const s = Math.min(a, b);
+									const en = Math.max(a, b);
+									if (en > s) onRangeSelect?.(s, en);
+									else onRangeSelect?.(-1, -1);
+								}}
+								onkeyup={(e) => {
+									const ta = e.target as HTMLTextAreaElement;
+									const a = ta.selectionStart;
+									const b = ta.selectionEnd;
+									const s = Math.min(a, b);
+									const en = Math.max(a, b);
+									if (en > s) onRangeSelect?.(s, en);
+									else onRangeSelect?.(-1, -1);
+								}}
+								onfocus={() => {
+									const box = document.querySelector<HTMLElement>(`[data-text-overlay-id="${CSS.escape(t.id)}"]`);
+									if (box) {
+										try { box.dataset.textOverlayId = t.id; } catch {}
+										onTextSelect?.('textOverlay', box);
+									}
+								}}
+								onblur={(e) => finishEdit(t.id, e)}
+							></textarea>
+						{/if}
 					</div>
 				{:else}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -280,17 +331,21 @@
 							white-space: pre-wrap;
 						"
 					>
-						{@html segmentText(parseHighlightMarkup(t.text, highlightColor)).map((seg) => {
-							if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-							if (seg.patternImage) {
-								const s = patternStyleForUrl(seg.patternImage).replace(/\n/g,' ');
-								return `<span style="${s}">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
-							}
-							if (seg.gradientFrom && seg.gradientTo) {
-								return `<span style="background: linear-gradient(90deg, ${seg.gradientFrom}, ${seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
-							}
-							return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
-						}).join('')}
+						{#if parseHighlightMarkup}
+							{@html segmentText(parseHighlightToSegments(t.text, highlightColor)).map((seg) => {
+								if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+								if (seg.patternImage) {
+									const s = patternStyleForUrl(seg.patternImage).replace(/\n/g,' ');
+									return `<span style="${s}">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+								}
+								if (seg.gradientFrom && seg.gradientTo) {
+									return `<span style="background: linear-gradient(90deg, ${seg.gradientFrom}, ${seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+								}
+								return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+							}).join('')}
+						{:else}
+							{t.text}
+						{/if}
 					</div>
 				{/if}
 			</div>
