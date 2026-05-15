@@ -55,6 +55,30 @@ export const TEXT_CAROUSEL_DEFAULTS = {
 		'What this means for operators: supply chains that depend on Gulf transit should scenario-plan for both a quick reopening and a phased rollout. Clear communication to customers beats surprise every time.',
 } as const;
 
+/** Minimum plain-text length for text carousel body (studio + API fills). */
+export const TEXT_CAROUSEL_BODY_MIN_CHARS = 175;
+
+/**
+ * If body is shorter than {@link TEXT_CAROUSEL_BODY_MIN_CHARS}, append the default deck copy
+ * so slides stay visually full. Empty input becomes the full default body.
+ */
+export function ensureTextCarouselBodyMinLength(body: string): string {
+	const min = TEXT_CAROUSEL_BODY_MIN_CHARS;
+	let out = String(body ?? '')
+		.trim()
+		.replace(/\r\n/g, '\n');
+	if (out.length >= min) return out;
+	const filler = String(TEXT_CAROUSEL_DEFAULTS.body)
+		.trim()
+		.replace(/\r\n/g, '\n');
+	if (!filler.length) return out;
+	let guard = 0;
+	while (out.length < min && guard++ < 6) {
+		out = out ? `${out}\n\n${filler}` : filler;
+	}
+	return out;
+}
+
 export const IMAGE_QUOTE_DEFAULTS = {
 	body: 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
 	footerLeft: '$',

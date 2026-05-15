@@ -75,6 +75,7 @@ import JSZip from 'jszip';
 		ARTICLE_DEFAULT_BODY,
 		ARTICLE_DEFAULT_SWIPE,
 		TEXT_CAROUSEL_DEFAULTS,
+		ensureTextCarouselBodyMinLength,
 		IMAGE_QUOTE_DEFAULTS,
 		VIDEO_STORY_DEFAULTS,
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
@@ -216,10 +217,16 @@ import JSZip from 'jszip';
 			return;
 		}
 		if (t === 'textCarousel') {
-			if (!String(textCarouselTextBySlide[idx] ?? '').trim()) {
+			const cur = String(textCarouselTextBySlide[idx] ?? '').trim();
+			if (!cur) {
 				textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) =>
 					i === idx ? TEXT_CAROUSEL_DEFAULTS.body : x,
 				);
+			} else {
+				const ensured = ensureTextCarouselBodyMinLength(cur);
+				if (ensured !== (textCarouselTextBySlide[idx] ?? '')) {
+					textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => (i === idx ? ensured : x));
+				}
 			}
 			if (!String(textCarouselNameBySlide[idx] ?? '').trim()) {
 				textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) =>
@@ -549,7 +556,9 @@ import JSZip from 'jszip';
 			const d = snap.data;
 			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) => (idx === i ? d.name : x));
 			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? d.handle : x));
-			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) => (idx === i ? d.text : x));
+			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) =>
+				idx === i ? ensureTextCarouselBodyMinLength(String(d.text ?? '')) : x,
+			);
 			textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, idx) =>
 				idx === i ? (d.avatarImage ?? '') : x,
 			);
@@ -1593,7 +1602,7 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 	let textCarouselTextBySlide = $state<string[]>(
 		emptySlides(
 			() =>
-				'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
+				'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.\n',
 		),
 	);
 	let imageQuoteTextBySlide = $state<string[]>(
@@ -2711,7 +2720,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			tweetBottomAvatarLabelBySlide = (s as any).tweetBottomAvatarLabelBySlide.map((x: unknown) => String(x ?? ''));
 		}
 		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
-		if (Array.isArray(s.textCarouselTextBySlide)) textCarouselTextBySlide = s.textCarouselTextBySlide;
+		if (Array.isArray(s.textCarouselTextBySlide)) {
+			textCarouselTextBySlide = s.textCarouselTextBySlide.map((x: unknown) =>
+				ensureTextCarouselBodyMinLength(String(x ?? '')),
+			);
+		}
 		if (Array.isArray((s as any).videoStoryHeadlineBySlide)) {
 			videoStoryHeadlineBySlide = (s as any).videoStoryHeadlineBySlide.map((x: unknown) => String(x ?? ''));
 		}
@@ -3850,12 +3863,13 @@ tweetTopImagePanYBySlide,
 		if (!maxLen) return '';
 		let s = stripHighlightMarkers(raw);
 		s = s.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-		if (s.length <= maxLen) return s;
+		if (s.length <= maxLen) return ensureTextCarouselBodyMinLength(s);
 		const budget = Math.max(1, maxLen - 1);
 		let cut = budget;
 		while (cut > 0 && s[cut] !== ' ' && s[cut] !== '\n') cut--;
 		if (cut < Math.floor(budget * 0.45)) cut = budget;
-		return `${s.slice(0, Math.max(1, cut)).trimEnd()}…`;
+		s = `${s.slice(0, Math.max(1, cut)).trimEnd()}…`;
+		return ensureTextCarouselBodyMinLength(s);
 	}
 
 	/** Tweet main post: keep short enough to sit above media without crowding the card. */
