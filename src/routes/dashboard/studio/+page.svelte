@@ -88,7 +88,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -6982,31 +6982,31 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		<!-- ── Prompt bar ── below the filmstrip ───────────────────── -->
 		<div class="shrink-0 px-4 pt-0 pb-2">
 			<div class="mx-auto w-full max-w-2xl">
-				<div class="overflow-hidden rounded-[22px] bg-white shadow-[0_4px_32px_rgba(0,0,0,0.10),0_1px_4px_rgba(0,0,0,0.06)]">
+				<div class="prompt-bar overflow-hidden rounded-[20px] bg-[#f5f5f5] shadow-[0_4px_24px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)]">
 
 					<!-- Search input row -->
-					<div class="flex items-center gap-2.5 px-4 pt-3.5 pb-2.5">
-						<Search size={14} class="shrink-0 text-[#bbb]" />
+					<div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
+						<Search size={14} class="shrink-0 text-[#b0b0b0]" />
 						{#if newsContentMode === 'news'}
 							<input
 								bind:value={search}
 								placeholder="Search topic (optional)…"
 								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-								class="flex-1 min-w-0 bg-transparent text-sm text-[#1a1a1a] placeholder:text-[#aaa] outline-none font-body"
+								class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
 							/>
 						{:else if newsContentMode === 'fact'}
 							<input
 								bind:value={factTopicPrompt}
 								placeholder="Fact topic or angle (optional)…"
 								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-								class="flex-1 min-w-0 bg-transparent text-sm text-[#1a1a1a] placeholder:text-[#aaa] outline-none font-body"
+								class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
 							/>
 						{:else}
 							<input
 								bind:value={storyTopicPrompt}
 								placeholder="Story direction (optional)…"
 								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-								class="flex-1 min-w-0 bg-transparent text-sm text-[#1a1a1a] placeholder:text-[#aaa] outline-none font-body"
+								class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
 							/>
 						{/if}
 						{#if newsError}
@@ -7017,24 +7017,27 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						{/if}
 					</div>
 
+					<!-- Divider -->
+					<div class="mx-4 h-px bg-[#e8e8e8]"></div>
+
 					<!-- Pills + CTA row -->
-					<div class="flex items-center gap-1.5 px-3 pb-3">
+					<div class="flex items-center gap-1.5 px-3 pt-2.5 pb-3">
 
 						<!-- News pill -->
 						<Popover>
 							<PopoverTrigger
 								onclick={() => (newsContentMode = 'news')}
-								class="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium font-body transition-all select-none {newsContentMode === 'news' ? 'border-[#d4bbfa] bg-[#f3ecff] text-[#6d28d9]' : 'border-[#e5e5e5] bg-white text-[#666] hover:border-[#ccc] hover:text-[#333]'}"
+								class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-body transition-all duration-150 select-none {newsContentMode === 'news' ? 'border-[#c8c8c8] bg-white text-[#111] font-semibold' : 'border-[#e2e2e2] bg-white text-[#888] font-medium hover:border-[#c8c8c8] hover:text-[#333]'}"
 							>
 								<Newspaper size={11} />
 								News{#if newsContentMode === 'news'}&thinsp;·&thinsp;{categories.find((c) => c.id === category)?.label ?? 'Category'}{/if}
 							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={10} class="w-64 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
-								<div class="p-4 flex flex-col gap-3">
+							<PopoverContent side="top" sideOffset={12} class="w-64 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+								<div class="p-4 flex flex-col gap-3.5">
 									<div>
-										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Category</p>
+										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Category</p>
 										<Select type="single" bind:value={category}>
-											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]">
+											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa] hover:bg-[#f5f5f5]">
 												{categories.find((c) => c.id === category)?.label ?? 'Category'}
 											</SelectTrigger>
 											<SelectContent>
@@ -7045,8 +7048,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										</Select>
 									</div>
 									<div>
-										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Search (optional)</p>
-										<Input bind:value={search} placeholder="e.g. interest rates, Tesla…" class="rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]" />
+										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Search (optional)</p>
+										<Input bind:value={search} placeholder="e.g. interest rates, Tesla…" class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
 									</div>
 								</div>
 							</PopoverContent>
@@ -7056,22 +7059,22 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						<Popover>
 							<PopoverTrigger
 								onclick={() => (newsContentMode = 'fact')}
-								class="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium font-body transition-all select-none {newsContentMode === 'fact' ? 'border-[#d4bbfa] bg-[#f3ecff] text-[#6d28d9]' : 'border-[#e5e5e5] bg-white text-[#666] hover:border-[#ccc] hover:text-[#333]'}"
+								class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-body transition-all duration-150 select-none {newsContentMode === 'fact' ? 'border-[#c8c8c8] bg-white text-[#111] font-semibold' : 'border-[#e2e2e2] bg-white text-[#888] font-medium hover:border-[#c8c8c8] hover:text-[#333]'}"
 							>
 								<Sparkles size={11} />
 								Random fact
 							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={10} class="w-64 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
-								<div class="p-4 flex flex-col gap-3">
-									<p class="text-[11px] font-body text-[#888] leading-relaxed">A surprising fact-style hook + context. No news API needed.</p>
+							<PopoverContent side="top" sideOffset={12} class="w-64 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+								<div class="p-4 flex flex-col gap-3.5">
+									<p class="text-[11px] font-body text-[#999] leading-relaxed">A surprising fact-style hook + context. No news API needed.</p>
 									<div>
-										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Topic (optional)</p>
+										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Topic (optional)</p>
 										<textarea
 											id="pb-fact-topic"
 											bind:value={factTopicPrompt}
 											rows={3}
 											placeholder="e.g. deep-sea creatures, Roman roads…"
-											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#aaa] focus:outline-none focus:border-[#c4b5fd]"
+											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none focus:border-[#c4b5fd] transition-colors"
 										></textarea>
 									</div>
 								</div>
@@ -7082,17 +7085,17 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						<Popover>
 							<PopoverTrigger
 								onclick={() => (newsContentMode = 'story')}
-								class="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium font-body transition-all select-none {newsContentMode === 'story' ? 'border-[#d4bbfa] bg-[#f3ecff] text-[#6d28d9]' : 'border-[#e5e5e5] bg-white text-[#666] hover:border-[#ccc] hover:text-[#333]'}"
+								class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-body transition-all duration-150 select-none {newsContentMode === 'story' ? 'border-[#c8c8c8] bg-white text-[#111] font-semibold' : 'border-[#e2e2e2] bg-white text-[#888] font-medium hover:border-[#c8c8c8] hover:text-[#333]'}"
 							>
 								<Type size={11} />
 								Random story{#if newsContentMode === 'story'}&thinsp;·&thinsp;{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}{/if}
 							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={10} class="w-72 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
-								<div class="p-4 flex flex-col gap-3">
+							<PopoverContent side="top" sideOffset={12} class="w-72 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+								<div class="p-4 flex flex-col gap-3.5">
 									<div>
-										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Story theme</p>
+										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Story theme</p>
 										<Select type="single" bind:value={storyCategory}>
-											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]">
+											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa] hover:bg-[#f5f5f5]">
 												{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
 											</SelectTrigger>
 											<SelectContent>
@@ -7103,13 +7106,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										</Select>
 									</div>
 									<div>
-										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Direction (optional)</p>
+										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Direction (optional)</p>
 										<textarea
 											id="pb-story-dir"
 											bind:value={storyTopicPrompt}
 											rows={3}
 											placeholder="e.g. two friends launch a podcast, betrayal at a wedding…"
-											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#aaa] focus:outline-none focus:border-[#c4b5fd]"
+											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none focus:border-[#c4b5fd] transition-colors"
 										></textarea>
 									</div>
 								</div>
@@ -7119,22 +7122,22 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						<!-- Settings popover -->
 						<Popover>
 							<PopoverTrigger
-								class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#999] transition-all hover:border-[#ccc] hover:text-[#444]"
+								class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#e2e2e2] bg-white text-[#999] transition-all duration-150 hover:border-[#c8c8c8] hover:text-[#444]"
 								title="Settings"
 							>
 								<SlidersHorizontal size={12} />
 							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={10} align="start" class="w-80 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
+							<PopoverContent side="top" sideOffset={12} align="start" class="w-80 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
 								<div class="p-4 flex flex-col gap-4">
 									<!-- Data source -->
-									<div class="flex items-center justify-between gap-3">
+									<div class="flex items-center justify-between gap-3 rounded-xl bg-[#fafafa] border border-[#ebebeb] px-3 py-2.5">
 										<div class="flex items-center gap-2">
 											{#if useTestData}
 												<FlaskConical size={12} class="text-amber-500" />
-												<span class="text-xs font-mono text-amber-600">Test data</span>
+												<span class="text-xs font-medium text-amber-600">Test data</span>
 											{:else}
 												<Wifi size={12} class="text-emerald-500" />
-												<span class="text-xs font-mono text-emerald-600">Live API</span>
+												<span class="text-xs font-medium text-emerald-600">Live API</span>
 											{/if}
 										</div>
 										<Switch bind:checked={useTestData} title={useTestData ? 'Switch to Live API' : 'Switch to Test Data'} class="shrink-0" />
@@ -7142,16 +7145,16 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 									{#if activeTemplate === 'news'}
 										<!-- Source label -->
-										<div class="space-y-2 pt-3 border-t border-[#f0f0f0]">
+										<div class="space-y-2.5 pt-3.5 border-t border-[#f2f2f2]">
 											<div class="flex items-center justify-between gap-2">
-												<Label class="text-[10px] font-mono uppercase tracking-wider text-[#999]">Source Label</Label>
-												<div class="flex items-center gap-1 rounded-lg border border-[#e5e5e5] bg-[#fafafa] p-1">
-													<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
-													<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'logo')}>Logo</Button>
+												<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Source Label</Label>
+												<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
+													<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
+													<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'logo')}>Logo</Button>
 												</div>
 											</div>
 											{#if sourceLabelMode === 'text'}
-												<Input bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]" />
+												<Input bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
 											{:else}
 												<div class="flex items-center gap-2">
 													<input type="file" accept="image/*" class="sr-only" tabindex={-1} aria-hidden="true" bind:this={sourceLogoInput}
@@ -7167,89 +7170,89 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 															(e.currentTarget as HTMLInputElement).value = '';
 														}}
 													/>
-													<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold" onclick={() => sourceLogoInput?.click()}>
+													<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold border-[#ebebeb]" onclick={() => sourceLogoInput?.click()}>
 														{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
 													</Button>
 													{#if sourceLogoSrc}
 														<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => (sourceLogoSrc = '')}>Remove</Button>
-														<div class="ml-auto h-8 w-8 rounded-lg border border-[#e5e5e5] overflow-hidden grid place-items-center">
+														<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
 															<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
 														</div>
 													{/if}
 												</div>
 												<div class="flex min-w-0 items-center gap-2 pt-1">
-													<Label class="w-12 shrink-0 font-mono text-[9px] text-[#999]">Width</Label>
+													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Width</Label>
 													<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
-													<span class="w-10 shrink-0 text-right font-mono text-[9px] text-[#999]">{sourceLogoWidth}px</span>
+													<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{sourceLogoWidth}px</span>
 												</div>
 											{/if}
 										</div>
 										<!-- Word highlights -->
-										<div class="flex items-center justify-between gap-3 rounded-xl border border-[#f0f0f0] bg-[#fafafa] px-3 py-2.5">
+										<div class="flex items-center justify-between gap-3 rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5">
 											<div class="min-w-0">
 												<Label for="settings-highlights-toggle" class="text-xs font-semibold text-[#333] block">Word highlights</Label>
-												<p class="text-[10px] text-[#999] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
+												<p class="text-[10px] text-[#aaa] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
 											</div>
 											<Switch id="settings-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
 										</div>
 									{/if}
 
 									<!-- Bottom shadow -->
-									<div class="pt-3 border-t border-[#f0f0f0]">
-										<div class="mb-2 flex items-center justify-between">
-											<Label class="text-[10px] font-mono uppercase tracking-wider text-[#999]">Bottom Shadow</Label>
-											<Button type="button" variant="ghost" size="sm" class="h-auto p-0 font-mono text-[9px] text-[#999] hover:text-[#333]" onclick={() => { shadowHeight = 75; shadowStrength = 1; }}>Reset</Button>
+									<div class="pt-3.5 border-t border-[#f2f2f2]">
+										<div class="mb-2.5 flex items-center justify-between">
+											<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Bottom Shadow</Label>
+											<Button type="button" variant="ghost" size="sm" class="h-auto p-0 text-[9px] text-[#bbb] hover:text-[#555]" onclick={() => { shadowHeight = 75; shadowStrength = 1; }}>Reset</Button>
 										</div>
 										<div class="mb-2 flex min-w-0 items-center gap-2">
-											<span class="w-10 shrink-0 font-mono text-[9px] text-[#999]">Height</span>
+											<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Height</span>
 											<Slider type="single" bind:value={shadowHeight} min={0} max={100} step={1} class="min-w-0 flex-1" />
-											<span class="w-8 shrink-0 text-right font-mono text-[9px] text-[#999]">{shadowHeight}%</span>
+											<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{shadowHeight}%</span>
 										</div>
 										<div class="flex min-w-0 items-center gap-2">
-											<span class="w-10 shrink-0 font-mono text-[9px] text-[#999]">Darkness</span>
+											<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Darkness</span>
 											<Slider type="single" bind:value={shadowStrength} min={0} max={1} step={0.05} class="min-w-0 flex-1" />
-											<span class="w-8 shrink-0 text-right font-mono text-[9px] text-[#999]">{Math.round(shadowStrength * 100)}%</span>
+											<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{Math.round(shadowStrength * 100)}%</span>
 										</div>
 									</div>
 
 									<!-- Background (non-news) -->
 									{#if activeTemplate !== 'news'}
-										<div class="pt-3 border-t border-[#f0f0f0] flex flex-col gap-2">
-											<p class="text-[10px] font-mono uppercase tracking-wider text-[#999]">Background — Slide {activeSlide + 1}</p>
+										<div class="pt-3.5 border-t border-[#f2f2f2] flex flex-col gap-2">
+											<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Background — Slide {activeSlide + 1}</p>
 											<div class="grid grid-cols-2 gap-2">
-												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground')}>
+												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
 													<Image size={11} /> Photo
 													<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
 												</label>
-												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground')}>
+												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
 													<Play size={11} class="shrink-0" /> Video
 													<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
 												</label>
 											</div>
 											{#if effectiveBackgroundVideo}
-												<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-50 border border-cyan-200">
+												<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-50 border border-cyan-100">
 													<span class="text-cyan-500 text-[11px]">▶</span>
-													<span class="text-[11px] font-mono text-cyan-600 flex-1 truncate">Video active</span>
-													<Button type="button" variant="ghost" size="icon-xs" class="text-[#999] hover:text-red-500" onclick={() => clearSlideBackground(activeSlide)}>✕</Button>
+													<span class="text-[11px] text-cyan-600 flex-1 truncate">Video active</span>
+													<Button type="button" variant="ghost" size="icon-xs" class="text-[#bbb] hover:text-red-500" onclick={() => clearSlideBackground(activeSlide)}>✕</Button>
 												</div>
 											{/if}
 											{#if backgroundImage || backgroundVideo}
 												<div class="flex flex-col gap-1.5 pt-1">
-													<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-0.5">Position</p>
+													<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-0.5">Position</p>
 													<div class="flex min-w-0 items-center gap-2.5">
-														<span class="w-3 shrink-0 font-mono text-[10px] text-[#999]">←</span>
+														<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">←</span>
 														<Slider type="single" bind:value={bgOffsetX} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
-														<span class="w-3 text-right font-mono text-[10px] text-[#999]">→</span>
+														<span class="w-3 text-right text-[10px] text-[#c0c0c0]">→</span>
 													</div>
 													<div class="flex min-w-0 items-center gap-2.5">
-														<span class="w-3 shrink-0 font-mono text-[10px] text-[#999]">↑</span>
+														<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">↑</span>
 														<Slider type="single" bind:value={bgOffsetY} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
-														<span class="w-3 text-right font-mono text-[10px] text-[#999]">↓</span>
+														<span class="w-3 text-right text-[10px] text-[#c0c0c0]">↓</span>
 													</div>
 													<div class="flex min-w-0 items-center gap-2.5">
-														<span class="w-3 shrink-0 font-mono text-[10px] text-[#999]">−</span>
+														<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">−</span>
 														<Slider type="single" bind:value={bgZoom} min={30} max={300} step={1} class="min-w-0 flex-1" />
-														<span class="w-3 text-right font-mono text-[10px] text-[#999]">+</span>
+														<span class="w-3 text-right text-[10px] text-[#c0c0c0]">+</span>
 													</div>
 												</div>
 											{/if}
@@ -7261,18 +7264,18 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 						<div class="flex-1"></div>
 
-						<!-- Load & Fill -->
+						<!-- Submit button — dark circle with arrow -->
 						<button
 							type="button"
 							onclick={() => void loadAndFill()}
 							disabled={fetchingNews}
-							class="flex items-center gap-1.5 rounded-full bg-[#c8f050] px-4 py-1.5 text-[12px] font-semibold font-body text-[#1a1a1a] transition-all hover:bg-[#d8f870] hover:shadow-[0_2px_12px_rgba(180,230,40,0.40)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+							title={fetchingNews ? (useTestData ? 'Loading…' : newsContentMode === 'news' ? 'Fetching…' : 'Generating…') : 'Load & Fill'}
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-white transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{#if fetchingNews}
-								<Loader size={11} class="animate-spin" />
-								{useTestData ? 'Loading…' : newsContentMode === 'news' ? 'Fetching…' : 'Generating…'}
+								<Loader size={15} class="animate-spin" />
 							{:else}
-								Load &amp; Fill
+								<ArrowUp size={15} strokeWidth={2.5} />
 							{/if}
 						</button>
 					</div>
@@ -7282,7 +7285,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						href={articleUrl}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="mt-1.5 block text-center text-[11px] font-body text-[#aaa] transition-colors hover:text-violet-500"
+						class="mt-2 block text-center text-[11px] font-body text-[#c0c0c0] transition-colors hover:text-violet-400"
 					>View source article ↗</a>
 				{/if}
 			</div>
@@ -7293,89 +7296,78 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 </div>
 
 {#if circleAIModalFor !== null}
-	<!-- Circle AI prompt modal (uses global --app-* tokens for light/dark) -->
+	<!-- Circle AI prompt modal — Krea-style floating bar -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 z-[100] flex items-center justify-center"
+		class="fixed inset-0 z-[100] flex items-end justify-center pb-8"
 		onclick={closeCircleAIModal}
 	>
 		<div
-			class="absolute inset-0 backdrop-blur-sm"
-			style="background: color-mix(in oklab, var(--app-text) {uiTheme === 'light' ? '28%' : '52%'}, transparent);"
+			class="absolute inset-0 backdrop-blur-[2px]"
+			style="background: color-mix(in oklab, var(--app-text) {uiTheme === 'light' ? '18%' : '40%'}, transparent);"
 		></div>
 		<div
-			class="relative w-[520px] max-w-[92vw] rounded-2xl border p-4 shadow-2xl"
-			style="
-				background: var(--app-surface-2);
-				border-color: var(--app-border);
-				color: var(--app-text);
-				box-shadow: 0 25px 50px -12px color-mix(in oklab, var(--app-text) 18%, transparent);
-			"
+			class="relative w-[580px] max-w-[94vw] rounded-[24px] border border-[#e8e8e8] bg-white p-0 overflow-hidden"
+			style="box-shadow: 0 24px 64px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);"
 			onclick={(e) => e.stopPropagation()}
 		>
-			<div class="flex items-center justify-between mb-3">
-				<div>
-					<p class="text-[10px] font-mono uppercase tracking-wider" style="color: var(--app-text-3);">Circle AI</p>
-					<p class="text-sm font-body -mt-0.5" style="color: var(--app-text-2);">Generate an image for circle {circleAIModalFor}</p>
+			<!-- Input area -->
+			<div class="px-4 pt-4 pb-3">
+				<div class="flex items-start gap-3">
+					<Sparkles size={15} class="mt-0.5 shrink-0 text-[#c0c0c0]" />
+					<input
+						id="circle-ai-prompt-input"
+						bind:value={circleAIPrompt}
+						placeholder="Describe an image and click generate…"
+						class="flex-1 min-w-0 bg-transparent text-[13px] font-body text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none"
+						onkeydown={(e) => { if (e.key === 'Enter') submitCircleAIModal(); if (e.key === 'Escape') closeCircleAIModal(); }}
+						autofocus
+					/>
+					<button
+						type="button"
+						onclick={closeCircleAIModal}
+						class="w-7 h-7 rounded-full border border-[#e8e8e8] bg-[#f5f5f5] text-[#aaa] flex items-center justify-center transition-colors hover:bg-[#ebebeb] hover:text-[#555] shrink-0"
+						aria-label="Close"
+					>
+						<X size={12} />
+					</button>
 				</div>
-				<button
-					type="button"
-					onclick={closeCircleAIModal}
-					class="w-8 h-8 rounded-xl border flex items-center justify-center transition-colors"
-					style="
-						border-color: var(--app-border);
-						background: var(--app-surface-3);
-						color: var(--app-text-2);
-					"
-					aria-label="Close"
-				>
-					<X size={14} />
-				</button>
+				<p class="text-[10.5px] font-body mt-2.5 ml-6 text-[#c0c0c0] leading-relaxed">
+					Describe a subject &amp; vibe — keep it short, no text in image.
+				</p>
 			</div>
 
-			<label
-				class="block text-[10px] font-mono uppercase tracking-wider mb-1.5"
-				style="color: var(--app-text-3);"
-				for="circle-ai-prompt-input"
-			>Prompt</label>
-			<input
-				id="circle-ai-prompt-input"
-				bind:value={circleAIPrompt}
-				placeholder="e.g. A smiling founder portrait, studio lighting…"
-				class="w-full rounded-xl py-2.5 px-3 text-sm font-body focus:outline-none transition-colors circle-ai-prompt-input"
-				style="
-					background: var(--app-surface-3);
-					border: 1px solid var(--app-border);
-					color: var(--app-text);
-				"
-				onkeydown={(e) => { if (e.key === 'Enter') submitCircleAIModal(); if (e.key === 'Escape') closeCircleAIModal(); }}
-				autofocus
-			/>
-			<p class="text-[10px] font-body mt-2 leading-relaxed" style="color: var(--app-text-3);">
-				Tip: describe a subject and vibe. Keep it short—no text in the image.
-			</p>
+			<!-- Divider -->
+			<div class="mx-4 h-px bg-[#f0f0f0]"></div>
 
-			<div class="flex items-center justify-end gap-2 mt-4">
+			<!-- Bottom action bar -->
+			<div class="flex items-center gap-1.5 px-3 py-2.5">
+				<!-- Decorative info pill -->
+				<div class="flex items-center gap-1.5 rounded-full border border-[#e8e8e8] bg-[#fafafa] px-3 py-[6px] text-[11px] font-medium text-[#888]">
+					<Sparkles size={10} class="text-violet-400" />
+					Circle AI
+				</div>
+
+				<div class="flex-1"></div>
+
+				<!-- Cancel -->
 				<button
 					type="button"
 					onclick={closeCircleAIModal}
-					class="px-3 py-2 rounded-xl border text-xs font-mono transition-colors"
-					style="
-						border-color: var(--app-border);
-						background: var(--app-surface-3);
-						color: var(--app-text-2);
-					"
+					class="flex items-center gap-1.5 rounded-full border border-[#e8e8e8] bg-white px-3.5 py-[7px] text-[11.5px] font-medium text-[#888] transition-all duration-150 hover:border-[#d0d0d0] hover:text-[#444] hover:bg-[#fafafa]"
 				>
 					Cancel
 				</button>
+
+				<!-- Generate -->
 				<button
 					type="button"
 					onclick={submitCircleAIModal}
 					disabled={circleAIGenerating || !circleAIPrompt.trim()}
-					class="px-3 py-2 rounded-xl text-xs font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] disabled:opacity-50"
+					class="flex items-center gap-1.5 rounded-full bg-[#c8f050] px-4 py-[7px] text-[12px] font-semibold font-body text-[#1a1a1a] transition-all duration-150 hover:bg-[#d4f565] hover:shadow-[0_4px_16px_rgba(160,220,30,0.35)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{#if circleAIGenerating}
-						<span class="inline-flex items-center gap-2"><Loader size={12} class="animate-spin text-[#0a0a0a]" /> Generating…</span>
+						<Loader size={11} class="animate-spin" /> Generating…
 					{:else}
 						Generate
 					{/if}
@@ -7698,6 +7690,17 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		color: var(--sl-text) !important;
 		background-color: var(--sl-surface) !important;
 		border-color: var(--sl-border) !important;
+	}
+
+	/* — Prompt bar: kill ALL focus rings/outlines on the bare inputs — */
+	:global(.prompt-bar input),
+	:global(.prompt-bar input:focus),
+	:global(.prompt-bar input:focus-visible) {
+		outline: none !important;
+		box-shadow: none !important;
+		border: none !important;
+		background-color: transparent !important;
+		accent-color: transparent;
 	}
 
 	/* — Headings / chips that use header label styling — */
