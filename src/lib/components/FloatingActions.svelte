@@ -10,12 +10,9 @@
 		postUrl?: string;
 		onPost?: () => void | Promise<void>;
 		posting?: boolean;
-		/** Zip export all slides (same as Studio left-panel export). */
 		onExportZip?: () => void | Promise<void>;
 		exportingZip?: boolean;
-		/** When set, "Burn Music" opens this flow instead of the inline panel. */
 		onBurnMusicClick?: () => void | Promise<void>;
-		/** When set, shows "Save template" as the leftmost action (e.g. Studio). */
 		onSaveTemplate?: () => void | Promise<void>;
 	}
 
@@ -50,15 +47,10 @@
 	const slideCount = $derived(slideLabels.length);
 	const hasSlides = $derived(slideCount > 0);
 
-	// Keep slideMusic aligned with slide count
 	$effect(() => {
-		if (!hasSlides) {
-			slideMusic = [];
-			return;
-		}
+		if (!hasSlides) { slideMusic = []; return; }
 		if (slideMusic.length !== slideCount) {
-			const next = Array.from({ length: slideCount }, (_, i) => slideMusic[i] ?? { song: 'No music', seconds: 15 });
-			slideMusic = next;
+			slideMusic = Array.from({ length: slideCount }, (_, i) => slideMusic[i] ?? { song: 'No music', seconds: 15 });
 		}
 	});
 
@@ -70,10 +62,7 @@
 
 	async function handlePostClick() {
 		if (posting) return;
-		if (onPost) {
-			await onPost();
-			return;
-		}
+		if (onPost) { await onPost(); return; }
 		await goto(postUrl);
 	}
 </script>
@@ -83,119 +72,69 @@
 		class="fixed flex flex-row items-end gap-2"
 		style="right:{rightOffsetPx}px;bottom:{bottomOffsetPx}px;z-index:{zIndex};"
 	>
+		<!-- Save template -->
 		{#if typeof onSaveTemplate === 'function'}
 			<button
 				type="button"
 				onclick={() => void onSaveTemplate?.()}
-				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
-				style="
-					background: color-mix(in oklab, var(--app-text) 6%, transparent);
-					border-color: var(--app-border);
-					color: var(--app-text-2);
-					cursor: pointer;
-				"
+				class="fa-btn"
 				title="Save current layout as a reusable template"
 			>
-				<Bookmark size={14} />
+				<Bookmark size={13} />
 				Save template
 			</button>
 		{/if}
 
-		<!-- POST button + panel -->
+		<!-- POST -->
 		<div class="relative">
 			{#if showPostPanel}
-				<div class="absolute bottom-full mb-2 right-0 w-[340px] rounded-2xl shadow-2xl overflow-hidden"
-					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
-				>
-					<div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+				<div class="panel absolute bottom-full mb-2 right-0 w-[340px] overflow-hidden">
+					<div class="panel-header">
 						<div class="flex items-center gap-2">
-							<Calendar size={13} class="text-cyan-400" />
-							<span class="text-xs font-mono font-semibold text-white/80 uppercase tracking-wider">Schedule Post</span>
+							<Calendar size={13} class="text-[#0ea5e9]" />
+							<span class="panel-title">Schedule Post</span>
 						</div>
-						<button
-							onclick={() => (showPostPanel = false)}
-							class="w-6 h-6 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white/80 transition-all"
-							aria-label="Close post panel"
-						>
+						<button onclick={() => (showPostPanel = false)} class="panel-close" aria-label="Close">
 							<X size={11} />
 						</button>
 					</div>
 
 					<div class="p-4 flex flex-col gap-4">
 						<div>
-							<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-2.5">Platforms</p>
+							<p class="panel-label">Platforms</p>
 							<div class="grid grid-cols-3 gap-2">
-								<button
-									onclick={() => togglePlatform('instagram')}
-									class="flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all
-										{selectedPlatforms.includes('instagram')
-											? 'border-pink-500/60 bg-pink-500/10'
-											: 'border-white/[0.07] bg-white/[0.02] hover:border-white/20'}"
-								>
-									<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-										<rect x="2" y="2" width="20" height="20" rx="5" stroke="{selectedPlatforms.includes('instagram') ? '#ec4899' : 'rgba(255,255,255,0.4)'}" stroke-width="1.8" />
-										<circle cx="12" cy="12" r="4.5" stroke="{selectedPlatforms.includes('instagram') ? '#ec4899' : 'rgba(255,255,255,0.4)'}" stroke-width="1.8" />
-										<circle cx="17.5" cy="6.5" r="1" fill="{selectedPlatforms.includes('instagram') ? '#ec4899' : 'rgba(255,255,255,0.4)'}" />
-									</svg>
-									<span class="text-[9px] font-mono {selectedPlatforms.includes('instagram') ? 'text-pink-400' : 'text-white/30'}">Instagram</span>
-								</button>
-
-								<button
-									onclick={() => togglePlatform('linkedin')}
-									class="flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all
-										{selectedPlatforms.includes('linkedin')
-											? 'border-blue-500/60 bg-blue-500/10'
-											: 'border-white/[0.07] bg-white/[0.02] hover:border-white/20'}"
-								>
-									<svg width="20" height="20" viewBox="0 0 24 24" fill="{selectedPlatforms.includes('linkedin') ? '#3b82f6' : 'rgba(255,255,255,0.4)'}" xmlns="http://www.w3.org/2000/svg">
-										<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
-										<rect x="2" y="9" width="4" height="12" />
-										<circle cx="4" cy="4" r="2" />
-									</svg>
-									<span class="text-[9px] font-mono {selectedPlatforms.includes('linkedin') ? 'text-blue-400' : 'text-white/30'}">LinkedIn</span>
-								</button>
-
-								<button
-									onclick={() => togglePlatform('pinterest')}
-									class="flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all
-										{selectedPlatforms.includes('pinterest')
-											? 'border-red-500/60 bg-red-500/10'
-											: 'border-white/[0.07] bg-white/[0.02] hover:border-white/20'}"
-								>
-									<svg width="20" height="20" viewBox="0 0 24 24" fill="{selectedPlatforms.includes('pinterest') ? '#ef4444' : 'rgba(255,255,255,0.4)'}" xmlns="http://www.w3.org/2000/svg">
-										<path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z" />
-									</svg>
-									<span class="text-[9px] font-mono {selectedPlatforms.includes('pinterest') ? 'text-red-400' : 'text-white/30'}">Pinterest</span>
-								</button>
+								{#each [
+									{ id: 'instagram', name: 'Instagram', color: '#ec4899' },
+									{ id: 'linkedin', name: 'LinkedIn', color: '#3b82f6' },
+									{ id: 'pinterest', name: 'Pinterest', color: '#ef4444' },
+								] as platform}
+									<button
+										onclick={() => togglePlatform(platform.id)}
+										class="platform-btn"
+										class:platform-btn--active={selectedPlatforms.includes(platform.id)}
+										style="--platform-color: {platform.color};"
+									>
+										<span class="text-[9px] font-mono" style="color: {selectedPlatforms.includes(platform.id) ? platform.color : 'rgba(10,10,10,0.3)'};">{platform.name}</span>
+									</button>
+								{/each}
 							</div>
 						</div>
 
 						<div class="grid grid-cols-2 gap-2">
 							<div>
-								<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-1.5">Date</p>
-								<input
-									type="date"
-									bind:value={scheduleDate}
-									class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2 px-3 text-xs font-mono text-white/60 focus:outline-none focus:border-cyan-500/40 transition-colors [color-scheme:dark]"
-								/>
+								<p class="panel-label">Date</p>
+								<input type="date" bind:value={scheduleDate} class="panel-input" />
 							</div>
 							<div>
-								<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-1.5">Time</p>
-								<input
-									type="time"
-									bind:value={scheduleTime}
-									class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2 px-3 text-xs font-mono text-white/60 focus:outline-none focus:border-cyan-500/40 transition-colors [color-scheme:dark]"
-								/>
+								<p class="panel-label">Time</p>
+								<input type="time" bind:value={scheduleTime} class="panel-input" />
 							</div>
 						</div>
 
-						<button
-							disabled
-							class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-white/40 bg-white/[0.05] border border-white/[0.08] cursor-not-allowed transition-all"
-						>
+						<button disabled class="panel-action-btn">
 							<Send size={13} class="opacity-40" />
 							Schedule Post
-							<span class="ml-auto text-[9px] font-mono text-white/20 bg-white/[0.05] px-2 py-0.5 rounded-md">Soon</span>
+							<span class="soon-badge">Soon</span>
 						</button>
 					</div>
 				</div>
@@ -204,56 +143,38 @@
 			<button
 				onclick={handlePostClick}
 				disabled={posting}
-				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
-				style="
-					background: {showPostPanel ? 'rgb(6 182 212)' : 'color-mix(in oklab, var(--app-text) 6%, transparent)'};
-					border-color: {showPostPanel ? 'rgba(6,182,212,0.35)' : 'var(--app-border)'};
-					color: {showPostPanel ? '#fff' : 'var(--app-text-2)'};
-					{posting ? 'opacity: 0.75; cursor: progress;' : 'cursor: pointer;'}
-				"
+				class="fa-btn"
+				class:fa-btn--active={showPostPanel}
 			>
-				<Calendar size={14} />
+				<Calendar size={13} />
 				{#if posting}
-					<span class="inline-flex items-center gap-2">
-						Exporting…
-						<LoaderCircle size={14} class="animate-spin" />
-					</span>
+					Exporting… <LoaderCircle size={13} class="animate-spin" />
 				{:else}
 					Post
 				{/if}
 			</button>
 		</div>
 
-		<!-- BURN MUSIC button + panel (inline panel only when no navigate handler) -->
+		<!-- BURN MUSIC -->
 		<div class="relative">
 			{#if showMusicPanel && !onBurnMusicClick}
-				<div class="absolute bottom-full mb-2 right-0 w-[400px] rounded-2xl shadow-2xl overflow-hidden"
-					style="background: var(--app-surface-2); border: 1px solid var(--app-border);"
-				>
-					<div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+				<div class="panel absolute bottom-full mb-2 right-0 w-[400px] overflow-hidden">
+					<div class="panel-header">
 						<div class="flex items-center gap-2">
-							<Music size={13} class="text-violet-400" />
-							<span class="text-xs font-mono font-semibold text-white/80 uppercase tracking-wider">Burn Music</span>
+							<Music size={13} class="text-[#a78bfa]" />
+							<span class="panel-title">Burn Music</span>
 						</div>
-						<button
-							onclick={() => (showMusicPanel = false)}
-							class="w-6 h-6 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center text-white/40 hover:text-white/80 transition-all"
-							aria-label="Close burn music panel"
-						>
+						<button onclick={() => (showMusicPanel = false)} class="panel-close" aria-label="Close">
 							<X size={11} />
 						</button>
 					</div>
 
-					<div class="max-h-[320px] overflow-y-auto" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.08) transparent;">
+					<div class="max-h-[320px] overflow-y-auto" style="scrollbar-width:thin;">
 						{#each slideLabels as label, i}
 							{@const music = slideMusic[i] ?? { song: 'No music', seconds: 15 }}
-							<div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
-								<div class="w-6 h-6 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
-									<span class="text-[9px] font-mono font-bold text-violet-400">{i + 1}</span>
-								</div>
-
-								<span class="text-[10px] font-mono text-white/40 w-24 flex-shrink-0 truncate">{label}</span>
-
+							<div class="music-row">
+								<div class="slide-badge">{i + 1}</div>
+								<span class="slide-label">{label}</span>
 								<select
 									value={music.song}
 									onchange={(e) => {
@@ -262,42 +183,33 @@
 										arr[i] = { ...arr[i], song: (e.target as HTMLSelectElement).value };
 										slideMusic = arr;
 									}}
-									class="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-lg py-1 px-2 text-[10px] font-body text-white/60 focus:outline-none focus:border-violet-500/40 transition-colors [color-scheme:dark] cursor-pointer"
+									class="panel-select"
 								>
 									{#each SONG_OPTIONS as opt}
 										<option value={opt}>{opt}</option>
 									{/each}
 								</select>
-
 								<div class="flex items-center gap-1.5 flex-shrink-0">
-									<input
-										type="range"
-										min="1"
-										max="60"
-										step="1"
-										value={music.seconds}
+									<input type="range" min="1" max="60" step="1" value={music.seconds}
 										oninput={(e) => {
 											const arr = [...slideMusic];
 											if (!arr[i]) arr[i] = { song: 'No music', seconds: 15 };
 											arr[i] = { ...arr[i], seconds: parseInt((e.target as HTMLInputElement).value) };
 											slideMusic = arr;
 										}}
-										class="w-16 accent-violet-500 cursor-pointer"
+										class="w-16 cursor-pointer"
 									/>
-									<span class="text-[9px] font-mono text-white/30 w-8 text-right">{music.seconds}s</span>
+									<span class="text-[9px] text-[rgba(10,10,10,0.3)] w-8 text-right">{music.seconds}s</span>
 								</div>
 							</div>
 						{/each}
 					</div>
 
-					<div class="px-4 py-3 border-t border-white/[0.06]">
-						<button
-							disabled
-							class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-white/40 bg-white/[0.05] border border-white/[0.08] cursor-not-allowed"
-						>
+					<div class="p-3 border-t border-black/[0.06]">
+						<button disabled class="panel-action-btn">
 							<Music size={13} class="opacity-40" />
 							Export as Video
-							<span class="ml-auto text-[9px] font-mono text-white/20 bg-white/[0.05] px-2 py-0.5 rounded-md">Coming soon</span>
+							<span class="soon-badge">Coming soon</span>
 						</button>
 					</div>
 				</div>
@@ -305,48 +217,240 @@
 
 			<button
 				onclick={async () => {
-					if (onBurnMusicClick) {
-						await onBurnMusicClick();
-						return;
-					}
+					if (onBurnMusicClick) { await onBurnMusicClick(); return; }
 					showMusicPanel = !showMusicPanel;
 					showPostPanel = false;
 				}}
-				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
-				style="
-					background: {showMusicPanel && !onBurnMusicClick ? 'rgb(124 58 237)' : 'color-mix(in oklab, var(--app-text) 6%, transparent)'};
-					border-color: {showMusicPanel && !onBurnMusicClick ? 'rgba(139,92,246,0.35)' : 'var(--app-border)'};
-					color: {showMusicPanel && !onBurnMusicClick ? '#fff' : 'var(--app-text-2)'};
-				"
+				class="fa-btn"
+				class:fa-btn--active={showMusicPanel && !onBurnMusicClick}
 			>
-				<Music size={14} />
-				Burn Music
+				<Music size={13} />
+				Burn
 			</button>
 		</div>
 
+		<!-- EXPORT ZIP -->
 		{#if typeof onExportZip === 'function'}
 			<button
 				type="button"
 				onclick={() => void onExportZip?.()}
 				disabled={!!exportingZip || !!posting}
-				class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
-				style="
-					background: color-mix(in oklab, var(--app-text) 6%, transparent);
-					border-color: var(--app-border);
-					color: var(--app-text-2);
-					{exportingZip || posting ? 'opacity: 0.65; cursor: wait;' : 'cursor: pointer;'}
-				"
+				class="fa-btn"
 				title="Export all slides as PNG (ZIP)"
 			>
 				{#if exportingZip}
-					<LoaderCircle size={14} class="animate-spin" />
-					Export…
+					<LoaderCircle size={13} class="animate-spin" /> Export…
 				{:else}
-					<Download size={14} />
-					Export
+					<Download size={13} /> Export
 				{/if}
 			</button>
 		{/if}
 	</div>
 {/if}
 
+<style>
+	/* ── Shared action button ── */
+	.fa-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 9px 14px;
+		border-radius: 14px;
+		font-size: 11.5px;
+		font-weight: 600;
+		font-family: inherit;
+		white-space: nowrap;
+		cursor: pointer;
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		background: rgba(255, 255, 255, 0.82);
+		color: rgba(10, 10, 10, 0.70);
+		backdrop-filter: blur(14px);
+		-webkit-backdrop-filter: blur(14px);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
+		transition: background 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+	}
+
+	.fa-btn:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.96);
+		color: rgba(10, 10, 10, 0.90);
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.11), 0 1px 3px rgba(0,0,0,0.06);
+	}
+
+	.fa-btn:active:not(:disabled) {
+		transform: scale(0.97);
+	}
+
+	.fa-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.fa-btn--active {
+		background: rgba(10, 10, 10, 0.88) !important;
+		color: rgba(255, 255, 255, 0.92) !important;
+		border-color: transparent !important;
+	}
+
+	/* ── Floating panel ── */
+	.panel {
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.94);
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.13), 0 2px 8px rgba(0,0,0,0.06);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+	}
+
+	.panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 16px;
+		border-bottom: 1px solid rgba(10, 10, 10, 0.07);
+	}
+
+	.panel-title {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(10, 10, 10, 0.55);
+	}
+
+	.panel-close {
+		width: 24px;
+		height: 24px;
+		border-radius: 8px;
+		border: none;
+		background: rgba(10, 10, 10, 0.05);
+		color: rgba(10, 10, 10, 0.40);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: background 120ms ease, color 120ms ease;
+	}
+
+	.panel-close:hover {
+		background: rgba(10, 10, 10, 0.09);
+		color: rgba(10, 10, 10, 0.75);
+	}
+
+	.panel-label {
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(10, 10, 10, 0.35);
+		margin-bottom: 8px;
+	}
+
+	.panel-input {
+		width: 100%;
+		background: rgba(10, 10, 10, 0.04);
+		border: 1px solid rgba(10, 10, 10, 0.09);
+		border-radius: 10px;
+		padding: 7px 10px;
+		font-size: 12px;
+		color: rgba(10, 10, 10, 0.65);
+		outline: none;
+		transition: border-color 120ms ease;
+	}
+
+	.panel-input:focus {
+		border-color: rgba(10, 10, 10, 0.22);
+	}
+
+	.panel-action-btn {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 14px;
+		border-radius: 11px;
+		font-size: 12.5px;
+		font-weight: 600;
+		font-family: inherit;
+		color: rgba(10, 10, 10, 0.35);
+		background: rgba(10, 10, 10, 0.04);
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		cursor: not-allowed;
+	}
+
+	.soon-badge {
+		margin-left: auto;
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		padding: 2px 7px;
+		border-radius: 6px;
+		background: rgba(10, 10, 10, 0.06);
+		color: rgba(10, 10, 10, 0.30);
+	}
+
+	/* Music row */
+	.music-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 16px;
+		border-bottom: 1px solid rgba(10, 10, 10, 0.05);
+		transition: background 100ms ease;
+	}
+
+	.music-row:last-child { border-bottom: none; }
+	.music-row:hover { background: rgba(10, 10, 10, 0.02); }
+
+	.slide-badge {
+		width: 22px;
+		height: 22px;
+		border-radius: 7px;
+		background: rgba(10, 10, 10, 0.06);
+		border: 1px solid rgba(10, 10, 10, 0.09);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 9px;
+		font-weight: 700;
+		color: rgba(10, 10, 10, 0.45);
+		flex-shrink: 0;
+	}
+
+	.slide-label {
+		font-size: 10px;
+		color: rgba(10, 10, 10, 0.40);
+		width: 80px;
+		flex-shrink: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.panel-select {
+		flex: 1;
+		background: rgba(10, 10, 10, 0.04);
+		border: 1px solid rgba(10, 10, 10, 0.09);
+		border-radius: 8px;
+		padding: 4px 8px;
+		font-size: 10px;
+		color: rgba(10, 10, 10, 0.60);
+		outline: none;
+		cursor: pointer;
+	}
+
+	.platform-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		padding: 10px;
+		border-radius: 11px;
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		background: rgba(10, 10, 10, 0.03);
+		cursor: pointer;
+		transition: border-color 120ms ease, background 120ms ease;
+	}
+
+	.platform-btn:hover { background: rgba(10, 10, 10, 0.06); }
+	.platform-btn--active { border-color: var(--platform-color); background: color-mix(in srgb, var(--platform-color) 8%, transparent); }
+</style>

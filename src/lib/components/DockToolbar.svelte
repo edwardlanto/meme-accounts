@@ -30,7 +30,7 @@
 				disabled={!!item.disabled}
 				onclick={() => item.onClick?.()}
 			>
-				<item.icon size={18} />
+				<item.icon size={17} strokeWidth={1.8} />
 				<span class="dock-tip" aria-hidden="true">{item.label}</span>
 			</button>
 		{/each}
@@ -38,12 +38,6 @@
 </div>
 
 <style>
-	@keyframes dock-float {
-		0% { transform: translateY(0); }
-		50% { transform: translateY(4px); }
-		100% { transform: translateY(0); }
-	}
-
 	.dock-shell {
 		width: 100%;
 		display: flex;
@@ -58,61 +52,75 @@
 	.dock-float {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 8px;
+		gap: 2px;
+		padding: 6px;
 		border-radius: 16px;
-		background: rgba(255,255,255,0.78);
-		border: 1px solid rgba(10,10,10,0.08);
-		box-shadow: 0 14px 44px rgba(0,0,0,0.10);
+		background: rgba(255, 255, 255, 0.82);
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
 		backdrop-filter: blur(14px);
 		-webkit-backdrop-filter: blur(14px);
-		animation: none;
 	}
 
 	.dock-btn {
 		position: relative;
 		border: none;
 		background: transparent;
-		padding: 10px;
-		border-radius: 12px;
+		padding: 9px 10px;
+		border-radius: 11px;
 		cursor: pointer;
-		transition: transform 160ms ease, background-color 160ms ease, opacity 160ms ease;
-		color: rgba(10,10,10,0.9);
+		transition: background-color 140ms ease, transform 140ms ease, opacity 140ms ease;
+		color: rgba(10, 10, 10, 0.75);
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	.dock-btn:hover:not(:disabled) {
-		transform: translateY(-2px) scale(1.08);
-		background: rgba(10,10,10,0.06);
+		background: rgba(10, 10, 10, 0.06);
+		color: rgba(10, 10, 10, 1);
+		transform: none;
 	}
 
 	.dock-btn:active:not(:disabled) {
-		transform: translateY(-1px) scale(0.98);
+		transform: scale(0.94);
+		background: rgba(10, 10, 10, 0.09);
 	}
 
 	.dock-btn:disabled {
-		opacity: 0.35;
+		opacity: 0.3;
 		cursor: not-allowed;
+	}
+
+	/* Separator between logical groups — add a data-sep attribute to the item wrapper if needed */
+	.dock-btn + .dock-sep {
+		width: 1px;
+		height: 20px;
+		background: rgba(10, 10, 10, 0.10);
+		margin: 0 2px;
+		flex-shrink: 0;
 	}
 
 	.dock-tip {
 		position: absolute;
 		left: 50%;
-		top: -8px;
+		top: -6px;
 		transform: translate(-50%, -100%);
 		padding: 4px 8px;
-		border-radius: 10px;
-		font-size: 12px;
+		border-radius: 8px;
+		font-size: 11px;
+		font-weight: 500;
 		line-height: 1;
 		white-space: nowrap;
-		background: rgba(10,10,10,0.92);
-		color: rgba(255,255,255,0.92);
+		background: rgba(10, 10, 10, 0.88);
+		color: rgba(255, 255, 255, 0.95);
 		opacity: 0;
 		pointer-events: none;
-		transition: opacity 160ms ease;
+		transition: opacity 120ms ease;
+		letter-spacing: 0.01em;
 	}
 
 	.dock-btn:hover .dock-tip {
 		opacity: 1;
 	}
 </style>
-

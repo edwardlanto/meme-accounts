@@ -6513,13 +6513,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							type="button"
 							onclick={() => activeSlide = item.slideIndex}
 							class="w-16 h-20 rounded-lg overflow-hidden border-2 transition-all relative
-								{activeSlide === item.slideIndex ? 'border-violet-500' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/20')}"
+								{activeSlide === item.slideIndex ? 'border-white/70 shadow-[0_0_0_1px_rgba(255,255,255,0.15)]' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/25')}"
 							aria-label={`Focus slide ${i + 1}`}
 							style="touch-action: none; background: var(--app-surface-3);"
 						>
 								{#if item.loading}
 									<div class="absolute inset-0 flex items-center justify-center" style="background: var(--app-surface-3);">
-										<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
+										<Loader size={12} class="animate-spin text-white/40" />
 									</div>
 								{:else if isPlaceholder}
 									<div class="absolute inset-0 flex items-center justify-center text-white/15">
@@ -6702,7 +6702,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									>
 										{#if di.loading}
 											<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
-												<Loader size={12} class="animate-spin text-violet-400 opacity-60" />
+												<Loader size={12} class="animate-spin text-white/40" />
 											</div>
 										{:else if !di.text}
 											<div class="absolute inset-0 flex items-center justify-center text-white/15">
@@ -6976,11 +6976,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					</div>
 				{/if}
 			</DragDropProvider>
-			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder · Click <Flame size={9} class="inline text-orange-400/70" /> to burn music and publish as video</p>
 		{/if}
 
 		<!-- ── Prompt bar ── below the filmstrip ───────────────────── -->
-		<div class="shrink-0 px-4 pt-0 pb-2">
+		<div class="shrink-0 px-4 pt-1.5 pb-3">
 			<div class="mx-auto w-full max-w-2xl">
 				<div class="prompt-bar overflow-hidden rounded-[20px] bg-[#f5f5f5] shadow-[0_4px_24px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)]">
 
@@ -7270,7 +7269,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							onclick={() => void loadAndFill()}
 							disabled={fetchingNews}
 							title={fetchingNews ? (useTestData ? 'Loading…' : newsContentMode === 'news' ? 'Fetching…' : 'Generating…') : 'Load & Fill'}
-							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-white transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
+							class="prompt-bar-submit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-[#ffffff] transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{#if fetchingNews}
 								<Loader size={15} class="animate-spin" />
@@ -7690,6 +7689,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		color: var(--sl-text) !important;
 		background-color: var(--sl-surface) !important;
 		border-color: var(--sl-border) !important;
+	}
+
+	/* — Prompt bar submit button: force icon to always be white — */
+	:global(.prompt-bar-submit svg),
+	:global(.prompt-bar-submit svg *) {
+		color: #ffffff !important;
+		stroke: #ffffff !important;
 	}
 
 	/* — Prompt bar: kill ALL focus rings/outlines on the bare inputs — */

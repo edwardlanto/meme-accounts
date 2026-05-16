@@ -17,7 +17,7 @@
 		/** Optional label override (e.g. "Blank"). */
 		selectedLabelOverride?: string;
 		onSelect: (id: string) => void;
-		/** Apply the current template to every slide (same as sidebar “Apply all”). */
+		/** Apply the current template to every slide (same as sidebar "Apply all"). */
 		onApplyAll?: () => void;
 		className?: string;
 	};
@@ -47,7 +47,7 @@
 		>
 			<SelectTrigger
 				size="sm"
-				class="template-dock-trigger border-0 bg-transparent shadow-none h-9 min-w-[9.5rem] rounded-xl px-3 font-semibold text-[11px] text-neutral-800 hover:bg-black/[0.06] focus-visible:ring-1 focus-visible:ring-violet-500/40 dark:text-neutral-900 [&_svg]:text-neutral-500"
+				class="template-dock-trigger border-0 bg-transparent shadow-none h-9 min-w-[9rem] rounded-xl px-3 font-semibold text-[11px] text-[#111] hover:bg-black/[0.05] focus-visible:ring-0 [&_svg]:text-[#888]"
 				aria-label="Slide template"
 				title={templates.find((t) => t.id === selectedId)?.title ?? selectedLabel}
 			>
@@ -75,18 +75,6 @@
 </div>
 
 <style>
-	@keyframes template-dock-float {
-		0% {
-			transform: translateY(0);
-		}
-		50% {
-			transform: translateY(4px);
-		}
-		100% {
-			transform: translateY(0);
-		}
-	}
-
 	.template-dock-shell {
 		width: auto;
 		flex: 0 0 auto;
@@ -97,14 +85,13 @@
 	.template-dock-float {
 		display: flex;
 		align-items: center;
-		padding: 8px;
+		padding: 6px;
 		border-radius: 16px;
-		background: rgba(255, 255, 255, 0.78);
+		background: rgba(255, 255, 255, 0.82);
 		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow: 0 14px 44px rgba(0, 0, 0, 0.1);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
 		backdrop-filter: blur(14px);
 		-webkit-backdrop-filter: blur(14px);
-		animation: template-dock-float 4s ease-in-out infinite;
 	}
 
 	:global(.template-dock-float [data-slot='select-trigger']) {

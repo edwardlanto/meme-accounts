@@ -29,19 +29,6 @@
 </div>
 
 <style>
-	/* Keep motion + shell metrics in lockstep with `DockToolbar.svelte` (`.dock-float` / `.dock-btn`). */
-	@keyframes format-dock-float {
-		0% {
-			transform: translateY(0);
-		}
-		50% {
-			transform: translateY(4px);
-		}
-		100% {
-			transform: translateY(0);
-		}
-	}
-
 	.format-dock-shell {
 		width: auto;
 		flex: 0 0 auto;
@@ -52,58 +39,56 @@
 	.format-dock-float {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 8px;
+		gap: 2px;
+		padding: 6px;
 		border-radius: 16px;
-		background: rgba(255, 255, 255, 0.78);
+		background: rgba(255, 255, 255, 0.82);
 		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow: 0 14px 44px rgba(0, 0, 0, 0.1);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
 		backdrop-filter: blur(14px);
 		-webkit-backdrop-filter: blur(14px);
-		animation: format-dock-float 4s ease-in-out infinite;
 	}
 
-	/* Match editor dock hit target: 10px padding + 18px icon row = 38px tall */
 	.format-dock-btn {
 		box-sizing: border-box;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		min-width: 0;
-		min-height: 38px;
-		padding: 10px 15px;
+		min-height: 36px;
+		padding: 8px 14px;
 		border: none;
-		border-radius: 12px;
+		border-radius: 11px;
 		background: transparent;
 		cursor: pointer;
-		font-size: 8.5px;
-		font-weight: 600;
+		font-size: 8px;
+		font-weight: 700;
 		line-height: 1.1;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.07em;
 		text-transform: uppercase;
 		white-space: nowrap;
-		color: rgba(10, 10, 10, 0.55);
-		transition: transform 160ms ease, background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+		color: rgba(10, 10, 10, 0.45);
+		transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
 	}
 
-	.format-dock-btn:hover {
-		transform: translateY(-2px) scale(1.08);
-		color: rgba(10, 10, 10, 0.9);
-		background: rgba(10, 10, 10, 0.06);
+	.format-dock-btn:hover:not(.format-dock-btn--active) {
+		color: rgba(10, 10, 10, 0.85);
+		background: rgba(10, 10, 10, 0.05);
+		transform: none;
 	}
 
 	.format-dock-btn:active {
-		transform: translateY(-1px) scale(0.98);
+		transform: scale(0.97);
 	}
 
 	.format-dock-btn--active {
 		color: #fff;
-		border-radius:50px;
-		background: #000;
+		background: #111;
+		border-radius: 10px;
 	}
 
 	.format-dock-btn--active:hover {
-		color: rgba(76, 29, 149, 1);
-		background: rgba(139, 92, 246, 0.24);
+		background: #222;
+		color: #fff;
 	}
 </style>
