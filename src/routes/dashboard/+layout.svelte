@@ -44,7 +44,7 @@
 
 	let currentPath = $derived($page.url.pathname);
 	let sidebarRailOnly = $derived(
-		currentPath === '/dashboard/studio' || currentPath.startsWith('/dashboard/editor/')
+		currentPath.startsWith('/dashboard/editor/')
 	);
 
 	type ThemeMode = 'light' | 'dark';

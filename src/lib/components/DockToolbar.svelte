@@ -66,7 +66,7 @@
 		box-shadow: 0 14px 44px rgba(0,0,0,0.10);
 		backdrop-filter: blur(14px);
 		-webkit-backdrop-filter: blur(14px);
-		animation: dock-float 4s ease-in-out infinite;
+		animation: none;
 	}
 
 	.dock-btn {

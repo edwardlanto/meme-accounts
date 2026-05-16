@@ -4,6 +4,7 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
+	import { stripMarkup } from '$lib/highlight';
 	import { loadGoogleFont } from '$lib/fonts';
 
 	interface Props {
@@ -106,7 +107,7 @@
 		return ink === s.color ? s : { ...s, color: ink };
 	}
 
-	const bodyDisplayText = $derived((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body);
+	const bodyDisplayText = $derived(stripMarkup((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body));
 
 	/** When body font size isn’t set in the toolbar, scale down for long API-fed copy so it still fits the card. */
 	function autoCarouselBodyFontPx(body: string): number {

@@ -88,7 +88,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -5438,7 +5438,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		const t = slideTemplates[slideIdx] ?? 'news';
 		if (t === 'blackText') return '#000000';
 		if (t === 'tweet') return '#000000';
-		if (t === 'textCarousel') return '#0a0a0a';
+		if (t === 'textCarousel') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 		if (t === 'videoStory') return '#000000';
 		return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 	}
@@ -5770,595 +5770,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 <div class="flex h-full overflow-hidden">
 
-	<!-- ── Left panel: controls ──────────────────────────────────────────── -->
-	<div class="w-80 flex-shrink-0 border-r border-neutral-800 bg-black text-neutral-50 flex min-h-0 flex-col overflow-hidden studio-left">
-
-		<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-
-			<!-- Content type (News template generator) -->
-			<div class="rounded-2xl bg-neutral-950 border border-neutral-800 p-3">
-				<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Content</Label>
-				<Tabs bind:value={newsContentMode} class="w-full">
-					<TabsList
-						variant="line"
-						class="grid h-auto w-full grid-cols-3 gap-1.5 rounded-none border-0 bg-transparent p-0 shadow-none ring-0"
-					>
-						<TabsTrigger
-							value="news"
-							class="rounded-md px-2 py-2 text-[10px] font-semibold text-neutral-300 after:hidden hover:bg-neutral-900 hover:text-neutral-100 data-[state=active]:rounded-[50px] data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
-						>News</TabsTrigger>
-						<TabsTrigger
-							value="fact"
-							class="rounded-md px-2 py-2 text-[10px] font-semibold text-neutral-300 after:hidden hover:bg-neutral-900 hover:text-neutral-100 data-[state=active]:rounded-[50px] data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
-						>Random fact</TabsTrigger>
-						<TabsTrigger
-							value="story"
-							class="rounded-md px-2 py-2 text-[10px] font-semibold text-neutral-300 after:hidden hover:bg-neutral-900 hover:text-neutral-100 data-[state=active]:rounded-[50px] data-[state=active]:bg-neutral-800 data-[state=active]:text-neutral-50"
-						>Random story</TabsTrigger>
-					</TabsList>
-				</Tabs>
-				<div class="mt-3">
-
-					{#if newsContentMode === 'news'}
-						<!-- News category -->
-						<div class="mb-3">
-							<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Category</Label>
-							<Select type="single" bind:value={category}>
-								<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50">
-									{categories.find((c) => c.id === category)?.label ?? 'Category'}
-								</SelectTrigger>
-								<SelectContent>
-									{#each categories as cat}
-										<SelectItem value={cat.id} label={cat.label}>{cat.label}</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-						</div>
-
-						<!-- Search -->
-						<div>
-							<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Search (optional)</Label>
-							<div class="relative">
-								<Search size={13} class="text-neutral-500 pointer-events-none absolute top-1/2 left-3 z-10 -translate-y-1/2" />
-								<Input
-									bind:value={search}
-									placeholder="e.g. interest rates, Tesla..."
-									class="rounded-xl py-2.5 pl-9 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50 placeholder:text-neutral-500"
-								/>
-							</div>
-						</div>
-					{:else if newsContentMode === 'story'}
-						<div class="space-y-3">
-							<div>
-								<Label class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">Story theme</Label>
-								<Select type="single" bind:value={storyCategory}>
-									<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body bg-neutral-950 border-neutral-800 text-neutral-50">
-										{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
-									</SelectTrigger>
-									<SelectContent>
-										{#each storyThemes as th}
-											<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
-										{/each}
-									</SelectContent>
-								</Select>
-								<p class="text-neutral-400 mt-1.5 text-[10px] font-body leading-relaxed">Sets the emotional lane for the hook and body copy.</p>
-							</div>
-							<div>
-								<Label for="story-topic-prompt" class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">
-									Story direction (optional)
-								</Label>
-								<textarea
-									id="story-topic-prompt"
-									bind:value={storyTopicPrompt}
-									rows={3}
-									placeholder="e.g. two friends launch a podcast, betrayal at a wedding, first day as a nurse…"
-									class="min-h-[5rem] w-full resize-y rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm font-body text-neutral-50 placeholder:text-neutral-500 focus:border-violet-500/40 focus:outline-none"
-								></textarea>
-								<p class="text-neutral-500 mt-1 text-[10px] font-body leading-relaxed">
-									With a direction here, we always call the generator (even if <span class="font-mono text-neutral-400">Test data</span> is on). Leave empty for bundled sample stories only.
-								</p>
-							</div>
-						</div>
-					{:else}
-						<div class="space-y-2">
-							<p class="text-[10px] font-body text-neutral-400/80 leading-relaxed">
-								One surprising fact-style line plus context for follow-up slides. No news API required.
-							</p>
-							<div>
-								<Label for="fact-topic-prompt" class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-2 block">
-									Topic or angle (optional)
-								</Label>
-								<textarea
-									id="fact-topic-prompt"
-									bind:value={factTopicPrompt}
-									rows={3}
-									placeholder="e.g. deep-sea creatures, Roman roads, why we forget dreams…"
-									class="min-h-[5rem] w-full resize-y rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm font-body text-neutral-50 placeholder:text-neutral-500 focus:border-violet-500/40 focus:outline-none"
-								></textarea>
-								<p class="text-neutral-500 mt-1 text-[10px] font-body leading-relaxed">
-									With a topic here, we always call the generator (even if <span class="font-mono text-neutral-400">Test data</span> is on). Leave empty for bundled sample facts only.
-								</p>
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-			<!-- Data source toggle -->
-			<div class="flex items-center justify-between rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
-				<div class="flex items-center gap-2">
-					{#if useTestData}
-						<FlaskConical size={12} class="text-amber-400" />
-						<span class="text-xs font-mono text-amber-400">Test data</span>
-					{:else}
-						<Wifi size={12} class="text-emerald-400" />
-						<span class="text-xs font-mono text-emerald-400">Live API</span>
-					{/if}
-				</div>
-				<Switch
-					bind:checked={useTestData}
-					title={useTestData ? 'Switch to Live API' : 'Switch to Test Data'}
-					class="shrink-0"
-				/>
-			</div>
-
-			<!-- <Separator class="my-3" /> -->
-
-				{#if overlayText.split(/\s+/).filter(Boolean).length > 28}
-					<p class="text-[10px] font-mono text-amber-400 mt-1">
-						⚠ {overlayText.split(/\s+/).filter(Boolean).length} words — keep under 28 for best results
-					</p>
-				{/if}
-			{#if activeTemplate === 'news'}
-				<!-- Source label -->
-				<div class="space-y-2">
-					<div class="flex items-center justify-between gap-2">
-						<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground block">Source Label</Label>
-						<div class="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-950 p-1">
-							<Button
-								type="button"
-								variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'}
-								size="sm"
-								class="h-7 rounded-md px-2 text-[10px] font-semibold"
-								onclick={() => (sourceLabelMode = 'text')}
-							>
-								Text
-							</Button>
-							<Button
-								type="button"
-								variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'}
-								size="sm"
-								class="h-7 rounded-md px-2 text-[10px] font-semibold"
-								onclick={() => (sourceLabelMode = 'logo')}
-							>
-								Logo
-							</Button>
-						</div>
-					</div>
-
-					{#if sourceLabelMode === 'text'}
-						<Input id="source-label" bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body" />
-					{:else}
-						<div class="flex items-center gap-2">
-							<input
-								type="file"
-								accept="image/*"
-								class="sr-only"
-								tabindex={-1}
-								aria-hidden="true"
-								bind:this={sourceLogoInput}
-								onchange={async (e) => {
-									const file = (e.currentTarget as HTMLInputElement).files?.[0];
-									if (!file) return;
-									sourceLogoSrc = await new Promise<string>((resolve, reject) => {
-										const fr = new FileReader();
-										fr.onload = () => resolve(String(fr.result ?? ''));
-										fr.onerror = () => reject(fr.error);
-										fr.readAsDataURL(file);
-									});
-									(e.currentTarget as HTMLInputElement).value = '';
-								}}
-							/>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								class="h-8 rounded-lg border-neutral-800 bg-neutral-950 text-[11px] font-semibold text-neutral-200 hover:bg-neutral-900"
-								onclick={() => sourceLogoInput?.click()}
-							>
-								{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
-							</Button>
-							{#if sourceLogoSrc}
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									class="h-8 rounded-lg text-neutral-400 hover:text-neutral-200"
-									onclick={() => (sourceLogoSrc = '')}
-								>
-									Remove
-								</Button>
-								<div class="ml-auto h-8 w-8 rounded-lg border border-neutral-800 bg-neutral-950 overflow-hidden grid place-items-center">
-									<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
-								</div>
-							{/if}
-						</div>
-						<div class="flex min-w-0 items-center gap-2 pt-0.5">
-							<Label for="source-logo-width" class="w-12 shrink-0 font-mono text-[9px] text-muted-foreground">Width</Label>
-							<Slider
-								id="source-logo-width"
-								type="single"
-								bind:value={sourceLogoWidth}
-								min={80}
-								max={400}
-								step={4}
-								class="min-w-0 flex-1"
-							/>
-							<span class="w-10 shrink-0 text-right font-mono text-[9px] text-muted-foreground">{sourceLogoWidth}px</span>
-						</div>
-					{/if}
-				</div>
-
-				<div class="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950/80 px-3 py-2.5">
-					<div class="min-w-0">
-						<Label for="studio-highlights-toggle" class="text-xs font-semibold text-neutral-200 block">Word highlights</Label>
-						<p class="text-[10px] text-neutral-500 leading-snug mt-0.5">
-							Off = plain text in the canvas toolbar; fetch/variants won’t add <span class="font-mono text-neutral-400">[[…]]</span> markup.
-						</p>
-					</div>
-					<Switch
-						id="studio-highlights-toggle"
-						bind:checked={studioTextHighlightsEnabled}
-						class="shrink-0"
-						title="Toggle colored word highlights ([[markup]])"
-					/>
-				</div>
-			{/if}
-
-			<!-- Bottom shadow controls -->
-			<div>
-				<div class="mb-2 flex items-center justify-between">
-					<Label for="shadow-h" class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Bottom Shadow</Label>
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						class="h-auto p-0 font-mono text-[9px] text-muted-foreground hover:text-foreground"
-						onclick={() => {
-							shadowHeight = 75;
-							shadowStrength = 1;
-						}}
-						title="Reset shadow"
-					>Reset</Button>
-				</div>
-				<div class="mb-2 flex min-w-0 items-center gap-2">
-					<span class="w-10 shrink-0 font-mono text-[9px] text-muted-foreground">Height</span>
-					<Slider
-						id="shadow-h"
-						type="single"
-						bind:value={shadowHeight}
-						min={0}
-						max={100}
-						step={1}
-						class="min-w-0 flex-1"
-					/>
-					<span class="w-8 shrink-0 text-right font-mono text-[9px] text-muted-foreground">{shadowHeight}%</span>
-				</div>
-				<div class="flex min-w-0 items-center gap-2">
-					<span class="w-10 shrink-0 font-mono text-[9px] text-muted-foreground">Darkness</span>
-					<Slider
-						type="single"
-						bind:value={shadowStrength}
-						min={0}
-						max={1}
-						step={0.05}
-						class="min-w-0 flex-1"
-					/>
-					<span class="w-8 shrink-0 text-right font-mono text-[9px] text-muted-foreground">{Math.round(shadowStrength * 100)}%</span>
-				</div>
-			</div>
-
-			<!-- <Separator class="my-3" /> -->
-
-			<!-- Text color control removed (use floating text toolbar instead) -->
-
-			<!-- Background image -->
-			<div>
-				<Label class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
-					<Image size={9} class="shrink-0" />Background — Slide {activeSlide + 1}
-				</Label>
-				<div class="flex flex-col gap-2">
-					<Button
-						variant="outline"
-						class="h-auto gap-1.5 rounded-xl border-violet-500/15 bg-violet-500/10 py-2 font-body text-xs font-semibold text-violet-300 hover:bg-violet-500/20"
-						onclick={() => generateBackground(activeSlide, undefined, activeTemplate)}
-						disabled={(generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide]}
-					>
-						{#if (generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide]}
-							<Loader size={11} class="animate-spin" /> Generating...
-						{:else}
-							<Sparkles size={11} /> Regenerate with AI
-						{/if}
-					</Button>
-					<Button
-						variant="outline"
-						class="h-auto gap-1.5 rounded-xl border-cyan-500/15 bg-cyan-500/10 py-2 font-body text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20"
-						onclick={() => generateAllSlideImages(undefined, activeTemplate)}
-						disabled={(generatingImagesByTemplate[activeTemplate] ?? []).some(Boolean)}
-					>
-						{#if (generatingImagesByTemplate[activeTemplate] ?? []).some(Boolean)}
-							<Loader size={11} class="animate-spin" /> Generating all…
-						{:else}
-							<Sparkles size={11} /> Regenerate all slides
-						{/if}
-					</Button>
-					<!-- Upload row: image + video side by side -->
-					<div class="grid grid-cols-2 gap-2">
-						<label
-							class={cn(
-								buttonVariants({ variant: 'outline', size: 'sm' }),
-								'glass glass-hover h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground'
-							)}
-						>
-							<Image size={11} /> Photo
-							<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
-						</label>
-						<label
-							class={cn(
-								buttonVariants({ variant: 'outline', size: 'sm' }),
-								'glass glass-hover h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground'
-							)}
-						>
-							<Play size={11} class="shrink-0" /> Video
-							<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
-						</label>
-					</div>
-
-					<!-- ── Subject cutout (AI background removal) ──────────────── -->
-					{#if backgroundImage && !backgroundVideo}
-						<div class="flex flex-col gap-1.5 pt-1 border-t border-white/[0.05] mt-1">
-							<div class="flex items-center justify-between">
-								<p class="text-[10px] font-mono text-white/25 uppercase tracking-wider">
-									<Scissors size={9} class="inline mr-1" />Subject Cutout
-								</p>
-								{#if activeCutout}
-									<Button
-										type="button"
-										variant="ghost"
-										size="sm"
-										class={cn(
-											'h-auto gap-1 p-0 font-mono text-[10px] hover:bg-transparent',
-											activeShowCutout ? 'text-emerald-400' : 'text-muted-foreground hover:text-foreground'
-										)}
-										onclick={() => toggleCutoutVisibility()}
-										title={activeShowCutout ? 'Hide cutout' : 'Show cutout'}
-									>
-										{#if activeShowCutout}
-											<Eye size={10} /> ON
-										{:else}
-											<EyeOff size={10} /> OFF
-										{/if}
-									</Button>
-								{/if}
-							</div>
-
-							{#if activeCutting}
-								<!-- Progress state -->
-								<div class="flex flex-col gap-1.5 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-									<div class="flex items-center gap-2">
-										<Loader size={11} class="animate-spin text-emerald-400 flex-shrink-0" />
-										<span class="text-[11px] font-mono text-emerald-300 flex-1 truncate">
-											{cutoutMessage || 'Cutting subject…'}
-										</span>
-									</div>
-									{#if cutoutProgress > 0}
-										<div class="h-1 rounded-full bg-white/[0.06] overflow-hidden">
-											<div
-												class="h-full bg-emerald-400 transition-all"
-												style="width: {Math.round(cutoutProgress * 100)}%;"
-											></div>
-										</div>
-									{/if}
-								</div>
-							{:else if activeCutout}
-								<!-- Cutout exists: preview + actions -->
-								<div class="flex items-center gap-2 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-									<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style="background: repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 50% / 12px 12px;">
-										<img src={activeCutout} alt="cutout" class="w-full h-full object-contain" />
-									</div>
-									<span class="flex-1 font-mono text-[11px] text-emerald-300">Subject isolated</span>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon-xs"
-										class="text-muted-foreground hover:text-emerald-400"
-										onclick={() => cutOutSubject()}
-										title="Regenerate cutout"
-									>
-										<RefreshCw size={11} />
-									</Button>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon-xs"
-										class="text-xs text-muted-foreground hover:text-red-400"
-										onclick={() => clearCutout()}
-										title="Remove cutout"
-									>✕</Button>
-								</div>
-								<p class="text-[10px] font-body text-white/25 leading-relaxed">
-									Cutout sits in <b class="text-white/50">front</b> of the circle — so the subject overlaps it like the reference image.
-								</p>
-							{:else}
-								<!-- No cutout yet: CTA -->
-								<Button
-									variant="outline"
-									class="h-auto gap-1.5 rounded-xl border-emerald-500/15 bg-emerald-500/10 py-2 font-body text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20"
-									onclick={() => cutOutSubject()}
-								>
-									<Scissors size={11} /> Cut out subject
-								</Button>
-								<p class="text-[10px] font-body text-white/25 leading-relaxed">
-									Removes the background so the subject sits <b class="text-white/50">in front</b> of the circle. First run downloads a ~40MB AI model.
-								</p>
-							{/if}
-
-							{#if cutoutError}
-								<p class="text-[10px] font-body text-red-400/80 leading-relaxed">{cutoutError}</p>
-							{/if}
-						</div>
-					{/if}
-
-					<!-- Active video indicator -->
-					{#if effectiveBackgroundVideo}
-						<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-							<span class="text-cyan-400 text-[11px]">▶</span>
-							<span class="text-[11px] font-mono text-cyan-300 flex-1 truncate">Video background active</span>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon-xs"
-								class="text-xs text-muted-foreground hover:text-red-400"
-								onclick={() => clearSlideBackground(activeSlide)}
-							>✕</Button>
-						</div>
-					{/if}
-
-					<!-- Video trim UI is rendered under the preview (YouTube-style) -->
-
-					{#if bgError}
-						<p class="text-[10px] font-body text-amber-400/70 leading-relaxed">{bgError}</p>
-					{/if}
-
-					<!-- Position + zoom sliders (shown when a background is loaded) -->
-					{#if backgroundImage || backgroundVideo}
-						<div class="flex flex-col gap-1.5 pt-1">
-							<p class="mb-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-								Position
-								<span class="font-body text-[10px] font-normal normal-case text-muted-foreground/70">
-									· drag empty preview · <span class="text-muted-foreground">Alt+drag</span> anywhere ·
-									<span class="text-muted-foreground">Alt+scroll</span> zoom
-								</span>
-							</p>
-							<!-- Horizontal -->
-							<div class="flex min-w-0 items-center gap-2.5">
-								<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">←</span>
-								<Slider
-									type="single"
-									bind:value={bgOffsetX}
-									min={-55}
-									max={155}
-									step={0.5}
-									class="min-w-0 flex-1"
-								/>
-								<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">→</span>
-							</div>
-							<!-- Vertical -->
-							<div class="flex min-w-0 items-center gap-2.5">
-								<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">↑</span>
-								<Slider
-									type="single"
-									bind:value={bgOffsetY}
-									min={-55}
-									max={155}
-									step={0.5}
-									class="min-w-0 flex-1"
-								/>
-								<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">↓</span>
-							</div>
-
-							<div class="mt-2 flex flex-col gap-1.5">
-								<div class="mb-0.5 flex items-center justify-between">
-									<Button
-										type="button"
-										variant="ghost"
-										size="sm"
-										class="h-auto p-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-violet-400"
-										onclick={() => (bgZoom = 100)}
-										title="Reset zoom to 100%"
-									>
-										Zoom
-									</Button>
-									<span class="font-mono text-[9px] text-muted-foreground">{bgZoom}%</span>
-								</div>
-								<div class="flex min-w-0 items-center gap-2.5">
-									<span class="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">−</span>
-									<Slider
-										type="single"
-										bind:value={bgZoom}
-										min={30}
-										max={300}
-										step={1}
-										class="min-w-0 flex-1"
-									/>
-									<span class="w-3 shrink-0 text-right font-mono text-[10px] text-muted-foreground">+</span>
-								</div>
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-
-			<!-- Circle badge controls removed from sidebar (managed on-canvas) -->
-
-			<!-- Export -->
-			<!-- <Button
-				onclick={exportPng}
-				disabled={exporting || exportingAll}
-				class="h-auto w-full gap-2 rounded-xl bg-[#E8FF48] py-3 font-body text-sm font-semibold text-[#0a0a0a] hover:bg-[#f0ff70] hover:shadow-[0_6px_24px_rgba(232,255,72,0.25)]"
-			>
-				{#if exporting}
-					<Loader size={13} class="animate-spin" /> Exporting...
-				{:else}
-					<Download size={13} /> Export {CANVAS_W}×{CANVAS_H} PNG
-				{/if}
-			</Button> -->
-
-			<!-- Posting now automatically exports slides; no separate export button -->
-
-			{#if articleUrl}
-				<a href={articleUrl} target="_blank" rel="noopener noreferrer"
-					class="text-center text-[10px] font-body text-violet-400/60 hover:text-violet-400 transition-colors underline underline-offset-2">
-					View source article ↗
-				</a>
-			{/if}
-		</div>
-
-		<!-- Primary action pinned to bottom of sidebar -->
-		<div class="shrink-0 space-y-2 border-t border-neutral-800 bg-black p-4 pt-3">
-			{#if newsError}
-				<div class="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-2.5">
-					<AlertCircle size={12} class="mt-0.5 shrink-0 text-red-400" />
-					<p class="text-[11px] font-body leading-relaxed text-red-400">{newsError}</p>
-				</div>
-			{/if}
-			<Button
-				onclick={() => void loadAndFill()}
-				disabled={fetchingNews}
-				class="h-auto w-full gap-2 rounded-xl bg-[#E8FF48] py-2.5 font-body text-sm font-semibold text-[#0a0a0a] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)]"
-			>
-				{#if fetchingNews}
-					<Loader size={13} class="animate-spin" />
-					{#if useTestData}
-						Loading…
-					{:else if newsContentMode === 'news'}
-						Fetching…
-					{:else}
-						Generating…
-					{/if}
-				{:else}
-					{#if useTestData}
-						<FlaskConical size={13} />
-					{:else if newsContentMode === 'news'}
-						<Newspaper size={13} />
-					{:else}
-						<Sparkles size={13} />
-					{/if}
-					Load & Fill
-				{/if}
-			</Button>
-		</div>
-	</div>
-
 	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
 	<div
 		class="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#080808] p-6 gap-3 studio-right"
@@ -6420,10 +5831,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 		<!-- Main preview + quick actions (next to canvas) -->
 		<div
-			class="flex min-h-0 w-full min-w-0 flex-1 items-center justify-center overflow-auto"
+			class="flex min-h-0 w-full min-w-0 flex-1 items-start justify-center overflow-auto"
 			bind:this={studioPreviewHostEl}
 		>
-		<div class="flex shrink-0 items-start justify-center gap-3 py-2 px-1">
+		<div class="flex shrink-0 justify-center py-2 px-1">
 			<div style="width: {previewDisplayW}px;" class="relative z-10 max-w-full shrink-0">
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div
@@ -7015,6 +6426,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			</div>
 		</div>
 		</div>
+		<!-- /Canvas scroll area -->
+
+
+		</div>
+		<!-- /Prompt bar + filmstrip wrapper -->
 
 		<!-- Slide filmstrip: drag to reorder (show for single-slide decks so Hook + Add stay visible) -->
 		{#if slides.length >= 1}
@@ -7562,6 +6978,315 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			</DragDropProvider>
 			<p class="font-mono text-[9px] text-white/20 -mt-1">Drag thumbnails to reorder · Click <Flame size={9} class="inline text-orange-400/70" /> to burn music and publish as video</p>
 		{/if}
+
+		<!-- ── Prompt bar ── below the filmstrip ───────────────────── -->
+		<div class="shrink-0 px-4 pt-0 pb-2">
+			<div class="mx-auto w-full max-w-2xl">
+				<div class="overflow-hidden rounded-[22px] bg-white shadow-[0_4px_32px_rgba(0,0,0,0.10),0_1px_4px_rgba(0,0,0,0.06)]">
+
+					<!-- Search input row -->
+					<div class="flex items-center gap-2.5 px-4 pt-3.5 pb-2.5">
+						<Search size={14} class="shrink-0 text-[#bbb]" />
+						{#if newsContentMode === 'news'}
+							<input
+								bind:value={search}
+								placeholder="Search topic (optional)…"
+								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+								class="flex-1 min-w-0 bg-transparent text-sm text-[#1a1a1a] placeholder:text-[#aaa] outline-none font-body"
+							/>
+						{:else if newsContentMode === 'fact'}
+							<input
+								bind:value={factTopicPrompt}
+								placeholder="Fact topic or angle (optional)…"
+								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+								class="flex-1 min-w-0 bg-transparent text-sm text-[#1a1a1a] placeholder:text-[#aaa] outline-none font-body"
+							/>
+						{:else}
+							<input
+								bind:value={storyTopicPrompt}
+								placeholder="Story direction (optional)…"
+								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+								class="flex-1 min-w-0 bg-transparent text-sm text-[#1a1a1a] placeholder:text-[#aaa] outline-none font-body"
+							/>
+						{/if}
+						{#if newsError}
+							<div class="flex items-center gap-1 shrink-0">
+								<AlertCircle size={11} class="text-red-500 shrink-0" />
+								<span class="text-[11px] font-body text-red-500 max-w-[180px] truncate">{newsError}</span>
+							</div>
+						{/if}
+					</div>
+
+					<!-- Pills + CTA row -->
+					<div class="flex items-center gap-1.5 px-3 pb-3">
+
+						<!-- News pill -->
+						<Popover>
+							<PopoverTrigger
+								onclick={() => (newsContentMode = 'news')}
+								class="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium font-body transition-all select-none {newsContentMode === 'news' ? 'border-[#d4bbfa] bg-[#f3ecff] text-[#6d28d9]' : 'border-[#e5e5e5] bg-white text-[#666] hover:border-[#ccc] hover:text-[#333]'}"
+							>
+								<Newspaper size={11} />
+								News{#if newsContentMode === 'news'}&thinsp;·&thinsp;{categories.find((c) => c.id === category)?.label ?? 'Category'}{/if}
+							</PopoverTrigger>
+							<PopoverContent side="top" sideOffset={10} class="w-64 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
+								<div class="p-4 flex flex-col gap-3">
+									<div>
+										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Category</p>
+										<Select type="single" bind:value={category}>
+											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]">
+												{categories.find((c) => c.id === category)?.label ?? 'Category'}
+											</SelectTrigger>
+											<SelectContent>
+												{#each categories as cat}
+													<SelectItem value={cat.id} label={cat.label}>{cat.label}</SelectItem>
+												{/each}
+											</SelectContent>
+										</Select>
+									</div>
+									<div>
+										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Search (optional)</p>
+										<Input bind:value={search} placeholder="e.g. interest rates, Tesla…" class="rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]" />
+									</div>
+								</div>
+							</PopoverContent>
+						</Popover>
+
+						<!-- Random fact pill -->
+						<Popover>
+							<PopoverTrigger
+								onclick={() => (newsContentMode = 'fact')}
+								class="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium font-body transition-all select-none {newsContentMode === 'fact' ? 'border-[#d4bbfa] bg-[#f3ecff] text-[#6d28d9]' : 'border-[#e5e5e5] bg-white text-[#666] hover:border-[#ccc] hover:text-[#333]'}"
+							>
+								<Sparkles size={11} />
+								Random fact
+							</PopoverTrigger>
+							<PopoverContent side="top" sideOffset={10} class="w-64 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
+								<div class="p-4 flex flex-col gap-3">
+									<p class="text-[11px] font-body text-[#888] leading-relaxed">A surprising fact-style hook + context. No news API needed.</p>
+									<div>
+										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Topic (optional)</p>
+										<textarea
+											id="pb-fact-topic"
+											bind:value={factTopicPrompt}
+											rows={3}
+											placeholder="e.g. deep-sea creatures, Roman roads…"
+											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#aaa] focus:outline-none focus:border-[#c4b5fd]"
+										></textarea>
+									</div>
+								</div>
+							</PopoverContent>
+						</Popover>
+
+						<!-- Random story pill -->
+						<Popover>
+							<PopoverTrigger
+								onclick={() => (newsContentMode = 'story')}
+								class="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium font-body transition-all select-none {newsContentMode === 'story' ? 'border-[#d4bbfa] bg-[#f3ecff] text-[#6d28d9]' : 'border-[#e5e5e5] bg-white text-[#666] hover:border-[#ccc] hover:text-[#333]'}"
+							>
+								<Type size={11} />
+								Random story{#if newsContentMode === 'story'}&thinsp;·&thinsp;{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}{/if}
+							</PopoverTrigger>
+							<PopoverContent side="top" sideOffset={10} class="w-72 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
+								<div class="p-4 flex flex-col gap-3">
+									<div>
+										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Story theme</p>
+										<Select type="single" bind:value={storyCategory}>
+											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]">
+												{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
+											</SelectTrigger>
+											<SelectContent>
+												{#each storyThemes as th}
+													<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
+												{/each}
+											</SelectContent>
+										</Select>
+									</div>
+									<div>
+										<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-2">Direction (optional)</p>
+										<textarea
+											id="pb-story-dir"
+											bind:value={storyTopicPrompt}
+											rows={3}
+											placeholder="e.g. two friends launch a podcast, betrayal at a wedding…"
+											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#aaa] focus:outline-none focus:border-[#c4b5fd]"
+										></textarea>
+									</div>
+								</div>
+							</PopoverContent>
+						</Popover>
+
+						<!-- Settings popover -->
+						<Popover>
+							<PopoverTrigger
+								class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#999] transition-all hover:border-[#ccc] hover:text-[#444]"
+								title="Settings"
+							>
+								<SlidersHorizontal size={12} />
+							</PopoverTrigger>
+							<PopoverContent side="top" sideOffset={10} align="start" class="w-80 gap-0 rounded-2xl border-[#e5e5e5] bg-white p-0 shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-[#1a1a1a]">
+								<div class="p-4 flex flex-col gap-4">
+									<!-- Data source -->
+									<div class="flex items-center justify-between gap-3">
+										<div class="flex items-center gap-2">
+											{#if useTestData}
+												<FlaskConical size={12} class="text-amber-500" />
+												<span class="text-xs font-mono text-amber-600">Test data</span>
+											{:else}
+												<Wifi size={12} class="text-emerald-500" />
+												<span class="text-xs font-mono text-emerald-600">Live API</span>
+											{/if}
+										</div>
+										<Switch bind:checked={useTestData} title={useTestData ? 'Switch to Live API' : 'Switch to Test Data'} class="shrink-0" />
+									</div>
+
+									{#if activeTemplate === 'news'}
+										<!-- Source label -->
+										<div class="space-y-2 pt-3 border-t border-[#f0f0f0]">
+											<div class="flex items-center justify-between gap-2">
+												<Label class="text-[10px] font-mono uppercase tracking-wider text-[#999]">Source Label</Label>
+												<div class="flex items-center gap-1 rounded-lg border border-[#e5e5e5] bg-[#fafafa] p-1">
+													<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
+													<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'logo')}>Logo</Button>
+												</div>
+											</div>
+											{#if sourceLabelMode === 'text'}
+												<Input bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body border-[#e5e5e5] bg-[#fafafa]" />
+											{:else}
+												<div class="flex items-center gap-2">
+													<input type="file" accept="image/*" class="sr-only" tabindex={-1} aria-hidden="true" bind:this={sourceLogoInput}
+														onchange={async (e) => {
+															const file = (e.currentTarget as HTMLInputElement).files?.[0];
+															if (!file) return;
+															sourceLogoSrc = await new Promise<string>((res, rej) => {
+																const fr = new FileReader();
+																fr.onload = () => res(String(fr.result ?? ''));
+																fr.onerror = () => rej(fr.error);
+																fr.readAsDataURL(file);
+															});
+															(e.currentTarget as HTMLInputElement).value = '';
+														}}
+													/>
+													<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold" onclick={() => sourceLogoInput?.click()}>
+														{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
+													</Button>
+													{#if sourceLogoSrc}
+														<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => (sourceLogoSrc = '')}>Remove</Button>
+														<div class="ml-auto h-8 w-8 rounded-lg border border-[#e5e5e5] overflow-hidden grid place-items-center">
+															<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
+														</div>
+													{/if}
+												</div>
+												<div class="flex min-w-0 items-center gap-2 pt-1">
+													<Label class="w-12 shrink-0 font-mono text-[9px] text-[#999]">Width</Label>
+													<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
+													<span class="w-10 shrink-0 text-right font-mono text-[9px] text-[#999]">{sourceLogoWidth}px</span>
+												</div>
+											{/if}
+										</div>
+										<!-- Word highlights -->
+										<div class="flex items-center justify-between gap-3 rounded-xl border border-[#f0f0f0] bg-[#fafafa] px-3 py-2.5">
+											<div class="min-w-0">
+												<Label for="settings-highlights-toggle" class="text-xs font-semibold text-[#333] block">Word highlights</Label>
+												<p class="text-[10px] text-[#999] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
+											</div>
+											<Switch id="settings-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
+										</div>
+									{/if}
+
+									<!-- Bottom shadow -->
+									<div class="pt-3 border-t border-[#f0f0f0]">
+										<div class="mb-2 flex items-center justify-between">
+											<Label class="text-[10px] font-mono uppercase tracking-wider text-[#999]">Bottom Shadow</Label>
+											<Button type="button" variant="ghost" size="sm" class="h-auto p-0 font-mono text-[9px] text-[#999] hover:text-[#333]" onclick={() => { shadowHeight = 75; shadowStrength = 1; }}>Reset</Button>
+										</div>
+										<div class="mb-2 flex min-w-0 items-center gap-2">
+											<span class="w-10 shrink-0 font-mono text-[9px] text-[#999]">Height</span>
+											<Slider type="single" bind:value={shadowHeight} min={0} max={100} step={1} class="min-w-0 flex-1" />
+											<span class="w-8 shrink-0 text-right font-mono text-[9px] text-[#999]">{shadowHeight}%</span>
+										</div>
+										<div class="flex min-w-0 items-center gap-2">
+											<span class="w-10 shrink-0 font-mono text-[9px] text-[#999]">Darkness</span>
+											<Slider type="single" bind:value={shadowStrength} min={0} max={1} step={0.05} class="min-w-0 flex-1" />
+											<span class="w-8 shrink-0 text-right font-mono text-[9px] text-[#999]">{Math.round(shadowStrength * 100)}%</span>
+										</div>
+									</div>
+
+									<!-- Background (non-news) -->
+									{#if activeTemplate !== 'news'}
+										<div class="pt-3 border-t border-[#f0f0f0] flex flex-col gap-2">
+											<p class="text-[10px] font-mono uppercase tracking-wider text-[#999]">Background — Slide {activeSlide + 1}</p>
+											<div class="grid grid-cols-2 gap-2">
+												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground')}>
+													<Image size={11} /> Photo
+													<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
+												</label>
+												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground')}>
+													<Play size={11} class="shrink-0" /> Video
+													<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
+												</label>
+											</div>
+											{#if effectiveBackgroundVideo}
+												<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-50 border border-cyan-200">
+													<span class="text-cyan-500 text-[11px]">▶</span>
+													<span class="text-[11px] font-mono text-cyan-600 flex-1 truncate">Video active</span>
+													<Button type="button" variant="ghost" size="icon-xs" class="text-[#999] hover:text-red-500" onclick={() => clearSlideBackground(activeSlide)}>✕</Button>
+												</div>
+											{/if}
+											{#if backgroundImage || backgroundVideo}
+												<div class="flex flex-col gap-1.5 pt-1">
+													<p class="text-[10px] font-mono uppercase tracking-wider text-[#999] mb-0.5">Position</p>
+													<div class="flex min-w-0 items-center gap-2.5">
+														<span class="w-3 shrink-0 font-mono text-[10px] text-[#999]">←</span>
+														<Slider type="single" bind:value={bgOffsetX} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
+														<span class="w-3 text-right font-mono text-[10px] text-[#999]">→</span>
+													</div>
+													<div class="flex min-w-0 items-center gap-2.5">
+														<span class="w-3 shrink-0 font-mono text-[10px] text-[#999]">↑</span>
+														<Slider type="single" bind:value={bgOffsetY} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
+														<span class="w-3 text-right font-mono text-[10px] text-[#999]">↓</span>
+													</div>
+													<div class="flex min-w-0 items-center gap-2.5">
+														<span class="w-3 shrink-0 font-mono text-[10px] text-[#999]">−</span>
+														<Slider type="single" bind:value={bgZoom} min={30} max={300} step={1} class="min-w-0 flex-1" />
+														<span class="w-3 text-right font-mono text-[10px] text-[#999]">+</span>
+													</div>
+												</div>
+											{/if}
+										</div>
+									{/if}
+								</div>
+							</PopoverContent>
+						</Popover>
+
+						<div class="flex-1"></div>
+
+						<!-- Load & Fill -->
+						<button
+							type="button"
+							onclick={() => void loadAndFill()}
+							disabled={fetchingNews}
+							class="flex items-center gap-1.5 rounded-full bg-[#c8f050] px-4 py-1.5 text-[12px] font-semibold font-body text-[#1a1a1a] transition-all hover:bg-[#d8f870] hover:shadow-[0_2px_12px_rgba(180,230,40,0.40)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{#if fetchingNews}
+								<Loader size={11} class="animate-spin" />
+								{useTestData ? 'Loading…' : newsContentMode === 'news' ? 'Fetching…' : 'Generating…'}
+							{:else}
+								Load &amp; Fill
+							{/if}
+						</button>
+					</div>
+				</div>
+				{#if articleUrl}
+					<a
+						href={articleUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="mt-1.5 block text-center text-[11px] font-body text-[#aaa] transition-colors hover:text-violet-500"
+					>View source article ↗</a>
+				{/if}
+			</div>
+			<!-- /Prompt bar (below filmstrip) -->
 		</div>
 	</div>
 
