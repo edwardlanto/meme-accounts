@@ -243,10 +243,8 @@ async function syntheticContent(
 ) {
 	const theme = (storyCategory || 'health').trim() || 'health';
 	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
-	const hintBlock =
-		syntheticHint.trim().length > 0
-			? `\n\nUser topic / direction (follow closely; keep claims plausible):\n"""${syntheticHint.replace(/"/g, "'").slice(0, 600)}"""\n`
-			: '';
+	const hintSafe = syntheticHint.trim().replace(/"/g, "'").slice(0, 600);
+	const hasHint = hintSafe.length > 0;
 
 	const regenBlock =
 		typeof regenNonce === 'string' && regenNonce.trim().length > 0
@@ -267,18 +265,19 @@ Rules for "hook":
 Rules for "context":
 - 5–8 full sentences in normal sentence case
 - Expand the fact with vivid, concrete detail a carousel writer can mine for follow-up slides
-- Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications${hintBlock}${regenBlock}`
+- Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications${hasHint ? `\n\nUser topic (MUST be the explicit subject of both hook and context — name it directly):\n"""${hintSafe}"""` : ''}${regenBlock}`
 
-			: `You write viral Instagram micro-stories for overlay text. Output ONLY valid JSON (no markdown fences) with this shape:
+		: `You write viral Instagram micro-stories for overlay text. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
-Theme for the story: "${themeLabel}"
+Theme for the story: "${themeLabel}"${hasHint ? `\nTopic: "${hintSafe}" — the story MUST revolve around this specific subject. Name it explicitly in the hook and weave it through the context.` : ''}
 
 Rules for "hook":
 - Opening beat of a micro-story, max 28 words
 - ALL CAPS
 - No hashtags, no emojis
 - Drop the reader into a specific moment (who, where, what is going wrong or about to change)
+- If a topic is given above, the hook MUST name or directly reference it
 
 Rules for "context":
 - 8–14 full sentences in normal sentence case — this MUST read as a tiny story, not self-help bullets
@@ -286,7 +285,7 @@ Rules for "context":
 - Tell a chain of scenes in order: ordinary world → inciting incident → rising pressure → a choice or revelation → consequence → emotional landing (lesson, irony, or quiet win)
 - Include at least one concrete sensory or physical detail per paragraph (sound, place, object, time of day)
 - No "three tips", "here is why", or generic motivational slogans unless tied to a specific plot beat
-- Do not paste the hook verbatim as the first sentence${hintBlock}${regenBlock}`;
+- Do not paste the hook verbatim as the first sentence${regenBlock}`;
 
 	const jsonRaw = await openRouterComplete(
 		[{ role: 'user', content: userPrompt }],

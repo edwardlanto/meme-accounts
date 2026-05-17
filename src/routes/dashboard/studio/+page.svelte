@@ -88,7 +88,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -155,6 +155,7 @@ import JSZip from 'jszip';
 	let storyCategory = $state('health');
 	/** Sent to /api/news as syntheticHint when Random fact is selected. */
 	let factTopicPrompt = $state('');
+	let factTopicCategory = $state('any');
 	/** Sent to /api/news as syntheticHint with the story theme when Random story is selected. */
 	let storyTopicPrompt = $state('');
 	let slideCount = $state(DEFAULT_STUDIO_SLIDE_COUNT); // 1–10
@@ -2571,6 +2572,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 		if (typeof s.storyCategory === 'string') storyCategory = s.storyCategory;
 		if (typeof (s as any).factTopicPrompt === 'string') factTopicPrompt = String((s as any).factTopicPrompt ?? '');
+		if (typeof (s as any).factTopicCategory === 'string') factTopicCategory = String((s as any).factTopicCategory ?? 'any');
 		if (typeof (s as any).storyTopicPrompt === 'string') storyTopicPrompt = String((s as any).storyTopicPrompt ?? '');
 		if (typeof s.search === 'string') search = s.search;
 		if (typeof s.source === 'string') source = s.source;
@@ -3377,8 +3379,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			category,
 			newsContentMode,
 			storyCategory,
-			factTopicPrompt,
-			storyTopicPrompt,
+		factTopicPrompt,
+		factTopicCategory,
+		storyTopicPrompt,
 			search,
 			source,
 			sourceLogoSrc,
@@ -3710,6 +3713,24 @@ tweetTopImagePanYBySlide,
 		entertainment: 'Culture',
 		general: 'News',
 	};
+
+	const factTopics = [
+		{ id: 'any',           label: 'Any' },
+		{ id: 'business',      label: 'Business' },
+		{ id: 'tech',          label: 'Technology' },
+		{ id: 'science',       label: 'Science' },
+		{ id: 'health',        label: 'Health' },
+		{ id: 'history',       label: 'History' },
+		{ id: 'nature',        label: 'Nature' },
+		{ id: 'space',         label: 'Space' },
+		{ id: 'finance',       label: 'Finance' },
+		{ id: 'psychology',    label: 'Psychology' },
+		{ id: 'culture',       label: 'Culture' },
+		{ id: 'sports',        label: 'Sports' },
+		{ id: 'food',          label: 'Food' },
+		{ id: 'environment',   label: 'Environment' },
+		{ id: 'education',     label: 'Education' },
+	];
 
 	const storyThemes = [
 		{ id: 'health', label: 'Health' },
@@ -4049,14 +4070,19 @@ tweetTopImagePanYBySlide,
 			let articleImageUrl = ''; // article's own image (used as seed for slide 0)
 			let nextSource = '';
 			let nextArticleUrl = '';
-			let nextArticleTitle = '';
+		let nextArticleTitle = '';
 
-			const syntheticHintStr =
-				newsContentMode === 'fact'
-					? factTopicPrompt.trim().slice(0, 600)
-					: newsContentMode === 'story'
-						? storyTopicPrompt.trim().slice(0, 600)
-						: '';
+		const factTopicLabel = factTopicCategory !== 'any'
+			? factTopics.find(t => t.id === factTopicCategory)?.label ?? ''
+			: '';
+		const factFullPrompt = [factTopicLabel, factTopicPrompt.trim()].filter(Boolean).join(': ');
+
+		const syntheticHintStr =
+			newsContentMode === 'fact'
+				? factFullPrompt.slice(0, 600)
+				: newsContentMode === 'story'
+					? storyTopicPrompt.trim().slice(0, 600)
+					: '';
 
 			/** Random fact/story without a topic still use bundled mocks; any topic hits /api/news. */
 			const useBundledFactStoryMock =
@@ -6983,302 +7009,314 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			<div class="mx-auto w-full max-w-2xl">
 				<div class="prompt-bar overflow-hidden rounded-[20px] bg-[#f5f5f5] shadow-[0_4px_24px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)]">
 
-					<!-- Search input row -->
-					<div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
-						<Search size={14} class="shrink-0 text-[#b0b0b0]" />
-						{#if newsContentMode === 'news'}
-							<input
-								bind:value={search}
-								placeholder="Search topic (optional)…"
-								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-								class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
-							/>
-						{:else if newsContentMode === 'fact'}
-							<input
-								bind:value={factTopicPrompt}
-								placeholder="Fact topic or angle (optional)…"
-								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-								class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
-							/>
-						{:else}
-							<input
-								bind:value={storyTopicPrompt}
-								placeholder="Story direction (optional)…"
-								onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-								class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
-							/>
-						{/if}
-						{#if newsError}
-							<div class="flex items-center gap-1 shrink-0">
-								<AlertCircle size={11} class="text-red-500 shrink-0" />
-								<span class="text-[11px] font-body text-red-500 max-w-[180px] truncate">{newsError}</span>
-							</div>
-						{/if}
-					</div>
-
-					<!-- Divider -->
-					<div class="mx-4 h-px bg-[#e8e8e8]"></div>
-
-					<!-- Pills + CTA row -->
-					<div class="flex items-center gap-1.5 px-3 pt-2.5 pb-3">
-
-						<!-- News pill -->
-						<Popover>
-							<PopoverTrigger
-								onclick={() => (newsContentMode = 'news')}
-								class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-body transition-all duration-150 select-none {newsContentMode === 'news' ? 'border-[#c8c8c8] bg-white text-[#111] font-semibold' : 'border-[#e2e2e2] bg-white text-[#888] font-medium hover:border-[#c8c8c8] hover:text-[#333]'}"
-							>
-								<Newspaper size={11} />
-								News{#if newsContentMode === 'news'}&thinsp;·&thinsp;{categories.find((c) => c.id === category)?.label ?? 'Category'}{/if}
-							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={12} class="w-64 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
-								<div class="p-4 flex flex-col gap-3.5">
-									<div>
-										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Category</p>
-										<Select type="single" bind:value={category}>
-											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa] hover:bg-[#f5f5f5]">
-												{categories.find((c) => c.id === category)?.label ?? 'Category'}
-											</SelectTrigger>
-											<SelectContent>
-												{#each categories as cat}
-													<SelectItem value={cat.id} label={cat.label}>{cat.label}</SelectItem>
-												{/each}
-											</SelectContent>
-										</Select>
-									</div>
-									<div>
-										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Search (optional)</p>
-										<Input bind:value={search} placeholder="e.g. interest rates, Tesla…" class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
-									</div>
-								</div>
-							</PopoverContent>
-						</Popover>
-
-						<!-- Random fact pill -->
-						<Popover>
-							<PopoverTrigger
-								onclick={() => (newsContentMode = 'fact')}
-								class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-body transition-all duration-150 select-none {newsContentMode === 'fact' ? 'border-[#c8c8c8] bg-white text-[#111] font-semibold' : 'border-[#e2e2e2] bg-white text-[#888] font-medium hover:border-[#c8c8c8] hover:text-[#333]'}"
-							>
-								<Sparkles size={11} />
-								Random fact
-							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={12} class="w-64 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
-								<div class="p-4 flex flex-col gap-3.5">
-									<p class="text-[11px] font-body text-[#999] leading-relaxed">A surprising fact-style hook + context. No news API needed.</p>
-									<div>
-										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Topic (optional)</p>
-										<textarea
-											id="pb-fact-topic"
-											bind:value={factTopicPrompt}
-											rows={3}
-											placeholder="e.g. deep-sea creatures, Roman roads…"
-											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none focus:border-[#c4b5fd] transition-colors"
-										></textarea>
-									</div>
-								</div>
-							</PopoverContent>
-						</Popover>
-
-						<!-- Random story pill -->
-						<Popover>
-							<PopoverTrigger
-								onclick={() => (newsContentMode = 'story')}
-								class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-body transition-all duration-150 select-none {newsContentMode === 'story' ? 'border-[#c8c8c8] bg-white text-[#111] font-semibold' : 'border-[#e2e2e2] bg-white text-[#888] font-medium hover:border-[#c8c8c8] hover:text-[#333]'}"
-							>
-								<Type size={11} />
-								Random story{#if newsContentMode === 'story'}&thinsp;·&thinsp;{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}{/if}
-							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={12} class="w-72 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
-								<div class="p-4 flex flex-col gap-3.5">
-									<div>
-										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Story theme</p>
-										<Select type="single" bind:value={storyCategory}>
-											<SelectTrigger class="w-full rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa] hover:bg-[#f5f5f5]">
-												{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
-											</SelectTrigger>
-											<SelectContent>
-												{#each storyThemes as th}
-													<SelectItem value={th.id} label={th.label}>{th.label}</SelectItem>
-												{/each}
-											</SelectContent>
-										</Select>
-									</div>
-									<div>
-										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-2">Direction (optional)</p>
-										<textarea
-											id="pb-story-dir"
-											bind:value={storyTopicPrompt}
-											rows={3}
-											placeholder="e.g. two friends launch a podcast, betrayal at a wedding…"
-											class="min-h-[4.5rem] w-full resize-y rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5 text-sm font-body text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none focus:border-[#c4b5fd] transition-colors"
-										></textarea>
-									</div>
-								</div>
-							</PopoverContent>
-						</Popover>
-
-						<!-- Settings popover -->
-						<Popover>
-							<PopoverTrigger
-								class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#e2e2e2] bg-white text-[#999] transition-all duration-150 hover:border-[#c8c8c8] hover:text-[#444]"
-								title="Settings"
-							>
-								<SlidersHorizontal size={12} />
-							</PopoverTrigger>
-							<PopoverContent side="top" sideOffset={12} align="start" class="w-80 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
-								<div class="p-4 flex flex-col gap-4">
-									<!-- Data source -->
-									<div class="flex items-center justify-between gap-3 rounded-xl bg-[#fafafa] border border-[#ebebeb] px-3 py-2.5">
-										<div class="flex items-center gap-2">
-											{#if useTestData}
-												<FlaskConical size={12} class="text-amber-500" />
-												<span class="text-xs font-medium text-amber-600">Test data</span>
-											{:else}
-												<Wifi size={12} class="text-emerald-500" />
-												<span class="text-xs font-medium text-emerald-600">Live API</span>
-											{/if}
-										</div>
-										<Switch bind:checked={useTestData} title={useTestData ? 'Switch to Live API' : 'Switch to Test Data'} class="shrink-0" />
-									</div>
-
-									{#if activeTemplate === 'news'}
-										<!-- Source label -->
-										<div class="space-y-2.5 pt-3.5 border-t border-[#f2f2f2]">
-											<div class="flex items-center justify-between gap-2">
-												<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Source Label</Label>
-												<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
-													<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
-													<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'logo')}>Logo</Button>
-												</div>
-											</div>
-											{#if sourceLabelMode === 'text'}
-												<Input bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
-											{:else}
-												<div class="flex items-center gap-2">
-													<input type="file" accept="image/*" class="sr-only" tabindex={-1} aria-hidden="true" bind:this={sourceLogoInput}
-														onchange={async (e) => {
-															const file = (e.currentTarget as HTMLInputElement).files?.[0];
-															if (!file) return;
-															sourceLogoSrc = await new Promise<string>((res, rej) => {
-																const fr = new FileReader();
-																fr.onload = () => res(String(fr.result ?? ''));
-																fr.onerror = () => rej(fr.error);
-																fr.readAsDataURL(file);
-															});
-															(e.currentTarget as HTMLInputElement).value = '';
-														}}
-													/>
-													<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold border-[#ebebeb]" onclick={() => sourceLogoInput?.click()}>
-														{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
-													</Button>
-													{#if sourceLogoSrc}
-														<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => (sourceLogoSrc = '')}>Remove</Button>
-														<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
-															<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
-														</div>
-													{/if}
-												</div>
-												<div class="flex min-w-0 items-center gap-2 pt-1">
-													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Width</Label>
-													<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
-													<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{sourceLogoWidth}px</span>
-												</div>
-											{/if}
-										</div>
-										<!-- Word highlights -->
-										<div class="flex items-center justify-between gap-3 rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5">
-											<div class="min-w-0">
-												<Label for="settings-highlights-toggle" class="text-xs font-semibold text-[#333] block">Word highlights</Label>
-												<p class="text-[10px] text-[#aaa] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
-											</div>
-											<Switch id="settings-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
-										</div>
-									{/if}
-
-									<!-- Bottom shadow -->
-									<div class="pt-3.5 border-t border-[#f2f2f2]">
-										<div class="mb-2.5 flex items-center justify-between">
-											<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Bottom Shadow</Label>
-											<Button type="button" variant="ghost" size="sm" class="h-auto p-0 text-[9px] text-[#bbb] hover:text-[#555]" onclick={() => { shadowHeight = 75; shadowStrength = 1; }}>Reset</Button>
-										</div>
-										<div class="mb-2 flex min-w-0 items-center gap-2">
-											<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Height</span>
-											<Slider type="single" bind:value={shadowHeight} min={0} max={100} step={1} class="min-w-0 flex-1" />
-											<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{shadowHeight}%</span>
-										</div>
-										<div class="flex min-w-0 items-center gap-2">
-											<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Darkness</span>
-											<Slider type="single" bind:value={shadowStrength} min={0} max={1} step={0.05} class="min-w-0 flex-1" />
-											<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{Math.round(shadowStrength * 100)}%</span>
-										</div>
-									</div>
-
-									<!-- Background (non-news) -->
-									{#if activeTemplate !== 'news'}
-										<div class="pt-3.5 border-t border-[#f2f2f2] flex flex-col gap-2">
-											<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Background — Slide {activeSlide + 1}</p>
-											<div class="grid grid-cols-2 gap-2">
-												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
-													<Image size={11} /> Photo
-													<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
-												</label>
-												<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
-													<Play size={11} class="shrink-0" /> Video
-													<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
-												</label>
-											</div>
-											{#if effectiveBackgroundVideo}
-												<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-50 border border-cyan-100">
-													<span class="text-cyan-500 text-[11px]">▶</span>
-													<span class="text-[11px] text-cyan-600 flex-1 truncate">Video active</span>
-													<Button type="button" variant="ghost" size="icon-xs" class="text-[#bbb] hover:text-red-500" onclick={() => clearSlideBackground(activeSlide)}>✕</Button>
-												</div>
-											{/if}
-											{#if backgroundImage || backgroundVideo}
-												<div class="flex flex-col gap-1.5 pt-1">
-													<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-0.5">Position</p>
-													<div class="flex min-w-0 items-center gap-2.5">
-														<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">←</span>
-														<Slider type="single" bind:value={bgOffsetX} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
-														<span class="w-3 text-right text-[10px] text-[#c0c0c0]">→</span>
-													</div>
-													<div class="flex min-w-0 items-center gap-2.5">
-														<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">↑</span>
-														<Slider type="single" bind:value={bgOffsetY} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
-														<span class="w-3 text-right text-[10px] text-[#c0c0c0]">↓</span>
-													</div>
-													<div class="flex min-w-0 items-center gap-2.5">
-														<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">−</span>
-														<Slider type="single" bind:value={bgZoom} min={30} max={300} step={1} class="min-w-0 flex-1" />
-														<span class="w-3 text-right text-[10px] text-[#c0c0c0]">+</span>
-													</div>
-												</div>
-											{/if}
-										</div>
-									{/if}
-								</div>
-							</PopoverContent>
-						</Popover>
-
-						<div class="flex-1"></div>
-
-						<!-- Submit button — dark circle with arrow -->
-						<button
-							type="button"
-							onclick={() => void loadAndFill()}
-							disabled={fetchingNews}
-							title={fetchingNews ? (useTestData ? 'Loading…' : newsContentMode === 'news' ? 'Fetching…' : 'Generating…') : 'Load & Fill'}
-							class="prompt-bar-submit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-[#ffffff] transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
-						>
-							{#if fetchingNews}
-								<Loader size={15} class="animate-spin" />
-							{:else}
-								<ArrowUp size={15} strokeWidth={2.5} />
-							{/if}
-						</button>
-					</div>
+				<!-- Search input row -->
+				<div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
+					<Search size={14} class="shrink-0 text-[#b0b0b0]" />
+					{#if newsContentMode === 'news'}
+						<input
+							bind:value={search}
+							placeholder="Search keyword (optional)…"
+							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+						/>
+					{:else if newsContentMode === 'fact'}
+						<input
+							bind:value={factTopicPrompt}
+							placeholder="Specific angle or context (optional)…"
+							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+						/>
+					{:else}
+						<input
+							bind:value={storyTopicPrompt}
+							placeholder="Story direction or angle (optional)…"
+							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+						/>
+					{/if}
+					{#if newsError}
+						<div class="flex items-center gap-1 shrink-0">
+							<AlertCircle size={11} class="text-red-500 shrink-0" />
+							<span class="text-[11px] font-body text-red-500 max-w-[180px] truncate">{newsError}</span>
+						</div>
+					{/if}
 				</div>
+
+				<!-- Divider -->
+				<div class="mx-4 h-px bg-[#e8e8e8]"></div>
+
+				<!-- Controls row: Type + Topic + Settings + Submit -->
+				<div class="flex items-center gap-2 px-3 pt-2.5 pb-3">
+
+					<!-- ── Type selector ──────────────────────────────── -->
+					<Popover>
+						<PopoverTrigger
+							class="flex items-center gap-1.5 rounded-full border border-[#e2e2e2] bg-white px-3 py-[7px] text-[11.5px] font-semibold font-body text-[#111] transition-all duration-150 hover:border-[#c8c8c8] select-none shrink-0"
+						>
+							{#if newsContentMode === 'news'}
+								<Newspaper size={11} class="shrink-0" />
+								News
+							{:else if newsContentMode === 'fact'}
+								<Sparkles size={11} class="shrink-0" />
+								Random fact
+							{:else}
+								<Type size={11} class="shrink-0" />
+								Random story
+							{/if}
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent side="top" sideOffset={10} align="start" class="w-52 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+							{#each ([
+								{ id: 'news',  icon: Newspaper, label: 'News' },
+								{ id: 'fact',  icon: Sparkles,  label: 'Random fact' },
+								{ id: 'story', icon: Type,      label: 'Random story' },
+							] as const) as opt}
+								<button
+									type="button"
+									onclick={() => (newsContentMode = opt.id)}
+									class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[12.5px] text-left transition-colors duration-100
+										{newsContentMode === opt.id
+											? 'bg-[#f0f0f0] font-semibold text-[#111]'
+											: 'font-medium text-[#555] hover:bg-[#f7f7f7]'}"
+								>
+									<opt.icon size={13} class="shrink-0" />
+									{opt.label}
+									{#if newsContentMode === opt.id}
+										<span class="ml-auto text-[#111]">✓</span>
+									{/if}
+								</button>
+							{/each}
+						</PopoverContent>
+					</Popover>
+
+					<!-- ── Topic selector ─────────────────────────────── -->
+					<Popover>
+						<PopoverTrigger
+							class="flex items-center gap-1.5 rounded-full border border-[#e2e2e2] bg-white px-3 py-[7px] text-[11.5px] font-semibold font-body text-[#111] transition-all duration-150 hover:border-[#c8c8c8] select-none shrink-0"
+						>
+							{#if newsContentMode === 'news'}
+								{categories.find((c) => c.id === category)?.label ?? 'Topic'}
+							{:else if newsContentMode === 'story'}
+								{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
+							{:else}
+								{factTopics.find((t) => t.id === factTopicCategory)?.label ?? 'Any'}
+							{/if}
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent side="top" sideOffset={10} align="start" class="w-64 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+							{#if newsContentMode === 'news'}
+								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">News Category</p>
+								<div class="grid grid-cols-2 gap-1.5">
+									{#each categories as cat}
+										<button
+											type="button"
+											onclick={() => (category = cat.id)}
+											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
+												{category === cat.id
+													? 'bg-[#1a1a1a] text-white font-semibold'
+													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+										>
+											{cat.label}
+										</button>
+									{/each}
+								</div>
+							{:else if newsContentMode === 'story'}
+								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Story Theme</p>
+								<div class="grid grid-cols-2 gap-1.5">
+									{#each storyThemes as th}
+										<button
+											type="button"
+											onclick={() => (storyCategory = th.id)}
+											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
+												{storyCategory === th.id
+													? 'bg-[#1a1a1a] text-white font-semibold'
+													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+										>
+											{th.label}
+										</button>
+									{/each}
+								</div>
+							{:else}
+								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Fact Topic</p>
+								<div class="grid grid-cols-2 gap-1.5">
+									{#each factTopics as topic}
+										<button
+											type="button"
+											onclick={() => (factTopicCategory = topic.id)}
+											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
+												{factTopicCategory === topic.id
+													? 'bg-[#1a1a1a] text-white font-semibold'
+													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+										>
+											{topic.label}
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</PopoverContent>
+					</Popover>
+
+					<!-- Settings popover -->
+					<Popover>
+						<PopoverTrigger
+							class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#e2e2e2] bg-white text-[#999] transition-all duration-150 hover:border-[#c8c8c8] hover:text-[#444]"
+							title="Settings"
+						>
+							<SlidersHorizontal size={12} />
+						</PopoverTrigger>
+						<PopoverContent side="top" sideOffset={12} align="start" class="w-80 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+							<div class="p-4 flex flex-col gap-4">
+								<!-- Data source -->
+								<div class="flex items-center justify-between gap-3 rounded-xl bg-[#fafafa] border border-[#ebebeb] px-3 py-2.5">
+									<div class="flex items-center gap-2">
+										{#if useTestData}
+											<FlaskConical size={12} class="text-amber-500" />
+											<span class="text-xs font-medium text-amber-600">Test data</span>
+										{:else}
+											<Wifi size={12} class="text-emerald-500" />
+											<span class="text-xs font-medium text-emerald-600">Live API</span>
+										{/if}
+									</div>
+									<Switch bind:checked={useTestData} title={useTestData ? 'Switch to Live API' : 'Switch to Test Data'} class="shrink-0" />
+								</div>
+
+								{#if activeTemplate === 'news'}
+									<!-- Source label -->
+									<div class="space-y-2.5 pt-3.5 border-t border-[#f2f2f2]">
+										<div class="flex items-center justify-between gap-2">
+											<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Source Label</Label>
+											<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
+												<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
+												<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'logo')}>Logo</Button>
+											</div>
+										</div>
+										{#if sourceLabelMode === 'text'}
+											<Input bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
+										{:else}
+											<div class="flex items-center gap-2">
+												<input type="file" accept="image/*" class="sr-only" tabindex={-1} aria-hidden="true" bind:this={sourceLogoInput}
+													onchange={async (e) => {
+														const file = (e.currentTarget as HTMLInputElement).files?.[0];
+														if (!file) return;
+														sourceLogoSrc = await new Promise<string>((res, rej) => {
+															const fr = new FileReader();
+															fr.onload = () => res(String(fr.result ?? ''));
+															fr.onerror = () => rej(fr.error);
+															fr.readAsDataURL(file);
+														});
+														(e.currentTarget as HTMLInputElement).value = '';
+													}}
+												/>
+												<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold border-[#ebebeb]" onclick={() => sourceLogoInput?.click()}>
+													{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
+												</Button>
+												{#if sourceLogoSrc}
+													<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => (sourceLogoSrc = '')}>Remove</Button>
+													<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
+														<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
+													</div>
+												{/if}
+											</div>
+											<div class="flex min-w-0 items-center gap-2 pt-1">
+												<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Width</Label>
+												<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
+												<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{sourceLogoWidth}px</span>
+											</div>
+										{/if}
+									</div>
+									<!-- Word highlights -->
+									<div class="flex items-center justify-between gap-3 rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5">
+										<div class="min-w-0">
+											<Label for="settings-highlights-toggle" class="text-xs font-semibold text-[#333] block">Word highlights</Label>
+											<p class="text-[10px] text-[#aaa] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
+										</div>
+										<Switch id="settings-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
+									</div>
+								{/if}
+
+								<!-- Bottom shadow -->
+								<div class="pt-3.5 border-t border-[#f2f2f2]">
+									<div class="mb-2.5 flex items-center justify-between">
+										<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Bottom Shadow</Label>
+										<Button type="button" variant="ghost" size="sm" class="h-auto p-0 text-[9px] text-[#bbb] hover:text-[#555]" onclick={() => { shadowHeight = 75; shadowStrength = 1; }}>Reset</Button>
+									</div>
+									<div class="mb-2 flex min-w-0 items-center gap-2">
+										<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Height</span>
+										<Slider type="single" bind:value={shadowHeight} min={0} max={100} step={1} class="min-w-0 flex-1" />
+										<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{shadowHeight}%</span>
+									</div>
+									<div class="flex min-w-0 items-center gap-2">
+										<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Darkness</span>
+										<Slider type="single" bind:value={shadowStrength} min={0} max={1} step={0.05} class="min-w-0 flex-1" />
+										<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{Math.round(shadowStrength * 100)}%</span>
+									</div>
+								</div>
+
+								<!-- Background (non-news) -->
+								{#if activeTemplate !== 'news'}
+									<div class="pt-3.5 border-t border-[#f2f2f2] flex flex-col gap-2">
+										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Background — Slide {activeSlide + 1}</p>
+										<div class="grid grid-cols-2 gap-2">
+											<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
+												<Image size={11} /> Photo
+												<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
+											</label>
+											<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
+												<Play size={11} class="shrink-0" /> Video
+												<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
+											</label>
+										</div>
+										{#if effectiveBackgroundVideo}
+											<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-50 border border-cyan-100">
+												<span class="text-cyan-500 text-[11px]">▶</span>
+												<span class="text-[11px] text-cyan-600 flex-1 truncate">Video active</span>
+												<Button type="button" variant="ghost" size="icon-xs" class="text-[#bbb] hover:text-red-500" onclick={() => clearSlideBackground(activeSlide)}>✕</Button>
+											</div>
+										{/if}
+										{#if backgroundImage || backgroundVideo}
+											<div class="flex flex-col gap-1.5 pt-1">
+												<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-0.5">Position</p>
+												<div class="flex min-w-0 items-center gap-2.5">
+													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">←</span>
+													<Slider type="single" bind:value={bgOffsetX} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
+													<span class="w-3 text-right text-[10px] text-[#c0c0c0]">→</span>
+												</div>
+												<div class="flex min-w-0 items-center gap-2.5">
+													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">↑</span>
+													<Slider type="single" bind:value={bgOffsetY} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
+													<span class="w-3 text-right text-[10px] text-[#c0c0c0]">↓</span>
+												</div>
+												<div class="flex min-w-0 items-center gap-2.5">
+													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">−</span>
+													<Slider type="single" bind:value={bgZoom} min={30} max={300} step={1} class="min-w-0 flex-1" />
+													<span class="w-3 text-right text-[10px] text-[#c0c0c0]">+</span>
+												</div>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
+						</PopoverContent>
+					</Popover>
+
+					<div class="flex-1"></div>
+
+					<!-- Submit button — dark circle with arrow -->
+					<button
+						type="button"
+						onclick={() => void loadAndFill()}
+						disabled={fetchingNews}
+						title={fetchingNews ? (useTestData ? 'Loading…' : newsContentMode === 'news' ? 'Fetching…' : 'Generating…') : 'Load & Fill'}
+						class="prompt-bar-submit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-[#ffffff] transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
+					>
+						{#if fetchingNews}
+							<Loader size={15} class="animate-spin" />
+						{:else}
+							<ArrowUp size={15} strokeWidth={2.5} />
+						{/if}
+					</button>
+				</div>
+							</div>
 				{#if articleUrl}
 					<a
 						href={articleUrl}
