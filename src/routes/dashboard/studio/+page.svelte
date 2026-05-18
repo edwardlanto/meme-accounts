@@ -80,6 +80,7 @@ import JSZip from 'jszip';
 		VIDEO_STORY_DEFAULTS,
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
+	import { fitTextCarouselBodyToCanvas } from '$lib/studio/text-carousel-body';
 	import {
 		parseExternalSlideBlocksJson,
 		computeStudioSlideMergePatches,
@@ -209,11 +210,9 @@ import JSZip from 'jszip';
 			return;
 		}
 		if (t === 'tweet') {
+			ensureTweetSlideProfileDefaults(idx);
 			if (!String(tweetTopTextBySlide[idx] ?? '').trim()) {
 				tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.topText : x));
-			}
-			if (!String(tweetBottomTextBySlide[idx] ?? '').trim()) {
-				tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.bottomText : x));
 			}
 			return;
 		}
@@ -3830,6 +3829,22 @@ tweetTopImagePanYBySlide,
 		return String(s ?? '').replace(/\[\[|\]\]/g, '').trim();
 	}
 
+	/** Top + bottom tweet identity rows (name, handle, avatar initials). */
+	function ensureTweetSlideProfileDefaults(idx: number) {
+		if (!String(tweetTopNameBySlide[idx] ?? '').trim()) {
+			tweetTopNameBySlide = tweetTopNameBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.topName : x));
+		}
+		if (!String(tweetTopHandleBySlide[idx] ?? '').trim()) {
+			tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.topHandle : x));
+		}
+		if (!String(tweetBottomNameBySlide[idx] ?? '').trim()) {
+			tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.bottomName : x));
+		}
+		if (!String(tweetBottomHandleBySlide[idx] ?? '').trim()) {
+			tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.bottomHandle : x));
+		}
+	}
+
 	/** Primary on-slide copy per template (for Vertex prompts). */
 	function primarySlideTextForPrompt(template: TemplateId, i: number): string {
 		switch (template) {
@@ -3870,27 +3885,56 @@ tweetTopImagePanYBySlide,
 		return t === 'news' || t === 'article' || t === 'imageQuote' || t === 'tweet';
 	}
 
-	function clampFetchedPlainLength(text: string, maxLen: number): string {
+	function clampFetchedPlainLength(text: string, maxLen: number, preserveMarkup = false): string {
 		const raw = String(text ?? '').trim();
 		if (!maxLen) return '';
 		const plain = stripHighlightMarkers(raw).replace(/\s+/g, ' ').trim();
-		if (plain.length <= maxLen) return raw;
+		if (plain.length <= maxLen) return preserveMarkup ? raw : plain;
 		return `${plain.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
 	}
 
-	/** Text carousel: keep \\n\\n paragraph breaks (plain clamp collapses whitespace). */
-	function clampFetchedTextCarouselBody(text: string, maxLen: number): string {
+	/** Text carousel: 1–3 paragraphs, fit to card (never rely on short news hooks). */
+	function clampFetchedTextCarouselBody(text: string, _maxLen: number, opts?: { padToMin?: boolean }): string {
 		const raw = String(text ?? '').trim();
-		if (!maxLen) return '';
-		let s = stripHighlightMarkers(raw);
-		s = s.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-		if (s.length <= maxLen) return ensureTextCarouselBodyMinLength(s);
-		const budget = Math.max(1, maxLen - 1);
-		let cut = budget;
-		while (cut > 0 && s[cut] !== ' ' && s[cut] !== '\n') cut--;
-		if (cut < Math.floor(budget * 0.45)) cut = budget;
-		s = `${s.slice(0, Math.max(1, cut)).trimEnd()}…`;
-		return ensureTextCarouselBodyMinLength(s);
+		if (!raw) return opts?.padToMin ? ensureTextCarouselBodyMinLength('') : '';
+		let s = fitTextCarouselBodyToCanvas(stripHighlightMarkers(raw));
+		const padToMin = opts?.padToMin ?? false;
+		return padToMin ? ensureTextCarouselBodyMinLength(s) : s;
+	}
+
+	async function fetchTextCarouselBody(opts: {
+		text: string;
+		angle?: string;
+		paragraphCount?: number;
+	}): Promise<string> {
+		const res = await fetch('/api/news/text-carousel-body', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				title: articleTitle,
+				text: opts.text,
+				sourceUrl: articleUrl,
+				angle: opts.angle?.trim() || undefined,
+				paragraphCount: opts.paragraphCount,
+				studioRegenAt: Date.now(),
+			}),
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.error ?? 'Text carousel generation failed');
+		return fitTextCarouselBodyToCanvas(String(data.body ?? ''));
+	}
+
+	async function fillTextCarouselDeck(hookText: string, rawText: string, count: number) {
+		const source = String(rawText || articleSnippet || articleTitle || '').trim();
+		const bodies = await Promise.all(
+			Array.from({ length: count }, (_, i) =>
+				fetchTextCarouselBody({
+					text: source,
+					angle: i === 0 ? hookText : undefined,
+				}),
+			),
+		);
+		applyHeadlineStringsToTemplate('textCarousel', bodies);
 	}
 
 	/** Tweet main post: keep short enough to sit above media without crowding the card. */
@@ -3900,22 +3944,30 @@ tweetTopImagePanYBySlide,
 
 	function clampFetchedPrimaryForTemplate(template: TemplateId, text: string): string {
 		const raw = String(text ?? '').trim();
+		const preserveMarkup = template === 'news' && studioTextHighlightsEnabled;
 		switch (template) {
 			case 'tweet':
 				return clampTweetTopFetched(raw);
 			case 'article':
-				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.article);
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.article, false);
 			case 'textCarousel':
 				return clampFetchedTextCarouselBody(raw, FETCH_TEXT_CLIP.textCarousel);
 			case 'imageQuote':
-				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.imageQuote);
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.imageQuote, false);
 			case 'videoStory':
-				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.videoStory);
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.videoStory, false);
 			case 'blackText':
-				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.blackText);
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.blackText, false);
 			default:
-				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.news);
+				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.news, preserveMarkup);
 		}
+	}
+
+	function clampFetchedBlackTextBody(text: string): string {
+		return clampFetchedPlainLength(text, FETCH_TEXT_CLIP.blackTextBody, false)
+			.replace(/\r\n/g, '\n')
+			.replace(/\n{3,}/g, '\n\n')
+			.trim();
 	}
 
 	function normalizeHeadlineVariants(variants: string[], hookText: string, count: number): string[] {
@@ -3938,6 +3990,7 @@ tweetTopImagePanYBySlide,
 			tweetTopTextBySlide = [...clipped];
 			// Bottom block is a tight “reply” slot under the image — full article blurbs overflow the card.
 			tweetBottomTextBySlide = Array.from({ length: clipped.length }, () => '');
+			for (let i = 0; i < clipped.length; i++) ensureTweetSlideProfileDefaults(i);
 		} else if (template === 'article') {
 			articleTextBySlide = [...clipped];
 		} else if (template === 'textCarousel') {
@@ -3956,6 +4009,9 @@ tweetTopImagePanYBySlide,
 		slides = slides.map((s, idx) => (idx === i ? clipped : s));
 		if (template === 'tweet') {
 			tweetTopTextBySlide = tweetTopTextBySlide.map((s, idx) => (idx === i ? clipped : s));
+			// Drop stale reply-line copy so a new fetch does not stack under fresh top text.
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((s, idx) => (idx === i ? '' : s));
+			ensureTweetSlideProfileDefaults(i);
 		} else if (template === 'article') {
 			articleTextBySlide = articleTextBySlide.map((s, idx) => (idx === i ? clipped : s));
 		} else if (template === 'textCarousel') {
@@ -4007,7 +4063,7 @@ tweetTopImagePanYBySlide,
 				setSlideImage(i, p.imageUrl, t);
 			}
 			if (p.body !== undefined && p.body !== '' && t === 'blackText') {
-				const bodyClamped = clampFetchedPlainLength(p.body, FETCH_TEXT_CLIP.blackTextBody);
+				const bodyClamped = clampFetchedBlackTextBody(p.body);
 				blackTextBodyBySlide = blackTextBodyBySlide.map((s, idx) => (idx === i ? bodyClamped : s));
 			}
 		}
@@ -4042,6 +4098,9 @@ tweetTopImagePanYBySlide,
 			Object.values(bgImagesByTemplate).some((row) => (row as any[])?.some((u) => String(u ?? '').trim())) ||
 			Object.values(bgVideosByTemplate).some((row) => (row as any[])?.some((u) => String(u ?? '').trim()));
 		const hasMixedTemplates = new Set(slideTemplates.map((t) => coerceTemplateId(t))).size > 1;
+		const hasNewsSlidesInDeck =
+			slideTemplates.length > 0 &&
+			slideTemplates.some((t) => coerceTemplateId(t) === 'news');
 		const fillExistingDeck =
 			!!opts.fillOnly ||
 			!!opts.preferExistingDeck ||
@@ -4139,7 +4198,9 @@ tweetTopImagePanYBySlide,
 						storyCategory,
 						search: newsContentMode === 'news' ? search || undefined : undefined,
 						categories: newsContentMode === 'news' ? category : undefined,
-						autoHighlight: studioTextHighlightsEnabled,
+						autoHighlight:
+							studioTextHighlightsEnabled &&
+							(fillExistingDeck ? hasNewsSlidesInDeck : contentTemplate === 'news'),
 						pick: newsContentMode === 'news' ? 'random' : 'first',
 						syntheticHint: syntheticHintStr || undefined,
 						studioRegenAt: Date.now(),
@@ -4181,12 +4242,8 @@ tweetTopImagePanYBySlide,
 				slideTemplates.every((t) => coerceTemplateId(t) === 'news') &&
 				!hasMixedTemplates;
 			// True when at least one slide uses the news template (covers mixed decks too).
-			const hasNewsSlides =
-				slideTemplates.length > 0 &&
-				slideTemplates.some((t) => coerceTemplateId(t) === 'news');
-
 			// Sync article metadata so variants / Vertex / circle prompts are not stuck on the previous run.
-			if (hasNewsSlides) {
+			if (hasNewsSlidesInDeck) {
 				// Always sync for any deck that has news slides, regardless of content mode.
 				articleUrl = nextArticleUrl;
 				articleTitle = nextArticleTitle;
@@ -4199,23 +4256,23 @@ tweetTopImagePanYBySlide,
 			}
 				// If the user is mid-inline-edit on News, clear the live buffer so the replacement is visible immediately.
 				if (newsHeadlineLive !== null) newsHeadlineLive = null;
-				// Preserve current slideTemplates, media, overlays. Only write copy to *existing* fields.
-				// This enables "Load Test Article" on a blank/custom canvas without nuking layout.
+				// Preserve layout/media; refresh copy on every slide for its template.
 				const targets: { slide: number; template: TemplateId }[] = [];
 				for (let i = 0; i < n; i++) {
-					const tpl = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
-					const existing =
-						tpl === 'news' && i === activeSlide && newsHeadlineLive !== null
-							? String(stripHighlightMarkers(newsHeadlineLive) ?? '').trim()
-							: String(primarySlideTextForPrompt(tpl, i) ?? '').trim();
-					if (existing) targets.push({ slide: i, template: tpl });
-				}
-				if (!targets.length) {
-					targets.push({ slide: 0, template: coerceTemplateId(slideTemplates[0] ?? lastTemplateUsed) });
+					targets.push({
+						slide: i,
+						template: coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed),
+					});
 				}
 
-				const want = targets.length;
-				const strings = await (async () => {
+				const carouselTargets = targets.filter((t) => t.template === 'textCarousel');
+				const copyTargets = targets.filter((t) => t.template !== 'textCarousel');
+				const variantsNeedHighlights =
+					studioTextHighlightsEnabled && copyTargets.some((t) => t.template === 'news');
+
+				const copyStrings = await (async () => {
+					const want = copyTargets.length;
+					if (want <= 0) return [] as string[];
 					if (want <= 1) return [hookText];
 					try {
 						const variantBodyText =
@@ -4230,7 +4287,7 @@ tweetTopImagePanYBySlide,
 								title: articleTitle,
 								text: variantBodyText,
 								sourceUrl: articleUrl,
-								autoHighlight: studioTextHighlightsEnabled,
+								autoHighlight: variantsNeedHighlights,
 								contentMode: newsContentMode,
 							}),
 						});
@@ -4244,19 +4301,68 @@ tweetTopImagePanYBySlide,
 					}
 				})();
 
-				for (let k = 0; k < targets.length; k++) {
-					const t = targets[k];
+				const sourceForCarousel = String(rawText || articleSnippet || articleTitle || '').trim();
+				let carouselBodies: string[] = [];
+				if (carouselTargets.length) {
+					try {
+						carouselBodies = await Promise.all(
+							carouselTargets.map((t, i) =>
+								fetchTextCarouselBody({
+									text: sourceForCarousel,
+									angle: i === 0 ? hookText : copyStrings[0] ?? hookText,
+								}),
+							),
+						);
+					} catch (e: any) {
+						newsError = `Text carousel: ${e?.message ?? String(e)}`;
+						carouselBodies = carouselTargets.map((_, i) =>
+							clampFetchedTextCarouselBody(i === 0 ? hookText : sourceForCarousel, FETCH_TEXT_CLIP.textCarousel),
+						);
+					}
+				}
+
+				let copyIdx = 0;
+				let carouselIdx = 0;
+				let blackTextBodyFilled = false;
+				for (const t of targets) {
 					pushUndo(t.template, t.slide);
-					applyPrimaryClampedToSlide(t.slide, t.template, strings[k] ?? (k === 0 ? hookText : ''));
+					if (t.template === 'textCarousel') {
+						applyPrimaryClampedToSlide(
+							t.slide,
+							'textCarousel',
+							carouselBodies[carouselIdx++] ?? '',
+						);
+					} else {
+						applyPrimaryClampedToSlide(
+							t.slide,
+							t.template,
+							copyStrings[copyIdx++] ?? hookText,
+						);
+					}
+					if (t.template === 'tweet') ensureTweetSlideProfileDefaults(t.slide);
+					if (t.template === 'blackText' && !blackTextBodyFilled) {
+						blackTextBodyFilled = true;
+						const bodySrc = String(rawText || articleSnippet || '').trim();
+						if (bodySrc) {
+							const bodyClamped = clampFetchedBlackTextBody(bodySrc);
+							blackTextBodyBySlide = blackTextBodyBySlide.map((s, idx) =>
+								idx === t.slide ? bodyClamped : s,
+							);
+						}
+					}
 				}
 			// Deck has news slides → regenerate their backgrounds on every Load & Fill.
 			// Text-only templates (tweet, blackText, etc.) only get text updates (handled above).
 			const refreshNewsDeckOnFetch =
 				!opts.fillOnly &&
-				hasNewsSlides &&
+				hasNewsSlidesInDeck &&
 				(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story');
 			if (refreshNewsDeckOnFetch) {
 				await refreshNewsDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
+			}
+			const hasTweetSlidesInDeck = targets.some((t) => t.template === 'tweet');
+			if (!opts.fillOnly && hasTweetSlidesInDeck) {
+				await refreshTweetDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
 			}
 			} else {
 				slideTemplates = Array.from({ length: n }, () => contentTemplate);
@@ -4306,22 +4412,21 @@ tweetTopImagePanYBySlide,
 				}
 
 				// Prime every slide’s copy (template-specific clamps) so UI never briefly shows unclamped hooks.
-				applyHeadlineStringsToTemplate(contentTemplate, normalizeHeadlineVariants([], hookText, n));
-
-				// Generate supporting slide variants (refines slide 2+ when slideCount > 1)
-				// Keep `fetchingNews` true through variants + imaging so the canvas overlay never drops early.
-				if (slideCount > 1) {
-					generatingVariants = true;
-					await generateVariants(hookText, rawText, contentTemplate);
-					generatingVariants = false;
+				if (contentTemplate === 'textCarousel') {
+					await fillTextCarouselDeck(hookText, rawText, n);
+				} else {
+					applyHeadlineStringsToTemplate(contentTemplate, normalizeHeadlineVariants([], hookText, n));
+					// Generate supporting slide variants (refines slide 2+ when slideCount > 1)
+					if (slideCount > 1) {
+						generatingVariants = true;
+						await generateVariants(hookText, rawText, contentTemplate);
+						generatingVariants = false;
+					}
 				}
 
 				// Black text: hook lines come from variants above; body must follow the same article (not stale template defaults).
 				if (contentTemplate === 'blackText') {
-					const body0 = clampFetchedPlainLength(
-						String(articleSnippet || rawText || '').trim(),
-						FETCH_TEXT_CLIP.blackTextBody,
-					);
+					const body0 = clampFetchedBlackTextBody(String(articleSnippet || rawText || '').trim());
 					blackTextBodyBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? body0 : ''));
 				}
 
@@ -4490,6 +4595,10 @@ tweetTopImagePanYBySlide,
 
 	// ── Generate supporting slide variants ────────────────────────────────
 	async function generateVariants(hookText: string, rawText: string, template: TemplateId = 'news') {
+		if (template === 'textCarousel') {
+			await fillTextCarouselDeck(hookText, rawText, slideCount);
+			return;
+		}
 		try {
 			const variantBodyText =
 				newsContentMode === 'story'
@@ -4503,7 +4612,7 @@ tweetTopImagePanYBySlide,
 					title: articleTitle,
 					text: variantBodyText,
 					sourceUrl: articleUrl,
-					autoHighlight: studioTextHighlightsEnabled,
+					autoHighlight: studioTextHighlightsEnabled && template === 'news',
 					contentMode: newsContentMode,
 				}),
 			});
@@ -4513,6 +4622,12 @@ tweetTopImagePanYBySlide,
 			const variants: string[] = data.variants ?? [];
 			const strings = normalizeHeadlineVariants(variants, hookText, slideCount);
 			applyHeadlineStringsToTemplate(template, strings);
+			if (template === 'blackText') {
+				const body0 = clampFetchedBlackTextBody(String(rawText || articleSnippet || '').trim());
+				if (body0) {
+					blackTextBodyBySlide = Array.from({ length: slideCount }, (_, i) => (i === 0 ? body0 : ''));
+				}
+			}
 		} catch (e: any) {
 			console.error('[variants]', e.message);
 			newsError = `Slide variants: ${e.message}`;
@@ -4663,6 +4778,46 @@ tweetTopImagePanYBySlide,
 		studioImageGenBatchDepth--;
 	}
 }
+
+	/** Replace tweet media on Load & Fill (article hero on first tweet slide, Vertex on the rest). */
+	async function refreshTweetDeckImagesAfterFetch(articleImageUrl?: string) {
+		const tweetSlideIdxs: number[] = [];
+		for (let i = 0; i < slides.length; i++) {
+			if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) === 'tweet') tweetSlideIdxs.push(i);
+		}
+		if (!tweetSlideIdxs.length) return;
+
+		const articleSrc = String(articleImageUrl ?? '').trim();
+		studioImageGenBatchDepth++;
+		try {
+			const genRow = [...(generatingImagesByTemplate.tweet ?? [])];
+			while (genRow.length < slides.length) genRow.push(false);
+			for (const i of tweetSlideIdxs) genRow[i] = true;
+			generatingImagesByTemplate = { ...generatingImagesByTemplate, tweet: genRow };
+
+			const primaryTweetSlide = tweetSlideIdxs[0]!;
+			if (articleSrc) {
+				const safe = await toExportSafeImageUrl(articleSrc);
+				if (String(safe ?? '').trim()) setSlideImage(primaryTweetSlide, safe, 'tweet');
+			}
+
+			await Promise.all(
+				tweetSlideIdxs.map((slideIdx) => {
+					if (slideIdx === primaryTweetSlide && articleSrc) return Promise.resolve();
+					const cleanText = primarySlideTextForPrompt('tweet', slideIdx);
+					const prompt =
+						slideIdx === primaryTweetSlide ? (articleTitle || cleanText) : cleanText;
+					return generateBackground(slideIdx, prompt, 'tweet', true);
+				}),
+			);
+
+			studioImageGenPaintHold = true;
+			await flushStudioLoadingPaint();
+			studioImageGenPaintHold = false;
+		} finally {
+			studioImageGenBatchDepth--;
+		}
+	}
 
 // ── Generate unique images for all slides in parallel ─────────────────
 	async function generateAllSlideImages(articleImageUrl?: string, template: TemplateId = 'news') {
@@ -5463,7 +5618,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	function filmstripPngBackgroundForSlide(slideIdx: number): string {
 		const t = slideTemplates[slideIdx] ?? 'news';
 		if (t === 'blackText') return '#000000';
-		if (t === 'tweet') return '#000000';
+		if (t === 'tweet') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 		if (t === 'textCarousel') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 		if (t === 'videoStory') return '#000000';
 		return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
@@ -6329,13 +6484,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				<BlackTextCarouselTemplate
 					bind:exportRef
 					backgroundImage={canvasBackgroundImage.trim() ? canvasBackgroundImage : BLACK_TEXT_BG_DEFAULT}
+					name={BLACK_TEXT_CAROUSEL_DEFAULTS.name}
+					handle={BLACK_TEXT_CAROUSEL_DEFAULTS.handle}
 					headline={blackTextHeadlineBySlide[paintSlide] ?? BLACK_TEXT_CAROUSEL_DEFAULTS.headline}
 					body={blackTextBodyBySlide[paintSlide] ?? BLACK_TEXT_CAROUSEL_DEFAULTS.body}
+					headlineColor={BLACK_TEXT_CAROUSEL_DEFAULTS.headlineColor}
 					canvasW={CANVAS_W}
 					canvasH={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
-					highlightColor={highlightColor}
 					headlineStyle={canvasBlackTextHeadlineStyle}
 					bodyStyle={canvasBlackTextBodyStyle}
 					selectedText={selectedText}

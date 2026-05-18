@@ -1,6 +1,7 @@
 <script lang="ts">
-import HighlightedText from '$lib/components/HighlightedText.svelte';
 import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+import { stripMarkup } from '$lib/highlight';
+import { TWEET_DEFAULTS } from '$lib/studio/slide-content-defaults';
 import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
 import { Move } from 'lucide-svelte';
@@ -141,6 +142,13 @@ let {
 	textOffsets = {},
 	onTextOffsetChange,
 }: TweetProps = $props();
+
+	const topTextDisplay = $derived(stripMarkup(topText));
+	const bottomTextDisplay = $derived(stripMarkup(bottomText));
+	const topNameDisplay = $derived(String(topName ?? '').trim() || TWEET_DEFAULTS.topName);
+	const topHandleDisplay = $derived(String(topHandle ?? '').trim() || TWEET_DEFAULTS.topHandle);
+	const bottomNameDisplay = $derived(String(bottomName ?? '').trim() || TWEET_DEFAULTS.bottomName);
+	const bottomHandleDisplay = $derived(String(bottomHandle ?? '').trim() || TWEET_DEFAULTS.bottomHandle);
 
 	const topEditable = $derived(!!interactive && typeof onTopTextChange === 'function');
 	const bottomEditable = $derived(!!interactive && typeof onBottomTextChange === 'function');
@@ -323,8 +331,8 @@ let {
 	const bottomInnerDiscBg = $derived(
 		(bottomAvatarInnerBg && bottomAvatarInnerBg.trim()) ? bottomAvatarInnerBg.trim() : card,
 	);
-	const topDiscText = $derived((topAvatarLabel && topAvatarLabel.trim()) || initials(topName));
-	const bottomDiscText = $derived((bottomAvatarLabel && bottomAvatarLabel.trim()) || initials(bottomName));
+	const topDiscText = $derived((topAvatarLabel && topAvatarLabel.trim()) || initials(topNameDisplay));
+	const bottomDiscText = $derived((bottomAvatarLabel && bottomAvatarLabel.trim()) || initials(bottomNameDisplay));
 
 	function topDiscInk() {
 		const custom = !!(topAvatarInnerBg && topAvatarInnerBg.trim());
@@ -448,7 +456,7 @@ let {
 									onTextChange={onTopNameChange}
 								>
 									{#snippet display()}
-										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {topNameCss}">{topName}</span>
+										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {topNameCss}">{topNameDisplay}</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
 								{#if topVerified}
@@ -474,7 +482,7 @@ let {
 								onTextChange={onTopHandleChange}
 							>
 								{#snippet display()}
-									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandle}</span>
+									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandleDisplay}</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -511,12 +519,11 @@ let {
 							onTextChange={onTopTextChange}
 						>
 							{#snippet display()}
-								<HighlightedText
-									as="p"
-									text={topText}
-									defaultColor={tweetHighlightDefault}
+								<p
 									style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
-								/>
+								>
+									{topTextDisplay}
+								</p>
 							{/snippet}
 						</CanvasMarkupTextBlock>
 					</div>
@@ -705,7 +712,7 @@ let {
 									onTextChange={onBottomNameChange}
 								>
 									{#snippet display()}
-										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {bottomNameCss}">{bottomName}</span>
+										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {bottomNameCss}">{bottomNameDisplay}</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
 								{#if bottomVerified}
@@ -731,7 +738,7 @@ let {
 								onTextChange={onBottomHandleChange}
 							>
 								{#snippet display()}
-									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandle}</span>
+									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandleDisplay}</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -767,12 +774,11 @@ let {
 						onTextChange={onBottomTextChange}
 					>
 						{#snippet display()}
-							<HighlightedText
-								as="p"
-								text={bottomText}
-								defaultColor={tweetHighlightDefault}
+							<p
 								style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; {bottomTextCss}"
-							/>
+							>
+								{bottomTextDisplay}
+							</p>
 						{/snippet}
 					</CanvasMarkupTextBlock>
 				{/snippet}

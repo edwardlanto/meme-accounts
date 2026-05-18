@@ -4,6 +4,7 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
+	import { autoTextCarouselFontPx } from '$lib/studio/text-carousel-body';
 	import { stripMarkup } from '$lib/highlight';
 	import { loadGoogleFont } from '$lib/fonts';
 
@@ -109,20 +110,7 @@
 
 	const bodyDisplayText = $derived(stripMarkup((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body));
 
-	/** When body font size isn’t set in the toolbar, scale down for long API-fed copy so it still fits the card. */
-	function autoCarouselBodyFontPx(body: string): number {
-		const t = String(body ?? '').trim();
-		if (!t) return DEFAULT_BODY_SIZE;
-		const compact = t.replace(/\s+/g, ' ').length;
-		const breakParas = (t.match(/\n\s*\n/g) ?? []).length + 1;
-		const score = compact + breakParas * 100;
-		if (score <= 480) return 72;
-		if (score <= 780) return 64;
-		if (score <= 1150) return 56;
-		if (score <= 1700) return 50;
-		if (score <= 2400) return 44;
-		return 38;
-	}
+	const toolbarBodyFontPx = $derived(textCarouselStyles.textCarouselBody?.fontSize ?? null);
 
 	/** Body = headlineStyle ∪ textCarouselBody; defaults folded in so styleCss always emits weight/size/line-height (toolbar overrides win). */
 	/** Default slide typography — Lexend (variable Google Font), same as pre–Impact change */
@@ -137,7 +125,7 @@
 			...merged,
 			fontFamily: merged.fontFamily ?? DEFAULT_BODY_FONT,
 			fontWeight: merged.fontWeight ?? 400,
-			fontSize: merged.fontSize ?? autoCarouselBodyFontPx(bodyDisplayText),
+			fontSize: merged.fontSize ?? autoTextCarouselFontPx(bodyDisplayText, toolbarBodyFontPx),
 			lineHeight: merged.lineHeight ?? 1.38,
 		};
 	});
@@ -353,7 +341,7 @@
 		</DraggableBlock>
 
 		<!-- ── Body text ──────────────────────────────────────────────────── -->
-		<div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
+		<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-start; overflow: hidden;">
 			<DraggableBlock
 				dx={textOffsets.textCarouselBody?.x ?? 0}
 				dy={textOffsets.textCarouselBody?.y ?? 0}

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isZernioConnectPlatform, type ZernioConnectPlatform } from '$lib/integrations/zernio-platforms';
 import { zernioCreateProfile, zernioGetConnectAuthUrl, zernioListAccounts } from '$lib/server/zernio-publish';
 
 export async function ensureUserZernioProfile(
@@ -48,7 +49,7 @@ export async function syncZernioConnectionsForUser(
 	let synced = 0;
 	for (const a of accounts) {
 		const platform = String(a.platform ?? a.provider ?? '').toLowerCase();
-		if (!['facebook', 'instagram', 'tiktok'].includes(platform)) continue;
+		if (!isZernioConnectPlatform(platform)) continue;
 		const id = String(a._id ?? a.id ?? '').trim();
 		if (!id) continue;
 		const labelBase = String(a.displayName ?? a.name ?? a.username ?? a.handle ?? id).slice(0, 180);
@@ -79,7 +80,7 @@ export async function syncZernioConnectionsForUser(
 
 export async function startZernioConnect(
 	apiKey: string,
-	platform: 'facebook' | 'instagram' | 'tiktok',
+	platform: ZernioConnectPlatform,
 	profileId: string,
 	appBaseUrl: string
 ): Promise<string> {

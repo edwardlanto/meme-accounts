@@ -1,13 +1,18 @@
 <script lang="ts">
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
-	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { BLACK_TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
+	import { stripMarkup } from '$lib/highlight';
+	import { loadGoogleFont } from '$lib/fonts';
 
 	interface Props {
-		/** Full-bleed background; default is the black carousel placeholder JPG. */
 		backgroundImage?: string;
+		name?: string;
+		handle?: string;
+		avatar?: string;
+		avatarInnerBg?: string;
+		avatarLabel?: string;
 		headline?: string;
 		body?: string;
 		headlineColor?: string;
@@ -19,7 +24,6 @@
 		interactive?: boolean;
 		exportRef?: HTMLElement | null;
 		selectedText?: TextElementKind | null;
-		highlightColor?: string;
 		headlineStyle?: TextStyle;
 		bodyStyle?: TextStyle;
 		textOffsets?: Record<string, { x: number; y: number }>;
@@ -33,9 +37,14 @@
 
 	let {
 		backgroundImage = '',
+		name = BLACK_TEXT_CAROUSEL_DEFAULTS.name,
+		handle = BLACK_TEXT_CAROUSEL_DEFAULTS.handle,
+		avatar = '',
+		avatarInnerBg = '#1a1a1a',
+		avatarLabel = '',
 		headline = BLACK_TEXT_CAROUSEL_DEFAULTS.headline,
 		body = BLACK_TEXT_CAROUSEL_DEFAULTS.body,
-		headlineColor = '#5B9DFF',
+		headlineColor = BLACK_TEXT_CAROUSEL_DEFAULTS.headlineColor,
 		bodyColor = '#ffffff',
 		showSwipe = true,
 		canvasW = 1080,
@@ -44,7 +53,6 @@
 		interactive = true,
 		exportRef = $bindable(null),
 		selectedText = null,
-		highlightColor = '#5B9DFF',
 		headlineStyle = {},
 		bodyStyle = {},
 		textOffsets = {},
@@ -56,6 +64,9 @@
 		showToolbar = false,
 	}: Props = $props();
 
+	const headlineDisplay = $derived(stripMarkup(headline));
+	const bodyDisplay = $derived(stripMarkup(body));
+
 	const BASE_W = 1080;
 	const BASE_H = 1350;
 	const W = $derived(Math.max(320, Number(canvasW) || BASE_W));
@@ -65,15 +76,18 @@
 	const letterInsetY = $derived((H - BASE_H * layoutScale) / 2);
 	const dragScale = $derived(scale * layoutScale);
 
+	const DEFAULT_HEADLINE_FONT = 'Lexend';
+	const DEFAULT_BODY_FONT = 'Lexend';
+
 	const mergedHeadlineStyle = $derived.by(() => {
 		const s = { ...headlineStyle };
 		return {
 			...s,
 			color: s.color ?? headlineColor,
-			fontFamily: s.fontFamily ?? 'Impact',
-			fontSize: s.fontSize ?? 52,
+			fontFamily: s.fontFamily ?? DEFAULT_HEADLINE_FONT,
+			fontSize: s.fontSize ?? 46,
 			fontWeight: s.fontWeight ?? 700,
-			lineHeight: s.lineHeight ?? 1.2,
+			lineHeight: s.lineHeight ?? 1.28,
 		} satisfies TextStyle;
 	});
 
@@ -82,16 +96,21 @@
 		return {
 			...s,
 			color: s.color ?? bodyColor,
-			fontFamily: s.fontFamily ?? 'Impact',
-			fontSize: s.fontSize ?? 34,
+			fontFamily: s.fontFamily ?? DEFAULT_BODY_FONT,
+			fontSize: s.fontSize ?? 36,
 			fontWeight: s.fontWeight ?? 400,
-			lineHeight: s.lineHeight ?? 1.45,
+			lineHeight: s.lineHeight ?? 1.5,
 		} satisfies TextStyle;
+	});
+
+	$effect(() => {
+		void loadGoogleFont(DEFAULT_HEADLINE_FONT, mergedHeadlineStyle.fontWeight ?? 700);
+		void loadGoogleFont(DEFAULT_BODY_FONT, mergedBodyStyle.fontWeight ?? 400);
 	});
 
 	function styleBits(s: TextStyle): string {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', Impact, 'Arial Black', sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Lexend', -apple-system, sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -104,6 +123,18 @@
 
 	const headlineCss = $derived(styleBits(mergedHeadlineStyle));
 	const bodyCss = $derived(styleBits(mergedBodyStyle));
+
+	function initials(n: string) {
+		return n
+			.replace(/[^\w\s]/g, '')
+			.trim()
+			.split(/\s+/)
+			.map((w) => w[0]?.toUpperCase() ?? '')
+			.slice(0, 2)
+			.join('');
+	}
+
+	const discText = $derived((avatarLabel && avatarLabel.trim()) || initials(name));
 </script>
 
 <div
@@ -127,6 +158,7 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			box-sizing: border-box;
+			font-family: 'Lexend', -apple-system, 'SF Pro Display', sans-serif;
 		"
 	>
 		<div
@@ -153,6 +185,7 @@
 						object-position: center;
 						display: block;
 						pointer-events: none;
+						opacity: 0.35;
 					"
 				/>
 			{/if}
@@ -163,12 +196,70 @@
 					inset: 0;
 					display: flex;
 					flex-direction: column;
-					justify-content: center;
 					box-sizing: border-box;
-					padding: 96px 72px 120px;
+					padding: 88px 72px 120px;
 				"
 			>
-				<div style="max-width: 920px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 28px;">
+				<!-- Profile row -->
+				<DraggableBlock
+					dx={textOffsets.blackTextProfile?.x ?? 0}
+					dy={textOffsets.blackTextProfile?.y ?? 0}
+					{interactive}
+					scale={dragScale}
+					onChange={(x, y) => onTextOffsetChange?.('blackTextProfile', { x, y })}
+				>
+					{#snippet children()}
+						<div style="display: flex; align-items: center; gap: 28px; margin-bottom: 56px; flex-shrink: 0;">
+							<div
+								style="
+									width: 108px;
+									height: 108px;
+									border-radius: 50%;
+									overflow: hidden;
+									flex-shrink: 0;
+									background: {avatarInnerBg};
+									display: flex;
+									align-items: center;
+									justify-content: center;
+								"
+							>
+								{#if avatar?.trim()}
+									<img
+										src={avatar}
+										alt=""
+										style="width: 100%; height: 100%; object-fit: cover; display: block;"
+									/>
+								{:else}
+									<span style="font-size: 32px; font-weight: 600; color: #fff; letter-spacing: -0.02em;">
+										{discText}
+									</span>
+								{/if}
+							</div>
+							<div style="min-width: 0;">
+								<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+									<span style="font-size: 38px; font-weight: 700; color: #fff; letter-spacing: -0.02em;">
+										{name}
+									</span>
+									<svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink: 0;">
+										<circle cx="12" cy="12" r="10" fill="#1D9BF0" />
+										<path
+											d="M7.5 12.2l2.8 2.8 6.2-6.4"
+											stroke="#fff"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</div>
+								<span style="font-size: 32px; font-weight: 400; color: rgba(255,255,255,0.55); letter-spacing: -0.01em;">
+									{handle}
+								</span>
+							</div>
+						</div>
+					{/snippet}
+				</DraggableBlock>
+
+				<div style="flex: 1; display: flex; flex-direction: column; gap: 36px; min-height: 0;">
 					<DraggableBlock
 						dx={textOffsets.blackTextHeadline?.x ?? 0}
 						dy={textOffsets.blackTextHeadline?.y ?? 0}
@@ -193,11 +284,11 @@
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
-									<HighlightedText
-										as="div"
-										text={headline}
+									<div
 										style="margin: 0; text-align: left; word-break: break-word; white-space: pre-wrap; {headlineCss}"
-									/>
+									>
+										{headlineDisplay}
+									</div>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						{/snippet}
@@ -228,11 +319,11 @@
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
-									<HighlightedText
-										as="div"
-										text={body}
-										style="margin: 0; text-align: left; word-break: break-word; white-space: pre-wrap; opacity: 0.96; {bodyCss}"
-									/>
+									<div
+										style="margin: 0; text-align: left; word-break: break-word; white-space: pre-wrap; {bodyCss}"
+									>
+										{bodyDisplay}
+									</div>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						{/snippet}

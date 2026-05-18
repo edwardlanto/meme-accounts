@@ -90,7 +90,8 @@ export type TextElementKind =
 	| 'videoStoryWatermark'
 	| 'blackTextHeadline'
 	| 'blackTextBody'
-	| 'blackTextSwipe';
+	| 'blackTextSwipe'
+	| 'blackTextProfile';
 
 export interface TextSelection {
 	slideIndex: number;

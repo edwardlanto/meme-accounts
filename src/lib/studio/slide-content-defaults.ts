@@ -86,11 +86,16 @@ export const IMAGE_QUOTE_DEFAULTS = {
 } as const;
 
 /** Vertical short-form layout: headline + full-bleed video + watermark. */
-/** Black full-bleed carousel: blue hook + white body + optional swipe hint. */
+/** Black full-bleed carousel: profile row + gold hook + white body. */
 export const BLACK_TEXT_CAROUSEL_DEFAULTS = {
-	headline: '1. Find flights so cheap they feel like a steal',
+	name: 'Jack Blair',
+	handle: '@jackblairofficial',
+	headline: '3. "What\'s the cost of inaction in 6 months, 1 year, 3 years?"',
 	body:
-		'Learn the flight booking strategies frequent travelers use but rarely share. Find the lowest possible fares from [departure city] to [destination] in [month]. Include the best days to search, the best days to fly, hidden-city ticketing insights, and the common booking mistake that costs most travelers hundreds on every trip.',
+		'Step three of fear-setting. The math nobody runs.\n\n' +
+		'His TED talk: "We see what could go wrong if we act. We don\'t see what goes wrong if we don\'t."\n\n' +
+		'Tim left BrainQUICKEN for a month. The business did better without him.',
+	headlineColor: '#E8C547',
 } as const;
 
 export const VIDEO_STORY_DEFAULTS = {

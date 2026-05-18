@@ -5,7 +5,7 @@
 	import {
 		Layers, LayoutDashboard, Search, ImagePlus,
 		FlaskConical, BarChart3,
-		CalendarDays, PenSquare
+		CalendarDays, PenSquare, Plug,
 	} from 'lucide-svelte';
 	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
 
@@ -23,7 +23,8 @@
 		{
 			label: 'Brand',
 			items: [
-				{ href: '/dashboard/branding',   label: 'Branding',     icon: Layers },
+				{ href: '/dashboard/branding',      label: 'Branding',      icon: Layers },
+				{ href: '/dashboard/integrations',  label: 'Integrations',  icon: Plug },
 			]
 		},
 		{

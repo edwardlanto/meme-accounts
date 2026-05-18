@@ -5,6 +5,9 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { ZernioConnectPlatform } from '$lib/integrations/zernio-platforms';
+
+export type { ZernioConnectPlatform };
 
 const DEFAULT_BASE = 'https://zernio.com/api/v1';
 
@@ -52,9 +55,13 @@ export async function zernioCreateProfile(apiKey: string, userId: string): Promi
 	return id;
 }
 
+export async function zernioDeleteAccount(apiKey: string, accountId: string): Promise<void> {
+	await zernioJson(apiKey, `/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+}
+
 export async function zernioGetConnectAuthUrl(
 	apiKey: string,
-	platform: ZernioPlatform,
+	platform: ZernioConnectPlatform,
 	profileId: string,
 	redirectUrl: string
 ): Promise<string> {

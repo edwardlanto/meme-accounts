@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import { adminClient } from '$lib/server/auth';
+import { isZernioConnectPlatform } from '$lib/integrations/zernio-platforms';
 import { ensureUserZernioProfile, startZernioConnect } from '$lib/server/zernio-auth';
 
 function randomState() {
@@ -17,11 +18,9 @@ const cookieOpts = {
 	maxAge: 60 * 15,
 };
 
-const PLATFORMS = new Set(['facebook', 'instagram', 'tiktok']);
-
 export const GET: RequestHandler = async ({ url, cookies }) => {
 	const userId = url.searchParams.get('userId') ?? '';
-	const next = url.searchParams.get('next') ?? '/dashboard/post-scheduler';
+	const next = url.searchParams.get('next') ?? '/dashboard/integrations';
 	const platform = String(url.searchParams.get('platform') ?? '').toLowerCase();
 
 	const apiKey = env.ZERNIO_API_KEY ?? '';
@@ -32,7 +31,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	if (!userId) {
 		throw redirect(303, `${next}?zernio_error=${encodeURIComponent('missing_user')}`);
 	}
-	if (!PLATFORMS.has(platform)) {
+	if (!isZernioConnectPlatform(platform)) {
 		throw redirect(303, `${next}?zernio_error=${encodeURIComponent('bad_platform')}`);
 	}
 
@@ -44,12 +43,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	const supabase = adminClient();
 	const profileId = await ensureUserZernioProfile(supabase, apiKey, userId);
-	const authUrl = await startZernioConnect(
-		apiKey,
-		platform as 'facebook' | 'instagram' | 'tiktok',
-		profileId,
-		appUrl
-	);
+	const authUrl = await startZernioConnect(apiKey, platform, profileId, appUrl);
 
 	throw redirect(303, authUrl);
 };
