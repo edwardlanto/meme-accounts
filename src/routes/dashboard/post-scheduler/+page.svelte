@@ -8,7 +8,8 @@
 	type ChannelId = 'x' | 'linkedin' | 'linkedinPage' | 'reddit' | 'instagramBusiness' | 'facebookPage' | 'threads' | 'youtube' | 'gmb' | 'tiktok' | 'pinterest';
 	type Channel = { id: ChannelId; label: string; accent: string; kind?: 'business' | 'page' | 'standalone'; icon: (active: boolean) => string };
 	type IgContentType = 'post' | 'reel' | 'carousel' | 'story';
-	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; images?: string[]; imageCaptions?: string[]; video?: string; videoCaption?: string };
+	type FbContentType = 'post' | 'reel' | 'photo_story' | 'video_story';
+	type Draft = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; fbType?: FbContentType; images?: string[]; imageCaptions?: string[]; video?: string; videoCaption?: string };
 	type ScheduledPostStatus = 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
 	type ScheduledPost = { id: string; title: string; channels: ChannelId[]; igType: IgContentType; startISO: string; durationMin: number; status: ScheduledPostStatus; lastError?: string | null };
 
@@ -787,7 +788,14 @@
 		let content: any = {};
 		if (target === 'facebookPage') {
 			const message = `Scheduled from Social Poster — ${new Date().toLocaleString()}`;
-			if (draft.images?.length) {
+			const fbType = draft.fbType ?? 'post';
+			if (fbType === 'reel' && draft.video) {
+				content = { kind: 'reel', reelVideo: { url: draft.video }, reelDescription: message, meta: { platform: 'facebook' } };
+			} else if (fbType === 'photo_story' && draft.images?.[0]) {
+				content = { kind: 'photo_story', storyPhoto: draft.images[0], meta: { platform: 'facebook' } };
+			} else if (fbType === 'video_story' && draft.video) {
+				content = { kind: 'video_story', storyVideo: { url: draft.video }, meta: { platform: 'facebook' } };
+			} else if (draft.images?.length) {
 				content = { message, images: draft.images, meta: { platform: 'facebook' } };
 				if (draft.imageCaptions?.length) content.imageCaptions = draft.imageCaptions;
 			} else if (draft.video) {
@@ -869,11 +877,21 @@
 			metaBanner = { kind: 'success', message: 'Posting to Facebook now…' };
 			try {
 				const message = `Posted from Social Poster — ${new Date().toLocaleString()}`;
-				const content: any = { message };
-				if (draft.images?.length) {
-					content.images = draft.images;
-					if (draft.imageCaptions?.length) content.imageCaptions = draft.imageCaptions;
-				} else if (draft.video) content.video = draft.video;
+				const fbType = draft.fbType ?? 'post';
+				let content: any;
+				if (fbType === 'reel' && draft.video) {
+					content = { kind: 'reel', reelVideo: { url: draft.video }, reelDescription: message, meta: { platform: 'facebook' } };
+				} else if (fbType === 'photo_story' && draft.images?.[0]) {
+					content = { kind: 'photo_story', storyPhoto: draft.images[0], meta: { platform: 'facebook' } };
+				} else if (fbType === 'video_story' && draft.video) {
+					content = { kind: 'video_story', storyVideo: { url: draft.video }, meta: { platform: 'facebook' } };
+				} else {
+					content = { message };
+					if (draft.images?.length) {
+						content.images = draft.images;
+						if (draft.imageCaptions?.length) content.imageCaptions = draft.imageCaptions;
+					} else if (draft.video) content.video = draft.video;
+				}
 
 				const res = await authFetch('/api/publish/facebook', {
 					method: 'POST',
@@ -912,6 +930,37 @@
 			await new Promise((r) => setTimeout(r, 1500));
 			await loadScheduledPosts();
 		}
+	}
+
+	// ── Platform helpers ─────────────────────────────────────────────────────
+	const IG_TYPES: { id: IgContentType; label: string }[] = [
+		{ id: 'post', label: 'Post' },
+		{ id: 'reel', label: 'Reel' },
+		{ id: 'carousel', label: 'Carousel' },
+		{ id: 'story', label: 'Story' },
+	];
+	const FB_TYPES: { id: FbContentType; label: string }[] = [
+		{ id: 'post', label: 'Post' },
+		{ id: 'reel', label: 'Reel' },
+		{ id: 'photo_story', label: 'Photo Story' },
+		{ id: 'video_story', label: 'Video Story' },
+	];
+	function channelBrandColor(id: ChannelId): string {
+		if (id === 'instagramBusiness') return '#E4405F';
+		if (id === 'facebookPage') return '#1877F2';
+		if (id === 'tiktok') return '#25F4EE';
+		if (id === 'linkedin' || id === 'linkedinPage') return '#0A66C2';
+		if (id === 'youtube') return '#FF0000';
+		if (id === 'reddit') return '#FF4500';
+		if (id === 'pinterest') return '#BD081C';
+		if (id === 'threads') return '#101010';
+		return '#8B5CF6';
+	}
+	function draftPrimaryChannel(d: Draft): ChannelId | null {
+		return d.channels.find(c => c === 'instagramBusiness' || c === 'facebookPage' || c === 'tiktok' || c === 'linkedin' || c === 'linkedinPage') ?? d.channels[0] ?? null;
+	}
+	function postPlatformColor(p: ScheduledPost): string {
+		return channelBrandColor(p.channels[0] ?? ('x' as ChannelId));
 	}
 
 	async function pickTimeAndSchedule(draft: Draft) {
@@ -961,257 +1010,313 @@
 	}
 </script>
 
-<div class="scheduler-root h-[calc(100vh-0px)] w-full flex overflow-hidden" style="background: var(--app-bg); color: var(--app-text);">
+<div class="sched-root" style="background: var(--app-bg); color: var(--app-text);">
+
 	<!-- ═══ LEFT SIDEBAR ════════════════════════════════════════════════════ -->
-	<aside class="w-72 shrink-0 border-r flex flex-col" style="background: var(--app-surface-2); border-color: var(--app-border);">
+	<aside class="sched-aside">
+
 		<!-- Header -->
 		<div class="px-4 py-3.5 border-b flex items-center gap-2.5" style="border-color: var(--app-border);">
-			<button onclick={() => history.length > 1 ? history.back() : goto('/dashboard')}
+			<button
+				onclick={() => history.length > 1 ? history.back() : goto('/dashboard')}
 				class="cal-icon-btn"
-				aria-label="Go back">
+				aria-label="Back">
 				<ArrowLeft size={15} />
 			</button>
-			<div class="min-w-0 flex-1">
-				<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Schedule</p>
-				<p class="text-sm font-sans font-semibold leading-tight" style="color: var(--app-text);">Calendar</p>
+			<div class="flex-1 min-w-0">
+				<p class="text-[10px] uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Post Scheduler</p>
+				<p class="text-sm font-semibold leading-tight" style="color: var(--app-text);">Content Calendar</p>
 			</div>
+			<button
+				onclick={() => loadScheduledPosts()}
+				class="cal-icon-btn"
+				title="Refresh"
+				aria-label="Refresh posts">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+			</button>
 		</div>
 
-		<!-- Channels -->
+		<!-- Connected Platforms -->
 		<div class="px-4 py-3 border-b" style="border-color: var(--app-border);">
 			<div class="flex items-center justify-between mb-2.5">
-				<p class="text-[10px] font-sans uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Channels</p>
-				<button onclick={() => (showAddChannel = true)}
-					class="cal-chip-btn violet flex items-center gap-1">
-					<Plus size={11} /> Add
+				<p class="text-[10px] uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Platforms</p>
+				<button onclick={() => (showAddChannel = true)} class="cal-chip-btn violet flex items-center gap-1">
+					<Plus size={11} /> Connect
 				</button>
 			</div>
 
 			{#if connectionsError}
-				<div class="rounded-xl border p-2.5 mb-2.5" style="background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.18);">
-					<p class="text-[11px] font-sans" style="color: rgba(248,113,113,.9);">{connectionsError}</p>
+				<div class="rounded-xl border p-2.5 mb-2" style="background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.18);">
+					<p class="text-[11px]" style="color: rgba(248,113,113,.9);">{connectionsError}</p>
 				</div>
 			{/if}
 
 			{#if userId && connected.length === 0 && !connectionsError}
-				<div class="rounded-xl border p-2.5 mb-2.5" style="background: var(--app-surface-3); border-color: var(--app-border);">
-					<p class="text-xs font-sans" style="color: var(--app-text-2);">No connected channels yet.</p>
-					<p class="text-[11px] font-sans mt-1 leading-relaxed" style="color: var(--app-text-3);">
-						If you just connected Meta, make sure `SUPABASE_SERVICE_KEY` is valid so the server can save `social_connections`.
-					</p>
+				<div class="rounded-xl border p-3 text-center" style="background: var(--app-surface-3); border-color: var(--app-border);">
+					<p class="text-xs mb-2" style="color: var(--app-text-2);">No platforms connected yet.</p>
+					<button onclick={() => (showAddChannel = true)} class="cal-chip-btn violet text-xs w-full">
+						Connect a platform →
+					</button>
+				</div>
+			{:else if connected.length > 0}
+				<div class="flex flex-col gap-1.5">
+					{#each connected as id (id)}
+						{@const ch = channelById(id)}
+						{@const brandColor = channelBrandColor(id)}
+						<div class="sched-platform-item" style="--brand: {brandColor};">
+							<div class="sched-platform-icon-box" style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-3)); border: 1px solid color-mix(in oklab, {brandColor} 22%, var(--app-border));">
+								<div class="opacity-90">{@html ch?.icon(true) ?? ''}</div>
+							</div>
+							<div class="flex-1 min-w-0">
+								<p class="text-xs font-semibold leading-tight" style="color: var(--app-text);">{ch?.label ?? id}</p>
+								<p class="text-[10px] mt-0.5 truncate" style="color: var(--app-text-3);">
+									{#if id === 'instagramBusiness'}Post · Reel · Carousel · Story
+									{:else if id === 'facebookPage'}Post · Reel · Story
+									{:else if id === 'tiktok'}Video
+									{:else if id === 'youtube'}Video Upload
+									{:else if id === 'linkedin' || id === 'linkedinPage'}Post · Image · Video
+									{:else}Post
+									{/if}
+								</p>
+							</div>
+							<div class="flex items-center gap-1.5 shrink-0">
+								<div class="w-1.5 h-1.5 rounded-full shrink-0" style="background: #22C55E;"></div>
+								<button
+									onclick={(e) => { e.stopPropagation(); void disconnectChannel(id); }}
+									class="w-6 h-6 rounded-lg border flex items-center justify-center transition-all hover:bg-red-500/10 hover:border-red-500/30"
+									style="border-color: var(--app-border); color: var(--app-text-3);"
+									aria-label="Disconnect {ch?.label ?? id}"
+								>
+									<X size={11} />
+								</button>
+							</div>
+						</div>
+					{/each}
 				</div>
 			{/if}
-
-			<div class="flex flex-col gap-1.5">
-				{#each connected as id (id)}
-					{@const ch = channelById(id)}
-					<div
-						role="button"
-						tabindex="0"
-						onclick={() => toggleConnected(id)}
-						onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleConnected(id)}
-						class="group flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-colors text-left"
-						style="border-color: var(--app-border); background: var(--app-surface-3);"
-					>
-						<div class="w-9 h-9 rounded-xl border flex items-center justify-center" style="background: var(--app-surface-2); border-color: var(--app-border);">
-							<div class="opacity-90">{@html ch?.icon(true) ?? ''}</div>
-						</div>
-						<div class="min-w-0 flex-1">
-							<p class="text-xs font-sans truncate" style="color: var(--app-text);">{ch?.label ?? id}</p>
-							<p class="text-[10px] font-sans truncate" style="color: var(--app-text-3);">{ch?.kind ?? 'channel'}</p>
-						</div>
-						<div class="flex items-center gap-2">
-							<div class="w-2 h-2 rounded-full {ch ? ch.accent : 'bg-white/30'}"></div>
-							<button
-								onclick={(e) => { e.stopPropagation(); void disconnectChannel(id); }}
-								class="w-7 h-7 rounded-lg border flex items-center justify-center transition-all"
-								style="background: transparent; border-color: var(--app-border); color: var(--app-text-3);"
-								aria-label={`Disconnect ${ch?.label ?? id}`}
-								title="Disconnect"
-							>
-								<X size={13} />
-							</button>
-						</div>
-					</div>
-				{/each}
-			</div>
 		</div>
 
 		<!-- Drafts -->
-		<div class="px-4 py-3 flex-1 overflow-auto">
+		<div class="px-4 py-3 flex-1 overflow-auto min-h-0" style="scrollbar-width: thin; scrollbar-color: var(--app-scroll-thumb) transparent;">
 			<div class="flex items-center justify-between mb-2.5">
-				<p class="text-[10px] font-sans uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Drafts</p>
-				<p class="text-[10px] font-sans" style="color: var(--app-text-3);">drag to calendar</p>
+				<p class="text-[10px] uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Drafts</p>
+				<p class="text-[10px]" style="color: var(--app-text-3);">drag to schedule</p>
 			</div>
-			<div class="flex flex-col gap-2">
-				{#if drafts.length === 0}
-					<div class="rounded-xl border p-3" style="background: var(--app-surface-3); border-color: var(--app-border);">
-						<p class="text-xs font-sans" style="color: var(--app-text-2);">No drafts yet.</p>
-						<p class="text-[11px] font-sans mt-1 leading-relaxed" style="color: var(--app-text-3);">
-							Connect a channel to generate starter drafts you can drag onto the calendar.
-						</p>
-						<button
-							onclick={() => (showAddChannel = true)}
-							class="mt-3 w-full px-3 py-2 rounded-xl text-xs font-sans cal-chip-btn violet"
-						>
-							Connect channel
-						</button>
+
+			{#if drafts.length === 0}
+				<div class="rounded-xl border p-4 text-center" style="background: var(--app-surface-3); border-color: var(--app-border);">
+					<div class="w-9 h-9 rounded-full mx-auto mb-2.5 flex items-center justify-center" style="background: var(--app-surface-2); border: 1px solid var(--app-border);">
+						<Calendar size={15} style="color: var(--app-text-3);" />
 					</div>
-				{/if}
+					<p class="text-xs font-semibold mb-1" style="color: var(--app-text);">No drafts yet</p>
+					<p class="text-[11px] leading-relaxed mb-3" style="color: var(--app-text-3);">Connect a platform to start. Drafts from Studio appear here automatically.</p>
+					<button onclick={() => (showAddChannel = true)} class="cal-chip-btn violet w-full">Connect platform →</button>
+				</div>
+			{:else}
+				<div class="flex flex-col gap-2.5">
+					{#each drafts as d (d.id)}
+						{@const primaryCh = draftPrimaryChannel(d)}
+						{@const brandColor = primaryCh ? channelBrandColor(primaryCh) : '#8B5CF6'}
+						<div class="sched-draft-card rounded-xl border overflow-hidden" style="border-color: var(--app-border);">
 
-				{#each drafts as d (d.id)}
-					<div role="listitem" class="select-none rounded-xl border overflow-hidden transition-colors" style="border-color: var(--app-border); background: var(--app-surface-3);">
-						<!-- Drag handle -->
-						<div
-							role="button"
-							tabindex="0"
-							draggable="true"
-							ondragstart={(e) => dragStartDraft(e, d.id)}
-							class="cursor-grab active:cursor-grabbing px-3 py-2 border-b flex items-center gap-2"
-							style="border-color: var(--app-border); background: var(--app-surface-2);"
-							title="Drag onto a calendar slot to schedule"
-						>
-							<GripVertical size={13} style="color: var(--app-text-3);" />
-							<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Drag to schedule</p>
-						</div>
-
-						<div class="p-3">
-							<div class="flex items-start justify-between gap-2 mb-2">
-								<p class="text-xs font-sans" style="color: var(--app-text);">{d.title}</p>
-								<div class="flex items-center gap-1.5 shrink-0 flex-wrap">
-									<button
-										onclick={(e) => { e.stopPropagation(); deleteDraft(d.id); }}
-										class="w-6 h-6 rounded-lg border flex items-center justify-center transition-all"
-										style="background: transparent; border-color: var(--app-border); color: var(--app-text-3);"
-										aria-label="Delete draft"
-									>
-										<X size={12} />
-									</button>
-									<button
-										onclick={(e) => { e.stopPropagation(); void postNow(d); }}
-										class="cal-chip-btn green"
-										title="Publish immediately"
-									>
-										Post now
-									</button>
-									<button
-										onclick={(e) => { e.stopPropagation(); void pickTimeAndSchedule(d); }}
-										class="cal-chip-btn cyan"
-										title="Schedule without dragging"
-									>
-										Pick time
-									</button>
-									<span class="text-[9px] font-sans px-2 py-1 rounded-lg border {igTypePillClass(d.igType)}">
-										{igTypeLabel(d.igType)}
-									</span>
-								</div>
+							<!-- Drag handle -->
+							<div
+								role="button"
+								tabindex="0"
+								draggable="true"
+								ondragstart={(e) => dragStartDraft(e, d.id)}
+								class="px-3 py-1.5 flex items-center gap-2 border-b cursor-grab active:cursor-grabbing"
+								style="border-color: var(--app-border); background: var(--app-surface-3);"
+								title="Drag to a calendar slot to schedule"
+							>
+								<GripVertical size={12} style="color: var(--app-text-3);" />
+								<p class="text-[10px] uppercase tracking-widest flex-1 select-none" style="color: var(--app-text-3);">Drag to schedule</p>
+								<button
+									onclick={(e) => { e.stopPropagation(); deleteDraft(d.id); }}
+									class="w-5 h-5 rounded flex items-center justify-center transition-all hover:bg-red-500/10"
+									style="color: var(--app-text-3);"
+									aria-label="Delete draft"
+								><X size={11} /></button>
 							</div>
-							{#if (d.images?.length ?? 0) > 0}
-								<div class="mb-2">
-									<div class="flex items-center justify-between">
-										<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Preview</p>
-										<button
-											type="button"
-											onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], 0, d.title); }}
-											class="text-[10px] font-sans transition-colors"
-											style="color: var(--color-violet);"
-										>
-											Open →
-										</button>
+
+							<!-- Draft body -->
+							<div class="p-3" style="background: var(--app-surface-3);">
+
+								<!-- Platform + title -->
+								<div class="flex items-start gap-2 mb-2.5">
+									{#if primaryCh}
+										<div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+											style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); border: 1px solid color-mix(in oklab, {brandColor} 22%, var(--app-border));">
+											<div class="opacity-90">{@html channelById(primaryCh)?.icon(true) ?? ''}</div>
+										</div>
+									{/if}
+									<p class="text-xs font-medium leading-tight flex-1 min-w-0" style="color: var(--app-text);">{d.title}</p>
+								</div>
+
+								<!-- Instagram content type selector -->
+								{#if d.channels.includes('instagramBusiness')}
+									<div class="mb-2.5">
+										<p class="text-[9px] uppercase tracking-widest mb-1.5" style="color: var(--app-text-3);">Instagram type</p>
+										<div class="flex flex-wrap gap-1">
+											{#each IG_TYPES as t (t.id)}
+												<button
+													onclick={() => { drafts = drafts.map(x => x.id === d.id ? {...x, igType: t.id} : x); }}
+													class="sched-type-pill {d.igType === t.id ? 'active' : ''}"
+													data-platform="instagram"
+												>{t.label}</button>
+											{/each}
+										</div>
 									</div>
-									<div class="mt-2 flex items-center gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
-										{#each (d.images ?? []).slice(0, 8) as src, i (src + ':' + i)}
+								{/if}
+
+								<!-- Facebook content type selector -->
+								{#if d.channels.includes('facebookPage')}
+									<div class="mb-2.5">
+										<p class="text-[9px] uppercase tracking-widest mb-1.5" style="color: var(--app-text-3);">Facebook type</p>
+										<div class="flex flex-wrap gap-1">
+											{#each FB_TYPES as t (t.id)}
+												<button
+													onclick={() => { drafts = drafts.map(x => x.id === d.id ? {...x, fbType: t.id} : x); }}
+													class="sched-type-pill {(d.fbType ?? 'post') === t.id ? 'active' : ''}"
+													data-platform="facebook"
+												>{t.label}</button>
+											{/each}
+										</div>
+									</div>
+								{/if}
+
+								<!-- TikTok indicator -->
+								{#if d.channels.includes('tiktok')}
+									<div class="mb-2.5">
+										<p class="text-[9px] uppercase tracking-widest mb-1.5" style="color: var(--app-text-3);">TikTok</p>
+										<span class="sched-type-pill active" data-platform="tiktok">Video</span>
+									</div>
+								{/if}
+
+								<!-- Image thumbnails -->
+								{#if (d.images?.length ?? 0) > 0}
+									<div class="mb-2.5">
+										<div class="flex items-center justify-between mb-1">
+											<p class="text-[9px] uppercase tracking-widest" style="color: var(--app-text-3);">Preview ({d.images?.length})</p>
 											<button
 												type="button"
-												onclick={(e) => { e.stopPropagation(); openLightbox(d.images ?? [], i, d.title); }}
-												class="shrink-0 relative w-12 h-12 rounded-xl overflow-hidden border hover:opacity-95 transition-opacity"
-												style="border-color: var(--app-border); background: var(--app-surface-2);"
-												title="Click to preview"
-											>
-												<img src={src} alt={`Draft image ${i + 1}`} class="w-full h-full object-cover" />
-												<div class="absolute bottom-1 left-1 text-[9px] font-sans px-1.5 py-0.5 rounded-md bg-black/55 text-white/80">
-													{i + 1}
+												onclick={() => openLightbox(d.images ?? [], 0, d.title)}
+												class="text-[10px] transition-colors hover:underline"
+												style="color: var(--color-violet);"
+											>View all →</button>
+										</div>
+										<div class="flex gap-1.5 overflow-x-auto pb-0.5" style="scrollbar-width: thin;">
+											{#each (d.images ?? []).slice(0, 6) as src, i (src + ':' + i)}
+												<button
+													type="button"
+													onclick={() => openLightbox(d.images ?? [], i, d.title)}
+													class="shrink-0 relative w-10 h-10 rounded-lg overflow-hidden border hover:opacity-80 transition-opacity"
+													style="border-color: var(--app-border);"
+												>
+													<img src={src} alt="Draft image {i + 1}" class="w-full h-full object-cover" />
+													<div class="absolute bottom-0.5 left-0.5 text-[8px] px-1 py-0.5 rounded bg-black/60 text-white/85">{i + 1}</div>
+												</button>
+											{/each}
+											{#if (d.images?.length ?? 0) > 6}
+												<div class="shrink-0 w-10 h-10 rounded-lg border flex items-center justify-center text-[10px]"
+													style="border-color: var(--app-border); color: var(--app-text-3); background: var(--app-surface-2);">
+													+{(d.images?.length ?? 0) - 6}
 												</div>
-											</button>
-										{/each}
-										{#if (d.images?.length ?? 0) > 8}
-											<div class="shrink-0 text-[10px] font-sans px-2" style="color: var(--app-text-3);">+{(d.images?.length ?? 0) - 8}</div>
-										{/if}
+											{/if}
+										</div>
 									</div>
+								{/if}
+
+								<!-- Action buttons -->
+								<div class="flex items-center gap-1.5">
+									<button
+										onclick={() => void postNow(d)}
+										class="flex-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98]"
+										style="background: {brandColor};"
+									>Post Now</button>
+									<button
+										onclick={() => void pickTimeAndSchedule(d)}
+										class="flex-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all hover:opacity-80"
+										style="border-color: var(--app-border); background: var(--app-surface-2); color: var(--app-text-2);"
+									>Schedule</button>
 								</div>
-							{/if}
-							<div class="flex items-center justify-between gap-2 mb-2">
-								<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">IG type</p>
-								<select
-									value={d.igType}
-									onchange={(e) => {
-										const v = (e.target as HTMLSelectElement).value as IgContentType;
-										drafts = drafts.map((x) => (x.id === d.id ? { ...x, igType: v } : x));
-									}}
-									class="cal-select"
-								>
-									<option value="post">Post</option>
-									<option value="reel">Reel</option>
-									<option value="carousel">Carousel</option>
-									<option value="story">Story (manual)</option>
-								</select>
-							</div>
-							<div class="flex items-center gap-1.5 flex-wrap">
-								{#each d.channels as cid (cid)}
-									{@const c = channelById(cid)}
-									<span class="text-[9px] font-sans px-2 py-1 rounded-lg border flex items-center gap-1.5" style="border-color: var(--app-border); color: var(--app-text-2);">
-										<span class="w-1.5 h-1.5 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
-										{c?.label ?? cid}
-									</span>
-								{/each}
 							</div>
 						</div>
-					</div>
-				{/each}
-			</div>
+					{/each}
+				</div>
+			{/if}
 		</div>
+
+		<!-- Recent Activity -->
+		{#if recentPosts.length > 0}
+			<div class="border-t" style="border-color: var(--app-border);">
+				<details class="sched-activity-details">
+					<summary class="px-4 py-2.5 flex items-center justify-between cursor-pointer list-none select-none">
+						<p class="text-[10px] uppercase tracking-widest font-medium" style="color: var(--app-text-3);">Recent Activity</p>
+						<div class="flex items-center gap-2">
+							<span class="text-[10px] px-1.5 py-0.5 rounded-full" style="background: var(--app-surface-3); color: var(--app-text-3);">{recentPosts.length}</span>
+							<svg class="sched-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--app-text-3);"><polyline points="6 9 12 15 18 9"/></svg>
+						</div>
+					</summary>
+					<div class="px-4 pb-3 flex flex-col gap-1.5 max-h-48 overflow-auto" style="scrollbar-width: thin;">
+						{#each recentPosts as r (r.id)}
+							{@const statusColor = r.status === 'published' ? '#22C55E' : r.status === 'failed' ? '#EF4444' : r.status === 'publishing' ? '#F59E0B' : '#60A5FA'}
+							<div class="flex items-center gap-2 py-1.5 px-2 rounded-lg border" style="border-color: var(--app-border); background: var(--app-surface-3);">
+								<div class="w-1.5 h-1.5 rounded-full shrink-0" style="background: {statusColor};"></div>
+								<div class="flex-1 min-w-0">
+									<p class="text-[11px] truncate font-medium" style="color: var(--app-text);">{r.title}</p>
+									<p class="text-[10px]" style="color: var(--app-text-3);">{r.status} · {new Date(r.scheduled_at).toLocaleDateString()}</p>
+								</div>
+								<button
+									onclick={async () => { anchor = new Date(r.scheduled_at); view = 'week'; await tick(); scrollCalendarToHour(new Date(r.scheduled_at).getHours()); }}
+									class="text-[10px] px-1.5 py-0.5 rounded-md border transition-all hover:border-violet-500/40 shrink-0"
+									style="border-color: var(--app-border); color: var(--app-text-3);"
+								>↗</button>
+							</div>
+						{/each}
+					</div>
+				</details>
+			</div>
+		{/if}
+
 	</aside>
 
 	<!-- ═══ MAIN CALENDAR AREA ═══════════════════════════════════════════════ -->
 	<main class="flex-1 overflow-hidden flex flex-col" style="background: var(--app-bg);">
 
-		<!-- ── Top banners ── -->
+		<!-- Banners -->
 		{#if metaBanner}
-			<div class="px-5 pt-3 pb-0">
-				<div class="rounded-xl border p-3 text-sm font-sans flex items-start justify-between gap-3
+			<div class="mx-5 mt-3">
+				<div class="rounded-xl border p-3 flex items-start justify-between gap-3
 					{metaBanner.kind === 'error'
 						? 'bg-red-500/8 border-red-500/20 text-red-400'
 						: 'bg-emerald-500/8 border-emerald-500/20 text-emerald-500'}">
-					<p class="min-w-0 text-[13px]">{metaBanner.message}</p>
-					<button
-						onclick={() => (metaBanner = null)}
-						class="cal-icon-btn shrink-0"
-						aria-label="Dismiss"
-					>
-						<X size={13} />
-					</button>
+					<p class="text-[13px] min-w-0">{metaBanner.message}</p>
+					<button onclick={() => (metaBanner = null)} class="cal-icon-btn shrink-0" aria-label="Dismiss"><X size={13} /></button>
 				</div>
 			</div>
 		{/if}
 
 		{#if studioExportPreview.length > 0}
-			<div class="px-5 pt-3">
-				<div class="rounded-xl border p-4" style="background: var(--app-surface-2); border-color: var(--app-border);">
-					<p class="text-[10px] font-sans uppercase tracking-widest mb-1" style="color: var(--app-text-3);">Ready to upload</p>
-					<p class="text-sm font-sans font-semibold" style="color: var(--app-text);">
-						{studioExportPreview.length} PNG{studioExportPreview.length === 1 ? '' : 's'} exported from Studio
-					</p>
-					<div class="mt-3 flex items-center gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
+			<div class="mx-5 mt-3">
+				<div class="rounded-xl border p-3" style="background: var(--app-surface-2); border-color: var(--app-border);">
+					<div class="flex items-center justify-between mb-2">
+						<div>
+							<p class="text-[10px] uppercase tracking-widest" style="color: var(--app-text-3);">Studio Export Ready</p>
+							<p class="text-sm font-semibold" style="color: var(--app-text);">{studioExportPreview.length} slide{studioExportPreview.length === 1 ? '' : 's'} exported</p>
+						</div>
+					</div>
+					<div class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
 						{#each studioExportPreview as src, i (i)}
 							<button
 								type="button"
 								onclick={() => openLightbox(studioExportPreview, i, 'Studio export')}
-								class="shrink-0 relative w-14 h-14 rounded-xl overflow-hidden border hover:opacity-95 transition-opacity"
+								class="shrink-0 relative w-12 h-12 rounded-lg overflow-hidden border hover:opacity-80 transition-opacity"
 								style="border-color: var(--app-border);"
 								title="Click to preview"
 							>
-								<img src={src} alt={`Slide ${i + 1}`} class="w-full h-full object-cover" />
-								<div class="absolute bottom-1 left-1 text-[9px] font-sans px-1.5 py-0.5 rounded-md bg-black/55 text-white/80">{i + 1}</div>
+								<img src={src} alt="Slide {i + 1}" class="w-full h-full object-cover" />
+								<div class="absolute bottom-0.5 left-0.5 text-[8px] px-1 rounded bg-black/60 text-white/85">{i + 1}</div>
 							</button>
 						{/each}
 					</div>
@@ -1219,109 +1324,85 @@
 			</div>
 		{/if}
 
-		{#if recentPosts.length > 0}
-			<div class="px-5 pt-3">
-				<details class="rounded-xl border p-3" style="background: var(--app-surface-2); border-color: var(--app-border);">
-					<summary class="cursor-pointer text-[10px] font-sans uppercase tracking-widest flex items-center justify-between" style="color: var(--app-text-2);">
-						<span>Recent activity (last 10)</span>
-						<span class="normal-case" style="color: var(--app-text-3);">click to toggle</span>
-					</summary>
-					<div class="mt-3 space-y-2">
-						{#each recentPosts as r (r.id)}
-							<div class="flex items-start justify-between gap-3 rounded-xl border px-3 py-2 text-[12px] font-sans" style="border-color: var(--app-border); background: var(--app-surface-3);">
-								<div class="min-w-0 flex-1">
-									<div class="flex items-center gap-2">
-										<span class={
-											r.status === 'published' ? 'text-emerald-500' :
-											r.status === 'failed' ? 'text-red-500' :
-											r.status === 'publishing' ? 'text-amber-500' :
-											r.status === 'cancelled' ? 'text-gray-400' :
-											'text-sky-500'
-										}>● {r.status}</span>
-										<span style="color: var(--app-text-3);">·</span>
-										<span class="truncate" style="color: var(--app-text);">{r.title}</span>
-									</div>
-									<p class="text-[11px] mt-0.5" style="color: var(--app-text-3);">
-										scheduled: {new Date(r.scheduled_at).toLocaleString()}
-										{#if r.published_at} · published: {new Date(r.published_at).toLocaleString()}{/if}
-									</p>
-									{#if r.last_error}
-										<p class="text-[11px] text-red-500 mt-1 whitespace-pre-wrap break-words">error: {r.last_error}</p>
-									{/if}
-								</div>
-								<button
-									type="button"
-									onclick={async () => {
-										const when = new Date(r.scheduled_at);
-										anchor = when;
-										await tick();
-										scrollCalendarToHour(when.getHours());
-									}}
-									class="cal-chip-btn cyan shrink-0 whitespace-nowrap"
-									title="Jump calendar to this time"
-								>
-									show →
-								</button>
+		<!-- Calendar toolbar -->
+		<div class="px-5 py-3 flex items-center justify-between border-b shrink-0" style="border-color: var(--app-border);">
+
+			<!-- Left: date navigation -->
+			<div class="flex items-center gap-1.5">
+				<button onclick={prev} class="cal-icon-btn" aria-label="Previous">
+					<ChevronLeft size={15} />
+				</button>
+				<button onclick={next} class="cal-icon-btn" aria-label="Next">
+					<ChevronRight size={15} />
+				</button>
+				<h2 class="text-[16px] font-bold ml-1.5" style="color: var(--app-text);">{fmtMonth(anchor)}</h2>
+				<button
+					onclick={today}
+					class="ml-1.5 px-3 py-1 rounded-lg text-[11px] border transition-all"
+					style="border-color: var(--app-border); background: var(--app-surface-2); color: var(--app-text-2);"
+				>Today</button>
+			</div>
+
+			<!-- Right: platform indicators + view toggle -->
+			<div class="flex items-center gap-3">
+
+				<!-- Connected platform mini-indicators -->
+				{#if connected.length > 0}
+					<div class="flex items-center gap-1.5">
+						{#each connected as id (id)}
+							{@const ch = channelById(id)}
+							{@const brandColor = channelBrandColor(id)}
+							<div
+								class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+								style="background: color-mix(in oklab, {brandColor} 12%, var(--app-surface-2)); border: 1px solid color-mix(in oklab, {brandColor} 20%, var(--app-border));"
+								title="{ch?.label ?? id} — connected"
+							>
+								<div class="scale-75 opacity-90">{@html ch?.icon(true) ?? ''}</div>
 							</div>
 						{/each}
 					</div>
-					<button
-						type="button"
-						onclick={() => loadRecentPosts()}
-						class="mt-3 px-3 py-1.5 rounded-lg border text-[11px] font-sans transition-colors"
-						style="background: var(--app-surface-3); border-color: var(--app-border); color: var(--app-text-2);"
-					>
-						Refresh
-					</button>
-				</details>
-			</div>
-		{/if}
+					<div class="w-px h-4 shrink-0" style="background: var(--app-border);"></div>
+				{/if}
 
-		<!-- ── Calendar toolbar (Postiz style) ── -->
-		<div class="px-5 py-3 flex items-center justify-between border-b shrink-0" style="border-color: var(--app-border);">
-			<!-- Left: month + nav -->
-			<div class="flex items-center gap-2">
-				<div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--app-surface-3);">
-					<Calendar size={15} style="color: var(--app-text-2);" />
-				</div>
-				<span class="text-[15px] font-sans font-semibold" style="color: var(--app-text);">{fmtMonth(anchor)}</span>
-				<div class="flex items-center gap-1 ml-2">
-					<button onclick={prev} class="cal-icon-btn" aria-label="Previous">
-						<ChevronLeft size={15} />
-					</button>
-					<button onclick={today} class="px-2.5 py-1 rounded-lg text-[11px] font-sans transition-colors" style="background: var(--app-surface-3); color: var(--app-text-2);">Today</button>
-					<button onclick={next} class="cal-icon-btn" aria-label="Next">
-						<ChevronRight size={15} />
-					</button>
-				</div>
-			</div>
-
-			<!-- Right: view switcher + loading -->
-			<div class="flex items-center gap-3">
 				{#if loadingPosts}
-					<span class="text-[11px] font-sans" style="color: var(--app-text-3);">Loading…</span>
+					<span class="text-[11px]" style="color: var(--app-text-3);">Loading…</span>
 				{/if}
 				{#if postsError}
-					<span class="text-[11px] font-sans text-red-500">{postsError}</span>
+					<span class="text-[11px] text-red-500">{postsError}</span>
 				{/if}
-				<div class="flex items-center rounded-lg overflow-hidden border" style="border-color: var(--app-border); background: var(--app-surface-2);">
-					<button onclick={() => (view = 'day')} class="px-3 py-1.5 text-[12px] font-sans transition-colors {view === 'day' ? 'cal-view-active' : 'cal-view-inactive'}">Day</button>
-					<button onclick={() => (view = 'week')} class="px-3 py-1.5 text-[12px] font-sans transition-colors border-l border-r {view === 'week' ? 'cal-view-active' : 'cal-view-inactive'}" style="border-color: var(--app-border);">Week</button>
-					<button onclick={() => (view = 'month')} class="px-3 py-1.5 text-[12px] font-sans transition-colors {view === 'month' ? 'cal-view-active' : 'cal-view-inactive'}">Month</button>
+
+				<!-- View toggle -->
+				<div class="flex rounded-lg overflow-hidden border" style="border-color: var(--app-border); background: var(--app-surface-2);">
+					<button
+						onclick={() => (view = 'day')}
+						class="px-3 py-1.5 text-[12px] font-medium transition-colors"
+						style="{view === 'day' ? 'background: rgba(139,92,246,.15); color: #a78bfa;' : 'background: transparent; color: var(--app-text-2);'}"
+					>Day</button>
+					<button
+						onclick={() => (view = 'week')}
+						class="px-3 py-1.5 text-[12px] font-medium transition-colors border-l border-r"
+						style="border-color: var(--app-border); {view === 'week' ? 'background: rgba(139,92,246,.15); color: #a78bfa;' : 'background: transparent; color: var(--app-text-2);'}"
+					>Week</button>
+					<button
+						onclick={() => (view = 'month')}
+						class="px-3 py-1.5 text-[12px] font-medium transition-colors"
+						style="{view === 'month' ? 'background: rgba(139,92,246,.15); color: #a78bfa;' : 'background: transparent; color: var(--app-text-2);'}"
+					>Month</button>
 				</div>
 			</div>
 		</div>
 
-		<!-- ── Calendar body ── -->
+		<!-- Calendar body -->
 		<div bind:this={calendarScrollEl} class="flex-1 overflow-auto">
 			<div class="min-w-[860px]">
+
 				<!-- ════ MONTH VIEW ════ -->
 				{#if view === 'month'}
-					<!-- Day-of-week headers (sticky) -->
-					<div class="grid grid-cols-7 sticky top-0 z-20">
+					<!-- Day-of-week headers -->
+					<div class="grid grid-cols-7 sticky top-0 z-20" style="background: var(--app-bg);">
 						{#each ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as wd (wd)}
-							<div class="h-[62px] flex items-center justify-center rounded-lg m-0.5" style="background: var(--app-surface-3);">
-								<p class="text-[13px] font-sans font-medium" style="color: var(--app-text-2);">{wd}</p>
+							<div class="h-10 flex items-center justify-center border-b" style="border-color: {calLine};">
+								<p class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--app-text-3);">{wd}</p>
 							</div>
 						{/each}
 					</div>
@@ -1336,39 +1417,41 @@
 								class="relative border-b border-r min-h-[110px] transition-colors"
 								style="
 									border-color: {calLine};
-									background: {isToday ? 'color-mix(in oklab, var(--color-violet) 5%, var(--app-bg))' : inMonth ? 'var(--app-bg)' : 'var(--app-surface-2)'};
+									background: {isToday
+										? 'color-mix(in oklab, var(--color-violet) 4%, var(--app-bg))'
+										: inMonth ? 'var(--app-bg)' : 'var(--app-surface-2)'};
 								"
 								ondragover={(e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; }}
 								ondrop={(e) => dropToSlot(e, d, 9)}
 							>
-								<!-- Day number -->
 								<div class="pt-2 px-2 pb-1">
 									<span
-										class="inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] font-sans font-medium"
+										class="inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] font-semibold"
 										style="
 											background: {isToday ? 'var(--color-violet)' : 'transparent'};
 											color: {isToday ? '#fff' : inMonth ? 'var(--app-text-2)' : 'var(--app-text-3)'};
 										"
 									>{fmtDayNum(d)}</span>
 								</div>
-								<!-- Posts -->
 								<div class="px-1.5 pb-2 flex flex-col gap-1">
 									{#each dayPosts.slice(0, 3) as p (p.id)}
 										{@const isDone = p.status === 'published'}
 										{@const isFailed = p.status === 'failed'}
+										{@const pColor = isDone ? '#22C55E' : isFailed ? '#EF4444' : postPlatformColor(p)}
 										<div
-											class="rounded-[6px] overflow-hidden border cursor-pointer group"
-											style="border-color: {isDone ? 'rgba(34,197,94,.3)' : isFailed ? 'rgba(239,68,68,.3)' : 'rgba(139,92,246,.3)'};"
+											class="rounded-[6px] overflow-hidden border cursor-pointer"
+											style="border-color: color-mix(in oklab, {pColor} 30%, transparent);"
 											title={p.title}
 										>
-											<div class="h-1.5 w-full" style="background: {isDone ? 'rgb(34,197,94)' : isFailed ? 'rgb(239,68,68)' : 'var(--color-violet)'};"></div>
-											<div class="px-2 py-1" style="background: {isDone ? 'rgba(34,197,94,.06)' : isFailed ? 'rgba(239,68,68,.06)' : 'rgba(139,92,246,.06)'};">
-												<p class="text-[11px] font-sans leading-tight line-clamp-1" style="color: var(--app-text);">{p.title}</p>
+											<div class="h-1 w-full" style="background: {pColor};"></div>
+											<div class="px-1.5 py-1"
+												style="background: color-mix(in oklab, {pColor} 6%, var(--app-bg));">
+												<p class="text-[10px] leading-tight line-clamp-1" style="color: var(--app-text);">{p.title}</p>
 											</div>
 										</div>
 									{/each}
 									{#if dayPosts.length > 3}
-										<p class="text-[10px] font-sans px-1" style="color: var(--app-text-3);">+{dayPosts.length - 3} more</p>
+										<p class="text-[10px] px-1" style="color: var(--app-text-3);">+{dayPosts.length - 3} more</p>
 									{/if}
 								</div>
 							</div>
@@ -1378,31 +1461,32 @@
 				<!-- ════ DAY VIEW ════ -->
 				{:else if view === 'day'}
 					{@const isDayToday = dayOnly.toDateString() === new Date().toDateString()}
-					<!-- Sticky header -->
-					<div class="grid sticky top-0 z-20" style="grid-template-columns: 80px 1fr;">
-						<div class="h-[62px]"></div>
-						<div class="h-[62px] rounded-lg m-0.5 flex flex-col items-center justify-center" style="background: {isDayToday ? 'color-mix(in oklab, var(--color-violet) 12%, var(--app-surface-3))' : 'var(--app-surface-3)'};">
-							<p class="text-[13px] font-sans font-medium" style="color: var(--app-text-2);">{fmtDayLabel(dayOnly)}</p>
-							<div class="flex items-center gap-1.5">
-								{#if isDayToday}<div class="w-1.5 h-1.5 rounded-full" style="background: var(--color-violet);"></div>{/if}
-								<p class="text-[14px] font-sans font-semibold" style="color: {isDayToday ? 'var(--color-violet)' : 'var(--app-text)'};">{dayOnly.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
-							</div>
+					<div class="grid sticky top-0 z-20" style="grid-template-columns: 64px 1fr; background: var(--app-bg);">
+						<div class="h-12 border-b" style="border-color: {calLine};"></div>
+						<div class="h-12 flex items-center gap-3 px-4 border-b border-l"
+							style="border-color: {calLine}; background: {isDayToday ? 'color-mix(in oklab, var(--color-violet) 5%, var(--app-bg))' : 'var(--app-bg)'};">
+							<span
+								class="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold"
+								style="background: {isDayToday ? 'var(--color-violet)' : 'transparent'}; color: {isDayToday ? '#fff' : 'var(--app-text)'};"
+							>{dayOnly.getDate()}</span>
+							<span class="text-sm font-semibold" style="color: var(--app-text);">
+								{fmtDayLabel(dayOnly)}, {dayOnly.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+							</span>
 						</div>
 					</div>
-					<!-- Hour rows -->
-					<div class="grid" style="grid-template-columns: 80px 1fr;">
+					<div class="grid" style="grid-template-columns: 64px 1fr;">
 						{#each hours as hr (hr)}
 							{@const slotPosts = postsForDay(dayOnly)
 								.filter(p => new Date(p.startISO).getHours() === hr)
 								.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
-							<!-- Time label -->
-							<div class="h-20 pr-3 flex items-center justify-end border-b" style="border-color: {calLine};">
-								<span class="text-[11px] font-sans" style="color: var(--app-text-3);">{hr === 12 ? '12 PM' : hr < 12 ? `${hr}:00` : `${hr - 12}:00`}</span>
+							<div class="h-20 pr-3 flex items-start justify-end border-b pt-2" style="border-color: {calLine};">
+								<span class="text-[11px]" style="color: var(--app-text-3);">
+									{hr === 0 ? '12 AM' : hr < 12 ? `${hr} AM` : hr === 12 ? '12 PM' : `${hr - 12} PM`}
+								</span>
 							</div>
-							<!-- Slot -->
 							<div
 								role="presentation"
-								class="relative h-20 border-b border-l transition-colors cal-slot"
+								class="relative h-20 border-b border-l cal-slot"
 								style="border-color: {calLine};"
 								ondragover={allowDrop}
 								ondrop={(e) => dropToSlot(e, dayOnly, hr)}
@@ -1412,58 +1496,41 @@
 										{@const isDone = p.status === 'published'}
 										{@const isFailed = p.status === 'failed'}
 										{@const isPublishing = p.status === 'publishing'}
-										{@const accentColor = isDone ? 'rgb(34,197,94)' : isFailed ? 'rgb(239,68,68)' : isPublishing ? 'rgb(245,158,11)' : 'var(--color-violet)'}
-										{@const statusLabel = isDone ? 'Posted' : isFailed ? 'Failed' : isPublishing ? 'Publishing…' : 'Scheduled'}
+										{@const pColor = isDone ? '#22C55E' : isFailed ? '#EF4444' : isPublishing ? '#F59E0B' : postPlatformColor(p)}
+										{@const statusLabel = isDone ? 'Published' : isFailed ? 'Failed' : isPublishing ? 'Posting…' : 'Scheduled'}
 										<div
 											role="button"
 											tabindex="0"
 											draggable={!isDone && !isFailed && !isPublishing}
 											ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
 											class="cal-post-card group {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}"
-											style="border-color: color-mix(in oklab, {accentColor} 40%, transparent);"
+											style="border-color: color-mix(in oklab, {pColor} 35%, transparent);"
 											title={isFailed && p.lastError ? `Failed: ${p.lastError}\n\n${p.title}` : p.title}
 										>
-											<!-- Colored header bar -->
-											<div class="cal-post-header flex items-center justify-between px-2 py-1 gap-2"
-												style="background: {accentColor};">
-												<span class="text-[10px] font-sans text-white font-medium truncate">{statusLabel}</span>
-												<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-													{#if !isDone && !isPublishing}
-														<button
-															onclick={(e) => {
-																e.stopPropagation();
-																const msg = isFailed ? 'Remove this failed post?' : 'Unschedule this post?';
-																if (confirm(msg)) unschedulePost(p.id);
-															}}
-															class="w-4 h-4 rounded flex items-center justify-center text-white/80 hover:text-white hover:bg-black/20 transition-all"
-															aria-label={isFailed ? 'Remove failed post' : 'Unschedule post'}
-														>
-															<X size={10} />
-														</button>
-													{/if}
+											<div class="cal-post-header flex items-center justify-between px-2 py-1 gap-2" style="background: {pColor};">
+												<div class="flex items-center gap-1.5 min-w-0">
+													<div class="scale-50 -mx-1.5 shrink-0 opacity-90">{@html channelById(p.channels[0])?.icon(true) ?? ''}</div>
+													<span class="text-[10px] text-white font-semibold truncate">{statusLabel}</span>
 												</div>
+												{#if !isDone && !isPublishing}
+													<button
+														onclick={(e) => { e.stopPropagation(); const msg = isFailed ? 'Remove this failed post?' : 'Unschedule this post?'; if (confirm(msg)) unschedulePost(p.id); }}
+														class="w-4 h-4 rounded flex items-center justify-center text-white/70 hover:text-white hover:bg-black/20 transition-all opacity-0 group-hover:opacity-100"
+														aria-label={isFailed ? 'Remove' : 'Unschedule'}
+													><X size={10} /></button>
+												{/if}
 											</div>
-											<!-- Body -->
-											<div class="px-2 py-1.5" style="background: color-mix(in oklab, {accentColor} 8%, var(--app-surface-3));">
-												<p class="text-[11px] font-sans leading-tight line-clamp-2" style="color: var(--app-text);">{p.title}</p>
+											<div class="px-2 py-1.5" style="background: color-mix(in oklab, {pColor} 8%, var(--app-surface-3));">
+												<p class="text-[11px] leading-tight line-clamp-2" style="color: var(--app-text);">{p.title}</p>
 												<div class="flex items-center gap-1 flex-wrap mt-1">
-													<span class="text-[9px] font-sans px-1.5 py-0.5 rounded border {igTypePillClass(p.igType)}">{igTypeLabel(p.igType)}</span>
-													{#each p.channels as cid (cid)}
-														{@const c = channelById(cid)}
-														<span class="text-[9px] font-sans px-1.5 py-0.5 rounded border flex items-center gap-1" style="border-color: var(--app-border); color: var(--app-text-2);">
-															<span class="w-1 h-1 rounded-full {c?.accent ?? 'bg-white/30'}"></span>
-															{c?.label ?? cid}
-														</span>
-													{/each}
+													<span class="text-[9px] px-1.5 py-0.5 rounded border {igTypePillClass(p.igType)}">{igTypeLabel(p.igType)}</span>
 												</div>
 											</div>
 										</div>
 									{/each}
-									<!-- Drop zone "+" hint -->
 									{#if slotPosts.length === 0}
-										<div class="cal-plus-hint flex-1 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity"
-											style="border-color: var(--app-border);">
-											<span class="text-[20px] font-light" style="color: var(--app-text-3);">+</span>
+										<div class="cal-plus-hint flex-1 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity" style="border-color: var(--app-border);">
+											<span class="text-xl font-light" style="color: var(--app-text-3);">+</span>
 										</div>
 									{/if}
 								</div>
@@ -1474,36 +1541,36 @@
 				<!-- ════ WEEK VIEW ════ -->
 				{:else}
 					<!-- Sticky day headers -->
-					<div class="grid sticky top-0 z-20" style="grid-template-columns: 80px repeat(7, minmax(0,1fr));">
-						<div class="h-[62px]"></div>
+					<div class="grid sticky top-0 z-20" style="grid-template-columns: 64px repeat(7, minmax(0,1fr)); background: var(--app-bg);">
+						<div class="h-12 border-b" style="border-color: {calLine};"></div>
 						{#each weekDays as d (d.toISOString())}
 							{@const isToday = d.toDateString() === new Date().toDateString()}
-							<div class="h-[62px] rounded-lg m-0.5 flex flex-col items-center justify-center"
-								style="background: {isToday ? 'color-mix(in oklab, var(--color-violet) 12%, var(--app-surface-3))' : 'var(--app-surface-3)'};">
-								<p class="text-[12px] font-sans font-medium" style="color: var(--app-text-2);">{fmtDayLabel(d)}</p>
-								<div class="flex items-center gap-1.5 mt-0.5">
-									{#if isToday}<div class="w-1.5 h-1.5 rounded-full" style="background: var(--color-violet);"></div>{/if}
-									<p class="text-[13px] font-sans font-semibold" style="color: {isToday ? 'var(--color-violet)' : 'var(--app-text)'};">{fmtDayNum(d)}</p>
+							<div class="h-12 flex flex-col items-center justify-center border-b border-l"
+								style="border-color: {calLine}; background: {isToday ? 'color-mix(in oklab, var(--color-violet) 5%, var(--app-bg))' : 'var(--app-bg)'};">
+								<p class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--app-text-3);">{fmtDayLabel(d)}</p>
+								<div class="flex items-center gap-1 mt-0.5">
+									{#if isToday}<div class="w-1 h-1 rounded-full" style="background: var(--color-violet);"></div>{/if}
+									<p class="text-sm font-bold" style="color: {isToday ? 'var(--color-violet)' : 'var(--app-text)'};">{fmtDayNum(d)}</p>
 								</div>
 							</div>
 						{/each}
 					</div>
 
 					<!-- Hour rows -->
-					<div class="grid" style="grid-template-columns: 80px repeat(7, minmax(0,1fr));">
+					<div class="grid" style="grid-template-columns: 64px repeat(7, minmax(0,1fr));">
 						{#each hours as hr (hr)}
-							<!-- Time label -->
-							<div class="h-20 pr-3 flex items-center justify-end border-b" style="border-color: {calLine};">
-								<span class="text-[11px] font-sans" style="color: var(--app-text-3);">{hr === 12 ? '12 PM' : hr < 12 ? `${hr}:00` : `${hr - 12}:00`}</span>
+							<div class="h-20 pr-3 flex items-start justify-end border-b pt-2" style="border-color: {calLine};">
+								<span class="text-[11px]" style="color: var(--app-text-3);">
+									{hr === 0 ? '12 AM' : hr < 12 ? `${hr} AM` : hr === 12 ? '12 PM' : `${hr - 12} PM`}
+								</span>
 							</div>
-							<!-- Day slots -->
 							{#each weekDays as d (d.toISOString() + ':' + hr)}
 								{@const slotPosts = postsForDay(d)
 									.filter(p => new Date(p.startISO).getHours() === hr)
 									.sort((a, b) => new Date(b.startISO).getTime() - new Date(a.startISO).getTime())}
 								<div
 									role="presentation"
-									class="relative h-20 border-b border-l transition-colors cal-slot"
+									class="relative h-20 border-b border-l cal-slot"
 									style="border-color: {calLine};"
 									ondragover={allowDrop}
 									ondrop={(e) => dropToSlot(e, d, hr)}
@@ -1513,46 +1580,36 @@
 											{@const isDone = p.status === 'published'}
 											{@const isFailed = p.status === 'failed'}
 											{@const isPublishing = p.status === 'publishing'}
-											{@const accentColor = isDone ? 'rgb(34,197,94)' : isFailed ? 'rgb(239,68,68)' : isPublishing ? 'rgb(245,158,11)' : 'var(--color-violet)'}
-											{@const statusLabel = isDone ? 'Posted' : isFailed ? 'Failed' : isPublishing ? 'Publishing…' : 'Scheduled'}
+											{@const pColor = isDone ? '#22C55E' : isFailed ? '#EF4444' : isPublishing ? '#F59E0B' : postPlatformColor(p)}
+											{@const statusLabel = isDone ? 'Posted' : isFailed ? 'Failed' : isPublishing ? 'Posting…' : 'Scheduled'}
 											<div
 												role="button"
 												tabindex="0"
 												draggable={!isDone && !isFailed && !isPublishing}
 												ondragstart={(e) => { if (!isDone && !isFailed && !isPublishing) dragStartPost(e, p.id); }}
 												class="cal-post-card group {(!isDone && !isFailed && !isPublishing) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}"
-												style="border-color: color-mix(in oklab, {accentColor} 40%, transparent);"
+												style="border-color: color-mix(in oklab, {pColor} 35%, transparent);"
 												title={isFailed && p.lastError ? `Failed: ${p.lastError}\n\n${p.title}` : p.title}
 											>
-												<!-- Colored header bar -->
-												<div class="cal-post-header flex items-center justify-between px-1.5 gap-1"
-													style="background: {accentColor};">
-													<span class="text-[9px] font-sans text-white font-medium truncate">{statusLabel}</span>
-													<div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-														{#if !isDone && !isPublishing}
-															<button
-																onclick={(e) => {
-																	e.stopPropagation();
-																	const msg = isFailed ? 'Remove this failed post?' : 'Unschedule this post?';
-																	if (confirm(msg)) unschedulePost(p.id);
-																}}
-																class="w-3.5 h-3.5 rounded flex items-center justify-center text-white/80 hover:text-white hover:bg-black/20 transition-all"
-															>
-																<X size={9} />
-															</button>
-														{/if}
+												<div class="cal-post-header flex items-center justify-between px-1.5 gap-1" style="background: {pColor};">
+													<div class="flex items-center gap-1 min-w-0">
+														<div class="scale-50 -mx-1.5 shrink-0 opacity-90">{@html channelById(p.channels[0])?.icon(true) ?? ''}</div>
+														<span class="text-[9px] text-white font-semibold truncate">{statusLabel}</span>
 													</div>
+													{#if !isDone && !isPublishing}
+														<button
+															onclick={(e) => { e.stopPropagation(); const msg = isFailed ? 'Remove?' : 'Unschedule?'; if (confirm(msg)) unschedulePost(p.id); }}
+															class="w-3.5 h-3.5 rounded flex items-center justify-center text-white/70 hover:text-white hover:bg-black/20 transition-all opacity-0 group-hover:opacity-100 shrink-0"
+														><X size={9} /></button>
+													{/if}
 												</div>
-												<!-- Body -->
-												<div class="px-1.5 py-1" style="background: color-mix(in oklab, {accentColor} 8%, var(--app-surface-3));">
-													<p class="text-[10px] font-sans leading-tight line-clamp-2" style="color: var(--app-text);">{p.title}</p>
+												<div class="px-1.5 py-1" style="background: color-mix(in oklab, {pColor} 8%, var(--app-surface-3));">
+													<p class="text-[10px] leading-tight line-clamp-2" style="color: var(--app-text);">{p.title}</p>
 												</div>
 											</div>
 										{/each}
-										<!-- Drop zone hint -->
 										{#if slotPosts.length === 0}
-											<div class="cal-plus-hint flex-1 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity"
-												style="border-color: var(--app-border);">
+											<div class="cal-plus-hint flex-1 flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 transition-opacity" style="border-color: var(--app-border);">
 												<span class="text-lg font-light" style="color: var(--app-text-3);">+</span>
 											</div>
 										{/if}
@@ -1562,11 +1619,12 @@
 						{/each}
 					</div>
 				{/if}
+
 			</div>
 		</div>
 	</main>
 
-	<!-- ═══ LIGHTBOX ═══════════════════════════════════════════════════════== -->
+	<!-- ═══ LIGHTBOX ════════════════════════════════════════════════════════ -->
 	{#if lightbox.open}
 		<div
 			role="button"
@@ -1592,20 +1650,18 @@
 				>
 					<div class="px-4 py-3 flex items-center justify-between gap-3 border-b" style="border-color: var(--app-border);">
 						<div class="min-w-0">
-							<p class="text-[10px] font-sans uppercase tracking-widest" style="color: var(--app-text-3);">Preview</p>
-							<p class="text-xs font-sans" style="color: var(--app-text);">
+							<p class="text-[10px] uppercase tracking-widest" style="color: var(--app-text-3);">Preview</p>
+							<p class="text-xs" style="color: var(--app-text);">
 								{lightbox.title ?? 'Images'} · {lightbox.index + 1}/{lightbox.images.length}
 							</p>
 						</div>
 						<button type="button" onclick={closeLightbox} class="cal-icon-btn" aria-label="Close"><X size={14} /></button>
 					</div>
 					<div class="relative" style="background: rgba(0,0,0,.3);">
-						<button type="button" onclick={lbPrev}
-							class="absolute left-3 top-1/2 -translate-y-1/2 cal-icon-btn" aria-label="Previous image">
+						<button type="button" onclick={lbPrev} class="absolute left-3 top-1/2 -translate-y-1/2 cal-icon-btn" aria-label="Previous image">
 							<ChevronLeft size={18} />
 						</button>
-						<button type="button" onclick={lbNext}
-							class="absolute right-3 top-1/2 -translate-y-1/2 cal-icon-btn" aria-label="Next image">
+						<button type="button" onclick={lbNext} class="absolute right-3 top-1/2 -translate-y-1/2 cal-icon-btn" aria-label="Next image">
 							<ChevronRight size={18} />
 						</button>
 						<img src={lightbox.images[lightbox.index]} alt="Preview" class="w-full max-h-[78vh] object-contain block" />
@@ -1625,28 +1681,29 @@
 			onkeydown={(e) => (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') && (showAddChannel = false)}
 			aria-label="Close add channel modal"
 		>
-			<div class="absolute inset-0 flex items-start justify-center pt-24 px-4">
+			<div class="absolute inset-0 flex items-start justify-center pt-16 px-4">
 				<div
 					role="dialog"
 					aria-modal="true"
-					class="w-full max-w-3xl rounded-2xl border shadow-2xl overflow-hidden"
+					class="w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden"
 					style="background: var(--app-surface-2); border-color: var(--app-border);"
 					onclick={(e) => e.stopPropagation()}
 					onkeydown={(e) => e.stopPropagation()}
 					tabindex="-1"
 				>
 					<div class="px-5 py-4 border-b flex items-center justify-between" style="border-color: var(--app-border);">
-						<p class="text-sm font-sans font-semibold" style="color: var(--app-text);">Add Channel</p>
-						<button onclick={() => (showAddChannel = false)}
-							class="cal-icon-btn"
-							aria-label="Close">
-							<X size={16} />
-						</button>
+						<div>
+							<p class="text-sm font-bold" style="color: var(--app-text);">Connect a Platform</p>
+							<p class="text-[11px] mt-0.5" style="color: var(--app-text-3);">Each platform supports different content types. Connect to start scheduling.</p>
+						</div>
+						<button onclick={() => (showAddChannel = false)} class="cal-icon-btn" aria-label="Close"><X size={16} /></button>
 					</div>
 
 					<div class="p-5">
-						<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+						<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
 							{#each CHANNELS as ch (ch.id)}
+								{@const brandColor = channelBrandColor(ch.id)}
+								{@const isConnected = connected.includes(ch.id)}
 								<button
 									onclick={() =>
 										ch.id === 'instagramBusiness'
@@ -1655,35 +1712,187 @@
 												? connectFacebookPages()
 												: ch.id === 'tiktok'
 													? connectTiktokZernio()
-											: ch.id === 'linkedin'
-												? connectLinkedIn('member')
-												: ch.id === 'linkedinPage'
-													? connectLinkedIn('org')
-													: ch.id === 'gmb'
-														? connectGmb()
-													: toggleConnected(ch.id)
+													: ch.id === 'linkedin'
+														? connectLinkedIn('member')
+														: ch.id === 'linkedinPage'
+															? connectLinkedIn('org')
+															: ch.id === 'gmb'
+																? connectGmb()
+																: toggleConnected(ch.id)
 									}
-									class="group rounded-2xl border hover:bg-white/3 transition-colors p-3 flex flex-col items-center gap-2"
-									style="background: var(--app-surface-3); border-color: var(--app-border);"
+									class="relative rounded-xl border p-3.5 text-left transition-all"
+									style="
+										background: {isConnected
+											? `color-mix(in oklab, ${brandColor} 6%, var(--app-surface-3))`
+											: 'var(--app-surface-3)'};
+										border-color: {isConnected
+											? `color-mix(in oklab, ${brandColor} 30%, var(--app-border))`
+											: 'var(--app-border)'};
+									"
 								>
-									<div class="w-11 h-11 rounded-2xl border flex items-center justify-center" style="background: var(--app-surface-2); border-color: var(--app-border);">
-										<div>{@html ch.icon(connected.includes(ch.id))}</div>
+									{#if isConnected}
+										<div class="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 rounded-full font-semibold text-white" style="background: #22C55E;">
+											Connected
+										</div>
+									{/if}
+
+									<div class="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5"
+										style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); border: 1px solid color-mix(in oklab, {brandColor} 20%, var(--app-border));">
+										{@html ch.icon(isConnected)}
 									</div>
-									<p class="text-[10px] font-sans text-center leading-tight" style="color: var(--app-text-2);">{ch.label}</p>
-									<p class="text-[9px] font-sans" style="color: var(--app-text-3);">{connected.includes(ch.id) ? 'Connected' : 'Connect'}</p>
+
+									<p class="text-xs font-bold mb-2" style="color: var(--app-text);">{ch.label}</p>
+
+									<div class="flex flex-wrap gap-1">
+										{#if ch.id === 'instagramBusiness'}
+											{#each ['Post', 'Reel', 'Carousel', 'Story'] as t (t)}
+												<span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+													style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); color: {brandColor};">{t}</span>
+											{/each}
+										{:else if ch.id === 'facebookPage'}
+											{#each ['Post', 'Reel', 'Photo Story', 'Video Story'] as t (t)}
+												<span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+													style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); color: {brandColor};">{t}</span>
+											{/each}
+										{:else if ch.id === 'tiktok'}
+											<span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+												style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); color: {brandColor};">Video</span>
+										{:else if ch.id === 'youtube'}
+											<span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+												style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); color: {brandColor};">Video Upload</span>
+										{:else if ch.id === 'linkedin' || ch.id === 'linkedinPage'}
+											{#each ['Post', 'Image', 'Video'] as t (t)}
+												<span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+													style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); color: {brandColor};">{t}</span>
+											{/each}
+										{:else if ch.id === 'reddit'}
+											{#each ['Post', 'Link', 'Image'] as t (t)}
+												<span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+													style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); color: {brandColor};">{t}</span>
+											{/each}
+										{:else}
+											<span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+												style="background: color-mix(in oklab, {brandColor} 14%, var(--app-surface-2)); color: {brandColor};">Post</span>
+										{/if}
+									</div>
 								</button>
 							{/each}
 						</div>
-						<p class="mt-4 text-[11px] font-sans" style="color: var(--app-text-3);">Facebook, Instagram, and TikTok connect via <a class="underline hover:opacity-80" href="https://docs.zernio.com/" style="color: var(--color-violet);">Zernio</a> (server needs ZERNIO_API_KEY and PUBLIC_APP_URL).</p>
+
+						<p class="mt-4 text-[11px]" style="color: var(--app-text-3);">
+							Facebook, Instagram, and TikTok connect via <a class="underline hover:opacity-80" href="https://docs.zernio.com/" target="_blank" rel="noopener" style="color: var(--color-violet);">Zernio</a>. Server needs <code class="px-1 py-0.5 rounded text-[10px]" style="background: var(--app-surface-3);">ZERNIO_API_KEY</code> and <code class="px-1 py-0.5 rounded text-[10px]" style="background: var(--app-surface-3);">PUBLIC_APP_URL</code>.
+						</p>
 					</div>
 				</div>
 			</div>
 		</div>
 	{/if}
+
 </div>
 
 <style>
-	/* ── Icon button ── */
+	/* ── Root layout ── */
+	.sched-root {
+		display: flex;
+		height: 100vh;
+		width: 100%;
+		overflow: hidden;
+	}
+
+	/* ── Sidebar ── */
+	.sched-aside {
+		width: 272px;
+		flex-shrink: 0;
+		border-right: 1px solid var(--app-border);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		background: var(--app-surface-2);
+	}
+
+	/* ── Platform item ── */
+	.sched-platform-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		border-radius: 12px;
+		border: 1px solid var(--app-border);
+		background: var(--app-surface-3);
+		transition: border-color 0.15s;
+	}
+	.sched-platform-item:hover {
+		border-color: color-mix(in oklab, var(--brand, #8B5CF6) 30%, var(--app-border));
+	}
+	.sched-platform-icon-box {
+		width: 30px;
+		height: 30px;
+		border-radius: 9px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	/* ── Draft card ── */
+	.sched-draft-card {
+		background: var(--app-surface-2);
+	}
+
+	/* ── Content type pills ── */
+	:global(.sched-type-pill) {
+		padding: 3px 8px;
+		border-radius: 6px;
+		border: 1px solid var(--app-border);
+		font-size: 10px;
+		font-family: var(--font-sans);
+		color: var(--app-text-2);
+		background: var(--app-surface-2);
+		cursor: pointer;
+		transition: all 0.12s;
+		white-space: nowrap;
+	}
+	:global(.sched-type-pill:hover) {
+		border-color: var(--app-border-hover);
+		color: var(--app-text);
+	}
+	:global(.sched-type-pill.active[data-platform="instagram"]) {
+		background: rgba(228, 64, 95, 0.12);
+		border-color: rgba(228, 64, 95, 0.35);
+		color: #E4405F;
+		font-weight: 600;
+	}
+	:global(.sched-type-pill.active[data-platform="facebook"]) {
+		background: rgba(24, 119, 242, 0.12);
+		border-color: rgba(24, 119, 242, 0.35);
+		color: #1877F2;
+		font-weight: 600;
+	}
+	:global(.sched-type-pill.active[data-platform="tiktok"]) {
+		background: rgba(37, 244, 238, 0.10);
+		border-color: rgba(37, 244, 238, 0.30);
+		color: #09b0aa;
+		font-weight: 600;
+	}
+	:global(.sched-type-pill.active:not([data-platform])) {
+		background: rgba(139,92,246,.12);
+		border-color: rgba(139,92,246,.30);
+		color: #a78bfa;
+		font-weight: 600;
+	}
+
+	/* ── Recent activity ── */
+	.sched-activity-details summary:hover {
+		background: color-mix(in oklab, var(--app-text) 4%, transparent);
+	}
+	.sched-activity-details[open] .sched-chevron {
+		transform: rotate(180deg);
+	}
+	.sched-chevron {
+		transition: transform 0.2s;
+	}
+
+	/* ── Icon buttons ── */
 	:global(.cal-icon-btn) {
 		display: flex;
 		align-items: center;
@@ -1720,55 +1929,12 @@
 		border-color: rgba(139,92,246,.25);
 		color: #a78bfa;
 	}
-	:global(.cal-chip-btn.violet:hover) { background: rgba(139,92,246,.18); }
-	:global(.cal-chip-btn.green) {
-		background: rgba(34,197,94,.10);
-		border-color: rgba(34,197,94,.25);
-		color: #4ade80;
-	}
-	:global(.cal-chip-btn.green:hover) { background: rgba(34,197,94,.16); }
-	:global(.cal-chip-btn.cyan) {
-		background: rgba(6,182,212,.10);
-		border-color: rgba(6,182,212,.25);
-		color: #22d3ee;
-	}
-	:global(.cal-chip-btn.cyan:hover) { background: rgba(6,182,212,.16); }
+	:global(.cal-chip-btn.violet:hover) { background: rgba(139,92,246,.20); }
 
-	/* ── Select ── */
-	:global(.cal-select) {
-		background: var(--app-surface-3);
-		border: 1px solid var(--app-border);
-		border-radius: 8px;
-		padding: 3px 8px;
-		font-size: 10px;
-		font-family: var(--font-sans);
-		color: var(--app-text-2);
-		cursor: pointer;
-		outline: none;
-		transition: border-color 0.15s;
-	}
-	:global(.cal-select:focus) { border-color: rgba(139,92,246,.5); }
-
-	/* ── View switcher active/inactive ── */
-	:global(.cal-view-active) {
-		background: rgba(139,92,246,.15);
-		color: #a78bfa;
-	}
-	:global(.cal-view-inactive) {
-		background: transparent;
-		color: var(--app-text-2);
-	}
-	:global(.cal-view-inactive:hover) {
-		background: color-mix(in oklab, var(--app-text) 5%, transparent);
-		color: var(--app-text);
-	}
-
-	/* ── Calendar slot hover ── */
+	/* ── Calendar slot ── */
 	:global(.cal-slot:hover) {
 		background: color-mix(in oklab, var(--app-text) 2%, transparent);
 	}
-
-	/* ── "+" hint on empty slots ── */
 	:global(.cal-plus-hint) {
 		border: 1px dashed transparent;
 		transition: opacity 0.15s, border-color 0.15s;
@@ -1778,9 +1944,9 @@
 		border-color: var(--app-border-hover);
 	}
 
-	/* ── Post card (Postiz style) ── */
+	/* ── Post cards ── */
 	:global(.cal-post-card) {
-		border-radius: 8px;
+		border-radius: 7px;
 		border: 1px solid transparent;
 		overflow: hidden;
 		flex-shrink: 0;
@@ -1789,10 +1955,22 @@
 		min-height: 22px;
 	}
 
-	/* Light theme overrides – keep text readable when app-text is dark */
-	:global(:root:not([data-theme="dark"]) .scheduler-root) {
+	/* ── IG type pill color helpers ── */
+	:global(.bg-red-500\/10)     { background: rgba(239,68,68,.10) !important; }
+	:global(.border-red-500\/20) { border-color: rgba(239,68,68,.20) !important; }
+	:global(.text-red-200\/70)   { color: rgba(252,165,165,.75) !important; }
+	:global(.bg-violet-500\/10)     { background: rgba(139,92,246,.10) !important; }
+	:global(.border-violet-500\/20) { border-color: rgba(139,92,246,.20) !important; }
+	:global(.text-violet-200\/70)   { color: rgba(196,181,253,.75) !important; }
+	:global(.bg-amber-500\/10)     { background: rgba(245,158,11,.10) !important; }
+	:global(.border-amber-500\/20) { border-color: rgba(245,158,11,.20) !important; }
+	:global(.text-amber-200\/70)   { color: rgba(253,230,138,.75) !important; }
+	:global(.bg-sky-500\/10)     { background: rgba(14,165,233,.10) !important; }
+	:global(.border-sky-500\/20) { border-color: rgba(14,165,233,.20) !important; }
+	:global(.text-sky-200\/70)   { color: rgba(186,230,253,.75) !important; }
+
+	/* ── Light theme override ── */
+	:global(:root:not([data-theme="dark"]) .sched-root) {
 		--calLine: rgba(10,10,10,.08);
 	}
-
 </style>
-
