@@ -467,6 +467,11 @@
 		Math.max(50, Math.min(200, Number(bgContainMagnify) || 100)),
 	);
 
+	// Contain-mode pan: bgOffsetX/Y are reused as the focal point (50 = center).
+	// Convert to canvas-pixel translate so dragging is 1:1 with the cursor.
+	const containTranslateX = $derived((bgOffsetX - 50) / 100 * W);
+	const containTranslateY = $derived((bgOffsetY - 50) / 100 * H);
+
 	// Bottom shadow gradient — height/strength controllable.
 	const shadowGradient = $derived.by(() => {
 		const sh = Math.max(0, Math.min(100, shadowHeight));
@@ -1075,8 +1080,8 @@
 	let bgPanStartX = 0;
 	let bgPanStartY = 0;
 	const BG_SLOP_PX = 6;
-	/** Pointer drag sensitivity — higher = move background farther per pixel */
-	const BG_PAN_DRAG_SENS = 13;
+	/** Pointer drag sensitivity — 1 = 1:1 screen-pixel panning (natural feel). */
+	const BG_PAN_DRAG_SENS = 1;
 	/** Allow pan “past” the frame edges (object-position / translate headroom). */
 	const BG_OFFSET_MIN = -55;
 	const BG_OFFSET_MAX = 155;
@@ -1090,10 +1095,18 @@
 	}
 
 	function applyBgPanPixels(dx: number, dy: number) {
-		// Convert pixel drag → percent, then scale by how much pan room the current zoom actually has.
-		// This makes panning feel consistent (more room when zoomed in, less when barely overscanned),
-		// and prevents the "I can't drag further right" early clamp feeling.
-		const panRoom = Math.max(16, Number(bgPanRangePct) || 0); // percent of extra image beyond frame
+		if (bgFitMode === 'contain') {
+			// Contain mode: translate is (bgOffset - 50)/100 * W|H canvas px.
+			// For 1:1 natural drag: d(bgOffset) = dx / W * 100 (image follows cursor exactly).
+			// Allow panning up to 50% of canvas past center in each direction.
+			const rangeX = 50 + Math.max(0, (bgContainMagnifyPct - 100) * 0.8);
+			const rangeY = 50 + Math.max(0, (bgContainMagnifyPct - 100) * 0.8);
+			bgOffsetX = Math.max(50 - rangeX, Math.min(50 + rangeX, bgOffsetX + dx / W * 100));
+			bgOffsetY = Math.max(50 - rangeY, Math.min(50 + rangeY, bgOffsetY + dy / H * 100));
+			return;
+		}
+		// Cover/shrunk mode: oversized layer panned inside the clipped frame.
+		const panRoom = Math.max(16, Number(bgPanRangePct) || 0);
 		const xPerPx = (100 / Math.max(1, W)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
 		const yPerPx = (100 / Math.max(1, H)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
 		bgOffsetX = clampBgOffset(bgOffsetX - dx * xPerPx);
@@ -1285,30 +1298,24 @@
 							justify-content: center;
 						"
 					>
-						<div
+						<!-- svelte-ignore a11y_media_has_caption -->
+						<video
+							src={backgroundVideo}
+							autoplay loop playsinline
+							muted={videoMuted}
+							onloadedmetadata={onBgVideoMeta}
+							ontimeupdate={onBgVideoTimeUpdate}
 							style="
-								width: 100%;
-								height: 100%;
-								transform: scale({bgContainMagnifyPct / 100});
+								max-width: 100%;
+								max-height: 100%;
+								width: auto;
+								height: auto;
+								display: block;
+								transform: translate({containTranslateX}px, {containTranslateY}px) scale({bgContainMagnifyPct / 100});
 								transform-origin: center center;
+								will-change: transform;
 							"
-						>
-							<!-- svelte-ignore a11y_media_has_caption -->
-							<video
-								src={backgroundVideo}
-								autoplay loop playsinline
-								muted={videoMuted}
-								onloadedmetadata={onBgVideoMeta}
-								ontimeupdate={onBgVideoTimeUpdate}
-								style="
-									width: 100%;
-									height: 100%;
-									display: block;
-									object-fit: contain;
-									object-position: {bgOffsetX}% {bgOffsetY}%;
-								"
-							></video>
-						</div>
+						></video>
 					</div>
 				{:else if bgIsShrunk}
 					<!-- svelte-ignore a11y_media_has_caption -->
@@ -1357,26 +1364,20 @@
 							justify-content: center;
 						"
 					>
-						<div
+						<img
+							src={backgroundImage}
+							alt=""
 							style="
-								width: 100%;
-								height: 100%;
-								transform: scale({bgContainMagnifyPct / 100});
+								max-width: 100%;
+								max-height: 100%;
+								width: auto;
+								height: auto;
+								display: block;
+								transform: translate({containTranslateX}px, {containTranslateY}px) scale({bgContainMagnifyPct / 100});
 								transform-origin: center center;
+								will-change: transform;
 							"
-						>
-							<img
-								src={backgroundImage}
-								alt=""
-								style="
-									width: 100%;
-									height: 100%;
-									display: block;
-									object-fit: contain;
-									object-position: {bgOffsetX}% {bgOffsetY}%;
-								"
-							/>
-						</div>
+						/>
 					</div>
 				{:else if bgIsShrunk}
 					<img
@@ -2000,26 +2001,19 @@
 							justify-content: center;
 						"
 					>
-						<div
+						<img
+							src={subjectCutout}
+							alt=""
 							style="
-								width: 100%;
-								height: 100%;
-								transform: scale({bgContainMagnifyPct / 100});
+								max-width: 100%;
+								max-height: 100%;
+								width: auto;
+								height: auto;
+								display: block;
+								transform: translate({containTranslateX}px, {containTranslateY}px) scale({bgContainMagnifyPct / 100});
 								transform-origin: center center;
 							"
-						>
-							<img
-								src={subjectCutout}
-								alt=""
-								style="
-									width: 100%;
-									height: 100%;
-									display: block;
-									object-fit: contain;
-									object-position: {bgOffsetX}% {bgOffsetY}%;
-								"
-							/>
-						</div>
+						/>
 					</div>
 				{:else if bgIsShrunk}
 					<img

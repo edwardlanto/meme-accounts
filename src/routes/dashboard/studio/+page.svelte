@@ -1201,6 +1201,7 @@ import JSZip from 'jszip';
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({ url: src }),
+					signal: AbortSignal.timeout(45_000),
 				});
 				const data = await res.json();
 				if (res.ok && data?.ok && typeof data.dataUrl === 'string') return data.dataUrl;
@@ -1315,8 +1316,8 @@ import JSZip from 'jszip';
 	let bgOffsetX = $state(0); // horizontal focal point (≈0–100 typical; wider allowed)
 	let bgOffsetY = $state(50); // vertical focal point
 	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in (cover mode only)
-	let bgFitMode = $state<'cover' | 'contain'>('cover'); // contain = full image visible + optional magnify
-	let bgContainMagnify = $state(100); // 50–200%, only when bgFitMode === 'contain'
+	let bgFitMode = $state<'cover' | 'contain'>('contain'); // contain = full image visible + optional magnify
+	let bgContainMagnify = $state(140); // 50–200%, only when bgFitMode === 'contain'
 
 	// Text panel drag (template px)
 	let textPanelOffsetY = $state(0);
@@ -2523,12 +2524,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			: textColor,
 	);
 
-	/** Full-canvas loading overlay: article fetch/fill/variants or any slide still generating for the previewed template. */
+	/** Full-canvas loading overlay: variant pass, paint flush, or the slide currently in the preview is generating a background. */
 	const studioCanvasBusyLoading = $derived(
-		fetchingNews ||
-			generatingVariants ||
+		generatingVariants ||
 			studioImageGenPaintHold ||
-			(generatingImagesByTemplate[previewTemplate] ?? []).some((g) => !!g),
+			!!(generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide],
 	);
 
 	// ── Draft persistence (Supabase) ──────────────────────────────────────
@@ -2829,6 +2829,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		) {
 			slides = slides.map((row, i) => (i === 0 ? NEWS_PLACEHOLDER_HEADLINE : row));
 		}
+
+		// Generating flags are ephemeral UI state — never restore from drafts.
+		generatingImagesByTemplate = (Object.fromEntries(
+			(Object.keys(generatingImagesByTemplate) as TemplateId[]).map((k) => [
+				k,
+				new Array(slides.length).fill(false),
+			]),
+		) as unknown) as Record<TemplateId, boolean[]>;
 	}
 
 	function applyBlankCanvas() {
@@ -3395,7 +3403,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			bgImagesByTemplate: pruneMediaMap(bgImagesByTemplate as any),
 			bgVideosByTemplate: pruneMediaMap(bgVideosByTemplate as any),
 			newsSolidBgBySlide,
-			generatingImagesByTemplate,
 			videoTrimStartSecBySlide,
 			videoTrimEndSecBySlide,
 			videoDurationBySlide,
@@ -4419,8 +4426,11 @@ tweetTopImagePanYBySlide,
 					// Generate supporting slide variants (refines slide 2+ when slideCount > 1)
 					if (slideCount > 1) {
 						generatingVariants = true;
-						await generateVariants(hookText, rawText, contentTemplate);
-						generatingVariants = false;
+						try {
+							await generateVariants(hookText, rawText, contentTemplate);
+						} finally {
+							generatingVariants = false;
+						}
 					}
 				}
 
@@ -4645,6 +4655,14 @@ tweetTopImagePanYBySlide,
 		};
 	}
 
+	function clearTemplateGeneratingFlags(template: TemplateId, len = slides.length) {
+		const n = Math.max(1, len);
+		generatingImagesByTemplate = {
+			...generatingImagesByTemplate,
+			[template]: new Array(n).fill(false),
+		};
+	}
+
 	async function generateBackground(
 		slideIdx: number,
 		promptOverride?: string,
@@ -4673,6 +4691,7 @@ tweetTopImagePanYBySlide,
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ prompt, aspect: '3:4', context: title || undefined, skipCache: skipVertexCache }),
+				signal: AbortSignal.timeout(120_000),
 			});
 
 			const data = await res.json();
@@ -4691,7 +4710,12 @@ tweetTopImagePanYBySlide,
 				setBgGeneratingFlag(template, slideIdx, false);
 			}
 		} catch (e: any) {
-			bgError = e.message;
+			const name = String(e?.name ?? '');
+			bgError =
+				name === 'TimeoutError' || name === 'AbortError'
+					? 'Image generation timed out — try again.'
+					: (e?.message ?? 'Image generation failed');
+		} finally {
 			setBgGeneratingFlag(template, slideIdx, false);
 		}
 	}
@@ -4720,9 +4744,9 @@ tweetTopImagePanYBySlide,
 	 */
 	async function refreshNewsDeckImagesAfterFetch(articleImageUrl?: string) {
 		studioImageGenBatchDepth++;
-		try {
 		const template: TemplateId = 'news';
 		const n = Math.max(1, slides.length);
+		try {
 		const circleIdxs = newsSlidesWithPrimaryCircle(n);
 		if (circleIdxs.length) {
 			showCircleBySlide = Array.from({ length: n }, (_, i) =>
@@ -4745,17 +4769,21 @@ tweetTopImagePanYBySlide,
 		await tick();
 
 		const articleSrc = String(articleImageUrl ?? '').trim();
-		if (articleSrc && templateAcceptsArticleHeroBackground(template)) {
+		const skipSlide0Gen =
+			!!articleSrc && templateAcceptsArticleHeroBackground(template);
+		if (skipSlide0Gen) {
 			applyNewsSeedBackgroundLayout();
 			const safe = await toExportSafeImageUrl(articleSrc);
 			if (String(safe ?? '').trim()) {
 				applyNewsSeedBackgroundLayout();
 				setSlideImage(0, safe, template);
+			} else {
+				setBgGeneratingFlag(template, 0, false);
 			}
 		}
 
 		const promises = Array.from({ length: n }, (_, i) => {
-			if (i === 0 && articleSrc && templateAcceptsArticleHeroBackground(template)) return Promise.resolve();
+			if (i === 0 && skipSlide0Gen) return Promise.resolve();
 			const cleanText = primarySlideTextForPrompt(template, i);
 			const prompt = i === 0 ? (articleTitle || cleanText) : cleanText;
 			return generateBackground(i, prompt, template, true);
@@ -4771,13 +4799,14 @@ tweetTopImagePanYBySlide,
 		}
 	}
 
-	studioImageGenPaintHold = true;
-	await flushStudioLoadingPaint();
-	studioImageGenPaintHold = false;
-	} finally {
-		studioImageGenBatchDepth--;
+		studioImageGenPaintHold = true;
+		await flushStudioLoadingPaint();
+		studioImageGenPaintHold = false;
+		} finally {
+			clearTemplateGeneratingFlags(template, n);
+			studioImageGenBatchDepth--;
+		}
 	}
-}
 
 	/** Replace tweet media on Load & Fill (article hero on first tweet slide, Vertex on the rest). */
 	async function refreshTweetDeckImagesAfterFetch(articleImageUrl?: string) {
@@ -4796,14 +4825,19 @@ tweetTopImagePanYBySlide,
 			generatingImagesByTemplate = { ...generatingImagesByTemplate, tweet: genRow };
 
 			const primaryTweetSlide = tweetSlideIdxs[0]!;
-			if (articleSrc) {
+			const skipPrimaryGen = !!articleSrc;
+			if (skipPrimaryGen) {
 				const safe = await toExportSafeImageUrl(articleSrc);
-				if (String(safe ?? '').trim()) setSlideImage(primaryTweetSlide, safe, 'tweet');
+				if (String(safe ?? '').trim()) {
+					setSlideImage(primaryTweetSlide, safe, 'tweet');
+				} else {
+					setBgGeneratingFlag('tweet', primaryTweetSlide, false);
+				}
 			}
 
 			await Promise.all(
 				tweetSlideIdxs.map((slideIdx) => {
-					if (slideIdx === primaryTweetSlide && articleSrc) return Promise.resolve();
+					if (slideIdx === primaryTweetSlide && skipPrimaryGen) return Promise.resolve();
 					const cleanText = primarySlideTextForPrompt('tweet', slideIdx);
 					const prompt =
 						slideIdx === primaryTweetSlide ? (articleTitle || cleanText) : cleanText;
@@ -4815,6 +4849,7 @@ tweetTopImagePanYBySlide,
 			await flushStudioLoadingPaint();
 			studioImageGenPaintHold = false;
 		} finally {
+			clearTemplateGeneratingFlags('tweet');
 			studioImageGenBatchDepth--;
 		}
 	}
@@ -4890,17 +4925,11 @@ tweetTopImagePanYBySlide,
 
 		await Promise.all(promises);
 
-		if (template === 'blackText') {
-			generatingImagesByTemplate = {
-				...generatingImagesByTemplate,
-				[template]: new Array(slides.length).fill(false),
-			};
-		}
-
 		studioImageGenPaintHold = true;
 		await flushStudioLoadingPaint();
 		studioImageGenPaintHold = false;
 		} finally {
+			clearTemplateGeneratingFlags(template);
 			studioImageGenBatchDepth--;
 		}
 	}
