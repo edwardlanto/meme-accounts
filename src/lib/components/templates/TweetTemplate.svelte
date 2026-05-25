@@ -4,6 +4,7 @@ import { stripMarkup } from '$lib/highlight';
 import { TWEET_DEFAULTS } from '$lib/studio/slide-content-defaults';
 import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
+import { appendTextShadowCss } from '$lib/textStyleCss';
 import { Move } from 'lucide-svelte';
 
 interface TweetProps {
@@ -302,6 +303,7 @@ let {
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.align) bits.push(`text-align: ${s.align};`);
+		appendTextShadowCss(bits, s);
 		return bits.join(' ');
 	}
 

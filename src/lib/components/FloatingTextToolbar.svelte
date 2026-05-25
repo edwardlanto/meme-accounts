@@ -8,6 +8,7 @@
 		loadGoogleFont,
 		type FontCategory,
 	} from '$lib/fonts';
+	import { TEXT_SHADOW_PRESETS } from '$lib/textStyleCss';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import {
 		Bold, Italic, Underline,
@@ -15,7 +16,7 @@
 		ChevronDown, Type, Minus, Plus, Highlighter, Blend, Trash2,
 	} from 'lucide-svelte';
 
-	type PickerKind = 'font' | 'lh' | 'color' | 'bg' | 'highlight' | 'fw';
+	type PickerKind = 'font' | 'lh' | 'color' | 'bg' | 'highlight' | 'fw' | 'shadow';
 
 	function closeOtherPickers(except: PickerKind) {
 		if (except !== 'font') fontPickerOpen = false;
@@ -24,6 +25,7 @@
 		if (except !== 'bg') bgPickerOpen = false;
 		if (except !== 'highlight') highlightPickerOpen = false;
 		if (except !== 'fw') fontWeightOpen = false;
+		if (except !== 'shadow') shadowPickerOpen = false;
 	}
 
 	interface Props {
@@ -71,11 +73,12 @@
 	let bgPickerOpen = $state(false);
 	let lineHeightOpen = $state(false);
 	let fontWeightOpen = $state(false);
+	let shadowPickerOpen = $state(false);
 
 	const FONT_WEIGHT_PRESETS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
 	// Position the toolbar above the anchored element, clamped to the viewport.
-	const TOOLBAR_W_FULL = 740;
+	const TOOLBAR_W_FULL = 820;
 	const TOOLBAR_W_DELETE = 52;
 	const TOOLBAR_H = 48;
 
@@ -113,6 +116,13 @@
 		onChange({ bgColor: undefined });
 		bgPickerOpen = false;
 	}
+
+	function pickTextShadow(value: string | undefined) {
+		onChange({ textShadow: value });
+		shadowPickerOpen = false;
+	}
+
+	const hasTextShadow = $derived(!!String(style.textShadow ?? '').trim());
 
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
@@ -603,6 +613,67 @@
 					title="Clear background on selection"
 				>
 					Clear background
+				</button>
+			</PopoverContent>
+		</Popover>
+
+		<!-- Text shadow -->
+		<Popover
+			bind:open={shadowPickerOpen}
+			onOpenChange={(o) => {
+				if (o) closeOtherPickers('shadow');
+			}}
+		>
+			<PopoverTrigger
+				class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn
+					{hasTextShadow ? 'ftb-on' : ''}"
+				title="Text shadow"
+			>
+				<span
+					class="ftb-chip flex h-5 min-w-[1.25rem] items-center justify-center rounded px-0.5 font-mono text-[9px] font-bold tracking-tight"
+					style="color: {style.color ?? '#FFFFFF'}; {hasTextShadow ? `text-shadow: ${style.textShadow};` : ''}"
+				>
+					Aa
+				</span>
+				<span class="font-mono text-[10px] ftb-muted">SH</span>
+				<ChevronDown size={11} class="ftb-muted" />
+			</PopoverTrigger>
+			<PopoverContent
+				class="z-[70] ftb-pop w-56 gap-0 rounded-xl p-3 shadow-2xl"
+				align="end"
+				side="bottom"
+				sideOffset={6}
+			>
+				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Presets</p>
+				<div class="grid grid-cols-2 gap-1.5">
+					{#each TEXT_SHADOW_PRESETS as preset (preset.id)}
+						<button
+							type="button"
+							onclick={() => pickTextShadow(preset.value)}
+							class="ftb-btn flex h-10 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 transition-colors
+								{(!style.textShadow && !preset.value) ||
+								(style.textShadow && preset.value && style.textShadow === preset.value)
+									? 'ftb-on'
+									: 'ftb-muted'}"
+							title={preset.label}
+						>
+							<span
+								class="text-sm font-bold leading-none"
+								style="color: {style.color ?? '#111'}; {preset.value ? `text-shadow: ${preset.value};` : ''}"
+							>
+								Aa
+							</span>
+							<span class="font-mono text-[9px]">{preset.label}</span>
+						</button>
+					{/each}
+				</div>
+				<button
+					type="button"
+					onclick={() => pickTextShadow(undefined)}
+					class="ftb-btn ftb-muted mt-2 w-full rounded-lg border py-2 font-mono text-[11px] transition-colors"
+					title="Remove text shadow"
+				>
+					Clear shadow
 				</button>
 			</PopoverContent>
 		</Popover>

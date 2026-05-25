@@ -2,6 +2,7 @@
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
+	import { appendTextShadowCss } from '$lib/textStyleCss';
 	import { BLACK_TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import { stripMarkup } from '$lib/highlight';
 	import { loadGoogleFont } from '$lib/fonts';
@@ -118,6 +119,7 @@
 		if (s.color) bits.push(`color: ${s.color};`);
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
+		appendTextShadowCss(bits, s);
 		return bits.join(' ');
 	}
 

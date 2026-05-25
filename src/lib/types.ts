@@ -42,6 +42,8 @@ export interface TextStyle {
 	align?: 'left' | 'center' | 'right';
 	letterSpacing?: number;  // em
 	lineHeight?: number;     // unitless multiplier
+	/** Full CSS `text-shadow` value, e.g. `0 2px 8px rgba(0,0,0,0.45)` */
+	textShadow?: string;
 }
 
 /** Typography sampled from the canvas display layer so inline markup editors match view mode. */

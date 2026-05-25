@@ -12,6 +12,7 @@ export type StudioTemplateRuntime = {
 const DEFAULT: StudioTemplateRuntime = { canvasOverflowClass: 'overflow-hidden' };
 
 const BY_TEMPLATE: Partial<Record<TemplateId, StudioTemplateRuntime>> = {
+	blank: DEFAULT,
 	news: DEFAULT,
 	article: DEFAULT,
 	textCarousel: DEFAULT,

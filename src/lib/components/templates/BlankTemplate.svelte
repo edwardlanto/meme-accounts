@@ -11,8 +11,7 @@
 		backgroundVideo?: string;
 		solidBackgroundColor?: string;
 		overlays?: Overlay[];
-		/** Bound by Studio for PNG export */
-		exportRef?: HTMLElement | null;
+		onOverlaysChange?: (overlays: Overlay[]) => void;
 	}
 
 	let {
@@ -24,14 +23,14 @@
 		backgroundVideo = '',
 		solidBackgroundColor = '#ffffff',
 		overlays = [],
-		exportRef = null,
+		onOverlaysChange,
 	}: Props = $props();
 
 	const showVideo = $derived(!!String(backgroundVideo ?? '').trim());
 	const showImage = $derived(!showVideo && !!String(backgroundImage ?? '').trim());
 </script>
 
-<!-- Minimal canvas shell: background + stickers. Text overlays render via StudioTextOverlays above this. -->
+<!-- Minimal canvas shell: background + stickers. Parent Studio shell wraps this + StudioTextOverlays for export. -->
 <div
 	class="relative overflow-hidden rounded-2xl"
 	style="
@@ -41,8 +40,6 @@
 		transform-origin: top left;
 		background: {solidBackgroundColor || '#ffffff'};
 	"
-	bind:this={exportRef}
-	data-studio-canvas-root
 >
 	{#if showVideo}
 		<video
@@ -68,8 +65,8 @@
 			interactive={interactive}
 			w={w}
 			h={h}
-			onChange={() => {}}
-			onRemove={() => {}}
+			onChange={(next) => onOverlaysChange?.(overlays.map((x) => (x.id === o.id ? next : x)))}
+			onRemove={() => onOverlaysChange?.(overlays.filter((x) => x.id !== o.id))}
 		/>
 	{/each}
 </div>

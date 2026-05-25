@@ -3,6 +3,7 @@
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
+	import { appendTextShadowCss } from '$lib/textStyleCss';
 
 	interface Props {
 		image?: string;
@@ -75,6 +76,7 @@
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.align) bits.push(`text-align: ${s.align};`);
+		appendTextShadowCss(bits, s);
 		return bits.join(' ');
 	});
 

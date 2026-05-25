@@ -4,6 +4,7 @@
 	import { parseHighlightMarkup as parseHighlightToSegments, segmentText } from '$lib/highlight';
 	import type { TextOverlay } from '$lib/types';
 	import { patternStyleForUrl } from '$lib/components/textOverlayPattern';
+	import { textShadowStyleAttr } from '$lib/textStyleCss';
 
 	interface Props {
 		w: number;
@@ -16,6 +17,10 @@
 		highlightColor?: string;
 		/** When false, overlay text is plain (no `[[…]]` rendering or HighlightEditor). */
 		parseHighlightMarkup?: boolean;
+		/** Snap box center to canvas center while dragging (blank / custom canvas). */
+		snapToCanvasCenter?: boolean;
+		/** CSS scale applied outside this layer (e.g. blank export wrapper). Used for pointer → template px. */
+		pointerScale?: number;
 		/** Plain-text selection range inside the active overlay editor. */
 		onRangeSelect?: (plainStart: number, plainEnd: number) => void;
 		onTextOverlaysChange?: (next: TextOverlay[]) => void;
@@ -31,6 +36,8 @@
 		selectedId = null,
 		highlightColor = '#F5A623',
 		parseHighlightMarkup = false,
+		snapToCanvasCenter = false,
+		pointerScale,
 		onRangeSelect,
 		onTextOverlaysChange,
 		onTextSelect,
@@ -47,6 +54,145 @@
 	let lastMx = 0;
 	let lastMy = 0;
 	let editingId = $state<string | null>(null);
+	let snapGuide = $state<null | { x?: number; y?: number }>(null);
+
+	const SNAP_IN_PX = 10;
+	const SNAP_OUT_PX = 16;
+	const ps = $derived(Math.max(0.001, pointerScale ?? scale));
+	const MIN_BOX_W = 80;
+	const MIN_BOX_H = 40;
+
+	type OverlayAction = 'drag' | 'resize' | null;
+
+	let overlayAction = $state<OverlayAction>(null);
+	let actionOverlayId = $state<string | null>(null);
+	let resizeHandle = $state<string | null>(null);
+
+	let dragOriginX = 0;
+	let dragOriginY = 0;
+	let dragPointerStartX = 0;
+	let dragPointerStartY = 0;
+	let snappedAxisX = false;
+	let snappedAxisY = false;
+
+	let resizeOriginX = 0;
+	let resizeOriginY = 0;
+	let resizeOriginW = 0;
+	let resizeOriginH = 0;
+	let resizePointerStartX = 0;
+	let resizePointerStartY = 0;
+
+	const RESIZE_HANDLES = [
+		{ id: 'nw', cursor: 'nwse-resize', fx: 0, fy: 0 },
+		{ id: 'n', cursor: 'ns-resize', fx: 0.5, fy: 0 },
+		{ id: 'ne', cursor: 'nesw-resize', fx: 1, fy: 0 },
+		{ id: 'e', cursor: 'ew-resize', fx: 1, fy: 0.5 },
+		{ id: 'se', cursor: 'nwse-resize', fx: 1, fy: 1 },
+		{ id: 's', cursor: 'ns-resize', fx: 0.5, fy: 1 },
+		{ id: 'sw', cursor: 'nesw-resize', fx: 0, fy: 1 },
+		{ id: 'w', cursor: 'ew-resize', fx: 0, fy: 0.5 },
+	] as const;
+
+	function overlayDims(t: TextOverlay) {
+		const boxW = Math.max(MIN_BOX_W, Math.min(W - t.x, Number(t.w) || 200));
+		const boxH = Math.max(MIN_BOX_H, Number(t.h) || MIN_BOX_H);
+		return { boxW, boxH };
+	}
+
+	function patchOverlay(id: string, patch: Partial<TextOverlay>) {
+		onTextOverlaysChange?.(textOverlays.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+	}
+
+	function beginResize(
+		id: string,
+		handle: string,
+		el: HTMLElement,
+		opts: { pointerId: number; clientX: number; clientY: number },
+	) {
+		const ov = textOverlays.find((o) => o.id === id);
+		if (!ov) return;
+		const { boxW, boxH } = overlayDims(ov);
+		overlayAction = 'resize';
+		actionOverlayId = id;
+		resizeHandle = handle;
+		resizeOriginX = ov.x;
+		resizeOriginY = ov.y;
+		resizeOriginW = boxW;
+		resizeOriginH = boxH;
+		resizePointerStartX = opts.clientX;
+		resizePointerStartY = opts.clientY;
+		activeId = id;
+		if (holdTimer) {
+			try {
+				clearTimeout(holdTimer);
+			} catch {
+				/* ignore */
+			}
+			holdTimer = null;
+		}
+		try {
+			el.setPointerCapture(opts.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function resizeDown(e: PointerEvent, id: string, handle: string) {
+		if (!interactive || editingId === id) return;
+		const box = (e.currentTarget as HTMLElement).closest<HTMLElement>('[data-text-overlay-id]');
+		if (!box) return;
+		try {
+			box.dataset.textOverlayId = id;
+		} catch {
+			/* ignore */
+		}
+		onTextSelect?.('textOverlay', box);
+		beginResize(id, handle, box, {
+			pointerId: e.pointerId,
+			clientX: e.clientX,
+			clientY: e.clientY,
+		});
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function applyResizeMove(e: PointerEvent, id: string) {
+		const h = resizeHandle;
+		if (!h || overlayAction !== 'resize' || actionOverlayId !== id) return;
+
+		const dx = (e.clientX - resizePointerStartX) / ps;
+		const dy = (e.clientY - resizePointerStartY) / ps;
+		let nx = resizeOriginX;
+		let ny = resizeOriginY;
+		let nw = resizeOriginW;
+		let nh = resizeOriginH;
+
+		const affectsEast = h === 'e' || h === 'ne' || h === 'se';
+		const affectsWest = h === 'w' || h === 'nw' || h === 'sw';
+		const affectsSouth = h === 's' || h === 'se' || h === 'sw';
+		const affectsNorth = h === 'n' || h === 'ne' || h === 'nw';
+
+		if (affectsEast) {
+			nw = Math.max(MIN_BOX_W, Math.min(W - resizeOriginX, resizeOriginW + dx));
+		}
+		if (affectsWest) {
+			const maxShrink = resizeOriginW - MIN_BOX_W;
+			const d = Math.min(maxShrink, Math.max(-resizeOriginX, dx));
+			nw = resizeOriginW - d;
+			nx = resizeOriginX + d;
+		}
+		if (affectsSouth) {
+			nh = Math.max(MIN_BOX_H, Math.min(H - resizeOriginY, resizeOriginH + dy));
+		}
+		if (affectsNorth) {
+			const maxShrink = resizeOriginH - MIN_BOX_H;
+			const d = Math.min(maxShrink, Math.max(-resizeOriginY, dy));
+			nh = resizeOriginH - d;
+			ny = resizeOriginY + d;
+		}
+
+		patchOverlay(id, { x: nx, y: ny, w: nw, h: nh });
+	}
 
 	$effect(() => {
 		const id = editingId;
@@ -70,54 +216,137 @@
 		});
 	});
 
+	function beginDrag(
+		id: string,
+		el: HTMLElement,
+		opts: { pointerId: number; clientX: number; clientY: number },
+	) {
+		const ov = textOverlays.find((o) => o.id === id);
+		if (!ov) return;
+		dragId = id;
+		dragOriginX = ov.x;
+		dragOriginY = ov.y;
+		dragPointerStartX = opts.clientX;
+		dragPointerStartY = opts.clientY;
+		snappedAxisX = false;
+		snappedAxisY = false;
+		snapGuide = null;
+		try {
+			el.setPointerCapture(opts.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
 	function down(e: PointerEvent, id: string) {
 		if (!interactive) return;
 		// If we're currently editing this overlay, do not hijack pointer events
 		// (selection/caret should behave like the main text editor).
 		if (editingId === id) return;
-		try { (e.currentTarget as HTMLElement).dataset.textOverlayId = id; } catch {}
-		onTextSelect?.('textOverlay', e.currentTarget as HTMLElement);
-		activeId = id; // selected, but not dragging yet
-		downTarget = e.currentTarget as HTMLElement;
+		const el = e.currentTarget as HTMLElement;
+		try {
+			el.dataset.textOverlayId = id;
+		} catch {
+			/* ignore */
+		}
+		onTextSelect?.('textOverlay', el);
+		activeId = id;
+		downTarget = el;
 		downPointerId = e.pointerId;
 		lastMx = e.clientX;
 		lastMy = e.clientY;
 		dragId = null;
-		if (holdTimer) { try { clearTimeout(holdTimer); } catch {} holdTimer = null; }
-		// Hold-to-drag: allow click/dblclick to pass through naturally.
-		holdTimer = setTimeout(() => {
-			if (!downTarget || downPointerId === -1) return;
-			dragId = id;
-			try { downTarget.setPointerCapture(downPointerId); } catch {}
-		}, 180);
+		if (holdTimer) {
+			try {
+				clearTimeout(holdTimer);
+			} catch {
+				/* ignore */
+			}
+			holdTimer = null;
+		}
+		// Blank canvas: drag immediately (parent applies previewScale). Other templates: brief hold so dbl-click still works.
+		if (snapToCanvasCenter) {
+			beginDrag(id, el, { pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY });
+			e.preventDefault();
+		} else {
+			holdTimer = setTimeout(() => {
+				if (!downTarget || downPointerId === -1) return;
+				beginDrag(id, downTarget, {
+					pointerId: downPointerId,
+					clientX: lastMx,
+					clientY: lastMy,
+				});
+			}, 180);
+		}
 		e.stopPropagation();
 	}
 
 	function move(e: PointerEvent, id: string) {
+		if (overlayAction === 'resize' && actionOverlayId === id) {
+			applyResizeMove(e, id);
+			return;
+		}
 		if (dragId !== id) return;
-		const dx = (e.clientX - lastMx) / scale;
-		const dy = (e.clientY - lastMy) / scale;
-		lastMx = e.clientX;
-		lastMy = e.clientY;
 
 		const ov = textOverlays.find((o) => o.id === id);
 		if (!ov) return;
-
+		const { boxW: curW } = overlayDims(ov);
 		const el = e.currentTarget as HTMLElement;
-		const r = el.getBoundingClientRect();
-		const curW = Math.max(1, r.width / scale);
-		const curH = Math.max(1, r.height / scale);
-		const nx = Math.max(0, Math.min(W - curW, ov.x + dx));
-		const ny = Math.max(0, Math.min(H - curH, ov.y + dy));
+		const measuredH = Math.max(overlayDims(ov).boxH, el.getBoundingClientRect().height / ps);
+
+		const dx = (e.clientX - dragPointerStartX) / ps;
+		const dy = (e.clientY - dragPointerStartY) / ps;
+		let nx = Math.max(0, Math.min(W - curW, dragOriginX + dx));
+		let ny = Math.max(0, Math.min(H - measuredH, dragOriginY + dy));
+		snapGuide = null;
+
+		if (snapToCanvasCenter) {
+			const midX = W / 2;
+			const midY = H / 2;
+			const cx = nx + curW / 2;
+			const cy = ny + measuredH / 2;
+			if (snappedAxisX || Math.abs(cx - midX) <= SNAP_IN_PX) {
+				if (Math.abs(cx - midX) <= SNAP_OUT_PX) {
+					nx = Math.max(0, Math.min(W - curW, midX - curW / 2));
+					snappedAxisX = true;
+					snapGuide = { ...(snapGuide ?? {}), x: midX };
+				} else {
+					snappedAxisX = false;
+				}
+			}
+			if (snappedAxisY || Math.abs(cy - midY) <= SNAP_IN_PX) {
+				if (Math.abs(cy - midY) <= SNAP_OUT_PX) {
+					ny = Math.max(0, Math.min(H - measuredH, midY - measuredH / 2));
+					snappedAxisY = true;
+					snapGuide = { ...(snapGuide ?? {}), y: midY };
+				} else {
+					snappedAxisY = false;
+				}
+			}
+		}
+
 		onTextOverlaysChange?.(textOverlays.map((o) => (o.id === id ? { ...o, x: nx, y: ny } : o)));
 	}
 
 	function up() {
-		if (holdTimer) { try { clearTimeout(holdTimer); } catch {} holdTimer = null; }
+		if (holdTimer) {
+			try {
+				clearTimeout(holdTimer);
+			} catch {
+				/* ignore */
+			}
+			holdTimer = null;
+		}
 		downTarget = null;
 		downPointerId = -1;
 		activeId = null;
 		dragId = null;
+		overlayAction = null;
+		actionOverlayId = null;
+		resizeHandle = null;
+		snapGuide = null;
+		snappedAxisX = false;
+		snappedAxisY = false;
 	}
 
 	function startEdit(e: MouseEvent, id: string) {
@@ -180,21 +409,58 @@
 			pointer-events: none;
 		"
 	>
+		{#if snapToCanvasCenter && snapGuide?.x != null}
+			<div
+				style="
+					position: absolute;
+					left: {snapGuide.x}px;
+					top: 0;
+					bottom: 0;
+					width: 1px;
+					background: rgba(34,211,238,0.65);
+					box-shadow: 0 0 0 1px rgba(34,211,238,0.15);
+					z-index: 34;
+					pointer-events: none;
+				"
+			></div>
+		{/if}
+		{#if snapToCanvasCenter && snapGuide?.y != null}
+			<div
+				style="
+					position: absolute;
+					top: {snapGuide.y}px;
+					left: 0;
+					right: 0;
+					height: 1px;
+					background: rgba(34,211,238,0.65);
+					box-shadow: 0 0 0 1px rgba(34,211,238,0.15);
+					z-index: 34;
+					pointer-events: none;
+				"
+			></div>
+		{/if}
 		{#each textOverlays as t (t.id)}
 			{@const isEditing = editingId === t.id}
 			{@const isSelected = !!selectedId && selectedId === t.id}
 			{@const css = t.style ?? {}}
+			{@const dims = overlayDims(t)}
 			<div
 				style="
 					position: absolute;
 					left: {t.x}px; top: {t.y}px;
-					width: {Math.max(40, Number(t.w) || 0)}px;
-					/* Height should hug content; old drafts may have large h values. */
-					min-height: {Math.max(24, Number(t.h) || 0)}px;
-					max-width: 820px;
+					width: {dims.boxW}px;
+					min-height: {Math.max(MIN_BOX_H, Number(t.h) || 0)}px;
+					height: auto;
+					overflow: {isSelected && !isEditing ? 'visible' : 'hidden'};
 					z-index: 60;
 					touch-action: none;
-					cursor: {interactive ? (activeId === t.id ? 'grabbing' : 'grab') : 'default'};
+					cursor: {interactive
+						? overlayAction === 'resize' && actionOverlayId === t.id
+							? 'default'
+							: activeId === t.id && dragId === t.id
+								? 'grabbing'
+								: 'grab'
+						: 'default'};
 					pointer-events: {interactive ? 'auto' : 'none'};
 				"
 				data-text-selectable="textOverlay"
@@ -222,6 +488,7 @@
 							text-align: {css.align ?? 'left'};
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							{textShadowStyleAttr(css)}
 							width: 100%;
 						"
 						onclick={(e) => e.stopPropagation()}
@@ -270,6 +537,7 @@
 									text-align: {css.align ?? 'left'};
 									line-height: {css.lineHeight ?? 1.15};
 									letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+									{textShadowStyleAttr(css)}
 								"
 								value={t.text}
 								oninput={(e) => {
@@ -325,6 +593,7 @@
 							text-align: {css.align ?? 'left'};
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							{textShadowStyleAttr(css)}
 							width: 100%;
 							overflow: hidden;
 							user-select: none;
@@ -347,6 +616,31 @@
 							{t.text}
 						{/if}
 					</div>
+				{/if}
+
+				{#if interactive && isSelected && !isEditing}
+					{#each RESIZE_HANDLES as handle (handle.id)}
+						<div
+							data-resize-handle={handle.id}
+							style="
+								position: absolute;
+								left: calc({handle.fx * 100}% - 5px);
+								top: calc({handle.fy * 100}% - 5px);
+								width: 10px;
+								height: 10px;
+								border-radius: 2px;
+								background: #fff;
+								border: 1px solid rgba(0,0,0,0.45);
+								box-shadow: 0 0 0 1px rgba(255,255,255,0.25);
+								cursor: {handle.cursor};
+								z-index: 3;
+								touch-action: none;
+							"
+							onpointerdown={(e: PointerEvent) => resizeDown(e, t.id, handle.id)}
+							role="presentation"
+							aria-hidden="true"
+						></div>
+					{/each}
 				{/if}
 			</div>
 		{/each}

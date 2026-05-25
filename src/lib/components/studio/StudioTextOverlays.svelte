@@ -10,6 +10,10 @@
 		highlightColor?: string;
 		textOverlays: TextOverlay[];
 		parseHighlightMarkup?: boolean;
+		/** Snap text box center to canvas center while dragging. */
+		snapToCanvasCenter?: boolean;
+		/** Outer CSS scale (blank canvas export wrapper) for pointer math. */
+		pointerScale?: number;
 		/** Which studio text target is active (not the DOM selection API). */
 		activeTextKind: TextElementKind | null;
 		/** Null when nothing selected; mirrors `TextOverlayLayer.selectedId`. */
@@ -27,6 +31,8 @@
 		highlightColor = '#F5A623',
 		textOverlays,
 		parseHighlightMarkup = false,
+		snapToCanvasCenter = false,
+		pointerScale,
 		activeTextKind,
 		activeTextOverlayId,
 		onRangeSelect,
@@ -45,6 +51,8 @@
 	{interactive}
 	{highlightColor}
 	{parseHighlightMarkup}
+	{snapToCanvasCenter}
+	{pointerScale}
 	textOverlays={textOverlays ?? []}
 	{selectedId}
 	{onRangeSelect}

@@ -4,7 +4,8 @@ import type { RequestHandler } from './$types';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
 
-type ContentMode = 'news' | 'fact' | 'story';
+type ContentMode = 'news' | 'fact' | 'story' | 'quote';
+type SyntheticMode = 'fact' | 'story' | 'quote';
 
 async function openRouterComplete(
 	messages: { role: string; content: string }[],
@@ -100,8 +101,38 @@ function wordsFromHint(hint: string, minCount: number): string[] {
 	return w;
 }
 
-function demoSynthetic(mode: 'fact' | 'story', storyCategory: string, syntheticHint: string) {
+function demoSynthetic(mode: SyntheticMode, storyCategory: string, syntheticHint: string) {
 	const cat = (storyCategory || 'health').toLowerCase();
+	if (mode === 'quote') {
+		const h = syntheticHint.trim();
+		if (h) {
+			const topic = h.slice(0, 80);
+			const hook = `THE REAL [[COST]] OF ${wordsFromHint(h, 1)[0]} IS WHAT YOU STOP [[BECOMING]]`;
+			return {
+				text: hook,
+				imageUrl: null,
+				title: topic,
+				description: `This line is about ${h.slice(0, 200)}. Use follow-up slides to name the tension honestly, one tradeoff readers recognize, and one quiet choice that changes the week. Avoid fake celebrity attributions; keep the voice universal and specific to the topic.`,
+				source: 'Quotes',
+				url: null,
+				uuid: 'demo-quote-topic',
+				categories: [],
+				demo: true,
+			};
+		}
+		return {
+			text: 'YOU DO NOT NEED [[MORE TIME]] — YOU NEED [[FEWER LIES]] ABOUT WHAT MATTERS',
+			imageUrl: null,
+			title: 'What matters',
+			description:
+				'Most burnout is not workload—it is misalignment. We say yes to things that look impressive and feel hollow. The quote is a filter: if the answer is not clearly yes, the default can be no. Clarity is not cruelty; it is respect for the one life you are actually living.',
+			source: 'Quotes',
+			url: null,
+			uuid: 'demo-quote',
+			categories: [],
+			demo: true,
+		};
+	}
 	if (mode === 'fact') {
 		const h = syntheticHint.trim();
 		if (h) {
@@ -235,7 +266,7 @@ function demoSynthetic(mode: 'fact' | 'story', storyCategory: string, syntheticH
 }
 
 async function syntheticContent(
-	mode: 'fact' | 'story',
+	mode: SyntheticMode,
 	storyCategory: string,
 	autoHighlight: boolean,
 	syntheticHint: string,
@@ -252,7 +283,23 @@ async function syntheticContent(
 			: '';
 
 	const userPrompt =
-		mode === 'fact'
+		mode === 'quote'
+			? `You write viral Instagram quote carousel copy. Output ONLY valid JSON (no markdown fences) with this shape:
+{"hook":"...","context":"..."}
+
+Rules for "hook":
+- One original, memorable quote line about the topic (do NOT copy a famous person's exact words)
+- Max 28 words, ALL CAPS
+- No quotation marks in the hook text, no hashtags, no emojis
+- Should feel wise, sharp, or emotionally true — not generic motivational poster filler
+
+Rules for "context":
+- 6–10 full sentences in normal sentence case
+- Unpack what the quote means for someone navigating this topic: tension, tradeoff, hope, or accountability
+- Give carousel writers distinct follow-up angles (not a numbered tip list)
+- Do not attribute to a real named person unless the user topic requires it; prefer universal voice${hasHint ? `\n\nUser topic (the quote and context MUST be clearly about this subject — name it directly):\n"""${hintSafe}"""` : ''}${regenBlock}`
+
+			: mode === 'fact'
 			? `You write viral Instagram overlay copy. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
@@ -289,8 +336,8 @@ Rules for "context":
 
 	const jsonRaw = await openRouterComplete(
 		[{ role: 'user', content: userPrompt }],
-		mode === 'story' ? 0.92 : 0.88,
-		mode === 'story' ? 720 : 500,
+		mode === 'story' ? 0.92 : mode === 'quote' ? 0.9 : 0.88,
+		mode === 'story' ? 720 : mode === 'quote' ? 560 : 500,
 	);
 	let overlayText = '';
 	let description = '';
@@ -301,13 +348,17 @@ Rules for "context":
 		description = parsed.context;
 	} else {
 		overlayText =
-			mode === 'fact'
-				? 'YOUR BRAIN CAN SPOT A FAMILIAR FACE IN AS LITTLE AS [[150 MILLISECONDS]]'
-				: `SHE WALKED AWAY FROM [[EVERYTHING SAFE]] TO BET ON ${themeLabel.toUpperCase()}`;
+			mode === 'quote'
+				? 'THE WORK IS NOT [[HARD]] — PRETENDING IT DOES NOT [[HURT]] IS'
+				: mode === 'fact'
+					? 'YOUR BRAIN CAN SPOT A FAMILIAR FACE IN AS LITTLE AS [[150 MILLISECONDS]]'
+					: `SHE WALKED AWAY FROM [[EVERYTHING SAFE]] TO BET ON ${themeLabel.toUpperCase()}`;
 		description =
-			mode === 'fact'
-				? 'Research in cognitive neuroscience suggests humans process familiar faces faster than many other visual patterns. The brain prioritizes social information. Studies using rapid serial visual presentation measure how quickly recognition occurs. This speed may have evolved for cooperation and threat detection in groups.'
-				: `On a Tuesday she still cannot name, she lied once to keep the room calm. The lie bought a week of quiet, then a voicemail she should have deleted, then a friend who stopped making eye contact. She followed the trail of small evasions until it led to a door she did not want to open. What waited inside was not scandal—it was the ordinary cruelty of people choosing comfort over honesty. She said the hardest sentence out loud anyway. The group did not applaud; some walked away. Months later, the air in her chest felt different: thinner, but hers.`;
+			mode === 'quote'
+				? 'Naming the pain is not weakness; it is the first honest inventory. When we stop performing invulnerability, we can choose smaller commitments that match our real capacity. The topic is not about grinding harder—it is about alignment between what we say matters and what our calendar proves. One clear no can protect a thousand future yeses that would have been resentful.'
+				: mode === 'fact'
+					? 'Research in cognitive neuroscience suggests humans process familiar faces faster than many other visual patterns. The brain prioritizes social information. Studies using rapid serial visual presentation measure how quickly recognition occurs. This speed may have evolved for cooperation and threat detection in groups.'
+					: `On a Tuesday she still cannot name, she lied once to keep the room calm. The lie bought a week of quiet, then a voicemail she should have deleted, then a friend who stopped making eye contact. She followed the trail of small evasions until it led to a door she did not want to open. What waited inside was not scandal—it was the ordinary cruelty of people choosing comfort over honesty. She said the hardest sentence out loud anyway. The group did not applaud; some walked away. Months later, the air in her chest felt different: thinner, but hers.`;
 	}
 
 	const title = titleFromHook(overlayText);
@@ -321,7 +372,7 @@ Rules for "context":
 		imageUrl: null,
 		title,
 		description,
-		source: mode === 'fact' ? 'Did you know' : themeLabel,
+		source: mode === 'quote' ? 'Quotes' : mode === 'fact' ? 'Did you know' : themeLabel,
 		url: null,
 		uuid: null,
 		categories: [],
@@ -342,12 +393,12 @@ export const POST: RequestHandler = async ({ request }) => {
 	} = body;
 
 	const mode: ContentMode =
-		body.mode === 'fact' || body.mode === 'story' ? body.mode : 'news';
+		body.mode === 'fact' || body.mode === 'story' || body.mode === 'quote' ? body.mode : 'news';
 	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
 	const syntheticHint =
 		typeof body.syntheticHint === 'string' ? String(body.syntheticHint).trim().slice(0, 600) : '';
 
-	if (mode === 'fact' || mode === 'story') {
+	if (mode === 'fact' || mode === 'story' || mode === 'quote') {
 		if (!env.OPENROUTER_API_KEY) {
 			return json(demoSynthetic(mode, storyCategory, syntheticHint), { status: 200 });
 		}

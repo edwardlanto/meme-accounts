@@ -87,7 +87,7 @@ import JSZip from 'jszip';
 		type ExternalSlideMergeMode,
 	} from '$lib/studio/external-slide-merge';
 	import {
-		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
+		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown
 	} from 'lucide-svelte';
@@ -141,7 +141,7 @@ import JSZip from 'jszip';
 	let useTestData = $state(true); // default to mock data
 	let initialTemplateParamApplied = $state(false);
 	let forcedTemplateFromQuery = $state<TemplateId | null>(null);
-	/** `?blank=1` — skip draft restore and open a minimal News canvas (users can switch templates per slide). */
+	/** `?blank=1` — skip draft restore and open the Blank canvas template (custom layout; not News). */
 	let forcedBlankFromQuery = $state(false);
 	/** `?template=…` starter links (template carousel / nav) — don’t restore last autosave workspace on top of a “new” session. */
 	let skipLatestWorkspaceDraftRestore = $state(false);
@@ -151,7 +151,7 @@ import JSZip from 'jszip';
 	// Fill-in-text uses the same topic input (`search`) as Generate/Fetch.
 	let category = $state('business');
 	/** Sidebar mode for the News template generator: live articles vs synthetic fact/story. */
-	type NewsStudioContentMode = 'news' | 'fact' | 'story';
+	type NewsStudioContentMode = 'news' | 'fact' | 'story' | 'quote';
 	let newsContentMode = $state<NewsStudioContentMode>('news');
 	let storyCategory = $state('health');
 	/** Sent to /api/news as syntheticHint when Random fact is selected. */
@@ -159,6 +159,9 @@ import JSZip from 'jszip';
 	let factTopicCategory = $state('any');
 	/** Sent to /api/news as syntheticHint with the story theme when Random story is selected. */
 	let storyTopicPrompt = $state('');
+	/** Sent to /api/news as syntheticHint when Quote is selected. */
+	let quoteTopicPrompt = $state('');
+	let quoteTopicCategory = $state('any');
 	let slideCount = $state(DEFAULT_STUDIO_SLIDE_COUNT); // 1–10
 
 	// Preview/edit view toggle for the canvas area.
@@ -281,11 +284,84 @@ import JSZip from 'jszip';
 		}
 	}
 
+	function isBlankCanvasSolidFill(color: string) {
+		const c = String(color ?? '').trim().toLowerCase();
+		return c === '#ffffff' || c === '#fff' || c === 'white';
+	}
+
+	/** Copy blank-canvas text box content into the target template’s primary text field when empty. */
+	function migrateBlankOverlayTextToSlide(idx: number, to: TemplateId) {
+		const overlays = (slideTextOverlaysByTemplate.blank ?? [])[idx] ?? [];
+		const text = overlays
+			.map((o) => String(o.text ?? '').trim())
+			.filter(Boolean)
+			.join('\n\n');
+		if (!text) return;
+		if (to === 'news' && !String(slides[idx] ?? '').trim()) {
+			slides = slides.map((s, i) => (i === idx ? text : s));
+		} else if (to === 'tweet' && !String(tweetTopTextBySlide[idx] ?? '').trim()) {
+			tweetTopTextBySlide = tweetTopTextBySlide.map((s, i) => (i === idx ? text : s));
+		} else if (to === 'textCarousel' && !String(textCarouselTextBySlide[idx] ?? '').trim()) {
+			textCarouselTextBySlide = textCarouselTextBySlide.map((s, i) => (i === idx ? text : s));
+		} else if (to === 'article' && !String(articleTextBySlide[idx] ?? '').trim()) {
+			articleTextBySlide = articleTextBySlide.map((s, i) => (i === idx ? text : s));
+		} else if (to === 'videoStory' && !String(videoStoryHeadlineBySlide[idx] ?? '').trim()) {
+			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((s, i) => (i === idx ? text : s));
+		} else if (to === 'imageQuote' && !String(imageQuoteTextBySlide[idx] ?? '').trim()) {
+			imageQuoteTextBySlide = imageQuoteTextBySlide.map((s, i) => (i === idx ? text : s));
+		} else if (to === 'blackText' && !String(blackTextHeadlineBySlide[idx] ?? '').trim()) {
+			blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((s, i) => (i === idx ? text : s));
+		}
+	}
+
+	/** Blank canvas zeros News vignette/shadow and paints solid white — restore when leaving blank. */
+	function bootstrapNewsSlideAfterSwitch(idx: number) {
+		if (!String(slides[idx] ?? '').trim()) {
+			slides = slides.map((x, i) => (i === idx ? NEWS_PLACEHOLDER_HEADLINE : x));
+		}
+		if (!String(source ?? '').trim() && idx === 0) source = NEWS_DEFAULT_SOURCE;
+		while (newsSolidBgBySlide.length <= idx) newsSolidBgBySlide = [...newsSolidBgBySlide, ''];
+		if (isBlankCanvasSolidFill(newsSolidBgBySlide[idx] ?? '')) {
+			newsSolidBgBySlide = newsSolidBgBySlide.map((c, i) => (i === idx ? '' : c));
+		}
+		if (shadowHeight === 0 && shadowStrength === 0) {
+			circleX = NEWS_DEFAULT_LAYOUT.circleX;
+			circleY = NEWS_DEFAULT_LAYOUT.circleY;
+			circleSize = NEWS_DEFAULT_LAYOUT.circleSize;
+			circle2X = NEWS_DEFAULT_LAYOUT.circle2X;
+			circle2Y = NEWS_DEFAULT_LAYOUT.circle2Y;
+			circle2Size = NEWS_DEFAULT_LAYOUT.circle2Size;
+			applyNewsSeedBackgroundLayout();
+			textPanelOffsetY = NEWS_DEFAULT_LAYOUT.textPanelOffsetY;
+			shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
+			shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
+		}
+		showCircleBySlide = showCircleBySlide.map((v, i) => (i === idx ? true : v));
+	}
+
+	function finalizeTemplateSwitch(from: TemplateId, to: TemplateId, idx: number) {
+		if (from === to) return;
+		if (from === 'blank' && to !== 'blank') {
+			if (forcedBlankFromQuery) forcedBlankFromQuery = false;
+			migrateBlankOverlayTextToSlide(idx, to);
+			while (newsSolidBgBySlide.length <= idx) newsSolidBgBySlide = [...newsSolidBgBySlide, ''];
+			if (isBlankCanvasSolidFill(newsSolidBgBySlide[idx] ?? '')) {
+				newsSolidBgBySlide = newsSolidBgBySlide.map((c, i) => (i === idx ? '' : c));
+			}
+		}
+		if (to === 'news') bootstrapNewsSlideAfterSwitch(idx);
+	}
+
 	function setActiveTemplate(t: TemplateId) {
-		lastTemplateUsed = t;
 		const idx = activeSlide;
+		const from = coerceTemplateId(slideTemplates[idx]);
+		lastTemplateUsed = t;
 		slideTemplates = slideTemplates.map((x, i) => (i === idx ? t : x));
+		if (t === 'blank') {
+			slides = slides.map((s, i) => (i === idx ? '' : s));
+		}
 		ensureTemplateDefaultsForSlide(t, idx);
+		finalizeTemplateSwitch(from, t, idx);
 		if (t === 'videoStory') {
 			const row = [...(bgVideosByTemplate.videoStory ?? [])];
 			while (row.length <= idx) row.push('');
@@ -304,9 +380,16 @@ import JSZip from 'jszip';
 		}
 	}
 	function applyTemplateToAll(t: TemplateId) {
+		const prevPerSlide = slideTemplates.map((x) => coerceTemplateId(x));
+		const wasAllBlank = prevPerSlide.every((x) => x === 'blank');
 		lastTemplateUsed = t;
 		slideTemplates = slideTemplates.map(() => t);
-		for (let i = 0; i < slides.length; i++) ensureTemplateDefaultsForSlide(t, i);
+		for (let i = 0; i < slides.length; i++) {
+			const from = wasAllBlank ? 'blank' : prevPerSlide[i] ?? 'news';
+			ensureTemplateDefaultsForSlide(t, i);
+			finalizeTemplateSwitch(from, t, i);
+		}
+		if (t === 'news') seedNewsStarterPlaceholderLayout();
 		if (t === 'blackText') {
 			const n = slides.length;
 			const prev = bgImagesByTemplate.blackText ?? [];
@@ -704,13 +787,13 @@ import JSZip from 'jszip';
 	}
 
 	const dockItems = $derived.by(() => ([
-		...(activeTemplate === 'news'
+		...(activeTemplate === 'news' || activeTemplate === 'blank'
 			? [{ icon: Wallpaper, label: 'BG tools', onClick: openNewsBgToolbarFromDock }]
 			: []),
 		{ icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !effectiveBackgroundVideo },
 		{ icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !effectiveBackgroundVideo },
-		// News background AI lives inside the BG tools popover to keep all background actions together.
-		...(activeTemplate === 'news'
+		// Background AI lives inside the BG tools popover (News + Blank).
+		...(activeTemplate === 'news' || activeTemplate === 'blank'
 			? []
 			: [{
 				icon: Sparkles,
@@ -1179,7 +1262,7 @@ import JSZip from 'jszip';
 			...generatingImagesByTemplate,
 			[template]: generating.map((v, idx) => idx === i ? false : v),
 		};
-		if (template === 'news' && String(url ?? '').trim()) {
+		if ((template === 'news' || template === 'blank') && String(url ?? '').trim()) {
 			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
 			);
@@ -1229,7 +1312,7 @@ import JSZip from 'jszip';
 			...generatingImagesByTemplate,
 			[template]: generating.map((v, idx) => idx === i ? false : v),
 		};
-		if (template === 'news' && String(url ?? '').trim()) {
+		if ((template === 'news' || template === 'blank') && String(url ?? '').trim()) {
 			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
 			);
@@ -1255,7 +1338,7 @@ import JSZip from 'jszip';
 		if (old?.startsWith('blob:')) URL.revokeObjectURL(old);
 		bgVideosByTemplate = { ...bgVideosByTemplate, [template]: videos.map((v, idx) => idx === i ? '' : v) };
 		bgImagesByTemplate = { ...bgImagesByTemplate, [template]: images.map((img, idx) => idx === i ? '' : img) };
-		if (template === 'news') {
+		if (template === 'news' || template === 'blank') {
 			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
 			);
@@ -2566,13 +2649,20 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray(s.slides)) slides = s.slides;
 		if (typeof s.activeSlide === 'number') activeSlide = Math.max(0, Math.min((s.slides?.length ?? slides.length) - 1, s.activeSlide));
 		if (typeof s.category === 'string') category = s.category;
-		if (s.newsContentMode === 'news' || s.newsContentMode === 'fact' || s.newsContentMode === 'story') {
+		if (
+			s.newsContentMode === 'news' ||
+			s.newsContentMode === 'fact' ||
+			s.newsContentMode === 'story' ||
+			s.newsContentMode === 'quote'
+		) {
 			newsContentMode = s.newsContentMode;
 		}
 		if (typeof s.storyCategory === 'string') storyCategory = s.storyCategory;
 		if (typeof (s as any).factTopicPrompt === 'string') factTopicPrompt = String((s as any).factTopicPrompt ?? '');
 		if (typeof (s as any).factTopicCategory === 'string') factTopicCategory = String((s as any).factTopicCategory ?? 'any');
 		if (typeof (s as any).storyTopicPrompt === 'string') storyTopicPrompt = String((s as any).storyTopicPrompt ?? '');
+		if (typeof (s as any).quoteTopicPrompt === 'string') quoteTopicPrompt = String((s as any).quoteTopicPrompt ?? '');
+		if (typeof (s as any).quoteTopicCategory === 'string') quoteTopicCategory = String((s as any).quoteTopicCategory ?? 'any');
 		if (typeof s.search === 'string') search = s.search;
 		if (typeof s.source === 'string') source = s.source;
 		if (typeof (s as any).sourceLogoSrc === 'string') sourceLogoSrc = String((s as any).sourceLogoSrc ?? '').trim();
@@ -2666,6 +2756,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					return m && typeof m === 'object' ? m : {};
 				});
 			stylesByTemplateBySlide = {
+				blank: norm(raw.blank),
 				news: norm(raw.news),
 				tweet: norm(raw.tweet),
 				article: norm(raw.article),
@@ -3144,11 +3235,26 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		// This avoids subtle races with the filmstrip capture and guarantees "what you see"
 		// matches the stored preview.
 		let previewPng: string | null = null;
+		if (!exportRef) {
+			studioTemplateSaving = false;
+			studioTemplateFeedback =
+				'Canvas is not ready to export yet — wait for the preview to finish loading, then try again.';
+			return;
+		}
 		try {
 			const n = await exportAllSlidesToDraft();
 			previewPng = n > 0 ? (exportedSlides[0] ?? null) : null;
-		} catch {
-			previewPng = null;
+			if (!previewPng) {
+				studioTemplateSaving = false;
+				studioTemplateFeedback =
+					'Could not capture a preview image. Add content to the canvas or try Export once, then save again.';
+				return;
+			}
+		} catch (e: unknown) {
+			studioTemplateSaving = false;
+			studioTemplateFeedback =
+				e instanceof Error ? e.message : 'Preview export failed — try again after the canvas finishes loading.';
+			return;
 		}
 
 		await materializeBlobUrlsForDraftSave();
@@ -3389,6 +3495,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		factTopicPrompt,
 		factTopicCategory,
 		storyTopicPrompt,
+		quoteTopicPrompt,
+		quoteTopicCategory,
 			search,
 			source,
 			sourceLogoSrc,
@@ -3747,6 +3855,21 @@ tweetTopImagePanYBySlide,
 		{ id: 'productivity', label: 'Productivity' },
 		{ id: 'fitness', label: 'Fitness' },
 		{ id: 'money', label: 'Money' },
+	] as const;
+
+	const MOCK_QUOTES = [
+		{
+			hookText: 'YOU DO NOT NEED [[MORE TIME]] — YOU NEED [[FEWER LIES]] ABOUT WHAT MATTERS',
+			rawText:
+				'Most burnout is misalignment, not workload. We collect obligations that look impressive and feel hollow. The quote is a filter: if the answer is not clearly yes, the default can be no. Clarity is not cruelty; it is respect for the one life you are actually living.',
+			source: 'Quotes',
+		},
+		{
+			hookText: '[[COURAGE]] IS NOT THE ABSENCE OF FEAR — IT IS THE [[NEXT STEP]] ANYWAY',
+			rawText:
+				'Fear predicts loss; courage names what is still worth trying. On hard topics, people wait to feel ready before they act. Readiness is often a story told after the first honest move. The slide after the quote can name one small action that does not require perfection.',
+			source: 'Quotes',
+		},
 	] as const;
 
 	const MOCK_FACTS = [
@@ -4142,18 +4265,24 @@ tweetTopImagePanYBySlide,
 			? factTopics.find(t => t.id === factTopicCategory)?.label ?? ''
 			: '';
 		const factFullPrompt = [factTopicLabel, factTopicPrompt.trim()].filter(Boolean).join(': ');
+		const quoteTopicLabel = quoteTopicCategory !== 'any'
+			? factTopics.find((t) => t.id === quoteTopicCategory)?.label ?? ''
+			: '';
+		const quoteFullPrompt = [quoteTopicLabel, quoteTopicPrompt.trim()].filter(Boolean).join(': ');
 
 		const syntheticHintStr =
 			newsContentMode === 'fact'
 				? factFullPrompt.slice(0, 600)
 				: newsContentMode === 'story'
 					? storyTopicPrompt.trim().slice(0, 600)
-					: '';
+					: newsContentMode === 'quote'
+						? quoteFullPrompt.slice(0, 600)
+						: '';
 
-			/** Random fact/story without a topic still use bundled mocks; any topic hits /api/news. */
+			/** Synthetic modes without a topic use bundled mocks; any topic hits /api/news. */
 			const useBundledFactStoryMock =
 				useTestData &&
-				(newsContentMode === 'fact' || newsContentMode === 'story') &&
+				(newsContentMode === 'fact' || newsContentMode === 'story' || newsContentMode === 'quote') &&
 				!syntheticHintStr;
 
 			if (useTestData && newsContentMode === 'news') {
@@ -4175,10 +4304,18 @@ tweetTopImagePanYBySlide,
 				nextArticleTitle = article.title;
 				articleImageUrl = article.image_url;
 			} else if (useBundledFactStoryMock) {
-				// ── Mock mode: canned fact/story when no custom topic ─────────
+				// ── Mock mode: canned fact/story/quote when no custom topic ─────────
 				await new Promise((r) => setTimeout(r, 400));
 				if (newsContentMode === 'fact') {
 					const pick = MOCK_FACTS[Math.floor(Math.random() * MOCK_FACTS.length)] ?? MOCK_FACTS[0];
+					hookText = pick.hookText;
+					rawText = pick.rawText;
+					nextSource = pick.source;
+					nextArticleUrl = '';
+					nextArticleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
+					articleImageUrl = '';
+				} else if (newsContentMode === 'quote') {
+					const pick = MOCK_QUOTES[Math.floor(Math.random() * MOCK_QUOTES.length)] ?? MOCK_QUOTES[0];
 					hookText = pick.hookText;
 					rawText = pick.rawText;
 					nextSource = pick.source;
@@ -4225,7 +4362,9 @@ tweetTopImagePanYBySlide,
 							? data.source
 							: newsContentMode === 'fact'
 								? 'Did you know'
-								: storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Story';
+								: newsContentMode === 'quote'
+									? 'Quotes'
+									: storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Story';
 				nextArticleUrl = data.url ?? '';
 				nextArticleTitle = data.title ?? '';
 				articleImageUrl = data.imageUrl ?? '';
@@ -4273,7 +4412,10 @@ tweetTopImagePanYBySlide,
 				}
 
 				const carouselTargets = targets.filter((t) => t.template === 'textCarousel');
-				const copyTargets = targets.filter((t) => t.template !== 'textCarousel');
+				// Blank uses free-form overlays — copy is applied via fillInTextFromTopic after fetch.
+				const copyTargets = targets.filter(
+					(t) => t.template !== 'textCarousel' && t.template !== 'blank',
+				);
 				const variantsNeedHighlights =
 					studioTextHighlightsEnabled && copyTargets.some((t) => t.template === 'news');
 
@@ -4358,12 +4500,25 @@ tweetTopImagePanYBySlide,
 						}
 					}
 				}
+				// Blank never renders `slides[]` — drop stale News headline strings after fetch.
+				for (let i = 0; i < n; i++) {
+					if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) === 'blank') {
+						slides = slides.map((s, idx) => (idx === i ? '' : s));
+					}
+				}
+				// Blank canvas: push fetched hook/body into existing text boxes (Quote/Fact/Story/News).
+				if (targets.some((t) => t.template === 'blank')) {
+					articleSnippet = rawText;
+					articleTitle = nextArticleTitle || articleTitle;
+					source = nextSource;
+					fillBlankTextFromFetch(hookText, rawText);
+				}
 			// Deck has news slides → regenerate their backgrounds on every Load & Fill.
 			// Text-only templates (tweet, blackText, etc.) only get text updates (handled above).
 			const refreshNewsDeckOnFetch =
 				!opts.fillOnly &&
 				hasNewsSlidesInDeck &&
-				(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story');
+				(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story' || newsContentMode === 'quote');
 			if (refreshNewsDeckOnFetch) {
 				await refreshNewsDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
 			}
@@ -4487,15 +4642,49 @@ tweetTopImagePanYBySlide,
 		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: nextRows };
 	}
 
-	function collectFillSlots(skipPrimary = false): FillSlot[] {
+	/** Apply fetched hook/body copy onto existing blank-canvas text boxes (Quote/Fact/Story/News). */
+	function fillBlankTextFromFetch(hookText: string, rawText: string) {
+		const hook = String(hookText ?? '').trim();
+		const body = String(rawText ?? '').trim();
+		if (!hook && !body) return;
+
+		const extraLines = body
+			.split(/(?<=[.!?])\s+/)
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.slice(0, 7);
+		const lines = [hook, ...extraLines.filter((l) => l !== hook)].filter(Boolean);
+		if (!lines.length) return;
+
+		const n = Math.max(1, slides.length);
+		let lineIdx = 0;
+		for (let i = 0; i < n; i++) {
+			if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) !== 'blank') continue;
+			const overlays = (slideTextOverlaysByTemplate.blank ?? [])[i] ?? [];
+			for (const o of overlays) {
+				const text = lines[lineIdx % lines.length] ?? hook;
+				lineIdx++;
+				pushUndo('blank', i);
+				setTextOverlayText('blank', i, o.id, text);
+			}
+		}
+	}
+
+	function collectFillSlots(
+		skipPrimary = false,
+		opts?: { skipBlankOverlays?: boolean },
+	): FillSlot[] {
 		// Collect fill targets across ALL slides so every template gets populated correctly.
 		const out: FillSlot[] = [];
 		const n = Math.max(1, slides.length);
 		for (let i = 0; i < n; i++) {
 			const tpl = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
-			// Primary template text (e.g. News headline / main text field) counts as a fill target.
-			if (!skipPrimary) out.push({ kind: 'primary', template: tpl, slide: i });
+			// Primary template text (e.g. News headline). Blank canvas only uses text overlays.
+			if (!skipPrimary && tpl !== 'blank') {
+				out.push({ kind: 'primary', template: tpl, slide: i });
+			}
 			// All text overlays on this slide (blank canvas / custom text boxes).
+			if (opts?.skipBlankOverlays && tpl === 'blank') continue;
 			const overlays = (slideTextOverlaysByTemplate[tpl] ?? [])[i] ?? [];
 			for (const o of overlays) {
 				out.push({ kind: 'textOverlay', template: tpl, slide: i, overlayId: o.id });
@@ -4504,13 +4693,64 @@ tweetTopImagePanYBySlide,
 		return out;
 	}
 
+	type ImageFillSlot =
+		| { kind: 'background'; template: 'blank'; slide: number }
+		| { kind: 'overlay'; template: 'blank'; slide: number; overlayId: string };
+
+	/** Existing photo/video layers on blank slides — topic fill replaces these in place. */
+	function collectBlankImageFillSlots(): ImageFillSlot[] {
+		const out: ImageFillSlot[] = [];
+		const n = Math.max(1, slides.length);
+		for (let i = 0; i < n; i++) {
+			if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) !== 'blank') continue;
+			const bg = String(resolveMediaUrl((bgImagesByTemplate.blank ?? [])[i] ?? '')).trim();
+			const vid = String((bgVideosByTemplate.blank ?? [])[i] ?? '').trim();
+			if (bg || vid) out.push({ kind: 'background', template: 'blank', slide: i });
+			for (const o of (slideOverlaysByTemplate.blank ?? [])[i] ?? []) {
+				if (String(o.src ?? '').trim()) {
+					out.push({ kind: 'overlay', template: 'blank', slide: i, overlayId: o.id });
+				}
+			}
+		}
+		return out;
+	}
+
+	function setStickerOverlaySrc(template: TemplateId, slide: number, overlayId: string, src: string) {
+		const rows = slideOverlaysByTemplate[template] ?? [];
+		const nextRows = rows.map((r) => [...r]);
+		while (nextRows.length <= slide) nextRows.push([]);
+		nextRows[slide] = (nextRows[slide] ?? []).map((o) => (o.id === overlayId ? { ...o, src } : o));
+		slideOverlaysByTemplate = { ...slideOverlaysByTemplate, [template]: nextRows };
+	}
+
+	/** Replace existing blank-canvas photos (background + image stickers) from topic lines. */
+	async function fillBlankImagesFromTopic(topic: string, lines: string[]) {
+		const slots = collectBlankImageFillSlots();
+		if (!slots.length) return;
+		const topicTrim = topic.trim();
+		for (let i = 0; i < slots.length; i++) {
+			const slot = slots[i];
+			const line = lines[i % lines.length] ?? topicTrim;
+			const prompt = `${topicTrim}. ${line}`.trim().slice(0, 480) || topicTrim || 'editorial photo';
+			pushUndo('blank', slot.slide);
+			if (slot.kind === 'background') {
+				await generateBackground(slot.slide, prompt, 'blank', i > 0);
+			} else {
+				await generateStickerOverlayImage(slot.slide, slot.overlayId, prompt, 'blank', i > 0);
+			}
+			if (i < slots.length - 1) {
+				await new Promise<void>((r) => setTimeout(r, 350));
+			}
+		}
+	}
+
 	/** Fill all template text slots with AI copy derived from `topic`.
 	 *  When called without arguments it uses the current `search` input value.
 	 *  Pass an explicit topic (e.g. article content) to drive the fill from loaded article data.
 	 *  `skipPrimary`: only fill text overlays — use after `fetchNews` so headlines stay article/variant copy. */
 	async function fillInTextFromTopic(
 		explicitTopic?: string,
-		opts?: { skipPrimary?: boolean },
+		opts?: { skipPrimary?: boolean; skipBlankOverlays?: boolean },
 	) {
 		fetchingNews = true;
 		newsError = '';
@@ -4521,8 +4761,17 @@ tweetTopImagePanYBySlide,
 				return;
 			}
 
-			const slots = collectFillSlots(!!opts?.skipPrimary);
-			if (!slots.length) return;
+			const slots = collectFillSlots(!!opts?.skipPrimary, {
+				skipBlankOverlays: !!opts?.skipBlankOverlays,
+			});
+			if (!slots.length) {
+				const onBlank = slideTemplates.some((t) => coerceTemplateId(t) === 'blank');
+				if (onBlank && !opts?.skipBlankOverlays) {
+					newsError =
+						'Add text boxes or images to the blank canvas, then Load & Fill (or enter a topic and submit).';
+				}
+				return;
+			}
 			// One generated slide can provide multiple lines (headline/subheadline/body).
 			const count = Math.max(1, Math.min(8, slots.length));
 			const res = await fetch('/api/generate-slides', {
@@ -4563,6 +4812,11 @@ tweetTopImagePanYBySlide,
 					applyPrimaryClampedToSlide(slot.slide, slot.template, text);
 				}
 			}
+
+			const hasBlankSlides = slideTemplates.some((t) => coerceTemplateId(t) === 'blank');
+			if (hasBlankSlides) {
+				await fillBlankImagesFromTopic(topic, lines);
+			}
 		} catch (e: any) {
 			newsError = e?.message ?? String(e);
 		} finally {
@@ -4577,14 +4831,27 @@ tweetTopImagePanYBySlide,
 		await fetchNews({ preferExistingDeck: true });
 		// After the article is loaded, also fill all template slots using the article content
 		// so every slide (including custom text overlays) gets populated in one click.
-		const fillTopic = (articleSnippet || articleTitle || search || '').trim();
+		const syntheticTopic =
+			newsContentMode === 'quote'
+				? [quoteTopicCategory !== 'any' ? factTopics.find((t) => t.id === quoteTopicCategory)?.label ?? '' : '', quoteTopicPrompt.trim()]
+						.filter(Boolean)
+						.join(': ')
+				: newsContentMode === 'fact'
+					? [factTopicCategory !== 'any' ? factTopics.find((t) => t.id === factTopicCategory)?.label ?? '' : '', factTopicPrompt.trim()]
+							.filter(Boolean)
+							.join(': ')
+					: newsContentMode === 'story'
+						? storyTopicPrompt.trim()
+						: '';
+		const fillTopic = (articleSnippet || articleTitle || syntheticTopic || search || '').trim();
 		if (fillTopic) {
-			await fillInTextFromTopic(fillTopic, { skipPrimary: true });
+			// Blank text boxes are filled inside fetchNews; avoid overwriting with /api/generate-slides.
+			await fillInTextFromTopic(fillTopic, { skipPrimary: true, skipBlankOverlays: true });
 		}
 		// Second pass: parallel slide Vertex calls can 429 the circle; overlay fill can also shift
 		// scheduling. If any News badge is still empty, retry those slides after everything settles.
 		const n = Math.max(1, slides.length);
-		if (newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story') {
+		if (newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story' || newsContentMode === 'quote') {
 			await tick();
 			const needCircle: number[] = [];
 			for (let i = 0; i < n; i++) {
@@ -4673,8 +4940,8 @@ tweetTopImagePanYBySlide,
 		bgError = '';
 
 		try {
-			// Solid fill paints above “no image” in NewsTemplate — clear it before Vertex so AI results show.
-			if (template === 'news') {
+			// Solid fill paints above “no image” — clear it before Vertex so AI results show.
+			if (template === 'news' || template === 'blank') {
 				newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
 					idx === slideIdx ? '' : (newsSolidBgBySlide[idx] ?? ''),
 				);
@@ -4708,6 +4975,53 @@ tweetTopImagePanYBySlide,
 			} else {
 				bgError = data.error ?? (res.ok ? 'Image generation failed' : `Request failed (${res.status})`);
 				setBgGeneratingFlag(template, slideIdx, false);
+			}
+		} catch (e: any) {
+			const name = String(e?.name ?? '');
+			bgError =
+				name === 'TimeoutError' || name === 'AbortError'
+					? 'Image generation timed out — try again.'
+					: (e?.message ?? 'Image generation failed');
+		} finally {
+			setBgGeneratingFlag(template, slideIdx, false);
+		}
+	}
+
+	async function generateStickerOverlayImage(
+		slideIdx: number,
+		overlayId: string,
+		promptOverride?: string,
+		template: TemplateId = 'blank',
+		skipVertexCache = false,
+	) {
+		setBgGeneratingFlag(template, slideIdx, true);
+		bgError = '';
+		try {
+			const slideText = primarySlideTextForPrompt(template, slideIdx);
+			const title = String(articleTitle ?? '').trim();
+			const prompt =
+				String(promptOverride ?? '').trim() ||
+				slideText ||
+				title ||
+				'editorial news photo';
+			const res = await fetch('/api/vertex', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ prompt, aspect: '3:4', context: title || undefined, skipCache: skipVertexCache }),
+				signal: AbortSignal.timeout(120_000),
+			});
+			const data = await res.json();
+			if (data.dataUrl) {
+				setStickerOverlaySrc(template, slideIdx, overlayId, data.dataUrl);
+				if (studioImageGenBatchDepth === 0) {
+					studioImageGenPaintHold = true;
+					await flushStudioLoadingPaint();
+					studioImageGenPaintHold = false;
+				}
+			} else if (data.demo) {
+				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
+			} else {
+				bgError = data.error ?? (res.ok ? 'Image generation failed' : `Request failed (${res.status})`);
 			}
 		} catch (e: any) {
 			const name = String(e?.name ?? '');
@@ -4936,7 +5250,8 @@ tweetTopImagePanYBySlide,
 
 	// ── Subject cutout (AI background removal) ────────────────────────────
 	async function cutOutSubject(slideIdx: number = activeSlide) {
-		const src = (bgImagesByTemplate.news ?? [])[slideIdx];
+		const t = coerceTemplateId(slideTemplates[slideIdx] ?? lastTemplateUsed);
+		const src = (bgImagesByTemplate[t] ?? [])[slideIdx];
 		if (!src) {
 			cutoutError = 'No background image on this slide to cut out.';
 			return;
@@ -5311,8 +5626,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		return '#0a0a0a';
 	}
 
-	function applyNewsSolidBg(hex: string, slideIdx = activeSlide) {
-		if (coerceTemplateId(slideTemplates[slideIdx] ?? 'news') !== 'news') return;
+	function applyTemplateSolidBg(hex: string, slideIdx = activeSlide, template?: TemplateId) {
+		const t = template ?? coerceTemplateId(slideTemplates[slideIdx] ?? 'news');
+		if (t !== 'news' && t !== 'blank') return;
 		const c = normalizeSolidHex(hex);
 		clearSlideBackground(slideIdx);
 		newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
@@ -5322,7 +5638,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	}
 
 	function resetNewsSolidToGradient(slideIdx = activeSlide) {
-		if (coerceTemplateId(slideTemplates[slideIdx] ?? 'news') !== 'news') return;
+		const t = coerceTemplateId(slideTemplates[slideIdx] ?? 'news');
+		if (t !== 'news' && t !== 'blank') return;
 		newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
 			i === slideIdx ? '' : (newsSolidBgBySlide[i] ?? '')
 		);
@@ -5491,8 +5808,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					width: CANVAS_W,
 					height: CANVAS_H,
 					pixelRatio: 1,
-					// Match News canvas gutter so antialiasing gaps aren’t pure black
-					backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+					backgroundColor: filmstripPngBackgroundForSlide(i),
 					style: { transform: 'scale(1)', transformOrigin: 'top left' },
 					cacheBust: true,
 				} as any);
@@ -5536,7 +5852,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					width: CANVAS_W,
 					height: CANVAS_H,
 					pixelRatio: 1,
-					backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+					backgroundColor: filmstripPngBackgroundForSlide(i),
 					style: { transform: 'scale(1)', transformOrigin: 'top left' },
 					cacheBust: true,
 					// Let html-to-image inline @font-face rules so custom fonts render in the PNG.
@@ -5614,13 +5930,51 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	/** Last signatures we successfully rasterized to the filmstrip (avoids full-deck capture on single-slide edits). */
 	let prevFilmstripSigs: string[] = [];
 
+	/** Primary label for filmstrip fallback (blank uses text overlays, not `slides[]`). */
+	function thumbTextForSlide(i: number): string {
+		const t = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
+		if (t === 'blank') {
+			const overlays = (slideTextOverlaysByTemplate.blank ?? [])[i] ?? [];
+			return overlays
+				.map((o) => String(o.text ?? '').trim())
+				.filter(Boolean)
+				.join(' ');
+		}
+		const raw =
+			t === 'news' && i === activeSlide && newsHeadlineLive !== null
+				? newsHeadlineLive
+				: t === 'tweet'
+					? (tweetTopTextBySlide[i] ?? '').trim()
+					: t === 'article'
+						? (articleTextBySlide[i] ?? '')
+						: t === 'textCarousel'
+							? (textCarouselTextBySlide[i] ?? '')
+							: t === 'videoStory'
+								? (videoStoryHeadlineBySlide[i] ?? '')
+								: t === 'blackText'
+									? (blackTextHeadlineBySlide[i] ?? '')
+									: t === 'imageQuote'
+										? (imageQuoteTextBySlide[i] ?? '')
+										: (slides[i] ?? '');
+		return String(raw || slides[i] || '')
+			.replace(/\[\[|\]\]/g, '')
+			.replace(/\s+/g, ' ')
+			.trim();
+	}
+
 	/** One filmstrip cell: template + media + primary copy lengths (used for invalidation + diff). */
 	function slideThumbSignature(i: number): string {
-		const t = slideTemplates[i] ?? 'news';
+		const t = coerceTemplateId(slideTemplates[i] ?? 'news');
 		const imgLen = ((bgImagesByTemplate[t] ?? [])[i] ?? '').length;
 		const vidLen = ((bgVideosByTemplate[t] ?? [])[i] ?? '').length;
-		// News uses `newsHeadlineLive` during inline editing to avoid full-canvas flicker; the filmstrip
-		// should reflect live edits for the active slide and re-raster accordingly.
+		if (t === 'blank') {
+			const textOs = (slideTextOverlaysByTemplate.blank ?? [])[i] ?? [];
+			const imgOs = (slideOverlaysByTemplate.blank ?? [])[i] ?? [];
+			const textSig = textOs.map((o) => `${o.id}:${String(o.text ?? '').length}`).join('|');
+			const imgSig = imgOs.map((o) => `${o.id}:${String(o.src ?? '').length}`).join('|');
+			const solidLen = String(newsSolidBgBySlide[i] ?? '').length;
+			return `${t}:${imgLen}:${vidLen}:${textSig}:${imgSig}:${solidLen}:${thumbTextForSlide(i).length}`;
+		}
 		const newsLiveLen =
 			t === 'news' && i === activeSlide && newsHeadlineLive !== null
 				? newsHeadlineLive.length
@@ -5645,7 +5999,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 	/** Letterboxing for filmstrip / burn-music PNGs — align with each template’s real canvas fill. */
 	function filmstripPngBackgroundForSlide(slideIdx: number): string {
-		const t = slideTemplates[slideIdx] ?? 'news';
+		const t = coerceTemplateId(slideTemplates[slideIdx] ?? 'news');
+		if (t === 'blank') {
+			const solid = String(newsSolidBgBySlide[slideIdx] ?? '').trim();
+			if (solid) return solid;
+		}
 		if (t === 'blackText') return '#000000';
 		if (t === 'tweet') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 		if (t === 'textCarousel') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
@@ -5675,7 +6033,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				width: CANVAS_W,
 				height: CANVAS_H,
 				pixelRatio,
-				backgroundColor: uiTheme === 'light' ? '#ffffff' : '#0a0a0a',
+				backgroundColor: filmstripPngBackgroundForSlide(0),
 				style: { transform: 'scale(1)', transformOrigin: 'top left' },
 				cacheBust: true,
 			} as any);
@@ -6048,7 +6406,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<div style="width: {previewDisplayW}px;" class="relative z-10 max-w-full shrink-0">
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div
-					data-studio-canvas-root
 					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
 					class="relative rounded-2xl {previewCanvasOverflowClass}"
 				>
@@ -6089,31 +6446,53 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</div>
 			{/if}
 			{#if previewTemplate === 'blank'}
-				<BlankTemplate
-					bind:exportRef
-					backgroundImage={canvasBackgroundImage}
-					backgroundVideo={canvasBackgroundVideo}
-					solidBackgroundColor={'#ffffff'}
-					w={CANVAS_W}
-					h={CANVAS_H}
-					scale={previewScale}
-					interactive={canvasInteractive}
-					overlays={canvasOverlays}
-				/>
-				<StudioTextOverlays
-					w={CANVAS_W}
-					h={CANVAS_H}
-					scale={previewScale}
-					interactive={canvasInteractive}
-					highlightColor={highlightColor}
-					textOverlays={canvasTextOverlays}
-					activeTextKind={selectedText}
-					activeTextOverlayId={selectedTextOverlayId}
-					onRangeSelect={onTextOverlayRangeSelect}
-					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
-					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-					parseHighlightMarkup={previewTemplate === 'news'}
-				/>
+				<!-- Export root must include background + stickers + text overlays (not just BlankTemplate). -->
+				<div
+					bind:this={exportRef}
+					class="relative overflow-hidden rounded-2xl"
+					style="
+						width: {CANVAS_W}px;
+						height: {CANVAS_H}px;
+						transform: scale({previewScale});
+						transform-origin: top left;
+						background: {newsSolidBgBySlide[paintSlide] || '#ffffff'};
+					"
+					data-studio-canvas-root
+				>
+					<BlankTemplate
+						backgroundImage={canvasBackgroundImage}
+						backgroundVideo={canvasBackgroundVideo}
+						solidBackgroundColor={newsSolidBgBySlide[paintSlide] || '#ffffff'}
+						w={CANVAS_W}
+						h={CANVAS_H}
+						scale={1}
+						interactive={canvasInteractive}
+						overlays={canvasOverlays}
+						onOverlaysChange={(o) => {
+							if (!canvasInteractive) return;
+							setSlideOverlays(paintSlide, o, 'blank');
+						}}
+					/>
+					<StudioTextOverlays
+						w={CANVAS_W}
+						h={CANVAS_H}
+						scale={1}
+						pointerScale={previewScale}
+						interactive={canvasInteractive}
+						highlightColor={highlightColor}
+						textOverlays={canvasTextOverlays}
+						snapToCanvasCenter={true}
+						activeTextKind={selectedText}
+						activeTextOverlayId={selectedTextOverlayId}
+						onRangeSelect={onTextOverlayRangeSelect}
+						onTextOverlaysChange={(o: any) => {
+							if (!canvasInteractive) return;
+							setSlideTextOverlays(paintSlide, o, 'blank');
+						}}
+						onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+						parseHighlightMarkup={false}
+					/>
+				</div>
 			{:else if previewTemplate === 'news'}
 				<NewsTemplate
 					templateTheme={uiTheme}
@@ -6650,36 +7029,27 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
 			{@const dndItems = orderIds.map((id) => {
 				const i = idToIndex.get(id) ?? 0;
-				const t = slideTemplates[i] ?? 'news';
-				const rawThumbText =
-					t === 'news' && i === activeSlide && newsHeadlineLive !== null
-						? newsHeadlineLive
-						: t === 'tweet'
-						? (tweetTopTextBySlide[i] ?? '').trim()
-						: t === 'article'
-							? (articleTextBySlide[i] ?? '')
-							: t === 'textCarousel'
-								? (textCarouselTextBySlide[i] ?? '')
-								: t === 'videoStory'
-									? (videoStoryHeadlineBySlide[i] ?? '')
-								: t === 'blackText'
-									? (blackTextHeadlineBySlide[i] ?? '')
-								: t === 'imageQuote'
-									? (imageQuoteTextBySlide[i] ?? '')
-									: (slides[i] ?? '');
-				const thumbText = String(rawThumbText || slides[i] || '')
-					.replace(/\[\[|\]\]/g, '')
-					.replace(/\s+/g, ' ')
-					.trim();
+				const t = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
+				const thumbText = thumbTextForSlide(i);
+				const blankTextOverlays = (slideTextOverlaysByTemplate.blank ?? [])[i] ?? [];
+				const blankImageOverlays = (slideOverlaysByTemplate.blank ?? [])[i] ?? [];
+				const hasBlankContent =
+					t === 'blank' &&
+					(!!thumbText ||
+						!!String((bgImagesByTemplate.blank ?? [])[i] ?? '').trim() ||
+						!!String((bgVideosByTemplate.blank ?? [])[i] ?? '').trim() ||
+						blankTextOverlays.length > 0 ||
+						blankImageOverlays.length > 0 ||
+						!!String(newsSolidBgBySlide[i] ?? '').trim());
 				return {
 					id,
 					slideIndex: i,
-					// Derive thumbnail data by id→index lookup (stable during drag).
 					text: thumbText,
 					img: (bgImagesByTemplate[t] ?? [])[i] ?? '',
 					vid: (bgVideosByTemplate[t] ?? [])[i] ?? '',
 					music: slideMusic[i] ?? null,
 					loading: !!((generatingImagesByTemplate[t] ?? [])[i]),
+					hasBlankContent,
 				};
 			})}
 			<DragDropProvider
@@ -6696,7 +7066,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				<div class="no-scrollbar flex gap-2 overflow-x-auto max-w-full pb-1 px-1 mx-auto">
 				{#each dndItems as item, i (item.id)}
 					{@const tplate = slideTemplates[item.slideIndex] ?? 'news'}
-					{@const isPlaceholder = !item.text}
+					{@const isPlaceholder =
+						tplate === 'blank' ? !item.hasBlankContent : !item.text}
 					{@const hasMusic = !!item.music}
 					{@const isVideo = !!item.vid || hasMusic}
 					{@const thumbFontFamily =
@@ -6916,7 +7287,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
 												<Loader size={12} class="animate-spin text-white/40" />
 											</div>
-										{:else if !di.text}
+										{:else if tDrag === 'blank' ? !di.hasBlankContent : !di.text}
 											<div class="absolute inset-0 flex items-center justify-center text-white/15">
 												<span class="text-[10px] font-mono">…</span>
 											</div>
@@ -7212,6 +7583,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
 							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
 						/>
+					{:else if newsContentMode === 'quote'}
+						<input
+							bind:value={quoteTopicPrompt}
+							placeholder="Topic for the quote (e.g. discipline, leadership)…"
+							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+						/>
 					{:else}
 						<input
 							bind:value={storyTopicPrompt}
@@ -7245,9 +7623,12 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{:else if newsContentMode === 'fact'}
 								<Sparkles size={11} class="shrink-0" />
 								Random fact
-							{:else}
+							{:else if newsContentMode === 'story'}
 								<Type size={11} class="shrink-0" />
 								Random story
+							{:else}
+								<Quote size={11} class="shrink-0" />
+								Quote
 							{/if}
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
@@ -7256,6 +7637,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{ id: 'news',  icon: Newspaper, label: 'News' },
 								{ id: 'fact',  icon: Sparkles,  label: 'Random fact' },
 								{ id: 'story', icon: Type,      label: 'Random story' },
+								{ id: 'quote', icon: Quote,     label: 'Quote' },
 							] as const) as opt}
 								<button
 									type="button"
@@ -7284,6 +7666,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{categories.find((c) => c.id === category)?.label ?? 'Topic'}
 							{:else if newsContentMode === 'story'}
 								{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
+							{:else if newsContentMode === 'quote'}
+								{factTopics.find((t) => t.id === quoteTopicCategory)?.label ?? 'Any'}
 							{:else}
 								{factTopics.find((t) => t.id === factTopicCategory)?.label ?? 'Any'}
 							{/if}
@@ -7319,6 +7703,22 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
 										>
 											{th.label}
+										</button>
+									{/each}
+								</div>
+							{:else if newsContentMode === 'quote'}
+								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Quote Topic</p>
+								<div class="grid grid-cols-2 gap-1.5">
+									{#each factTopics as topic}
+										<button
+											type="button"
+											onclick={() => (quoteTopicCategory = topic.id)}
+											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
+												{quoteTopicCategory === topic.id
+													? 'bg-[#1a1a1a] text-white font-semibold'
+													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+										>
+											{topic.label}
 										</button>
 									{/each}
 								</div>
@@ -7492,7 +7892,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						type="button"
 						onclick={() => void loadAndFill()}
 						disabled={fetchingNews}
-						title={fetchingNews ? (useTestData ? 'Loading…' : newsContentMode === 'news' ? 'Fetching…' : 'Generating…') : 'Load & Fill'}
+						title={fetchingNews
+							? useTestData
+								? 'Loading…'
+								: newsContentMode === 'news'
+									? 'Fetching…'
+									: 'Generating…'
+							: 'Load & Fill'}
 						class="prompt-bar-submit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-[#ffffff] transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
 					>
 						{#if fetchingNews}
@@ -7603,14 +8009,16 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 <!-- News: use dock “BG tools” to open; canvas is for drag-pan only -->
 <NewsBackgroundToolbar
 	anchor={newsBgToolbarAnchor}
-	showCutout={!!String(canvasBackgroundImage ?? '').trim() && !String(canvasBackgroundVideo ?? '').trim()}
-	onAi={() => void generateBackground(paintSlide, undefined, 'news')}
-	aiDisabled={!!(generatingImagesByTemplate.news ?? [])[paintSlide]}
+	showCutout={previewTemplate === 'news' &&
+		!!String(canvasBackgroundImage ?? '').trim() &&
+		!String(canvasBackgroundVideo ?? '').trim()}
+	onAi={() => void generateBackground(paintSlide, undefined, previewTemplate)}
+	aiDisabled={!!(generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide]}
 	onCutOut={() => void cutOutSubject(paintSlide)}
 	onReplace={() => newsBgToolbarMediaInput?.click()}
 	onApplySolid={(hex) => {
-		pushUndo('news', paintSlide);
-		applyNewsSolidBg(hex, paintSlide);
+		pushUndo(previewTemplate, paintSlide);
+		applyTemplateSolidBg(hex, paintSlide, previewTemplate);
 		closeNewsBgToolbar();
 	}}
 	solidPresets={NEWS_SOLID_PRESETS}

@@ -384,6 +384,7 @@
 		lines.push(`text-align: ${s.align ?? 'left'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
 		lines.push(`line-height: ${s.lineHeight ?? 1.06};`);
+		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
 		return lines.join(' ');
 	});
 
@@ -398,6 +399,7 @@
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? highlightColor};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
+		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
 		return lines.join(' ');
 	});
 
@@ -1072,6 +1074,74 @@
 		resizingCircle2 = false;
 	}
 
+	// ── Background: selection + resize handles (contain mode) ─────────────
+	let bgSelected = $state(false);
+	let bgImgNaturalW = $state(0);
+	let bgImgNaturalH = $state(0);
+
+	/** Natural-fit scale: scale that makes the image touch both edges of the canvas in contain mode. */
+	const bgImgFitScale = $derived(
+		!bgImgNaturalW || !bgImgNaturalH
+			? 1
+			: Math.min(W / bgImgNaturalW, H / bgImgNaturalH),
+	);
+	/** Rendered image size at current bgContainMagnify */
+	const bgSelBoxW = $derived(bgImgNaturalW * bgImgFitScale * bgContainMagnifyPct / 100);
+	const bgSelBoxH = $derived(bgImgNaturalH * bgImgFitScale * bgContainMagnifyPct / 100);
+	const bgSelBoxX = $derived(W / 2 + containTranslateX - bgSelBoxW / 2);
+	const bgSelBoxY = $derived(H / 2 + containTranslateY - bgSelBoxH / 2);
+
+	/** 8 resize handles: id, direction vector (nx,ny), fractional position on the selection box */
+	const BG_HANDLES = [
+		{ id: 'nw', nx: -1, ny: -1, fx: 0,   fy: 0,   cursor: 'nwse-resize' },
+		{ id: 'n',  nx:  0, ny: -1, fx: 0.5, fy: 0,   cursor: 'ns-resize'   },
+		{ id: 'ne', nx:  1, ny: -1, fx: 1,   fy: 0,   cursor: 'nesw-resize' },
+		{ id: 'e',  nx:  1, ny:  0, fx: 1,   fy: 0.5, cursor: 'ew-resize'   },
+		{ id: 'se', nx:  1, ny:  1, fx: 1,   fy: 1,   cursor: 'nwse-resize' },
+		{ id: 's',  nx:  0, ny:  1, fx: 0.5, fy: 1,   cursor: 'ns-resize'   },
+		{ id: 'sw', nx: -1, ny:  1, fx: 0,   fy: 1,   cursor: 'nesw-resize' },
+		{ id: 'w',  nx: -1, ny:  0, fx: 0,   fy: 0.5, cursor: 'ew-resize'   },
+	] as const;
+
+	let bgResizeActive: string | null = null;
+	let bgResizeStartMagnify = 0;
+	let bgResizeStartX = 0;
+	let bgResizeStartY = 0;
+
+	function bgHandlePointerDown(e: PointerEvent, id: string, nx: number, ny: number) {
+		e.stopPropagation();
+		e.preventDefault();
+		bgResizeActive = id;
+		bgResizeStartMagnify = bgContainMagnifyPct;
+		bgResizeStartX = e.clientX;
+		bgResizeStartY = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+
+	function bgHandlePointerMove(e: PointerEvent, nx: number, ny: number) {
+		if (!bgResizeActive) return;
+		const dx = (e.clientX - bgResizeStartX) / scale;
+		const dy = (e.clientY - bgResizeStartY) / scale;
+		// Project drag onto the handle's outward direction; normalise so diagonal = same as axis
+		const len = Math.max(1, Math.sqrt(nx * nx + ny * ny));
+		const proj = (nx * dx + ny * dy) / len;
+		// Scale change: how many pixels we moved relative to half-canvas width
+		const delta = (proj / (W * 0.5)) * bgResizeStartMagnify;
+		bgContainMagnify = Math.max(50, Math.min(200, Math.round(bgResizeStartMagnify + delta)));
+	}
+
+	function bgHandlePointerUp() {
+		bgResizeActive = null;
+	}
+
+	// Deselect bg when pressing Escape
+	$effect(() => {
+		if (!bgSelected) return;
+		function onKey(e: KeyboardEvent) { if (e.key === 'Escape') bgSelected = false; }
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
+
 	// ── Background: pan only after pointerdown + move (slop); hover moves ignored
 	let bgDragging = $state(false);
 	let bgPanPressed = false;
@@ -1215,6 +1285,12 @@
 		} catch {
 			/* ignore */
 		}
+		// Click without drag → toggle selection (contain mode only)
+		if (!bgDragging && bgPanPressed && bgFitMode === 'contain' && backgroundImage) {
+			bgSelected = !bgSelected;
+		} else if (!bgDragging && bgPanPressed) {
+			bgSelected = false;
+		}
 		bgPanPressed = false;
 		bgDragging = false;
 	}
@@ -1252,15 +1328,19 @@
 	}
 </script>
 
-<!-- Outer wrapper — controls display size -->
+<!-- Outer wrapper — overflow visible so resize handles can extend past the canvas edge -->
 <div style="
 	width: {W * scale}px;
 	height: {H * scale}px;
-	overflow: hidden;
-	border-radius: {scale < 1 ? '12px' : '0'};
 	flex-shrink: 0;
 	position: relative;
 ">
+	<!-- Clip layer: applies rounded corners + clips the canvas content -->
+	<div style="
+		position: absolute; inset: 0;
+		overflow: hidden;
+		border-radius: {scale < 1 ? '12px' : '0'};
+	">
 	<!-- Inner at W×H — scaled via CSS transform -->
 	<div
 		bind:this={exportRef}
@@ -1364,20 +1444,25 @@
 							justify-content: center;
 						"
 					>
-						<img
-							src={backgroundImage}
-							alt=""
-							style="
-								max-width: 100%;
-								max-height: 100%;
-								width: auto;
-								height: auto;
-								display: block;
-								transform: translate({containTranslateX}px, {containTranslateY}px) scale({bgContainMagnifyPct / 100});
-								transform-origin: center center;
-								will-change: transform;
-							"
-						/>
+					<img
+						src={backgroundImage}
+						alt=""
+						onload={(e) => {
+							const el = e.currentTarget as HTMLImageElement;
+							bgImgNaturalW = el.naturalWidth;
+							bgImgNaturalH = el.naturalHeight;
+						}}
+						style="
+							max-width: 100%;
+							max-height: 100%;
+							width: auto;
+							height: auto;
+							display: block;
+							transform: translate({containTranslateX}px, {containTranslateY}px) scale({bgContainMagnifyPct / 100});
+							transform-origin: center center;
+							will-change: transform;
+						"
+					/>
 					</div>
 				{:else if bgIsShrunk}
 					<img
@@ -1570,6 +1655,7 @@
 							text-align: {css.align ?? 'left'};
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							{css.textShadow ? `text-shadow: ${css.textShadow};` : ''}
 							overflow: hidden;
 							user-select: none;
 						"
@@ -2253,4 +2339,52 @@
 			</div>
 		</div>
 	</div>
+	</div><!-- /clip layer -->
+
+	<!-- ── Background resize handles — outside the clip layer so they overflow the canvas edge -->
+	{#if interactive && bgSelected && bgFitMode === 'contain' && backgroundImage && bgImgNaturalW}
+		{@const sx = bgSelBoxX * scale}
+		{@const sy = bgSelBoxY * scale}
+		{@const sw = bgSelBoxW * scale}
+		{@const sh = bgSelBoxH * scale}
+		<div
+			style="
+				position: absolute;
+				left: {sx}px;
+				top: {sy}px;
+				width: {sw}px;
+				height: {sh}px;
+				border: 2px solid rgba(99, 158, 255, 0.85);
+				box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+				pointer-events: none;
+				z-index: 10;
+				box-sizing: border-box;
+			"
+		>
+			{#each BG_HANDLES as h}
+				<div
+					style="
+						position: absolute;
+						left: {h.fx * 100}%;
+						top: {h.fy * 100}%;
+						width: 14px;
+						height: 14px;
+						border-radius: 50%;
+						background: #fff;
+						border: 2px solid rgba(99, 158, 255, 0.9);
+						box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+						transform: translate(-50%, -50%);
+						cursor: {h.cursor};
+						pointer-events: all;
+						touch-action: none;
+					"
+					role="presentation"
+					onpointerdown={(e) => bgHandlePointerDown(e, h.id, h.nx, h.ny)}
+					onpointermove={(e) => bgHandlePointerMove(e, h.nx, h.ny)}
+					onpointerup={bgHandlePointerUp}
+					onpointercancel={bgHandlePointerUp}
+				></div>
+			{/each}
+		</div>
+	{/if}
 </div>

@@ -11,7 +11,7 @@ function truncate(text: string, max = MAX_WORDS): string {
 	return words.length <= max ? text.trim() : words.slice(0, max).join(' ');
 }
 
-type VariantContentMode = 'news' | 'fact' | 'story';
+type VariantContentMode = 'news' | 'fact' | 'story' | 'quote';
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
@@ -28,7 +28,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const slideCount = Math.max(1, Math.min(10, Math.floor(Number(count))));
 	const contentMode: VariantContentMode =
-		contentModeRaw === 'fact' || contentModeRaw === 'story' ? contentModeRaw : 'news';
+		contentModeRaw === 'fact' || contentModeRaw === 'story' || contentModeRaw === 'quote'
+			? contentModeRaw
+			: 'news';
 
 	if (!env.OPENROUTER_API_KEY) {
 		// Return mock variants
@@ -64,11 +66,27 @@ export const POST: RequestHandler = async ({ request }) => {
 			`Each slide must advance plot or emotional truth — never paraphrase an earlier slide. ` +
 			`ALL CAPS. No quotes, markdown, emojis, or hashtags.`;
 
+		const quoteSystem =
+			`You write Instagram carousel overlay copy for a QUOTE carousel (original lines, not copied famous quotes). Output ONLY valid JSON. ` +
+			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
+			`Slide 1 = the main quote (may echo the title hook). ` +
+			`Slides 2–N each deepen the same topic: meaning, tension, tradeoff, hope, or accountability — one fresh angle per slide. ` +
+			`No fake celebrity names. No near-duplicates. ALL CAPS. No quotation marks, markdown, emojis, or hashtags.`;
+
 		const systemPrompt =
-			contentMode === 'story' ? storySystem : contentMode === 'fact' ? factSystem : newsSystem;
+			contentMode === 'story'
+				? storySystem
+				: contentMode === 'fact'
+					? factSystem
+					: contentMode === 'quote'
+						? quoteSystem
+						: newsSystem;
 
 		const userPrompt =
-			contentMode === 'story'
+			contentMode === 'quote'
+				? `Quote topic / title: ${title || 'Untitled'}\n\nContext (meaning and angles to mine):\n${text.slice(0, 12000)}\n\n` +
+					`Write all ${slideCount} slides as ONE quote carousel. Slide 1 = the quote. Later slides unpack it with distinct emotional or practical angles on the same topic.`
+				: contentMode === 'story'
 				? `Title: ${title || 'Untitled'}\n\nStory bible + narrative context (this is fiction or a tight anecdote — not a news article):\n${text.slice(0, 12000)}\n\n` +
 					`Write all ${slideCount} slides as ONE continuous mini-story. Slide 1 = the hook. Each later slide is the next beat: same characters, forward motion, rising stakes or emotional truth. ` +
 					`Do not pivot into tips, statistics, or unrelated angles unless they appear inside the scene.`
@@ -90,8 +108,9 @@ export const POST: RequestHandler = async ({ request }) => {
 					{ role: 'system', content: systemPrompt },
 					{ role: 'user', content: userPrompt },
 				],
-				temperature: contentMode === 'story' ? 0.92 : contentMode === 'fact' ? 0.82 : 0.8,
-				max_tokens: contentMode === 'story' ? 1200 : 1000,
+				temperature:
+					contentMode === 'story' ? 0.92 : contentMode === 'quote' ? 0.88 : contentMode === 'fact' ? 0.82 : 0.8,
+				max_tokens: contentMode === 'story' ? 1200 : contentMode === 'quote' ? 1000 : 1000,
 			}),
 		});
 
@@ -143,10 +162,16 @@ async function addHighlights(
 			`Keep word count ≤ ${MAX_WORDS} per slide. No hashtags, emojis, or other markdown. No nested brackets.` +
 			(contentMode === 'story'
 				? ` For story carousels, highlight turning-point words (revelations, stakes, choices) more than scenery.`
-				: '');
+				: contentMode === 'quote'
+					? ` For quote carousels, highlight the most resonant nouns and verbs (stakes, truth, choice).`
+					: '');
 
 	const user =
-		(contentMode === 'story' ? `Story title: ${title}\n\n` : `Article title: ${title}\n\n`) +
+		(contentMode === 'story'
+			? `Story title: ${title}\n\n`
+			: contentMode === 'quote'
+				? `Quote title: ${title}\n\n`
+				: `Article title: ${title}\n\n`) +
 		`Slides:\n${JSON.stringify(slides, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases.`;
 
 	try {
@@ -205,7 +230,21 @@ function getMockVariants(count: number, title: string, contentMode: VariantConte
 		'ON THE ROOF HE STOOD WITH HER [[RING]] IN HIS PALM — HANDS SHAKING',
 		'NOT A THIEF, HE SAID — A [[PROPOSAL]] THAT WENT SIDEWAYS IN TEN MINUTES',
 	];
-	const mock = contentMode === 'story' ? storyMock : contentMode === 'fact' ? factMock : newsMock;
+	const quoteMock = [
+		title || 'YOU DO NOT NEED [[MORE TIME]] — YOU NEED [[FEWER LIES]]',
+		'EVERY YES TO [[NOISE]] IS A QUIET NO TO YOUR [[REAL LIFE]]',
+		'CLARITY IS NOT [[CRUEL]] — IT IS THE FIRST FORM OF [[RESPECT]]',
+		'THE TOPIC IS NOT [[MOTIVATION]] — IT IS WHAT YOU REFUSE TO [[NAME]]',
+		'ONE HONEST [[NO]] CAN PROTECT A THOUSAND [[FUTURE YESSES]]',
+	];
+	const mock =
+		contentMode === 'story'
+			? storyMock
+			: contentMode === 'fact'
+				? factMock
+				: contentMode === 'quote'
+					? quoteMock
+					: newsMock;
 	const out = mock.slice(0, count);
 	while (out.length < count) out.push(out[out.length - 1]!);
 	return out;
