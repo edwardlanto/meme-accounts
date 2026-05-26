@@ -30,6 +30,7 @@
 		Overview: 'linear-gradient(135deg, #1f1f22 0%, #0a0a0c 100%)',
 		Carousels: 'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)',
 		Composer: 'linear-gradient(135deg, #a78bfa 0%, #6d28d9 100%)',
+		Videos: 'linear-gradient(135deg, #f472b6 0%, #e11d48 100%)',
 		'News Studio': 'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)',
 		Branding: 'linear-gradient(135deg, #fb7185 0%, #db2777 100%)',
 		Discover: 'linear-gradient(135deg, #2dd4bf 0%, #0e7490 100%)',

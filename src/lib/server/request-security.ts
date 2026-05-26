@@ -127,6 +127,23 @@ export function sniffStrictImageMime(buf: Uint8Array): 'image/jpeg' | 'image/png
 	return null;
 }
 
+/** Sniff common video containers for upload endpoints. */
+export function sniffStrictVideoMime(
+	buf: Uint8Array,
+): 'video/mp4' | 'video/webm' | 'video/quicktime' | null {
+	if (buf.length < 12) return null;
+	// ISO BMFF (mp4 / mov): ....ftyp
+	if (buf.length >= 8) {
+		const ftyp = String.fromCharCode(buf[4]!, buf[5]!, buf[6]!, buf[7]!);
+		if (ftyp === 'ftyp') return 'video/mp4';
+	}
+	// WebM: 0x1A 0x45 0xDF 0xA3
+	if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return 'video/webm';
+	// QuickTime / old mov
+	if (buf[4] === 0x66 && buf[5] === 0x72 && buf[6] === 0x65 && buf[7] === 0x65) return 'video/quicktime';
+	return null;
+}
+
 export async function parseJsonBody<T>(
 	request: Request,
 	schema: z.ZodType<T>,

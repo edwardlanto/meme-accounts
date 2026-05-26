@@ -1,3 +1,18 @@
+/** Upload video via /api/videos/upload (MP4/WebM/MOV, up to 200MB). */
+export async function r2UploadVideo(params: {
+	key: string;
+	blob: Blob;
+	filename?: string;
+}): Promise<{ ok: boolean; key: string; playbackUrl: string; sizeBytes: number }> {
+	const fd = new FormData();
+	fd.set('key', params.key);
+	fd.set('file', params.blob, params.filename ?? 'video.mp4');
+	const res = await fetch('/api/videos/upload', { method: 'POST', body: fd });
+	const data = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error(data?.error ?? 'Video upload failed');
+	return data;
+}
+
 /** Upload via your app server (no R2 CORS needed). Prefer this from the browser. */
 export async function r2UploadBlob(params: { key: string; blob: Blob; filename?: string }): Promise<{ ok: boolean; key: string }> {
 	const fd = new FormData();
