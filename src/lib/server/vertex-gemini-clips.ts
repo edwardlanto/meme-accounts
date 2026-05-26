@@ -4,6 +4,7 @@ import { sandboxUserPlaintext } from '$lib/server/request-security';
 import { buildFullVideoClips } from '$lib/video-clips/clip-segmentation';
 import { excerptFromTimedTranscript } from '$lib/video-clips/transcript-segments';
 import type { VideoClip } from '$lib/video-clips/types';
+import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 
 const CLIPS_SCHEMA = `{
   "clips": [
@@ -62,7 +63,7 @@ function demoClips(
 	transcript: string,
 	opts: { clipMinSec: number; clipMaxSec: number; clipCount: number; segmentAll: boolean },
 ): { clips: VideoClip[]; summary: string } {
-	const dur = Math.max(60, durationSec || 600);
+	const dur = Math.max(1, Number(durationSec) || 1);
 	if (opts.segmentAll) {
 		const clips = buildFullVideoClips({
 			durationSec: dur,
@@ -84,16 +85,16 @@ function demoClips(
 
 	for (let i = 0; i < count; i++) {
 		const startSec = Math.round((dur / count) * i);
-		const endSec = Math.min(dur, startSec + targetLen);
+		let endSec = Math.min(dur, startSec + targetLen);
+		endSec = Math.max(startSec + opts.clipMinSec, endSec);
+		endSec = Math.min(dur, endSec);
 		const excerpt = excerptFromTimedTranscript(transcript, startSec, endSec);
-		const quote =
-			excerpt ||
-			`Configure Vertex AI to pull real quotes from "${title}".`;
+		const quote = excerpt || title || 'Clip from your video';
 		clips.push({
 			id: String(i + 1),
 			title: quote.split(/\s+/).slice(0, 5).join(' '),
 			startSec,
-			endSec: Math.max(startSec + opts.clipMinSec, endSec),
+			endSec,
 			viralityScore: 88 - i * 5,
 			hook: quote.slice(0, 200),
 			reason: '',
@@ -102,7 +103,7 @@ function demoClips(
 	}
 
 	return {
-		clips,
+		clips: normalizeVideoClips(clips, dur, opts.clipMinSec, opts.clipMaxSec),
 		summary:
 			'Demo mode: configure GOOGLE_SERVICE_ACCOUNT_JSON and VERTEX_PROJECT_ID for AI clip detection.',
 	};
@@ -167,16 +168,21 @@ export async function analyzeVideoForClips(opts: {
 	const want = segmentAll
 		? 40
 		: Math.max(1, Math.min(40, opts.clipCount ?? 8));
-	const durationSec = Math.max(1, opts.durationSec || 600);
+	const durationSec = Math.max(1, Number(opts.durationSec) || 1);
 
 	if (segmentAll) {
-		const clips = buildFullVideoClips({
+		const clips = normalizeVideoClips(
+			buildFullVideoClips({
+				durationSec,
+				clipMinSec,
+				clipMaxSec,
+				fullTranscript: opts.transcript,
+				videoTitle: opts.title,
+			}),
 			durationSec,
 			clipMinSec,
 			clipMaxSec,
-			fullTranscript: opts.transcript,
-			videoTitle: opts.title,
-		});
+		);
 		return {
 			clips,
 			summary: `Split the full video into ${clips.length} clips (~${Math.round((clipMinSec + clipMaxSec) / 2)}s each).`,
@@ -241,8 +247,8 @@ ${transcriptBlock}`;
 		const text = await geminiGenerate({ parts, accessToken });
 		const parsed = parseClipsJson(text);
 		// Clamp clip ranges to duration
-		const clips = parsed.clips
-			.map((c) => {
+		const clips = normalizeVideoClips(
+			parsed.clips.map((c) => {
 				const excerpt = excerptFromTimedTranscript(
 					opts.transcript,
 					c.startSec,
@@ -252,18 +258,12 @@ ${transcriptBlock}`;
 					(c.transcript?.trim() && c.transcript.length > 12
 						? c.transcript
 						: excerpt) || c.transcript;
-				return {
-					...c,
-					transcript,
-					startSec: Math.max(0, Math.min(c.startSec, durationSec - 5)),
-					endSec: Math.min(durationSec, Math.max(c.endSec, c.startSec + clipMinSec)),
-				};
-			})
-			.filter(
-				(c) =>
-					c.endSec - c.startSec >= clipMinSec &&
-					c.endSec - c.startSec <= clipMaxSec,
-			);
+				return { ...c, transcript };
+			}),
+			durationSec,
+			clipMinSec,
+			clipMaxSec,
+		);
 
 		return {
 			clips: clips.slice(0, want),

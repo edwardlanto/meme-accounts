@@ -120,7 +120,7 @@ export async function importYoutubeVideo(url: string): Promise<YoutubeImportResu
 	return {
 		videoId,
 		title,
-		durationSec: durationSec || 600,
+		durationSec: durationSec || 1,
 		thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
 		transcript,
 		playbackUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1`,

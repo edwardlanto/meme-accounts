@@ -200,6 +200,23 @@ export async function probeDurationSec(filePath: string): Promise<number> {
 	return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** yt-dlp metadata when ffprobe cannot read the file. */
+export async function ytDlpPrintDuration(videoUrl: string): Promise<number> {
+	const tools = await checkVideoTools();
+	if (!tools.ytDlp) return 0;
+	try {
+		const { stdout } = await runProcess(
+			tools.ytDlpPath,
+			[...ytDlpYoutubeBaseArgs(), '--print', 'duration', videoUrl],
+			{ timeoutMs: 60_000 },
+		);
+		const n = Number(stdout.trim().split('\n')[0]);
+		return Number.isFinite(n) && n > 0 ? n : 0;
+	} catch {
+		return 0;
+	}
+}
+
 export type YoutubeDownloadResult = {
 	dir: string;
 	videoPath: string;
@@ -281,7 +298,8 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 	if (!videoFile) throw new Error('yt-dlp did not produce a video file');
 
 	const videoPath = join(workDir, videoFile);
-	const durationSec = await probeDurationSec(videoPath);
+	let durationSec = await probeDurationSec(videoPath);
+	if (!durationSec) durationSec = await ytDlpPrintDuration(videoUrl);
 
 	let transcript = '';
 	const subFile = files.find((f) => /\.vtt$/i.test(f) || /\.srt$/i.test(f));
@@ -310,7 +328,7 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 		dir: workDir,
 		videoPath,
 		title,
-		durationSec: durationSec || 600,
+		durationSec: durationSec || 1,
 		transcript,
 		thumbnailUrl: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '',
 	};

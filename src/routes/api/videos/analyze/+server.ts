@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { RequestHandler } from './$types';
 import { parseJsonBody, isValidOwnerR2Key } from '$lib/server/request-security';
 import { importYoutubeVideo, parseYoutubeVideoId } from '$lib/server/youtube-import';
@@ -12,7 +13,10 @@ import {
 	checkVideoTools,
 	isYoutubeDownloadBlockedError,
 	YOUTUBE_403_HELP,
+	probeDurationSec,
+	ytDlpPrintDuration,
 } from '$lib/server/video-pipeline';
+import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 
 const analyzeSchema = z.object({
 	source: z.enum(['youtube', 'upload']),
@@ -58,7 +62,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 			const tools = await checkVideoTools();
 			let ytTitle = 'YouTube video';
-			let ytDuration = 600;
+			let ytDuration = 0;
 			let ytTranscript = '';
 			let ytThumb = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 			let storageKey = '';
@@ -103,10 +107,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						const fallback = await importYoutubeVideo(url);
 						ytTranscript = fallback.transcript;
 						if (!ytTitle || ytTitle === 'YouTube video') ytTitle = fallback.title;
-						if (!ytDuration) ytDuration = fallback.durationSec;
+						if (!ytDuration || ytDuration <= 1) ytDuration = fallback.durationSec;
 					} catch {
 						ytTranscript = '[No captions — analysis uses video content only.]';
 					}
+				}
+
+				if (!ytDuration || ytDuration <= 1) {
+					ytDuration = (await ytDlpPrintDuration(url)) || ytDuration || 1;
 				}
 
 				const analyzed = await analyzeVideoForClips({
@@ -119,6 +127,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					videoMime: videoBytes ? 'video/mp4' : undefined,
 				});
 
+				const clips = normalizeVideoClips(
+					analyzed.clips,
+					ytDuration,
+					clipOpts.clipMinSec,
+					clipOpts.clipMaxSec,
+				);
+
 				return json({
 					source: {
 						kind: 'youtube',
@@ -129,7 +144,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						youtubeId: videoId,
 						thumbnailUrl: ytThumb,
 					},
-					clips: analyzed.clips,
+					clips,
 					summary: analyzed.summary,
 					demo: analyzed.demo,
 					model: analyzed.model,
@@ -181,9 +196,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			/* transcript-only fallback */
 		}
 
+		let effectiveDuration = durationSec ?? 0;
+		if (videoBytes) {
+			await withTempDir(async (dir) => {
+				const p = join(dir, 'upload.mp4');
+				await writeFile(p, videoBytes);
+				const probed = await probeDurationSec(p);
+				if (probed > 0) effectiveDuration = probed;
+			});
+		}
+		if (!effectiveDuration || effectiveDuration <= 1) effectiveDuration = durationSec ?? 1;
+
 		const analyzed = await analyzeVideoForClips({
 			title: title?.trim() || 'Uploaded video',
-			durationSec: durationSec ?? 600,
+			durationSec: effectiveDuration,
 			transcript:
 				videoBytes != null
 					? '[Multimodal analysis from uploaded video.]'
@@ -194,15 +220,22 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			videoMime: videoBytes ? 'video/mp4' : undefined,
 		});
 
+		const clips = normalizeVideoClips(
+			analyzed.clips,
+			effectiveDuration,
+			clipOpts.clipMinSec,
+			clipOpts.clipMaxSec,
+		);
+
 		return json({
 			source: {
 				kind: 'upload',
 				title: title?.trim() || 'Uploaded video',
-				durationSec: durationSec ?? 600,
+				durationSec: effectiveDuration,
 				playbackUrl,
 				r2Key: key,
 			},
-			clips: analyzed.clips,
+			clips,
 			summary: analyzed.summary,
 			demo: analyzed.demo,
 			model: analyzed.model,

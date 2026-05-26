@@ -35,6 +35,8 @@
 		videoTrimStartSec?: number;
 		videoTrimEndSec?: number;
 		onVideoDuration?: (durationSec: number) => void;
+		/** Tighter layout for dashboard clip previews */
+		previewMode?: boolean;
 	}
 
 	let {
@@ -64,7 +66,11 @@
 		videoTrimStartSec = 0,
 		videoTrimEndSec = 0,
 		onVideoDuration,
+		previewMode = false,
 	}: Props = $props();
+
+	const headlinePad = $derived(previewMode ? '28px 32px 16px' : '56px 48px 24px');
+	const videoPad = $derived(previewMode ? '8px 24px 48px' : '12px 40px 72px');
 
 	const DEFAULT_VIDEO = VIDEO_STORY_DEFAULTS.videoUrl;
 
@@ -207,7 +213,7 @@
 			onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 		>
 			{#snippet children()}
-				<div style="flex-shrink: 0; padding: 56px 48px 24px; box-sizing: border-box;">
+				<div style="flex-shrink: 0; padding: {headlinePad}; box-sizing: border-box; position: relative; z-index: 3;">
 					<CanvasMarkupTextBlock
 						value={headline}
 						{interactive}
@@ -229,6 +235,7 @@
 								<HighlightedText
 									as="div"
 									text={headline}
+									parseHighlights={false}
 									defaultColor={highlightColor}
 									style="
 										margin: 0;
@@ -236,6 +243,7 @@
 										word-break: break-word;
 										line-height: 1.18;
 										letter-spacing: -0.03em;
+										color: #f4f4f5;
 										{headlineCss}
 									"
 								/>
@@ -254,7 +262,7 @@
 				display: flex;
 				align-items: center;
 				justify-content: center;
-				padding: 12px 40px 72px;
+				padding: {videoPad};
 				box-sizing: border-box;
 			"
 		>
@@ -264,7 +272,8 @@
 					width: 100%;
 					max-width: 920px;
 					height: 100%;
-					border-radius: 20px;
+					min-height: 0;
+					border-radius: {previewMode ? '14px' : '20px'};
 					overflow: hidden;
 					background: #0a0a0a;
 					box-shadow: 0 24px 80px rgba(0,0,0,0.55);
@@ -283,11 +292,12 @@
 						onloadedmetadata={onStoryVideoMeta}
 						ontimeupdate={onStoryVideoTimeUpdate}
 						style="
-							display: block;
+							position: absolute;
+							inset: 0;
 							width: 100%;
 							height: 100%;
 							object-fit: cover;
-							object-position: center;
+							object-position: center center;
 						"
 					></video>
 				{:else if posterSrc}
@@ -296,11 +306,12 @@
 						alt=""
 						class="video-story-player"
 						style="
-							display: block;
+							position: absolute;
+							inset: 0;
 							width: 100%;
 							height: 100%;
 							object-fit: cover;
-							object-position: center;
+							object-position: center center;
 						"
 					/>
 				{/if}

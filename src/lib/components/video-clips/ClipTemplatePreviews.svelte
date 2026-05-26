@@ -9,7 +9,17 @@
 		clipDirectVideoUrl,
 		clipVideoMediaFragment,
 	} from '$lib/video-clips/clip-template-copy';
-	import { VIDEO_STORY_HEADLINE_STYLE } from '$lib/studio/slide-content-defaults';
+	import {
+		NEWS_DEFAULT_SOURCE,
+		TWEET_DEFAULTS,
+		VIDEO_STORY_DEFAULTS,
+		ensureTextCarouselBodyMinLength,
+	} from '$lib/studio/slide-content-defaults';
+	import {
+		STUDIO_FEED_CANVAS,
+		studioFeedPreviewScale,
+		studioFeedPreviewHeight,
+	} from '$lib/studio/clip-preview-canvas';
 
 	interface Props {
 		clip: VideoClip;
@@ -20,16 +30,12 @@
 
 	let { clip, source, watermark = '', topicHint = '' }: Props = $props();
 
-	/** Uniform 9:16 preview card (px). */
-	const PREVIEW_W = 280;
-	const PREVIEW_H = Math.round((PREVIEW_W * 16) / 9);
-
-	const CANVAS_W = 1080;
-	const CANVAS_H_45 = 1350;
-	const STORY_H = 1920;
-
-	const scale45 = PREVIEW_W / CANVAS_W;
-	const scaleStory = PREVIEW_W / CANVAS_W;
+	/** Same width scaling as Studio carousel thumbs — native 4:5 feed canvas. */
+	const PREVIEW_W = 240;
+	const CANVAS_W = STUDIO_FEED_CANVAS.w;
+	const CANVAS_H = STUDIO_FEED_CANVAS.h;
+	const scale = studioFeedPreviewScale(PREVIEW_W);
+	const PREVIEW_H = studioFeedPreviewHeight(PREVIEW_W);
 
 	const copy = $derived(buildClipTemplateCopy(clip, source, { watermark, topicHint }));
 
@@ -48,6 +54,14 @@
 		videoMuted: true,
 	});
 
+	const storyWatermark = $derived(
+		watermark.trim() || topicHint.trim() || VIDEO_STORY_DEFAULTS.watermark,
+	);
+
+	const carouselBody = $derived(
+		ensureTextCarouselBodyMinLength(copy.carouselBody || copy.tweetTop),
+	);
+
 	const templates = [
 		{ id: 'news', label: 'News', studio: 'news' },
 		{ id: 'videoStory', label: 'Video story', studio: 'videoStory' },
@@ -60,9 +74,9 @@
 	<h3 class="previews-title">How this clip could look</h3>
 	<p class="previews-sub">
 		{#if hasVideo}
-			Preview uses your clip segment ({Math.floor(clip.startSec)}s–{Math.floor(clip.endSec)}s). Open Studio to edit and export.
+			Same templates as Studio (4:5 feed) · clip {Math.floor(clip.startSec)}s–{Math.floor(clip.endSec)}s
 		{:else}
-			Full video download unavailable — previews use the thumbnail. Install yt-dlp + cookies for clip video in templates.
+			Studio layout preview · thumbnail only until full video is downloaded
 		{/if}
 	</p>
 
@@ -72,74 +86,73 @@
 				<span class="preview-label">{t.label}</span>
 				<div class="preview-frame" style="width:{PREVIEW_W}px;height:{PREVIEW_H}px">
 					{#if t.id === 'news'}
-						<div class="preview-slot preview-slot-center">
-							<NewsTemplate
-								text={copy.newsHeadline}
-								source={copy.newsSource}
-								backgroundImage={hasVideo ? '' : thumb}
-								backgroundVideo={videoSrc}
-								{...videoProps}
-								highlightColor="#F5A623"
-								textColor="#FFFFFF"
-								templateTheme="dark"
-								w={CANVAS_W}
-								h={CANVAS_H_45}
-								scale={scale45}
-								interactive={false}
-							/>
-						</div>
+						<NewsTemplate
+							text={copy.newsHeadline}
+							source={copy.newsSource || NEWS_DEFAULT_SOURCE}
+							backgroundImage={hasVideo ? '' : thumb}
+							backgroundVideo={videoSrc}
+							{...videoProps}
+							highlightColor="#F5A623"
+							textColor="#FFFFFF"
+							templateTheme="dark"
+							allowCircle={false}
+							showCircle2={false}
+							bgFitMode="cover"
+							bgZoom={100}
+							w={CANVAS_W}
+							h={CANVAS_H}
+							{scale}
+							interactive={false}
+						/>
 					{:else if t.id === 'videoStory'}
-						<div class="preview-slot preview-slot-fill">
-							<VideoStoryTemplate
-								headline={copy.storyHeadline}
-								watermark={copy.storyWatermark}
-								videoSrc={videoSrc}
-								videoPoster={thumb}
-								{...videoProps}
-								headlineStyle={VIDEO_STORY_HEADLINE_STYLE}
-								w={CANVAS_W}
-								h={STORY_H}
-								scale={scaleStory}
-								interactive={false}
-							/>
-						</div>
+						<VideoStoryTemplate
+							headline={copy.storyHeadline}
+							watermark={storyWatermark}
+							videoSrc={videoSrc}
+							videoPoster={thumb}
+							{...videoProps}
+							highlightColor="#F5A623"
+							w={CANVAS_W}
+							h={CANVAS_H}
+							{scale}
+							interactive={false}
+						/>
 					{:else if t.id === 'tweet'}
-						<div class="preview-slot preview-slot-center">
-							<TweetTemplate
-								topName={copy.carouselName}
-								topHandle={copy.carouselHandle}
-								topText={copy.tweetTop}
-								topImage={hasVideo ? '' : thumb}
-								topVideo={videoSrc}
-								bottomName="Audience"
-								bottomHandle="@replies"
-								bottomText={copy.tweetBottom}
-								replyCount="2.4K"
-								repostCount="8.1K"
-								likeCount="42K"
-								topImageHeight={720}
-								topImageWidth={920}
-								canvasW={CANVAS_W}
-								canvasH={CANVAS_H_45}
-								scale={scale45}
-								interactive={false}
-								templateTheme="dark"
-							/>
-						</div>
+						<TweetTemplate
+							topName={TWEET_DEFAULTS.topName}
+							topHandle={TWEET_DEFAULTS.topHandle}
+							topText={copy.tweetTop}
+							topImage={hasVideo ? '' : thumb}
+							topVideo={videoSrc}
+							bottomName={TWEET_DEFAULTS.bottomName}
+							bottomHandle={TWEET_DEFAULTS.bottomHandle}
+							bottomText={copy.tweetBottom || TWEET_DEFAULTS.bottomText}
+							replyCount={TWEET_DEFAULTS.replyCount}
+							repostCount={TWEET_DEFAULTS.repostCount}
+							likeCount={TWEET_DEFAULTS.likeCount}
+							topImageHeight={TWEET_DEFAULTS.topImageHeight}
+							topImageWidth={TWEET_DEFAULTS.topImageWidth}
+							topImageZoom={TWEET_DEFAULTS.topImageZoom}
+							topImagePanX={TWEET_DEFAULTS.topImagePanX}
+							topImagePanY={TWEET_DEFAULTS.topImagePanY}
+							canvasW={CANVAS_W}
+							canvasH={CANVAS_H}
+							{scale}
+							interactive={false}
+							templateTheme="dark"
+						/>
 					{:else if t.id === 'textCarousel'}
-						<div class="preview-slot preview-slot-center">
-							<TextCarouselTemplate
-								name={copy.carouselName}
-								handle={copy.carouselHandle}
-								text={copy.carouselBody}
-								templateTheme="dark"
-								canvasW={CANVAS_W}
-								canvasH={CANVAS_H_45}
-								scale={scale45}
-								interactive={false}
-								showSwipe={true}
-							/>
-						</div>
+						<TextCarouselTemplate
+							name={copy.carouselName}
+							handle={copy.carouselHandle}
+							text={carouselBody}
+							templateTheme="dark"
+							canvasW={CANVAS_W}
+							canvasH={CANVAS_H}
+							{scale}
+							interactive={false}
+							showSwipe={true}
+						/>
 					{/if}
 				</div>
 				<a class="preview-studio-link" href="/dashboard/studio?template={t.studio}">
@@ -215,24 +228,7 @@
 		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
 		background: #0a0a0a;
 		flex-shrink: 0;
-		position: relative;
-	}
-
-	.preview-slot {
-		position: absolute;
-		inset: 0;
-		overflow: hidden;
-		background: #0a0a0a;
-	}
-
-	.preview-slot-center {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.preview-slot-fill {
-		display: block;
+		line-height: 0;
 	}
 
 	.preview-studio-link {

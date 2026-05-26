@@ -15,6 +15,8 @@ export type ClipTemplateCopy = {
 const META_PHRASES = [
 	/demo clip/i,
 	/connect vertex/i,
+	/configure vertex/i,
+	/pull real quotes/i,
 	/vertex ai/i,
 	/gemini/i,
 	/the moment that stops the scroll/i,
@@ -54,19 +56,28 @@ function isMetaCopy(s: string): boolean {
 }
 
 /** Best on-screen quote from clip fields (spoken words, not editor notes). */
-export function clipDisplayQuote(clip: VideoClip): string {
+export function clipDisplayQuote(clip: VideoClip, source?: VideoImportMeta): string {
 	const candidates = [
 		stripTimestampMarkup(clip.transcript ?? ''),
 		stripTimestampMarkup(clip.hook ?? ''),
 		stripTimestampMarkup(clip.title ?? ''),
+		source?.title?.trim() ?? '',
 	].filter(Boolean);
 
 	for (const c of candidates) {
 		if (!isMetaCopy(c) && c.length >= 8) return c;
 	}
 
-	const title = clip.title.trim();
-	return title && !isMetaCopy(title) ? title : '…';
+	const title = clip.title.trim() || source?.title?.trim() || '';
+	return title && !isMetaCopy(title) ? title : '';
+}
+
+/** Short line for small template previews (avoids clipping huge demo strings). */
+export function clipPreviewQuote(clip: VideoClip, source?: VideoImportMeta): string {
+	const raw = clipDisplayQuote(clip, source);
+	if (!raw) return 'Your clip';
+	const first = raw.split(/(?<=[.!?])\s+/)[0]?.trim() || raw;
+	return clampText(first, 160);
 }
 
 function handleFromTitle(title: string): string {
@@ -92,14 +103,14 @@ export function buildClipTemplateCopy(
 	source: VideoImportMeta,
 	opts?: { watermark?: string; topicHint?: string },
 ): ClipTemplateCopy {
-	const quote = clipDisplayQuote(clip);
+	const quote = clipPreviewQuote(clip, source);
 	const topic = opts?.topicHint?.trim() ?? '';
 	const watermark = opts?.watermark?.trim() || topic || source.title.slice(0, 32) || 'CLIPS';
 
 	const { lead, rest } = splitQuoteForStory(quote);
 	const storyHeadline = rest ? `${lead}\n\n${rest}` : lead;
 
-	const newsHeadline = quote.length > 120 ? `${lead}\n\n${rest || ''}`.trim() : quote;
+	const newsHeadline = quote;
 
 	const tweetTop = quote;
 	const sentences = quote.split(/(?<=[.!?])\s+/).filter(Boolean);
@@ -110,10 +121,12 @@ export function buildClipTemplateCopy(
 
 	const carouselName = clampText(source.title || 'Highlights', 48);
 	const carouselHandle = handleFromTitle(carouselName);
-	const carouselBody = clampText(
-		quote.length > 200 ? quote : `${quote}\n\n${stripTimestampMarkup(clip.transcript ?? '')}`.trim(),
-		900,
-	);
+	let carouselBody = stripTimestampMarkup(clip.transcript ?? '');
+	if (!carouselBody || isMetaCopy(carouselBody)) {
+		carouselBody = quote;
+	}
+	if (!carouselBody.trim()) carouselBody = source.title;
+	carouselBody = clampText(carouselBody, 900);
 
 	return {
 		newsHeadline: clampText(newsHeadline, 420),

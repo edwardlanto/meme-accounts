@@ -5,6 +5,7 @@
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import { formatClipDuration, formatTimestamp } from '$lib/video-clips/export-clip';
 	import { clipDisplayQuote } from '$lib/video-clips/clip-template-copy';
+	import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 	import ClipTemplatePreviews from '$lib/components/video-clips/ClipTemplatePreviews.svelte';
 	import {
 		Link2,
@@ -37,6 +38,7 @@
 	let selectedClipId = $state<string | null>(null);
 	let uploadProgress = $state(0);
 	let fileInput = $state<HTMLInputElement | null>(null);
+	let playerVideo = $state<HTMLVideoElement | null>(null);
 
 	/** Best highlights vs split full video */
 	let clipMode = $state<'highlights' | 'all'>('highlights');
@@ -53,6 +55,47 @@
 
 	$effect(() => {
 		if (clipMaxSec < clipMinSec) clipMaxSec = clipMinSec;
+	});
+
+	function playClipSegment(clip: VideoClip) {
+		const v = playerVideo;
+		if (!v) return;
+		v.currentTime = clip.startSec;
+		void v.play().catch(() => {});
+	}
+
+	function onPlayerTimeUpdate() {
+		const v = playerVideo;
+		const clip = selectedClip;
+		if (!v || !clip) return;
+		if (v.currentTime >= clip.endSec - 0.08) {
+			v.pause();
+			v.currentTime = clip.startSec;
+		}
+	}
+
+	function syncClipsToPlayerDuration(v: HTMLVideoElement) {
+		const d = v.duration;
+		if (!source || !Number.isFinite(d) || d <= 0) return;
+		const realDur = Math.round(d * 10) / 10;
+		if (Math.abs(realDur - source.durationSec) <= 0.5) return;
+		source = { ...source, durationSec: realDur };
+		clips = normalizeVideoClips(clips, realDur, clipMinSec, clipMaxSec);
+		if (selectedClipId && !clips.some((c) => c.id === selectedClipId)) {
+			selectedClipId = clips[0]?.id ?? null;
+		}
+	}
+
+	function selectClip(clip: VideoClip) {
+		selectedClipId = clip.id;
+		playClipSegment(clip);
+	}
+
+	$effect(() => {
+		const clip = selectedClip;
+		const v = playerVideo;
+		if (!clip || !v || phase !== 'ready') return;
+		if (v.readyState >= 1) playClipSegment(clip);
 	});
 
 	function analyzeClipPayload(extra: Record<string, unknown>) {
@@ -112,7 +155,12 @@
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
 			source = data.source;
-			clips = data.clips ?? [];
+			clips = normalizeVideoClips(
+				data.clips ?? [],
+				data.source?.durationSec ?? 1,
+				clipMinSec,
+				clipMaxSec,
+			);
 			summary = data.summary ?? '';
 			demo = !!data.demo;
 			model = data.model ?? '';
@@ -144,11 +192,11 @@
 				video.onloadedmetadata = () => {
 					const d = Number(video.duration);
 					URL.revokeObjectURL(objectUrl);
-					resolve(Number.isFinite(d) && d > 0 ? d : 600);
+					resolve(Number.isFinite(d) && d > 0 ? d : 1);
 				};
 				video.onerror = () => {
 					URL.revokeObjectURL(objectUrl);
-					resolve(600);
+					resolve(1);
 				};
 				video.src = objectUrl;
 			});
@@ -170,7 +218,12 @@
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
 			source = data.source;
-			clips = data.clips ?? [];
+			clips = normalizeVideoClips(
+				data.clips ?? [],
+				data.source?.durationSec ?? durationSec,
+				clipMinSec,
+				clipMaxSec,
+			);
 			summary = data.summary ?? '';
 			demo = !!data.demo;
 			model = data.model ?? '';
@@ -405,23 +458,28 @@
 					{#if hasStoredVideo}
 						<!-- svelte-ignore a11y_media_has_caption -->
 						<video
+							bind:this={playerVideo}
 							class="native-player"
 							controls
 							src={source.playbackUrl}
+							ontimeupdate={onPlayerTimeUpdate}
 							onloadedmetadata={(e) => {
 								const v = e.currentTarget;
-								if (selectedClip) v.currentTime = selectedClip.startSec;
+								syncClipsToPlayerDuration(v);
+								if (selectedClip) playClipSegment(selectedClip);
 							}}
 						></video>
 						<p class="yt-note">Full video stored — export downloads MP4 clips via ffmpeg.</p>
 					{:else if source.youtubeId}
 						<div class="yt-wrap">
-							<iframe
-								title="YouTube preview"
-								src="https://www.youtube.com/embed/{source.youtubeId}?start={Math.floor(selectedClip?.startSec ?? 0)}&autoplay=0"
-								allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-								allowfullscreen
-							></iframe>
+							{#key `${selectedClipId}-${selectedClip?.startSec}-${selectedClip?.endSec}`}
+								<iframe
+									title="YouTube preview"
+									src="https://www.youtube.com/embed/{source.youtubeId}?start={Math.floor(selectedClip?.startSec ?? 0)}&end={Math.ceil(selectedClip?.endSec ?? 0)}&autoplay=0"
+									allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+									allowfullscreen
+								></iframe>
+							{/key}
 						</div>
 						<p class="yt-note">Install yt-dlp to download the full video and enable MP4 export.</p>
 					{/if}
@@ -446,21 +504,14 @@
 									type="button"
 									class="clip-card"
 									class:clip-card-on={selectedClipId === clip.id}
-									onclick={() => {
-										selectedClipId = clip.id;
-										const v = document.querySelector<HTMLVideoElement>('.native-player');
-										if (v) {
-											v.currentTime = clip.startSec;
-											void v.play();
-										}
-									}}
+									onclick={() => selectClip(clip)}
 								>
 									<div class="clip-score" style="--score: {clip.viralityScore}%">
 										<span>{clip.viralityScore}</span>
 									</div>
 									<div class="clip-body">
 										<div class="clip-title">{clip.title}</div>
-										<div class="clip-hook">{clipDisplayQuote(clip)}</div>
+										<div class="clip-hook">{clipDisplayQuote(clip, source ?? undefined)}</div>
 										<div class="clip-times">
 											{formatTimestamp(clip.startSec)} – {formatTimestamp(clip.endSec)}
 											· {formatClipDuration(clip.startSec, clip.endSec)}
