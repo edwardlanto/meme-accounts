@@ -1,19 +1,21 @@
 import { env } from '$env/dynamic/private';
 import { getGoogleAccessToken, hasGoogleCredentials } from '$lib/server/google-access-token';
 import { sandboxUserPlaintext } from '$lib/server/request-security';
+import { buildFullVideoClips } from '$lib/video-clips/clip-segmentation';
+import { excerptFromTimedTranscript } from '$lib/video-clips/transcript-segments';
 import type { VideoClip } from '$lib/video-clips/types';
 
 const CLIPS_SCHEMA = `{
   "clips": [
     {
       "id": "1",
-      "title": "Short punchy title for the clip",
+      "title": "3-6 word topic headline (not meta like 'peak insight')",
       "startSec": 12.5,
       "endSec": 52.0,
       "viralityScore": 85,
-      "hook": "Opening hook line",
-      "reason": "Why this moment will perform on Shorts/Reels/TikTok",
-      "transcript": "Key quote from this segment"
+      "hook": "Optional short label — prefer putting spoken words in transcript",
+      "reason": "Internal note for editors only (not shown on posts)",
+      "transcript": "Verbatim 1-3 sentences actually spoken in this segment"
     }
   ],
   "summary": "One paragraph overview of the best angles to clip from this video"
@@ -54,33 +56,55 @@ function parseClipsJson(raw: string): { clips: VideoClip[]; summary: string } {
 	};
 }
 
-function demoClips(durationSec: number, title: string): { clips: VideoClip[]; summary: string } {
+function demoClips(
+	durationSec: number,
+	title: string,
+	transcript: string,
+	opts: { clipMinSec: number; clipMaxSec: number; clipCount: number; segmentAll: boolean },
+): { clips: VideoClip[]; summary: string } {
 	const dur = Math.max(60, durationSec || 600);
-	const segments = [
-		{ t: 0.02, len: 0.08, title: 'Strong cold open', hook: 'The moment that stops the scroll' },
-		{ t: 0.18, len: 0.1, title: 'Peak insight', hook: 'The clearest explanation in the whole video' },
-		{ t: 0.38, len: 0.09, title: 'Emotional beat', hook: 'Relatable story beat' },
-		{ t: 0.55, len: 0.11, title: 'Contrarian take', hook: 'Unexpected angle viewers will debate' },
-		{ t: 0.72, len: 0.1, title: 'Actionable payoff', hook: 'What to do next — concrete takeaway' },
-	];
-	const clips: VideoClip[] = segments.map((s, i) => {
-		const startSec = Math.round(dur * s.t);
-		const endSec = Math.min(dur, Math.round(startSec + dur * s.len));
+	if (opts.segmentAll) {
+		const clips = buildFullVideoClips({
+			durationSec: dur,
+			clipMinSec: opts.clipMinSec,
+			clipMaxSec: opts.clipMaxSec,
+			fullTranscript: transcript,
+			videoTitle: title,
+		});
 		return {
-			id: String(i + 1),
-			title: s.title,
-			startSec,
-			endSec: Math.max(startSec + 15, endSec),
-			viralityScore: 92 - i * 7,
-			hook: s.hook,
-			reason: 'Demo clip — connect Vertex AI (Gemini) for transcript + multimodal analysis.',
-			transcript: `[${title}] segment ${i + 1}`,
+			clips,
+			summary:
+				'Demo mode: full-video segments. Add Vertex credentials for AI highlight detection.',
 		};
-	});
+	}
+
+	const targetLen = Math.round((opts.clipMinSec + opts.clipMaxSec) / 2);
+	const count = Math.max(1, Math.min(opts.clipCount, 40));
+	const clips: VideoClip[] = [];
+
+	for (let i = 0; i < count; i++) {
+		const startSec = Math.round((dur / count) * i);
+		const endSec = Math.min(dur, startSec + targetLen);
+		const excerpt = excerptFromTimedTranscript(transcript, startSec, endSec);
+		const quote =
+			excerpt ||
+			`Configure Vertex AI to pull real quotes from "${title}".`;
+		clips.push({
+			id: String(i + 1),
+			title: quote.split(/\s+/).slice(0, 5).join(' '),
+			startSec,
+			endSec: Math.max(startSec + opts.clipMinSec, endSec),
+			viralityScore: 88 - i * 5,
+			hook: quote.slice(0, 200),
+			reason: '',
+			transcript: quote.slice(0, 800),
+		});
+	}
+
 	return {
 		clips,
 		summary:
-			'Demo mode: configure GOOGLE_SERVICE_ACCOUNT_JSON and VERTEX_PROJECT_ID for AI clip detection like Opus Clip.',
+			'Demo mode: configure GOOGLE_SERVICE_ACCOUNT_JSON and VERTEX_PROJECT_ID for AI clip detection.',
 	};
 }
 
@@ -130,15 +154,43 @@ export async function analyzeVideoForClips(opts: {
 	transcript: string;
 	topicHint?: string;
 	clipCount?: number;
+	clipMinSec?: number;
+	clipMaxSec?: number;
+	segmentAll?: boolean;
 	/** Optional inline video for multimodal (keep under ~18MB) */
 	videoBytes?: Uint8Array;
 	videoMime?: string;
 }): Promise<{ clips: VideoClip[]; summary: string; demo: boolean; model?: string }> {
-	const want = Math.max(3, Math.min(12, opts.clipCount ?? 8));
+	const clipMinSec = Math.max(10, Math.min(180, opts.clipMinSec ?? 10));
+	const clipMaxSec = Math.max(clipMinSec, Math.min(180, opts.clipMaxSec ?? 90));
+	const segmentAll = !!opts.segmentAll;
+	const want = segmentAll
+		? 40
+		: Math.max(1, Math.min(40, opts.clipCount ?? 8));
 	const durationSec = Math.max(1, opts.durationSec || 600);
 
+	if (segmentAll) {
+		const clips = buildFullVideoClips({
+			durationSec,
+			clipMinSec,
+			clipMaxSec,
+			fullTranscript: opts.transcript,
+			videoTitle: opts.title,
+		});
+		return {
+			clips,
+			summary: `Split the full video into ${clips.length} clips (~${Math.round((clipMinSec + clipMaxSec) / 2)}s each).`,
+			demo: !hasGoogleCredentials(),
+		};
+	}
+
 	if (!hasGoogleCredentials()) {
-		const demo = demoClips(durationSec, opts.title);
+		const demo = demoClips(durationSec, opts.title, opts.transcript, {
+			clipMinSec,
+			clipMaxSec,
+			clipCount: want,
+			segmentAll: false,
+		});
 		return { ...demo, demo: true };
 	}
 
@@ -147,11 +199,14 @@ export async function analyzeVideoForClips(opts: {
 		? sandboxUserPlaintext('HINT', opts.topicHint, 600)
 		: '';
 
-	const prompt = `You are Opus Clip — an expert short-form video editor. Find the ${want} best vertical clips (15–90 seconds each) from this long-form video.
+	const prompt = `You are Opus Clip — an expert short-form video editor. Find the ${want} best vertical clips from this long-form video.
 
 Rules:
-- Each clip must be self-contained with a strong hook in the first 2 seconds.
-- Prefer moments with surprise, emotion, clear insight, controversy, or actionable advice.
+- Each clip must be ${clipMinSec}–${clipMaxSec} seconds long (endSec - startSec).
+- Each clip must be self-contained; transcript must be VERBATIM spoken words from that segment (quote what they say).
+- Do NOT write meta descriptions like "the clearest explanation" or "moment that stops the scroll" — only real dialogue/narration.
+- title is a short topic headline (3-6 words), not a label about virality.
+- reason is for editors only (optional); transcript is what appears on social posts.
 - startSec/endSec must be within 0 and ${durationSec} seconds.
 - Clips must not overlap heavily.
 - viralityScore is 0–100 (higher = more likely to go viral on TikTok/Reels/Shorts).
@@ -187,12 +242,28 @@ ${transcriptBlock}`;
 		const parsed = parseClipsJson(text);
 		// Clamp clip ranges to duration
 		const clips = parsed.clips
-			.map((c) => ({
-				...c,
-				startSec: Math.max(0, Math.min(c.startSec, durationSec - 5)),
-				endSec: Math.min(durationSec, Math.max(c.endSec, c.startSec + 10)),
-			}))
-			.filter((c) => c.endSec - c.startSec >= 10 && c.endSec - c.startSec <= 120);
+			.map((c) => {
+				const excerpt = excerptFromTimedTranscript(
+					opts.transcript,
+					c.startSec,
+					c.endSec,
+				);
+				const transcript =
+					(c.transcript?.trim() && c.transcript.length > 12
+						? c.transcript
+						: excerpt) || c.transcript;
+				return {
+					...c,
+					transcript,
+					startSec: Math.max(0, Math.min(c.startSec, durationSec - 5)),
+					endSec: Math.min(durationSec, Math.max(c.endSec, c.startSec + clipMinSec)),
+				};
+			})
+			.filter(
+				(c) =>
+					c.endSec - c.startSec >= clipMinSec &&
+					c.endSec - c.startSec <= clipMaxSec,
+			);
 
 		return {
 			clips: clips.slice(0, want),
@@ -202,7 +273,12 @@ ${transcriptBlock}`;
 		};
 	} catch (e) {
 		console.error('[vertex-gemini-clips]', e);
-		const demo = demoClips(durationSec, opts.title);
+		const demo = demoClips(durationSec, opts.title, opts.transcript, {
+			clipMinSec,
+			clipMaxSec,
+			clipCount: want,
+			segmentAll: false,
+		});
 		return { ...demo, demo: true };
 	}
 }

@@ -10,6 +10,8 @@
 		headline?: string;
 		watermark?: string;
 		videoSrc?: string;
+		/** When `videoSrc` is empty, show this image instead of the template placeholder clip. */
+		videoPoster?: string;
 		w?: number;
 		h?: number;
 		scale?: number;
@@ -39,6 +41,7 @@
 		headline = VIDEO_STORY_DEFAULTS.headline,
 		watermark = VIDEO_STORY_DEFAULTS.watermark,
 		videoSrc = '',
+		videoPoster = '',
 		w = 1080,
 		h = 1920,
 		scale = 1,
@@ -65,7 +68,9 @@
 
 	const DEFAULT_VIDEO = VIDEO_STORY_DEFAULTS.videoUrl;
 
-	const resolvedVideo = $derived((videoSrc && videoSrc.trim()) ? videoSrc.trim() : DEFAULT_VIDEO);
+	const trimmedVideo = $derived((videoSrc && videoSrc.trim()) || '');
+	const posterSrc = $derived((videoPoster && videoPoster.trim()) || '');
+	const resolvedVideo = $derived(trimmedVideo || (!posterSrc ? DEFAULT_VIDEO : ''));
 
 	let storyVideoEl = $state<HTMLVideoElement | null>(null);
 	let lastDuration = 0;
@@ -123,11 +128,29 @@
 		}
 	});
 
+	const HEADLINE_INK = '#f4f4f5';
+	const WATERMARK_INK = 'rgba(255,255,255,0.95)';
+
+	function inkOnBlack(preferred: string | undefined, fallback: string): string {
+		const c = preferred?.trim();
+		if (!c) return fallback;
+		const hex = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+		if (!hex) return c;
+		let h = hex[1];
+		if (h.length === 3) h = h.split('').map((ch) => ch + ch).join('');
+		const r = parseInt(h.slice(0, 2), 16);
+		const g = parseInt(h.slice(2, 4), 16);
+		const b = parseInt(h.slice(4, 6), 16);
+		const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+		return lum < 0.45 ? fallback : c;
+	}
+
 	function hlCss(
 		s: TextStyle,
 		baseSize: number,
-		weight = 800,
-		baseFamily = `Impact, 'Arial Black', ui-sans-serif, system-ui, sans-serif`,
+		weight = 600,
+		baseFamily = `'Satoshi', ui-sans-serif, system-ui, sans-serif`,
+		defaultInk = HEADLINE_INK,
 	) {
 		const bits: string[] = [];
 		bits.push(`font-family: ${baseFamily};`);
@@ -136,7 +159,7 @@
 		bits.push(`font-weight: ${s.fontWeight ?? weight};`);
 		if (s.italic) bits.push('font-style: italic;');
 		if (s.underline) bits.push('text-decoration: underline;');
-		if (s.color) bits.push(`color: ${s.color};`);
+		bits.push(`color: ${inkOnBlack(s.color, defaultInk)};`);
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.align) bits.push(`text-align: ${s.align};`);
@@ -144,9 +167,9 @@
 		return bits.join(' ');
 	}
 
-	const headlineCss = $derived(hlCss(headlineStyle, 52, 800));
+	const headlineCss = $derived(hlCss(headlineStyle, 46, 600));
 	const watermarkCss = $derived(
-		hlCss(watermarkStyle, 22, 700, `'Satoshi', ui-sans-serif, system-ui, sans-serif`),
+		hlCss(watermarkStyle, 22, 600, `'Satoshi', ui-sans-serif, system-ui, sans-serif`, WATERMARK_INK),
 	);
 </script>
 
@@ -194,8 +217,8 @@
 						rows={4}
 						minHeight="0px"
 						ariaLabel="Video headline"
-						fontFamily={headlineStyle.fontFamily ?? 'Impact'}
-						fontSize={headlineStyle.fontSize ?? 52}
+						fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+						fontSize={headlineStyle.fontSize ?? 46}
 						{showToolbar}
 						onTextChange={onHeadlineChange}
 						onTextSelect={onTextSelect}
@@ -247,24 +270,40 @@
 					box-shadow: 0 24px 80px rgba(0,0,0,0.55);
 				"
 			>
-				<!-- svelte-ignore a11y_media_has_caption -->
-				<video
-					class="video-story-player"
-					src={resolvedVideo}
-					autoplay
-					loop
-					playsinline
-					muted={videoMuted}
-					onloadedmetadata={onStoryVideoMeta}
-					ontimeupdate={onStoryVideoTimeUpdate}
-					style="
-						display: block;
-						width: 100%;
-						height: 100%;
-						object-fit: cover;
-						object-position: center;
-					"
-				></video>
+				{#if resolvedVideo}
+					<!-- svelte-ignore a11y_media_has_caption -->
+					<video
+						class="video-story-player"
+						src={resolvedVideo}
+						poster={posterSrc || undefined}
+						autoplay
+						loop
+						playsinline
+						muted={videoMuted}
+						onloadedmetadata={onStoryVideoMeta}
+						ontimeupdate={onStoryVideoTimeUpdate}
+						style="
+							display: block;
+							width: 100%;
+							height: 100%;
+							object-fit: cover;
+							object-position: center;
+						"
+					></video>
+				{:else if posterSrc}
+					<img
+						src={posterSrc}
+						alt=""
+						class="video-story-player"
+						style="
+							display: block;
+							width: 100%;
+							height: 100%;
+							object-fit: cover;
+							object-position: center;
+						"
+					/>
+				{/if}
 
 				<DraggableBlock
 					dx={textOffsets.videoStoryWatermark?.x ?? 0}

@@ -4,6 +4,8 @@
 	import { r2UploadVideo } from '$lib/r2Client';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import { formatClipDuration, formatTimestamp } from '$lib/video-clips/export-clip';
+	import { clipDisplayQuote } from '$lib/video-clips/clip-template-copy';
+	import ClipTemplatePreviews from '$lib/components/video-clips/ClipTemplatePreviews.svelte';
 	import {
 		Link2,
 		Upload,
@@ -36,8 +38,35 @@
 	let uploadProgress = $state(0);
 	let fileInput = $state<HTMLInputElement | null>(null);
 
+	/** Best highlights vs split full video */
+	let clipMode = $state<'highlights' | 'all'>('highlights');
+	let clipCount = $state(8);
+	let clipMinSec = $state(10);
+	let clipMaxSec = $state(60);
+
 	const selectedClip = $derived(clips.find((c) => c.id === selectedClipId) ?? clips[0] ?? null);
 	const hasStoredVideo = $derived(!!source?.r2Key);
+
+	const clipMaxLabel = $derived(
+		clipMaxSec >= 180 ? '3 min' : clipMaxSec >= 60 ? `${Math.round(clipMaxSec / 60)} min` : `${clipMaxSec}s`,
+	);
+
+	$effect(() => {
+		if (clipMaxSec < clipMinSec) clipMaxSec = clipMinSec;
+	});
+
+	function analyzeClipPayload(extra: Record<string, unknown>) {
+		return {
+			...extra,
+			topicHint: topicHint.trim() || undefined,
+			clipMinSec,
+			clipMaxSec,
+			segmentAll: clipMode === 'all',
+			...(clipMode === 'highlights'
+				? { clipCount: Math.max(1, Math.min(40, Math.round(Number(clipCount)) || 1)) }
+				: {}),
+		};
+	}
 
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
@@ -52,6 +81,9 @@
 					'Install yt-dlp for YouTube download + MP4 clips: brew install yt-dlp';
 			} else if (!t.ffmpeg) {
 				toolsWarning = 'Install ffmpeg for MP4 export: brew install ffmpeg';
+			} else if (!t.ytDlpCookiesFile && !t.ytDlpCookiesBrowser) {
+				toolsWarning =
+					'YouTube may return HTTP 403 without cookies. Log into YouTube in Chrome, add YT_DLP_COOKIES_BROWSER=chrome to .env, and restart the server.';
 			}
 		} catch {
 			toolsWarning = 'Could not check video tools (yt-dlp / ffmpeg).';
@@ -70,12 +102,12 @@
 			const res = await fetch('/api/videos/analyze', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					source: 'youtube',
-					youtubeUrl: url,
-					topicHint: topicHint.trim() || undefined,
-					clipCount: 8,
-				}),
+				body: JSON.stringify(
+					analyzeClipPayload({
+						source: 'youtube',
+						youtubeUrl: url,
+					}),
+				),
 			});
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
@@ -126,14 +158,14 @@
 			const res = await fetch('/api/videos/analyze', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					source: 'upload',
-					r2Key: up.key,
-					title: file.name.replace(/\.[^.]+$/, ''),
-					durationSec,
-					topicHint: topicHint.trim() || undefined,
-					clipCount: 8,
-				}),
+				body: JSON.stringify(
+					analyzeClipPayload({
+						source: 'upload',
+						r2Key: up.key,
+						title: file.name.replace(/\.[^.]+$/, ''),
+						durationSec,
+					}),
+				),
 			});
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
@@ -270,6 +302,75 @@
 					{/if}
 				</label>
 
+				<fieldset class="clip-settings">
+					<legend class="clip-settings-legend">Before we find clips</legend>
+
+					<div class="clip-mode-row" role="radiogroup" aria-label="Clip mode">
+						<label class="clip-mode-opt">
+							<input type="radio" name="clip-mode" value="highlights" bind:group={clipMode} />
+							Best highlights
+						</label>
+						<label class="clip-mode-opt">
+							<input type="radio" name="clip-mode" value="all" bind:group={clipMode} />
+							Clip entire video
+						</label>
+					</div>
+
+					{#if clipMode === 'highlights'}
+						<label class="clip-field">
+							<span class="clip-field-label">How many clips</span>
+							<input
+								type="number"
+								class="clip-number"
+								min={1}
+								max={40}
+								step={1}
+								bind:value={clipCount}
+								disabled={phase === 'analyzing' || phase === 'downloading' || phase === 'importing'}
+							/>
+						</label>
+					{:else}
+						<p class="clip-mode-hint">
+							We’ll split the full video back-to-back using your length range below.
+						</p>
+					{/if}
+
+					<div class="clip-field">
+						<span class="clip-field-label">
+							Clip length: <strong>{clipMinSec}s</strong> – <strong>{clipMaxLabel}</strong>
+						</span>
+						<div class="clip-range-pair">
+							<label class="clip-range">
+								<span>Min</span>
+								<input
+									type="range"
+									min={10}
+									max={180}
+									step={5}
+									bind:value={clipMinSec}
+									disabled={phase === 'analyzing' || phase === 'downloading' || phase === 'importing'}
+								/>
+							</label>
+							<label class="clip-range">
+								<span>Max</span>
+								<input
+									type="range"
+									min={10}
+									max={180}
+									step={5}
+									bind:value={clipMaxSec}
+									disabled={phase === 'analyzing' || phase === 'downloading' || phase === 'importing'}
+								/>
+							</label>
+						</div>
+						<div class="clip-range-ticks">
+							<span>10s</span>
+							<span>1 min</span>
+							<span>3 min</span>
+						</div>
+					</div>
+				</fieldset>
+
 				<input
 					type="text"
 					class="hint-input"
@@ -359,7 +460,7 @@
 									</div>
 									<div class="clip-body">
 										<div class="clip-title">{clip.title}</div>
-										<div class="clip-hook">{clip.hook}</div>
+										<div class="clip-hook">{clipDisplayQuote(clip)}</div>
 										<div class="clip-times">
 											{formatTimestamp(clip.startSec)} – {formatTimestamp(clip.endSec)}
 											· {formatClipDuration(clip.startSec, clip.endSec)}
@@ -396,6 +497,15 @@
 					</ul>
 				</div>
 			</div>
+
+			{#if selectedClip && source}
+				<ClipTemplatePreviews
+					clip={selectedClip}
+					{source}
+					watermark={topicHint.trim() || 'VIRAL CLIP'}
+					topicHint={topicHint.trim()}
+				/>
+			{/if}
 		</section>
 	{/if}
 </div>
@@ -596,6 +706,107 @@
 		background: #f472b6;
 		border-radius: 999px;
 		transition: width 0.2s;
+	}
+
+	.clip-settings {
+		margin-top: 1rem;
+		padding: 1rem;
+		border-radius: 0.65rem;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(0, 0, 0, 0.2);
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+
+	.clip-settings-legend {
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(248, 250, 252, 0.55);
+		padding: 0 0.15rem;
+	}
+
+	.clip-mode-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.65rem 1.25rem;
+	}
+
+	.clip-mode-opt {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: rgba(248, 250, 252, 0.9);
+		cursor: pointer;
+	}
+
+	.clip-mode-hint {
+		margin: 0;
+		font-size: 0.78rem;
+		color: rgba(248, 250, 252, 0.55);
+		line-height: 1.4;
+	}
+
+	.clip-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+	}
+
+	.clip-field-label {
+		font-size: 0.78rem;
+		color: rgba(248, 250, 252, 0.75);
+	}
+
+	.clip-field-label strong {
+		color: #f9a8d4;
+		font-weight: 700;
+	}
+
+	.clip-number {
+		height: 2.1rem;
+		width: 5.5rem;
+		border-radius: 0.45rem;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: rgba(0, 0, 0, 0.35);
+		color: #fff;
+		padding: 0 0.5rem;
+		font-size: 0.85rem;
+		font-weight: 600;
+	}
+
+	.clip-number:disabled {
+		opacity: 0.5;
+	}
+
+	.clip-range-pair {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+	}
+
+	.clip-range {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.68rem;
+		color: rgba(248, 250, 252, 0.45);
+	}
+
+	.clip-range input {
+		width: 100%;
+		accent-color: #e11d48;
+	}
+
+	.clip-range-ticks {
+		display: flex;
+		justify-content: space-between;
+		font-size: 0.65rem;
+		color: rgba(248, 250, 252, 0.4);
 	}
 
 	.hint-input {

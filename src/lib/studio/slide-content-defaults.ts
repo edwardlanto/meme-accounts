@@ -105,6 +105,14 @@ export const VIDEO_STORY_DEFAULTS = {
 		'He messed up — but the boss taught him a lesson instead.\n\nThe moment went viral for a reason: leadership is rarely loud, and growth rarely looks perfect on camera.',
 } as const;
 
+/** Readable on the black video-story canvas (Studio + clip previews). */
+export const VIDEO_STORY_HEADLINE_STYLE = {
+	color: '#f4f4f5',
+	fontWeight: 600,
+	fontFamily: 'Satoshi',
+	fontSize: 46,
+} as const;
+
 /** Labels for docs / error messages when extending templates. */
 export function templateLabel(id: TemplateId): string {
 	return STUDIO_TEMPLATES.find((t) => t.id === id)?.label ?? id;
