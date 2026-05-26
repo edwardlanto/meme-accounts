@@ -18,6 +18,11 @@
 		Tv,
 		Film,
 		ChevronRight,
+		Zap,
+		FileVideo,
+		AlertCircle,
+		CheckCircle2,
+		RotateCcw,
 	} from 'lucide-svelte';
 
 	type Phase = 'idle' | 'importing' | 'downloading' | 'analyzing' | 'ready' | 'exporting';
@@ -39,8 +44,9 @@
 	let uploadProgress = $state(0);
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let playerVideo = $state<HTMLVideoElement | null>(null);
+	let importTab = $state<'youtube' | 'upload'>('youtube');
+	let isDragging = $state(false);
 
-	/** Best highlights vs split full video */
 	let clipMode = $state<'highlights' | 'all'>('highlights');
 	let clipCount = $state(8);
 	let clipMinSec = $state(10);
@@ -48,14 +54,29 @@
 
 	const selectedClip = $derived(clips.find((c) => c.id === selectedClipId) ?? clips[0] ?? null);
 	const hasStoredVideo = $derived(!!source?.r2Key);
+	const isBusy = $derived(
+		phase === 'analyzing' || phase === 'importing' || phase === 'downloading',
+	);
+	const isExporting = $derived((phase as string) === 'exporting');
 
 	const clipMaxLabel = $derived(
-		clipMaxSec >= 180 ? '3 min' : clipMaxSec >= 60 ? `${Math.round(clipMaxSec / 60)} min` : `${clipMaxSec}s`,
+		clipMaxSec >= 180
+			? '3 min'
+			: clipMaxSec >= 60
+				? `${Math.round(clipMaxSec / 60)} min`
+				: `${clipMaxSec}s`,
 	);
 
 	$effect(() => {
 		if (clipMaxSec < clipMinSec) clipMaxSec = clipMinSec;
 	});
+
+	function scoreColor(score: number) {
+		if (score >= 80) return '#22c55e';
+		if (score >= 60) return '#f59e0b';
+		if (score >= 40) return '#f97316';
+		return '#ef4444';
+	}
 
 	function playClipSegment(clip: VideoClip) {
 		const v = playerVideo;
@@ -112,7 +133,9 @@
 	}
 
 	onMount(async () => {
-		const { data: { user } } = await supabase.auth.getUser();
+		const {
+			data: { user },
+		} = await supabase.auth.getUser();
 		userId = user?.id ?? '';
 		try {
 			const res = await fetch('/api/videos/tools');
@@ -120,8 +143,7 @@
 			ytDlpReady = !!t.ytDlp;
 			ffmpegReady = !!t.ffmpeg;
 			if (!t.ytDlp) {
-				toolsWarning =
-					'Install yt-dlp for YouTube download + MP4 clips: brew install yt-dlp';
+				toolsWarning = 'Install yt-dlp for YouTube download + MP4 clips: brew install yt-dlp';
 			} else if (!t.ffmpeg) {
 				toolsWarning = 'Install ffmpeg for MP4 export: brew install ffmpeg';
 			} else if (!t.ytDlpCookiesFile && !t.ytDlpCookiesBrowser) {
@@ -136,7 +158,7 @@
 	async function analyzeFromYoutube() {
 		const url = youtubeUrl.trim();
 		if (!url) {
-			error = 'Paste a YouTube URL';
+			error = 'Paste a YouTube URL first';
 			return;
 		}
 		error = '';
@@ -145,12 +167,7 @@
 			const res = await fetch('/api/videos/analyze', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(
-					analyzeClipPayload({
-						source: 'youtube',
-						youtubeUrl: url,
-					}),
-				),
+				body: JSON.stringify(analyzeClipPayload({ source: 'youtube', youtubeUrl: url })),
 			});
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
@@ -238,6 +255,22 @@
 		}
 	}
 
+	function onDragOver(e: DragEvent) {
+		e.preventDefault();
+		isDragging = true;
+	}
+	function onDragLeave() {
+		isDragging = false;
+	}
+	function onDrop(e: DragEvent) {
+		e.preventDefault();
+		isDragging = false;
+		const file = e.dataTransfer?.files?.[0];
+		if (!file) return;
+		const fakeEvent = { target: { files: [file] } } as unknown as Event;
+		void onFileChange(fakeEvent);
+	}
+
 	async function downloadClip(clip: VideoClip) {
 		if (!source?.r2Key) {
 			error = 'Full download requires yt-dlp. Run: brew install yt-dlp, then analyze again.';
@@ -286,92 +319,135 @@
 </script>
 
 <div class="videos-page">
+	<!-- ── HERO / IMPORT ── -->
 	<header class="videos-hero">
+		<div class="hero-glow" aria-hidden="true"></div>
 		<div class="videos-hero-inner">
 			<div class="videos-hero-badge">
-				<Scissors size={14} />
+				<Scissors size={13} />
 				AI clip finder
 			</div>
-			<h1 class="videos-title">Turn long videos into viral clips</h1>
+
+			<h1 class="videos-title">
+				Turn long videos into<br /><span class="title-accent">viral clips</span>
+			</h1>
 			<p class="videos-sub">
-				Paste a YouTube link or upload a file. We download with yt-dlp, find clips with Vertex Gemini, and export MP4s with ffmpeg.
+				Paste a YouTube link or upload a file — Vertex Gemini finds the best moments, ffmpeg
+				exports the MP4s.
 			</p>
 
 			{#if toolsWarning}
-				<p class="tools-warn" role="status">{toolsWarning}</p>
+				<div class="tools-warn" role="status">
+					<AlertCircle size={14} />
+					<span>{toolsWarning}</span>
+				</div>
 			{/if}
 
 			<div class="import-card">
-				<div class="import-tabs">
-					<span class="import-tab import-tab-on"><Tv size={16} /> YouTube</span>
-					<span class="import-tab"><Upload size={16} /> Upload</span>
-				</div>
-
-				<div class="import-row">
-					<Link2 size={18} class="import-icon" />
-					<input
-						type="url"
-						class="import-input"
-						placeholder="https://www.youtube.com/watch?v=…"
-						bind:value={youtubeUrl}
-						disabled={phase === 'analyzing' || phase === 'importing' || phase === 'downloading'}
-						onkeydown={(e) => e.key === 'Enter' && void analyzeFromYoutube()}
-					/>
+				<!-- Functional tabs -->
+				<div class="import-tabs" role="tablist">
 					<button
-						type="button"
-						class="btn-primary"
-						disabled={phase === 'analyzing' || phase === 'importing' || phase === 'downloading'}
-						onclick={() => void analyzeFromYoutube()}
+						role="tab"
+						aria-selected={importTab === 'youtube'}
+						class="import-tab"
+						class:import-tab-on={importTab === 'youtube'}
+						onclick={() => (importTab = 'youtube')}
 					>
-						{#if phase === 'downloading'}
-							<Loader size={16} class="spin" />
-							Downloading…
-						{:else if phase === 'analyzing'}
-							<Loader size={16} class="spin" />
-							Analyzing…
-						{:else}
-							<Sparkles size={16} />
-							Get clips
-						{/if}
+						<Tv size={14} /> YouTube
+					</button>
+					<button
+						role="tab"
+						aria-selected={importTab === 'upload'}
+						class="import-tab"
+						class:import-tab-on={importTab === 'upload'}
+						onclick={() => (importTab = 'upload')}
+					>
+						<FileVideo size={14} /> Upload file
 					</button>
 				</div>
 
-				<div class="import-divider"><span>or</span></div>
+				{#if importTab === 'youtube'}
+					<div class="import-row">
+						<Link2 size={16} class="import-icon" />
+						<input
+							type="url"
+							class="import-input"
+							placeholder="https://www.youtube.com/watch?v=…"
+							bind:value={youtubeUrl}
+							disabled={isBusy}
+							onkeydown={(e) => e.key === 'Enter' && void analyzeFromYoutube()}
+						/>
+						<button
+							type="button"
+							class="btn-primary"
+							disabled={isBusy}
+							onclick={() => void analyzeFromYoutube()}
+						>
+							{#if phase === 'downloading'}
+								<Loader size={15} class="spin" /> Downloading…
+							{:else if phase === 'analyzing'}
+								<Loader size={15} class="spin" /> Analyzing…
+							{:else}
+								<Sparkles size={15} /> Find clips
+							{/if}
+						</button>
+					</div>
+				{:else}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<label
+						class="upload-zone"
+						class:upload-zone-drag={isDragging}
+						class:upload-zone-busy={isBusy}
+						ondragover={onDragOver}
+						ondragleave={onDragLeave}
+						ondrop={onDrop}
+					>
+						<input
+							bind:this={fileInput}
+							type="file"
+							accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+							class="sr-only"
+							disabled={!userId || isBusy}
+							onchange={onFileChange}
+						/>
+						{#if phase === 'importing'}
+							<Loader size={28} class="spin upload-loader" />
+							<span class="upload-title">Uploading…</span>
+							<div class="upload-bar">
+								<div class="upload-bar-fill" style="width: {uploadProgress}%"></div>
+							</div>
+							<span class="upload-pct">{Math.round(uploadProgress)}%</span>
+						{:else if phase === 'analyzing'}
+							<Sparkles size={28} class="upload-pulse" />
+							<span class="upload-title">Analyzing with Gemini…</span>
+						{:else}
+							<FileVideo size={28} class="upload-icon" />
+							<span class="upload-title"
+								>{isDragging ? 'Drop to analyze' : 'Drop a video or click to upload'}</span
+							>
+							<span class="upload-hint">MP4 · WebM · MOV · up to 200 MB</span>
+						{/if}
+					</label>
+				{/if}
 
-				<label class="upload-zone">
-					<input
-						bind:this={fileInput}
-						type="file"
-						accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
-						class="sr-only"
-						disabled={!userId || phase === 'analyzing' || phase === 'importing'}
-						onchange={onFileChange}
-					/>
-					<Upload size={28} />
-					<span class="upload-title">Drop a video or click to upload</span>
-					<span class="upload-hint">MP4, WebM, or MOV · up to 200MB</span>
-					{#if phase === 'importing'}
-						<div class="upload-bar"><div class="upload-bar-fill" style="width: {uploadProgress}%"></div></div>
-					{/if}
-				</label>
-
+				<!-- Clip settings -->
 				<fieldset class="clip-settings">
-					<legend class="clip-settings-legend">Before we find clips</legend>
+					<legend class="clip-settings-legend">Clip settings</legend>
 
 					<div class="clip-mode-row" role="radiogroup" aria-label="Clip mode">
-						<label class="clip-mode-opt">
+						<label class="clip-mode-opt" class:clip-mode-opt-on={clipMode === 'highlights'}>
 							<input type="radio" name="clip-mode" value="highlights" bind:group={clipMode} />
-							Best highlights
+							<Zap size={13} /> Best highlights
 						</label>
-						<label class="clip-mode-opt">
+						<label class="clip-mode-opt" class:clip-mode-opt-on={clipMode === 'all'}>
 							<input type="radio" name="clip-mode" value="all" bind:group={clipMode} />
-							Clip entire video
+							<Film size={13} /> Clip entire video
 						</label>
 					</div>
 
 					{#if clipMode === 'highlights'}
 						<label class="clip-field">
-							<span class="clip-field-label">How many clips</span>
+							<span class="clip-field-label">Number of clips</span>
 							<input
 								type="number"
 								class="clip-number"
@@ -379,12 +455,12 @@
 								max={40}
 								step={1}
 								bind:value={clipCount}
-								disabled={phase === 'analyzing' || phase === 'downloading' || phase === 'importing'}
+								disabled={isBusy}
 							/>
 						</label>
 					{:else}
 						<p class="clip-mode-hint">
-							We’ll split the full video back-to-back using your length range below.
+							Splits the full video into back-to-back segments using the length range below.
 						</p>
 					{/if}
 
@@ -401,7 +477,7 @@
 									max={180}
 									step={5}
 									bind:value={clipMinSec}
-									disabled={phase === 'analyzing' || phase === 'downloading' || phase === 'importing'}
+									disabled={isBusy}
 								/>
 							</label>
 							<label class="clip-range">
@@ -412,48 +488,58 @@
 									max={180}
 									step={5}
 									bind:value={clipMaxSec}
-									disabled={phase === 'analyzing' || phase === 'downloading' || phase === 'importing'}
+									disabled={isBusy}
 								/>
 							</label>
 						</div>
 						<div class="clip-range-ticks">
-							<span>10s</span>
-							<span>1 min</span>
-							<span>3 min</span>
+							<span>10s</span><span>1 min</span><span>3 min</span>
 						</div>
 					</div>
 				</fieldset>
 
-				<input
-					type="text"
-					class="hint-input"
-					placeholder="Optional: topic or angle (e.g. motivation, startup advice)"
-					bind:value={topicHint}
-				/>
+				<div class="hint-row">
+					<Sparkles size={13} class="hint-icon" />
+					<input
+						type="text"
+						class="hint-input"
+						placeholder="Topic or angle hint — e.g. motivation, startup advice"
+						bind:value={topicHint}
+					/>
+				</div>
 			</div>
 
 			{#if error}
-				<p class="videos-error" role="alert">{error}</p>
+				<div class="videos-error" role="alert">
+					<AlertCircle size={14} />
+					{error}
+				</div>
 			{/if}
 		</div>
 	</header>
 
+	<!-- ── RESULTS ── -->
 	{#if phase === 'ready' && source}
-		<section class="results">
+		<section class="results" aria-label="Analysis results">
 			<div class="results-head">
-				<div>
-					<h2>{source.title}</h2>
-					<p class="results-meta">
-						{clips.length} clips · {formatTimestamp(source.durationSec)} total
+				<div class="results-head-info">
+					<h2 class="results-title">{source.title}</h2>
+					<div class="results-meta">
+						<span>{clips.length} clips found</span>
+						<span class="meta-sep">·</span>
+						<span>{formatTimestamp(source.durationSec)} total</span>
 						{#if demo}<span class="demo-pill">Demo AI</span>{/if}
 						{#if model}<span class="model-pill">{model}</span>{/if}
-					</p>
+					</div>
 					{#if summary}<p class="results-summary">{summary}</p>{/if}
 				</div>
-				<button type="button" class="btn-ghost" onclick={reset}>New video</button>
+				<button type="button" class="btn-ghost" onclick={reset}>
+					<RotateCcw size={13} /> New video
+				</button>
 			</div>
 
 			<div class="results-grid">
+				<!-- Player -->
 				<div class="player-panel">
 					{#if hasStoredVideo}
 						<!-- svelte-ignore a11y_media_has_caption -->
@@ -469,7 +555,9 @@
 								if (selectedClip) playClipSegment(selectedClip);
 							}}
 						></video>
-						<p class="yt-note">Full video stored — export downloads MP4 clips via ffmpeg.</p>
+						<p class="player-note">
+							<CheckCircle2 size={12} /> Full video stored — export downloads MP4 via ffmpeg.
+						</p>
 					{:else if source.youtubeId}
 						<div class="yt-wrap">
 							{#key `${selectedClipId}-${selectedClip?.startSec}-${selectedClip?.endSec}`}
@@ -481,33 +569,42 @@
 								></iframe>
 							{/key}
 						</div>
-						<p class="yt-note">Install yt-dlp to download the full video and enable MP4 export.</p>
+						<p class="player-note">Install yt-dlp to download the full video and enable MP4 export.</p>
 					{/if}
 
 					{#if selectedClip}
 						<div class="now-playing">
-							<Play size={14} />
+							<span class="now-playing-dot" aria-hidden="true"></span>
 							<span>
-								{selectedClip.title} · {formatTimestamp(selectedClip.startSec)} – {formatTimestamp(selectedClip.endSec)}
-								({formatClipDuration(selectedClip.startSec, selectedClip.endSec)})
+								{selectedClip.title} · {formatTimestamp(selectedClip.startSec)}–{formatTimestamp(selectedClip.endSec)}
+								<span class="now-playing-dur"
+									>({formatClipDuration(selectedClip.startSec, selectedClip.endSec)})</span
+								>
 							</span>
 						</div>
 					{/if}
 				</div>
 
+				<!-- Clips list -->
 				<div class="clips-panel">
-					<h3 class="clips-heading">Clips ranked by virality</h3>
+					<h3 class="clips-heading">
+						<Zap size={12} /> Ranked by virality
+					</h3>
 					<ul class="clips-list">
-						{#each clips as clip (clip.id)}
-							<li>
+						{#each clips as clip, i (clip.id)}
+							<li class="clip-item" style="--i: {i}">
 								<button
 									type="button"
 									class="clip-card"
 									class:clip-card-on={selectedClipId === clip.id}
 									onclick={() => selectClip(clip)}
+									style="--score-color: {scoreColor(clip.viralityScore)}"
 								>
-									<div class="clip-score" style="--score: {clip.viralityScore}%">
-										<span>{clip.viralityScore}</span>
+									<div
+										class="clip-score"
+										aria-label="Virality score {clip.viralityScore}"
+									>
+										<span class="score-num">{clip.viralityScore}</span>
 									</div>
 									<div class="clip-body">
 										<div class="clip-title">{clip.title}</div>
@@ -517,30 +614,30 @@
 											· {formatClipDuration(clip.startSec, clip.endSec)}
 										</div>
 									</div>
-									<ChevronRight size={16} class="clip-chevron" />
+									<ChevronRight size={15} class="clip-chevron" />
 								</button>
 								<div class="clip-actions">
 									<button
 										type="button"
-										class="btn-small"
-										disabled={phase === 'exporting' || !source?.r2Key}
+										class="btn-small btn-export"
+										disabled={isExporting || !source?.r2Key}
 										onclick={() => void downloadClip(clip)}
 										title={source?.r2Key ? 'Download MP4 clip' : 'Requires yt-dlp download'}
 									>
-										{#if phase === 'exporting'}
-											<Loader size={14} class="spin" />
+										{#if isExporting}
+											<Loader size={13} class="spin" />
 										{:else}
-											<Download size={14} />
+											<Download size={13} />
 										{/if}
-										Export
+										Export MP4
 									</button>
 									<a
 										class="btn-small btn-studio"
 										href="/dashboard/studio?blank=1"
-										title="Open blank canvas to design a post around this clip"
+										title="Design a post around this clip"
 									>
-										<Film size={14} />
-										Studio
+										<Film size={13} />
+										Open in Studio
 									</a>
 								</div>
 							</li>
@@ -562,259 +659,411 @@
 </div>
 
 <style>
+	/* ── Base ── */
 	.videos-page {
 		min-height: 100%;
 		background: var(--app-bg);
 		color: var(--app-text);
 	}
 
+	/* ── Hero — clean white professional ── */
 	.videos-hero {
-		background: linear-gradient(165deg, #0c0c10 0%, #1a1028 45%, #0f172a 100%);
-		color: #f8fafc;
-		padding: 2.5rem 1.5rem 3rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+		position: relative;
+		background: #fff;
+		color: #0f172a;
+		padding: 3rem 1.5rem 3.5rem;
+		border-bottom: 1px solid #e8edf2;
+	}
+
+	.hero-glow {
+		display: none;
 	}
 
 	.videos-hero-inner {
-		max-width: 720px;
+		position: relative;
+		max-width: 680px;
 		margin: 0 auto;
 	}
 
 	.videos-hero-badge {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
-		font-size: 0.7rem;
+		gap: 0.4rem;
+		font-size: 0.67rem;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.09em;
 		text-transform: uppercase;
-		color: #f9a8d4;
-		margin-bottom: 0.75rem;
+		color: #7c3aed;
+		background: #f5f3ff;
+		border: 1px solid #ddd6fe;
+		padding: 0.28rem 0.65rem 0.28rem 0.5rem;
+		border-radius: 999px;
+		margin-bottom: 1rem;
+		animation: badge-in 0.45s ease both;
+	}
+
+	@keyframes badge-in {
+		from {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 
 	.videos-title {
-		font-size: clamp(1.75rem, 4vw, 2.35rem);
-		font-weight: 800;
-		letter-spacing: -0.03em;
-		line-height: 1.1;
-		margin: 0 0 0.5rem;
+		font-size: clamp(1.85rem, 4.5vw, 2.6rem);
+		font-weight: 900;
+		letter-spacing: -0.04em;
+		line-height: 1.08;
+		color: #0f172a;
+		margin: 0 0 0.75rem;
+		animation: slide-up 0.5s 0.05s ease both;
 	}
 
-	.tools-warn {
-		margin: 0 0 1rem;
-		padding: 0.6rem 0.85rem;
-		border-radius: 0.5rem;
-		background: rgba(251, 191, 36, 0.15);
-		border: 1px solid rgba(251, 191, 36, 0.35);
-		color: #fde68a;
-		font-size: 0.78rem;
-		line-height: 1.45;
+	.title-accent {
+		color: #7c3aed;
+		background: none;
+		-webkit-text-fill-color: #7c3aed;
 	}
 
 	.videos-sub {
 		margin: 0 0 1.75rem;
-		color: rgba(248, 250, 252, 0.72);
-		font-size: 0.95rem;
+		color: #64748b;
+		font-size: 0.975rem;
+		line-height: 1.65;
+		max-width: 34rem;
+		animation: slide-up 0.5s 0.09s ease both;
+	}
+
+	@keyframes slide-up {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	/* ── Warning ── */
+	.tools-warn {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin: 0 0 1.25rem;
+		padding: 0.65rem 0.9rem;
+		border-radius: 0.6rem;
+		background: #fffbeb;
+		border: 1px solid #fcd34d;
+		color: #92400e;
+		font-size: 0.78rem;
 		line-height: 1.5;
-		max-width: 36rem;
 	}
 
+	.tools-warn :global(svg) {
+		flex-shrink: 0;
+		margin-top: 1px;
+		color: #d97706;
+	}
+
+	/* ── Import card ── */
 	.import-card {
-		background: rgba(255, 255, 255, 0.06);
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: #fff;
+		border: 1px solid #e2e8f0;
 		border-radius: 1rem;
-		padding: 1.25rem;
-		backdrop-filter: blur(12px);
+		padding: 1.35rem;
+		box-shadow:
+			0 1px 3px rgba(15, 23, 42, 0.06),
+			0 4px 16px rgba(15, 23, 42, 0.04);
+		animation: slide-up 0.55s 0.12s ease both;
 	}
 
+	/* ── Tabs ── */
 	.import-tabs {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
+		gap: 0.2rem;
+		margin-bottom: 1.1rem;
+		background: #f1f5f9;
+		border-radius: 0.6rem;
+		padding: 0.2rem;
 	}
 
 	.import-tab {
+		flex: 1;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
-		font-size: 0.75rem;
+		justify-content: center;
+		gap: 0.4rem;
+		font-size: 0.78rem;
 		font-weight: 600;
-		color: rgba(255, 255, 255, 0.45);
+		color: #94a3b8;
+		padding: 0.48rem 0.75rem;
+		border-radius: 0.45rem;
+		border: none;
+		background: transparent;
+		cursor: pointer;
+		transition:
+			color 0.15s,
+			background 0.15s,
+			box-shadow 0.15s;
+	}
+
+	.import-tab:hover {
+		color: #475569;
 	}
 
 	.import-tab-on {
-		color: #fff;
+		color: #0f172a;
+		background: #fff;
+		box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
 	}
 
+	/* ── URL row ── */
 	.import-row {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
 
-	.import-icon {
+	:global(.import-icon) {
 		flex-shrink: 0;
-		opacity: 0.5;
+		color: #94a3b8;
 	}
 
 	.import-input {
 		flex: 1;
 		min-width: 0;
-		height: 2.5rem;
-		border-radius: 0.65rem;
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		background: rgba(0, 0, 0, 0.35);
-		color: #fff;
-		padding: 0 0.75rem;
+		height: 2.7rem;
+		border-radius: 0.6rem;
+		border: 1px solid #e2e8f0;
+		background: #f8fafc;
+		color: #0f172a;
+		padding: 0 0.85rem;
 		font-size: 0.875rem;
+		transition:
+			border-color 0.15s,
+			background 0.15s,
+			box-shadow 0.15s;
+	}
+
+	.import-input:focus {
+		outline: none;
+		border-color: #a78bfa;
+		background: #fff;
+		box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
 	}
 
 	.import-input::placeholder {
-		color: rgba(255, 255, 255, 0.35);
+		color: #b0bac5;
 	}
 
+	/* ── Primary CTA ── */
 	.btn-primary {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		height: 2.5rem;
-		padding: 0 1rem;
-		border-radius: 0.65rem;
+		height: 2.7rem;
+		padding: 0 1.15rem;
+		border-radius: 0.6rem;
 		border: none;
-		background: linear-gradient(135deg, #f472b6, #e11d48);
+		background: #7c3aed;
 		color: #fff;
 		font-weight: 700;
-		font-size: 0.8rem;
+		font-size: 0.82rem;
 		cursor: pointer;
 		white-space: nowrap;
+		transition:
+			background 0.15s,
+			transform 0.12s,
+			box-shadow 0.15s;
+		box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+	}
+
+	.btn-primary:hover:not(:disabled) {
+		background: #6d28d9;
+		transform: translateY(-1px);
+		box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4);
+	}
+
+	.btn-primary:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.btn-primary:disabled {
-		opacity: 0.55;
+		opacity: 0.5;
 		cursor: not-allowed;
+		box-shadow: none;
 	}
 
-	.import-divider {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin: 1rem 0;
-		color: rgba(255, 255, 255, 0.35);
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-	}
-
-	.import-divider::before,
-	.import-divider::after {
-		content: '';
-		flex: 1;
-		height: 1px;
-		background: rgba(255, 255, 255, 0.1);
-	}
-
+	/* ── Upload zone ── */
 	.upload-zone {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 0.35rem;
-		padding: 1.5rem;
-		border: 2px dashed rgba(255, 255, 255, 0.18);
-		border-radius: 0.75rem;
+		gap: 0.4rem;
+		padding: 2.25rem 1.5rem;
+		border: 2px dashed #cbd5e1;
+		border-radius: 0.85rem;
 		cursor: pointer;
-		transition: border-color 0.15s, background 0.15s;
-		color: rgba(255, 255, 255, 0.85);
+		transition:
+			border-color 0.2s,
+			background 0.2s;
+		color: #475569;
+		min-height: 10.5rem;
+		text-align: center;
 	}
 
 	.upload-zone:hover {
-		border-color: rgba(244, 114, 182, 0.55);
-		background: rgba(244, 114, 182, 0.06);
+		border-color: #a78bfa;
+		background: #faf5ff;
+	}
+
+	.upload-zone-drag {
+		border-color: #7c3aed !important;
+		border-style: solid !important;
+		background: #f5f3ff !important;
+	}
+
+	.upload-zone-busy {
+		pointer-events: none;
+		opacity: 0.7;
 	}
 
 	.upload-title {
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 0.9rem;
+		margin-top: 0.15rem;
+		color: #1e293b;
 	}
 
 	.upload-hint {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.45);
+		font-size: 0.72rem;
+		color: #94a3b8;
+		letter-spacing: 0.03em;
 	}
 
 	.upload-bar {
 		width: 100%;
-		max-width: 12rem;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
+		max-width: 9rem;
+		height: 3px;
+		background: #e2e8f0;
 		border-radius: 999px;
-		margin-top: 0.5rem;
+		margin-top: 0.65rem;
 		overflow: hidden;
 	}
 
 	.upload-bar-fill {
 		height: 100%;
-		background: #f472b6;
+		background: linear-gradient(90deg, #7c3aed, #a78bfa);
 		border-radius: 999px;
-		transition: width 0.2s;
+		transition: width 0.25s ease;
 	}
 
+	.upload-pct {
+		font-size: 0.71rem;
+		color: #64748b;
+		font-variant-numeric: tabular-nums;
+	}
+
+	:global(.upload-loader) {
+		color: #7c3aed;
+	}
+
+	:global(.upload-pulse) {
+		animation: pulse 1.6s ease-in-out infinite;
+		color: #7c3aed;
+	}
+
+	:global(.upload-icon) {
+		transition: transform 0.2s;
+		color: #94a3b8;
+	}
+
+	.upload-zone:hover :global(.upload-icon) {
+		transform: translateY(-3px);
+		color: #7c3aed;
+	}
+
+	/* ── Clip settings ── */
 	.clip-settings {
-		margin-top: 1rem;
-		padding: 1rem;
-		border-radius: 0.65rem;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(0, 0, 0, 0.2);
+		margin-top: 1.1rem;
+		padding: 1rem 1rem 0.8rem;
+		border-radius: 0.7rem;
+		border: 1px solid #e2e8f0;
+		background: #f8fafc;
 		display: flex;
 		flex-direction: column;
 		gap: 0.85rem;
 	}
 
 	.clip-settings-legend {
-		font-size: 0.72rem;
+		font-size: 0.67rem;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.09em;
 		text-transform: uppercase;
-		color: rgba(248, 250, 252, 0.55);
-		padding: 0 0.15rem;
+		color: #94a3b8;
+		padding: 0 0.1rem;
 	}
 
 	.clip-mode-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.65rem 1.25rem;
+		gap: 0.45rem;
 	}
 
 	.clip-mode-opt {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		font-size: 0.82rem;
+		font-size: 0.8rem;
 		font-weight: 600;
-		color: rgba(248, 250, 252, 0.9);
+		color: #64748b;
 		cursor: pointer;
+		padding: 0.38rem 0.72rem;
+		border-radius: 0.48rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		transition:
+			color 0.15s,
+			background 0.15s,
+			border-color 0.15s;
+	}
+
+	.clip-mode-opt input {
+		display: none;
+	}
+
+	.clip-mode-opt-on {
+		color: #7c3aed;
+		background: #f5f3ff;
+		border-color: #c4b5fd;
 	}
 
 	.clip-mode-hint {
 		margin: 0;
-		font-size: 0.78rem;
-		color: rgba(248, 250, 252, 0.55);
-		line-height: 1.4;
+		font-size: 0.76rem;
+		color: #94a3b8;
+		line-height: 1.5;
 	}
 
 	.clip-field {
 		display: flex;
 		flex-direction: column;
-		gap: 0.45rem;
+		gap: 0.42rem;
 	}
 
 	.clip-field-label {
-		font-size: 0.78rem;
-		color: rgba(248, 250, 252, 0.75);
+		font-size: 0.76rem;
+		color: #475569;
 	}
 
 	.clip-field-label strong {
-		color: #f9a8d4;
+		color: #7c3aed;
 		font-weight: 700;
 	}
 
@@ -822,16 +1071,16 @@
 		height: 2.1rem;
 		width: 5.5rem;
 		border-radius: 0.45rem;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(0, 0, 0, 0.35);
-		color: #fff;
-		padding: 0 0.5rem;
-		font-size: 0.85rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		color: #0f172a;
+		padding: 0 0.6rem;
+		font-size: 0.875rem;
 		font-weight: 600;
 	}
 
 	.clip-number:disabled {
-		opacity: 0.5;
+		opacity: 0.42;
 	}
 
 	.clip-range-pair {
@@ -844,47 +1093,80 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		font-size: 0.68rem;
-		color: rgba(248, 250, 252, 0.45);
+		font-size: 0.67rem;
+		color: #94a3b8;
 	}
 
 	.clip-range input {
 		width: 100%;
-		accent-color: #e11d48;
+		accent-color: #7c3aed;
 	}
 
 	.clip-range-ticks {
 		display: flex;
 		justify-content: space-between;
-		font-size: 0.65rem;
-		color: rgba(248, 250, 252, 0.4);
+		font-size: 0.63rem;
+		color: #b0bac5;
+	}
+
+	/* ── Topic hint ── */
+	.hint-row {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		margin-top: 0.85rem;
+	}
+
+	:global(.hint-icon) {
+		color: #b0bac5;
+		flex-shrink: 0;
 	}
 
 	.hint-input {
-		width: 100%;
-		margin-top: 0.75rem;
+		flex: 1;
 		height: 2.25rem;
-		border-radius: 0.5rem;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(0, 0, 0, 0.25);
-		color: #fff;
+		border-radius: 0.52rem;
+		border: 1px solid #e2e8f0;
+		background: #f8fafc;
+		color: #0f172a;
 		padding: 0 0.65rem;
 		font-size: 0.8rem;
+		transition:
+			border-color 0.15s,
+			box-shadow 0.15s;
 	}
 
+	.hint-input:focus {
+		outline: none;
+		border-color: #a78bfa;
+		box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
+	}
+
+	.hint-input::placeholder {
+		color: #b0bac5;
+	}
+
+	/* ── Error ── */
 	.videos-error {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		margin-top: 1rem;
-		padding: 0.65rem 0.85rem;
-		border-radius: 0.5rem;
-		background: rgba(239, 68, 68, 0.15);
-		color: #fecaca;
+		padding: 0.65rem 0.9rem;
+		border-radius: 0.55rem;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		color: #b91c1c;
 		font-size: 0.8rem;
+		line-height: 1.4;
 	}
 
+	/* ── Results section ── */
 	.results {
 		max-width: 1200px;
 		margin: 0 auto;
-		padding: 2rem 1.5rem 3rem;
+		padding: 2.25rem 1.5rem 3.5rem;
+		animation: slide-up 0.4s ease both;
 	}
 
 	.results-head {
@@ -892,58 +1174,75 @@
 		justify-content: space-between;
 		align-items: flex-start;
 		gap: 1rem;
-		margin-bottom: 1.5rem;
+		margin-bottom: 1.75rem;
+		padding-bottom: 1.35rem;
+		border-bottom: 1px solid var(--app-border);
 	}
 
-	.results-head h2 {
-		font-size: 1.35rem;
+	.results-title {
+		font-size: 1.3rem;
 		font-weight: 800;
-		margin: 0 0 0.35rem;
+		letter-spacing: -0.025em;
+		margin: 0 0 0.4rem;
 	}
 
 	.results-meta {
-		font-size: 0.8rem;
+		font-size: 0.78rem;
 		color: var(--app-text-2);
 		margin: 0;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: 0.4rem;
 		align-items: center;
+	}
+
+	.meta-sep {
+		opacity: 0.38;
 	}
 
 	.demo-pill,
 	.model-pill {
-		font-size: 0.65rem;
+		font-size: 0.63rem;
 		font-weight: 700;
-		padding: 0.15rem 0.45rem;
+		padding: 0.15rem 0.5rem;
 		border-radius: 999px;
-		background: color-mix(in oklab, #f472b6 18%, transparent);
+		background: color-mix(in oklab, #f472b6 14%, transparent);
 		color: #be185d;
 	}
 
 	.results-summary {
-		margin: 0.75rem 0 0;
+		margin: 0.65rem 0 0;
 		font-size: 0.875rem;
-		line-height: 1.55;
+		line-height: 1.62;
 		color: var(--app-text-2);
-		max-width: 42rem;
+		max-width: 44rem;
 	}
 
 	.btn-ghost {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
 		border: 1px solid var(--app-border);
 		background: var(--app-surface);
-		border-radius: 0.5rem;
-		padding: 0.45rem 0.85rem;
-		font-size: 0.8rem;
+		border-radius: 0.55rem;
+		padding: 0.5rem 0.9rem;
+		font-size: 0.78rem;
 		font-weight: 600;
 		cursor: pointer;
 		color: var(--app-text);
+		white-space: nowrap;
+		transition: background 0.15s;
 	}
 
+	.btn-ghost:hover {
+		background: var(--app-surface-2);
+	}
+
+	/* ── Results grid ── */
 	.results-grid {
 		display: grid;
-		grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.1fr);
-		gap: 1.5rem;
+		grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.15fr);
+		gap: 1.75rem;
 		align-items: start;
 	}
 
@@ -953,9 +1252,10 @@
 		}
 	}
 
+	/* ── Player ── */
 	.player-panel {
 		position: sticky;
-		top: 1rem;
+		top: 1.25rem;
 	}
 
 	.yt-wrap {
@@ -963,9 +1263,10 @@
 		width: 100%;
 		aspect-ratio: 9 / 16;
 		max-height: 70vh;
-		border-radius: 0.75rem;
+		border-radius: 1rem;
 		overflow: hidden;
 		background: #000;
+		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
 	}
 
 	.yt-wrap iframe {
@@ -976,35 +1277,70 @@
 		border: 0;
 	}
 
-	.yt-note {
-		font-size: 0.72rem;
-		color: var(--app-text-3);
-		margin: 0.5rem 0 0;
-	}
-
 	.native-player {
 		width: 100%;
 		max-height: 70vh;
-		border-radius: 0.75rem;
+		border-radius: 1rem;
 		background: #000;
+		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+	}
+
+	.player-note {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-size: 0.71rem;
+		color: var(--app-text-3);
+		margin: 0.6rem 0 0;
 	}
 
 	.now-playing {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		margin-top: 0.65rem;
-		font-size: 0.78rem;
+		gap: 0.55rem;
+		margin-top: 0.8rem;
+		font-size: 0.8rem;
 		font-weight: 600;
 		color: var(--app-text-2);
 	}
 
-	.clips-heading {
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
+	.now-playing-dot {
+		display: block;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: #f43f5e;
+		flex-shrink: 0;
+		animation: pulse 1.8s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.5;
+			transform: scale(0.7);
+		}
+	}
+
+	.now-playing-dur {
 		color: var(--app-text-3);
-		margin: 0 0 0.75rem;
+		font-weight: 400;
+	}
+
+	/* ── Clips panel ── */
+	.clips-heading {
+		display: flex;
+		align-items: center;
+		gap: 0.38rem;
+		font-size: 0.67rem;
+		text-transform: uppercase;
+		letter-spacing: 0.09em;
+		color: var(--app-text-3);
+		margin: 0 0 0.85rem;
 		font-weight: 700;
 	}
 
@@ -1014,7 +1350,22 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.65rem;
+		gap: 0.55rem;
+	}
+
+	.clip-item {
+		animation: clip-enter 0.35s calc(var(--i, 0) * 0.045s) ease both;
+	}
+
+	@keyframes clip-enter {
+		from {
+			opacity: 0;
+			transform: translateX(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
 	}
 
 	.clip-card {
@@ -1023,36 +1374,53 @@
 		gap: 0.75rem;
 		width: 100%;
 		text-align: left;
-		padding: 0.75rem;
-		border-radius: 0.75rem;
+		padding: 0.85rem 0.75rem;
+		border-radius: 0.85rem;
 		border: 1px solid var(--app-border);
 		background: var(--app-surface);
 		cursor: pointer;
-		transition: border-color 0.12s, box-shadow 0.12s;
+		transition:
+			border-color 0.15s,
+			box-shadow 0.15s,
+			transform 0.12s,
+			background 0.15s;
+	}
+
+	.clip-card:hover {
+		border-color: color-mix(in oklab, var(--score-color, #e11d48) 38%, var(--app-border));
+		transform: translateX(2px);
 	}
 
 	.clip-card-on {
 		border-color: #e11d48;
-		box-shadow: 0 0 0 1px rgba(225, 29, 72, 0.25);
+		box-shadow:
+			0 0 0 1px rgba(225, 29, 72, 0.2),
+			0 4px 18px rgba(225, 29, 72, 0.1);
+		background: color-mix(in oklab, #e11d48 3.5%, var(--app-surface));
 	}
 
 	.clip-score {
-		width: 2.5rem;
-		height: 2.5rem;
-		border-radius: 0.5rem;
-		background: linear-gradient(
-			180deg,
-			rgba(225, 29, 72, 0.9) 0%,
-			rgba(225, 29, 72, 0.9) var(--score),
-			rgba(0, 0, 0, 0.06) var(--score)
-		);
+		width: 2.6rem;
+		height: 2.6rem;
+		border-radius: 0.6rem;
+		background: color-mix(in oklab, var(--score-color) 14%, transparent);
+		border: 1.5px solid color-mix(in oklab, var(--score-color) 35%, transparent);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 0.75rem;
-		font-weight: 800;
-		color: #fff;
 		flex-shrink: 0;
+		transition: transform 0.15s;
+	}
+
+	.clip-card:hover .clip-score {
+		transform: scale(1.05);
+	}
+
+	.score-num {
+		font-size: 0.8rem;
+		font-weight: 800;
+		color: var(--score-color);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.clip-body {
@@ -1064,12 +1432,15 @@
 		font-weight: 700;
 		font-size: 0.875rem;
 		margin-bottom: 0.2rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.clip-hook {
-		font-size: 0.78rem;
+		font-size: 0.775rem;
 		color: var(--app-text-2);
-		line-height: 1.35;
+		line-height: 1.4;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		line-clamp: 2;
@@ -1078,49 +1449,101 @@
 	}
 
 	.clip-times {
-		font-size: 0.7rem;
+		font-size: 0.69rem;
 		color: var(--app-text-3);
-		margin-top: 0.25rem;
+		margin-top: 0.3rem;
 		font-variant-numeric: tabular-nums;
 	}
 
-	.clip-chevron {
-		opacity: 0.25;
+	:global(.clip-chevron) {
+		opacity: 0.2;
 		flex-shrink: 0;
+		transition:
+			opacity 0.15s,
+			transform 0.15s;
+	}
+
+	.clip-card:hover :global(.clip-chevron),
+	.clip-card-on :global(.clip-chevron) {
+		opacity: 0.55;
+		transform: translateX(2px);
 	}
 
 	.clip-actions {
 		display: flex;
 		gap: 0.35rem;
-		padding: 0 0.75rem 0.5rem 4.25rem;
+		padding: 0.25rem 0.5rem 0.45rem 4.1rem;
 	}
 
 	.btn-small {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
-		padding: 0.3rem 0.55rem;
-		border-radius: 0.4rem;
+		padding: 0.32rem 0.6rem;
+		border-radius: 0.45rem;
 		border: 1px solid var(--app-border);
 		background: var(--app-surface-2);
-		font-size: 0.72rem;
+		font-size: 0.71rem;
 		font-weight: 600;
 		cursor: pointer;
 		color: var(--app-text);
 		text-decoration: none;
+		transition:
+			background 0.12s,
+			border-color 0.12s,
+			color 0.12s;
+	}
+
+	.btn-small:hover {
+		background: var(--app-surface);
+	}
+
+	.btn-export:not(:disabled):hover {
+		border-color: color-mix(in oklab, #22c55e 35%, var(--app-border));
+		color: #16a34a;
 	}
 
 	.btn-studio {
-		border-color: color-mix(in oklab, #7c3aed 35%, var(--app-border));
+		border-color: color-mix(in oklab, #7c3aed 28%, var(--app-border));
 	}
 
+	.btn-studio:hover {
+		border-color: color-mix(in oklab, #7c3aed 52%, var(--app-border));
+		color: #7c3aed;
+	}
+
+	.btn-small:disabled {
+		opacity: 0.38;
+		cursor: not-allowed;
+	}
+
+	/* ── Animations ── */
 	:global(.spin) {
-		animation: spin 0.8s linear infinite;
+		animation: spin 0.75s linear infinite;
 	}
 
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
+		}
+	}
+
+	/* ── Responsive ── */
+	@media (max-width: 600px) {
+		.videos-hero {
+			padding: 2rem 1rem 2.5rem;
+		}
+
+		.import-card {
+			padding: 1rem;
+		}
+
+		.clip-actions {
+			padding-left: 0.75rem;
+		}
+
+		.results {
+			padding: 1.5rem 1rem 2.5rem;
 		}
 	}
 

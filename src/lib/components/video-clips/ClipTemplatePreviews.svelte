@@ -20,6 +20,7 @@
 		studioFeedPreviewScale,
 		studioFeedPreviewHeight,
 	} from '$lib/studio/clip-preview-canvas';
+	import { ExternalLink, Layout } from 'lucide-svelte';
 
 	interface Props {
 		clip: VideoClip;
@@ -30,7 +31,6 @@
 
 	let { clip, source, watermark = '', topicHint = '' }: Props = $props();
 
-	/** Same width scaling as Studio carousel thumbs — native 4:5 feed canvas. */
 	const PREVIEW_W = 240;
 	const CANVAS_W = STUDIO_FEED_CANVAS.w;
 	const CANVAS_H = STUDIO_FEED_CANVAS.h;
@@ -38,7 +38,6 @@
 	const PREVIEW_H = studioFeedPreviewHeight(PREVIEW_W);
 
 	const copy = $derived(buildClipTemplateCopy(clip, source, { watermark, topicHint }));
-
 	const directVideo = $derived(clipDirectVideoUrl(source));
 	const thumb = $derived(source.thumbnailUrl ?? '');
 	const hasVideo = $derived(!!directVideo);
@@ -71,20 +70,29 @@
 </script>
 
 <section class="clip-template-previews" aria-label="Template previews for selected clip">
-	<h3 class="previews-title">How this clip could look</h3>
-	<p class="previews-sub">
-		{#if hasVideo}
-			Same templates as Studio (4:5 feed) · clip {Math.floor(clip.startSec)}s–{Math.floor(clip.endSec)}s
-		{:else}
-			Studio layout preview · thumbnail only until full video is downloaded
-		{/if}
-	</p>
+	<div class="previews-header">
+		<Layout size={16} class="previews-icon" />
+		<div>
+			<h3 class="previews-title">How this clip could look</h3>
+			<p class="previews-sub">
+				{#if hasVideo}
+					Live preview · clip {Math.floor(clip.startSec)}s–{Math.floor(clip.endSec)}s · same
+					4:5 canvas as Studio
+				{:else}
+					Layout preview · download the full video to see it with your clip
+				{/if}
+			</p>
+		</div>
+	</div>
 
 	<div class="previews-grid">
-		{#each templates as t (t.id)}
-			<article class="preview-card">
+		{#each templates as t, i (t.id)}
+			<article class="preview-card" style="--card-i: {i}">
 				<span class="preview-label">{t.label}</span>
-				<div class="preview-frame" style="width:{PREVIEW_W}px;height:{PREVIEW_H}px">
+				<div
+					class="preview-frame"
+					style="width:{PREVIEW_W}px;height:{PREVIEW_H}px"
+				>
 					{#if t.id === 'news'}
 						<NewsTemplate
 							text={copy.newsHeadline}
@@ -156,6 +164,7 @@
 					{/if}
 				</div>
 				<a class="preview-studio-link" href="/dashboard/studio?template={t.studio}">
+					<ExternalLink size={12} />
 					Edit in Studio
 				</a>
 			</article>
@@ -165,31 +174,43 @@
 
 <style>
 	.clip-template-previews {
-		margin-top: 2rem;
-		padding-top: 1.75rem;
+		margin-top: 2.5rem;
+		padding-top: 2rem;
 		border-top: 1px solid var(--app-border, rgba(0, 0, 0, 0.08));
 		grid-column: 1 / -1;
 	}
 
+	.previews-header {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.65rem;
+		margin-bottom: 1.5rem;
+	}
+
+	:global(.previews-icon) {
+		color: var(--app-text-3, rgba(15, 23, 42, 0.38));
+		flex-shrink: 0;
+		margin-top: 3px;
+	}
+
 	.previews-title {
-		margin: 0 0 0.35rem;
+		margin: 0 0 0.25rem;
 		font-size: 1.1rem;
-		font-weight: 700;
-		letter-spacing: -0.02em;
+		font-weight: 800;
+		letter-spacing: -0.025em;
 	}
 
 	.previews-sub {
-		margin: 0 0 1.35rem;
-		font-size: 0.85rem;
-		color: var(--app-text-muted, rgba(15, 23, 42, 0.55));
-		line-height: 1.45;
-		max-width: 42rem;
+		margin: 0;
+		font-size: 0.82rem;
+		color: var(--app-text-muted, rgba(15, 23, 42, 0.52));
+		line-height: 1.5;
 	}
 
 	.previews-grid {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 1.25rem;
+		gap: 1.5rem;
 		align-items: start;
 	}
 
@@ -209,36 +230,74 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.6rem;
+		gap: 0.65rem;
 		min-width: 0;
+		animation: preview-enter 0.4s calc(var(--card-i, 0) * 0.07s) ease both;
+	}
+
+	@keyframes preview-enter {
+		from {
+			opacity: 0;
+			transform: translateY(12px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 
 	.preview-label {
-		font-size: 0.7rem;
+		font-size: 0.67rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--app-text-muted, rgba(15, 23, 42, 0.45));
+		color: var(--app-text-muted, rgba(15, 23, 42, 0.42));
 	}
 
 	.preview-frame {
 		overflow: hidden;
-		border-radius: 12px;
+		border-radius: 14px;
 		border: 1px solid var(--app-border, rgba(0, 0, 0, 0.1));
-		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+		box-shadow:
+			0 8px 24px rgba(0, 0, 0, 0.1),
+			0 2px 6px rgba(0, 0, 0, 0.06);
 		background: #0a0a0a;
 		flex-shrink: 0;
 		line-height: 0;
+		transition:
+			transform 0.22s ease,
+			box-shadow 0.22s ease;
+		cursor: default;
+	}
+
+	.preview-frame:hover {
+		transform: translateY(-4px) scale(1.01);
+		box-shadow:
+			0 18px 44px rgba(0, 0, 0, 0.16),
+			0 4px 12px rgba(0, 0, 0, 0.1);
 	}
 
 	.preview-studio-link {
-		font-size: 0.78rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.32rem;
+		font-size: 0.73rem;
 		font-weight: 600;
 		color: #db2777;
 		text-decoration: none;
+		padding: 0.3rem 0.65rem;
+		border-radius: 0.45rem;
+		border: 1px solid rgba(219, 39, 119, 0.22);
+		background: rgba(219, 39, 119, 0.05);
+		transition:
+			background 0.15s,
+			border-color 0.15s,
+			transform 0.12s;
 	}
 
 	.preview-studio-link:hover {
-		text-decoration: underline;
+		background: rgba(219, 39, 119, 0.11);
+		border-color: rgba(219, 39, 119, 0.38);
+		transform: translateY(-1px);
 	}
 </style>
