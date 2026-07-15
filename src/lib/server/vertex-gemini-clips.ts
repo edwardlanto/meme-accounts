@@ -92,7 +92,9 @@ function demoClips(
 		const quote = excerpt || title || 'Clip from your video';
 		clips.push({
 			id: String(i + 1),
-			title: quote.split(/\s+/).slice(0, 5).join(' '),
+			title: excerpt
+				? quote.split(/\s+/).slice(0, 6).join(' ').replace(/[.!?]+$/, '')
+				: `Segment ${i + 1}`,
 			startSec,
 			endSec,
 			viralityScore: 88 - i * 5,
@@ -212,6 +214,7 @@ Rules:
 - Each clip must be self-contained; transcript must be VERBATIM spoken words from that segment (quote what they say).
 - Do NOT write meta descriptions like "the clearest explanation" or "moment that stops the scroll" — only real dialogue/narration.
 - title is a short topic headline (3-6 words), not a label about virality.
+- Each clip MUST have a unique title and transcript based on what is actually said in that time range — never repeat the full video title for every clip.
 - reason is for editors only (optional); transcript is what appears on social posts.
 - startSec/endSec must be within 0 and ${durationSec} seconds.
 - Clips must not overlap heavily.

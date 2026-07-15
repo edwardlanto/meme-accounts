@@ -13,7 +13,6 @@
 		NEWS_DEFAULT_SOURCE,
 		TWEET_DEFAULTS,
 		VIDEO_STORY_DEFAULTS,
-		ensureTextCarouselBodyMinLength,
 	} from '$lib/studio/slide-content-defaults';
 	import {
 		STUDIO_FEED_CANVAS,
@@ -55,10 +54,6 @@
 
 	const storyWatermark = $derived(
 		watermark.trim() || topicHint.trim() || VIDEO_STORY_DEFAULTS.watermark,
-	);
-
-	const carouselBody = $derived(
-		ensureTextCarouselBodyMinLength(copy.carouselBody || copy.tweetTop),
 	);
 
 	const templates = [
@@ -132,6 +127,9 @@
 							topText={copy.tweetTop}
 							topImage={hasVideo ? '' : thumb}
 							topVideo={videoSrc}
+							videoSeekSec={clip.startSec}
+							videoTrimStartSec={clip.startSec}
+							videoTrimEndSec={clip.endSec}
 							bottomName={TWEET_DEFAULTS.bottomName}
 							bottomHandle={TWEET_DEFAULTS.bottomHandle}
 							bottomText={copy.tweetBottom || TWEET_DEFAULTS.bottomText}
@@ -153,7 +151,7 @@
 						<TextCarouselTemplate
 							name={copy.carouselName}
 							handle={copy.carouselHandle}
-							text={carouselBody}
+							text={copy.carouselBody}
 							templateTheme="dark"
 							canvasW={CANVAS_W}
 							canvasH={CANVAS_H}

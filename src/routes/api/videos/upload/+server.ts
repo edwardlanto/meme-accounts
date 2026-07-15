@@ -1,7 +1,10 @@
 import { json } from '@sveltejs/kit';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { RequestHandler } from './$types';
 import { r2PutObject, r2SignGet } from '$lib/server/r2';
 import { isValidOwnerR2Key, sniffStrictVideoMime } from '$lib/server/request-security';
+import { bytesForR2Storage, withTempDir } from '$lib/server/video-pipeline';
 
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
@@ -26,14 +29,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!sniffed) return json({ error: 'Unsupported video format (use MP4, WebM, or MOV)' }, { status: 400 });
 
 	try {
-		await r2PutObject(key, buf, sniffed);
+		const stored = await withTempDir(async (dir) => {
+			const rawPath = join(dir, 'upload-raw.mp4');
+			await writeFile(rawPath, buf);
+			return bytesForR2Storage(rawPath, dir);
+		});
+		await r2PutObject(key, stored, 'video/mp4');
 		const playbackUrl = await r2SignGet(key, 7200);
 		return json({
 			ok: true,
 			key,
 			playbackUrl,
-			contentType: sniffed,
-			sizeBytes: buf.byteLength,
+			contentType: 'video/mp4',
+			sizeBytes: stored.byteLength,
 		});
 	} catch (e: unknown) {
 		const message = e instanceof Error ? e.message : String(e);

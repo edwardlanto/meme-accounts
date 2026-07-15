@@ -15,8 +15,14 @@ import {
 	YOUTUBE_403_HELP,
 	probeDurationSec,
 	ytDlpPrintDuration,
+	bytesForR2Storage,
 } from '$lib/server/video-pipeline';
 import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
+import { enrichClipTitles } from '$lib/video-clips/clip-titles';
+import {
+	snapRangeToTranscriptCues,
+	transcriptCueStartsSec,
+} from '$lib/video-clips/transcript-segments';
 
 const analyzeSchema = z.object({
 	source: z.enum(['youtube', 'upload']),
@@ -74,11 +80,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 				try {
 					const result = await withTempDir(async (dir) => {
+						console.info('[api/videos/analyze] downloading…');
 						const dl = await downloadYoutubeToDir(url, dir);
-						const bytes = await readFile(dl.videoPath);
+						console.info('[api/videos/analyze] compressing / uploading…');
+						const bytes = await bytesForR2Storage(dl.videoPath, dir);
 						const key = `${user.id}/videos/yt-${videoId}-${crypto.randomUUID()}.mp4`;
 						await r2PutObject(key, bytes, 'video/mp4');
 						const signed = await r2SignGet(key, 7200);
+						console.info('[api/videos/analyze] stored on R2');
 						return { dl, key, signed, bytes };
 					});
 					ytTitle = result.dl.title;
@@ -117,6 +126,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					ytDuration = (await ytDlpPrintDuration(url)) || ytDuration || 1;
 				}
 
+				console.info('[api/videos/analyze] running clip AI…');
 				const analyzed = await analyzeVideoForClips({
 					title: ytTitle,
 					durationSec: ytDuration,
@@ -127,12 +137,30 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					videoMime: videoBytes ? 'video/mp4' : undefined,
 				});
 
-				const clips = normalizeVideoClips(
+				const cueStarts = transcriptCueStartsSec(ytTranscript);
+				const normalized = normalizeVideoClips(
 					analyzed.clips,
 					ytDuration,
 					clipOpts.clipMinSec,
 					clipOpts.clipMaxSec,
 				);
+				const snapped = cueStarts.length
+					? normalized.map((c) => ({
+							...c,
+							...snapRangeToTranscriptCues({
+								startSec: c.startSec,
+								endSec: c.endSec,
+								durationSec: ytDuration,
+								minLenSec: clipOpts.clipMinSec,
+								maxLenSec: clipOpts.clipMaxSec,
+								cueStartsSec: cueStarts,
+								startPadSec: 0.15,
+								endPadSec: 0.35,
+							}),
+						}))
+					: normalized;
+
+				const clips = enrichClipTitles(snapped, ytTranscript, ytTitle);
 
 				return json({
 					source: {
@@ -161,6 +189,30 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				topicHint,
 				...clipOpts,
 			});
+			const cueStarts = transcriptCueStartsSec(yt.transcript);
+			const normalized = normalizeVideoClips(
+				analyzed.clips,
+				yt.durationSec,
+				clipOpts.clipMinSec,
+				clipOpts.clipMaxSec,
+			);
+			const snapped = cueStarts.length
+				? normalized.map((c) => ({
+						...c,
+						...snapRangeToTranscriptCues({
+							startSec: c.startSec,
+							endSec: c.endSec,
+							durationSec: yt.durationSec,
+							minLenSec: clipOpts.clipMinSec,
+							maxLenSec: clipOpts.clipMaxSec,
+							cueStartsSec: cueStarts,
+							startPadSec: 0.15,
+							endPadSec: 0.35,
+						}),
+					}))
+				: normalized;
+
+			const clips = enrichClipTitles(snapped, yt.transcript, yt.title);
 			return json({
 				source: {
 					kind: 'youtube',
@@ -170,7 +222,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					youtubeId: yt.videoId,
 					thumbnailUrl: yt.thumbnailUrl,
 				},
-				clips: analyzed.clips,
+				clips,
 				summary: analyzed.summary,
 				demo: analyzed.demo,
 				model: analyzed.model,
@@ -207,24 +259,31 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 		if (!effectiveDuration || effectiveDuration <= 1) effectiveDuration = durationSec ?? 1;
 
+		const uploadTitle = title?.trim() || 'Uploaded video';
+		const uploadTranscript =
+			videoBytes != null
+				? '[Multimodal analysis from uploaded video.]'
+				: '[Uploaded video — analyze from stored file metadata.]';
+
 		const analyzed = await analyzeVideoForClips({
-			title: title?.trim() || 'Uploaded video',
+			title: uploadTitle,
 			durationSec: effectiveDuration,
-			transcript:
-				videoBytes != null
-					? '[Multimodal analysis from uploaded video.]'
-					: '[Uploaded video — analyze from stored file metadata.]',
+			transcript: uploadTranscript,
 			topicHint,
 			...clipOpts,
 			videoBytes,
 			videoMime: videoBytes ? 'video/mp4' : undefined,
 		});
 
-		const clips = normalizeVideoClips(
-			analyzed.clips,
-			effectiveDuration,
-			clipOpts.clipMinSec,
-			clipOpts.clipMaxSec,
+		const clips = enrichClipTitles(
+			normalizeVideoClips(
+				analyzed.clips,
+				effectiveDuration,
+				clipOpts.clipMinSec,
+				clipOpts.clipMaxSec,
+			),
+			uploadTranscript,
+			uploadTitle,
 		);
 
 		return json({

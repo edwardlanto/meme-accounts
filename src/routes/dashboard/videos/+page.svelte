@@ -5,6 +5,7 @@
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import { formatClipDuration, formatTimestamp } from '$lib/video-clips/export-clip';
 	import { clipDisplayQuote } from '$lib/video-clips/clip-template-copy';
+	import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
 	import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 	import ClipTemplatePreviews from '$lib/components/video-clips/ClipTemplatePreviews.svelte';
 	import {
@@ -46,6 +47,33 @@
 	let playerVideo = $state<HTMLVideoElement | null>(null);
 	let importTab = $state<'youtube' | 'upload'>('youtube');
 	let isDragging = $state(false);
+	let processingHint = $state('');
+	let processingTimer: ReturnType<typeof setInterval> | null = null;
+
+	function startProcessingHints() {
+		stopProcessingHints();
+		const started = Date.now();
+		const hints = [
+			'Downloading from YouTube…',
+			'Still working — compressing video…',
+			'Uploading to cloud storage…',
+			'Analyzing clips with AI…',
+		];
+		processingHint = hints[0]!;
+		processingTimer = setInterval(() => {
+			const elapsed = Date.now() - started;
+			if (elapsed < 45_000) processingHint = hints[0]!;
+			else if (elapsed < 120_000) processingHint = hints[1]!;
+			else if (elapsed < 180_000) processingHint = hints[2]!;
+			else processingHint = hints[3]!;
+		}, 5000);
+	}
+
+	function stopProcessingHints() {
+		if (processingTimer) clearInterval(processingTimer);
+		processingTimer = null;
+		processingHint = '';
+	}
 
 	let clipMode = $state<'highlights' | 'all'>('highlights');
 	let clipCount = $state(8);
@@ -163,6 +191,7 @@
 		}
 		error = '';
 		phase = ytDlpReady ? 'downloading' : 'analyzing';
+		if (ytDlpReady) startProcessingHints();
 		try {
 			const res = await fetch('/api/videos/analyze', {
 				method: 'POST',
@@ -187,6 +216,8 @@
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : String(e);
 			phase = 'idle';
+		} finally {
+			stopProcessingHints();
 		}
 	}
 
@@ -271,6 +302,20 @@
 		void onFileChange(fakeEvent);
 	}
 
+	function parseDownloadFilename(header: string | null, fallback: string): string {
+		if (!header) return fallback;
+		const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+		if (star?.[1]) {
+			try {
+				return decodeURIComponent(star[1]);
+			} catch {
+				/* use fallback */
+			}
+		}
+		const plain = /filename="([^"]+)"/i.exec(header);
+		return plain?.[1] ?? fallback;
+	}
+
 	async function downloadClip(clip: VideoClip) {
 		if (!source?.r2Key) {
 			error = 'Full download requires yt-dlp. Run: brew install yt-dlp, then analyze again.';
@@ -293,13 +338,26 @@
 					filename: clip.title,
 				}),
 			});
-			const data = await res.json();
-			if (!res.ok) throw new Error(data.error ?? 'Export failed');
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error(data.error ?? `Export failed (${res.status})`);
+			}
+			const blob = await res.blob();
+			if (!blob.size) throw new Error('Export returned an empty file');
+			const fallbackName = `${clip.title.replace(/[^\w.-]+/g, '_').slice(0, 80) || 'clip'}.mp4`;
+			const filename = parseDownloadFilename(
+				res.headers.get('Content-Disposition'),
+				fallbackName,
+			);
+			const url = URL.createObjectURL(blob);
 			const a = document.createElement('a');
-			a.href = data.downloadUrl;
-			a.download = data.filename ?? 'clip.mp4';
+			a.href = url;
+			a.download = filename;
 			a.rel = 'noopener';
+			document.body.appendChild(a);
 			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -384,7 +442,8 @@
 							onclick={() => void analyzeFromYoutube()}
 						>
 							{#if phase === 'downloading'}
-								<Loader size={15} class="spin" /> Downloading…
+								<Loader size={15} class="spin" />
+								{processingHint || 'Processing video…'}
 							{:else if phase === 'analyzing'}
 								<Loader size={15} class="spin" /> Analyzing…
 							{:else}
@@ -521,6 +580,12 @@
 	<!-- ── RESULTS ── -->
 	{#if phase === 'ready' && source}
 		<section class="results" aria-label="Analysis results">
+			{#if error}
+				<div class="videos-error results-error" role="alert">
+					<AlertCircle size={14} />
+					{error}
+				</div>
+			{/if}
 			<div class="results-head">
 				<div class="results-head-info">
 					<h2 class="results-title">{source.title}</h2>
@@ -607,7 +672,7 @@
 										<span class="score-num">{clip.viralityScore}</span>
 									</div>
 									<div class="clip-body">
-										<div class="clip-title">{clip.title}</div>
+										<div class="clip-title">{cleanClipSpeechText(clip.title)}</div>
 										<div class="clip-hook">{clipDisplayQuote(clip, source ?? undefined)}</div>
 										<div class="clip-times">
 											{formatTimestamp(clip.startSec)} – {formatTimestamp(clip.endSec)}
@@ -621,7 +686,10 @@
 										type="button"
 										class="btn-small btn-export"
 										disabled={isExporting || !source?.r2Key}
-										onclick={() => void downloadClip(clip)}
+										onclick={(e) => {
+											e.stopPropagation();
+											void downloadClip(clip);
+										}}
 										title={source?.r2Key ? 'Download MP4 clip' : 'Requires yt-dlp download'}
 									>
 										{#if isExporting}
@@ -1167,6 +1235,10 @@
 		margin: 0 auto;
 		padding: 2.25rem 1.5rem 3.5rem;
 		animation: slide-up 0.4s ease both;
+	}
+
+	.results-error {
+		margin-bottom: 1rem;
 	}
 
 	.results-head {

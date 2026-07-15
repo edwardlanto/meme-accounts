@@ -20,6 +20,10 @@ interface TweetProps {
 	topText?: string;
 	topImage?: string;
 	topVideo?: string;
+	/** Seek attached clip video to this second (preview/export). */
+	videoSeekSec?: number;
+	videoTrimStartSec?: number;
+	videoTrimEndSec?: number;
 	onTopImageChange?: (v: string) => void;
 	onTopVideoChange?: (v: string) => void;
 	/** Attached image frame height in px (editable). */
@@ -98,6 +102,9 @@ let {
 	topText      = 'Ketchup or mayo or mustard?',
 	topImage     = '/templates/tweet/demo-bg.jpg',
 	topVideo     = '',
+	videoSeekSec = NaN,
+	videoTrimStartSec = 0,
+	videoTrimEndSec = 0,
 	topImageHeight = 720,
 	topImageWidth = 920,
 	topImageZoom = 1,
@@ -163,6 +170,46 @@ let {
 	let topImageResizing = $state(false);
 	let topImagePanning = $state(false);
 	let topImageStart = $state<{ x: number; y: number; h: number; w: number; panX: number; panY: number } | null>(null);
+	let topVideoEl = $state<HTMLVideoElement | null>(null);
+
+	function onTopVideoTimeUpdate(e: Event) {
+		const el = e.currentTarget as HTMLVideoElement;
+		topVideoEl = el;
+		const start = Number(videoTrimStartSec || 0);
+		const end = Number(videoTrimEndSec || 0);
+		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start + 0.02)) return;
+		if (el.currentTime < start || el.currentTime >= end) {
+			try {
+				el.currentTime = start;
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
+	function onTopVideoLoaded(e: Event) {
+		const el = e.currentTarget as HTMLVideoElement;
+		topVideoEl = el;
+		const t = Number(videoSeekSec);
+		if (Number.isFinite(t) && t >= 0) {
+			try {
+				el.currentTime = t;
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
+	$effect(() => {
+		const el = topVideoEl;
+		const t = Number(videoSeekSec);
+		if (!el || !Number.isFinite(t)) return;
+		try {
+			el.currentTime = Math.max(0, t);
+		} catch {
+			/* ignore */
+		}
+	});
 
 	function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 	function setTopImageHeight(next: number) {
@@ -532,8 +579,8 @@ let {
 				{/snippet}
 			</DraggableBlock>
 
-			<!-- Attached image -->
-			{#if topImage || topImageEditable}
+			<!-- Attached image / video -->
+			{#if topVideo || topImage || topImageEditable}
 				<DraggableBlock
 					dx={textOffsets.tweetTopImage?.x ?? 0}
 					dy={textOffsets.tweetTopImage?.y ?? 0}
@@ -565,6 +612,8 @@ let {
 										playsinline
 										autoplay
 										loop
+										onloadedmetadata={onTopVideoLoaded}
+										ontimeupdate={onTopVideoTimeUpdate}
 										style="
 											position:absolute;
 											left:{Number(topImagePanX) || 50}%;

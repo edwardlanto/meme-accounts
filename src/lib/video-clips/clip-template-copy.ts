@@ -1,4 +1,11 @@
 import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
+import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
+import { clipNarrative } from '$lib/video-clips/clip-speech';
+import {
+	fitTextCarouselBodyToCanvas,
+	joinTextCarouselParagraphs,
+	takeParagraphCount,
+} from '$lib/studio/text-carousel-body';
 
 export type ClipTemplateCopy = {
 	newsHeadline: string;
@@ -41,13 +48,6 @@ function clampText(s: string, max: number): string {
 	return `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
-function stripTimestampMarkup(s: string): string {
-	return s
-		.replace(/^\[[^\]]+\]\s*/gm, '')
-		.replace(/\s+/g, ' ')
-		.trim();
-}
-
 function isMetaCopy(s: string): boolean {
 	const t = s.trim();
 	if (!t) return true;
@@ -57,27 +57,23 @@ function isMetaCopy(s: string): boolean {
 
 /** Best on-screen quote from clip fields (spoken words, not editor notes). */
 export function clipDisplayQuote(clip: VideoClip, source?: VideoImportMeta): string {
-	const candidates = [
-		stripTimestampMarkup(clip.transcript ?? ''),
-		stripTimestampMarkup(clip.hook ?? ''),
-		stripTimestampMarkup(clip.title ?? ''),
-		source?.title?.trim() ?? '',
-	].filter(Boolean);
+	const narrative = clipNarrative(clip, source);
+	const candidates = [narrative.hook, narrative.headline, cleanClipSpeechText(clip.title ?? '')].filter(
+		Boolean,
+	);
 
 	for (const c of candidates) {
 		if (!isMetaCopy(c) && c.length >= 8) return c;
 	}
 
 	const title = clip.title.trim() || source?.title?.trim() || '';
-	return title && !isMetaCopy(title) ? title : '';
+	return title && !isMetaCopy(title) ? cleanClipSpeechText(title) : '';
 }
 
-/** Short line for small template previews (avoids clipping huge demo strings). */
+/** Short line for list UI and small previews. */
 export function clipPreviewQuote(clip: VideoClip, source?: VideoImportMeta): string {
-	const raw = clipDisplayQuote(clip, source);
-	if (!raw) return 'Your clip';
-	const first = raw.split(/(?<=[.!?])\s+/)[0]?.trim() || raw;
-	return clampText(first, 160);
+	const { hook, headline } = clipNarrative(clip, source);
+	return clampText(hook || headline, 160);
 }
 
 function handleFromTitle(title: string): string {
@@ -88,52 +84,55 @@ function handleFromTitle(title: string): string {
 	return slug ? `@${slug}` : '@clips';
 }
 
-function splitQuoteForStory(quote: string): { lead: string; rest: string } {
-	const q = quote.trim();
-	if (q.length <= 100) return { lead: q, rest: '' };
-	const cut = q.slice(0, 100).lastIndexOf(' ');
-	const lead = (cut > 40 ? q.slice(0, cut) : q.slice(0, 100)).trim();
-	const rest = q.slice(lead.length).trim();
-	return { lead, rest };
+function carouselBodyFromSentences(sentences: string[]): string {
+	const paras = takeParagraphCount(
+		sentences.slice(0, 3).map((s) => clampText(s, 320)),
+		Math.min(3, Math.max(1, sentences.length)),
+	);
+	if (!paras.length) return '';
+	return fitTextCarouselBodyToCanvas(joinTextCarouselParagraphs(paras), {
+		randomizeParagraphCount: false,
+	});
 }
 
-/** Plain-text fields for template previews from an analyzed clip. */
+/** Template-specific copy — headlines and hooks, not raw caption dumps. */
 export function buildClipTemplateCopy(
 	clip: VideoClip,
 	source: VideoImportMeta,
 	opts?: { watermark?: string; topicHint?: string },
 ): ClipTemplateCopy {
-	const quote = clipPreviewQuote(clip, source);
+	const narrative = clipNarrative(clip, source);
 	const topic = opts?.topicHint?.trim() ?? '';
 	const watermark = opts?.watermark?.trim() || topic || source.title.slice(0, 32) || 'CLIPS';
+	const sourceLabel = clampText(cleanClipSpeechText(source.title), 200);
 
-	const { lead, rest } = splitQuoteForStory(quote);
-	const storyHeadline = rest ? `${lead}\n\n${rest}` : lead;
+	// News: short headline only (not the full transcript)
+	const newsHeadline = clampText(narrative.headline, 90);
 
-	const newsHeadline = quote;
+	// Video story: one punchy overlay line
+	const storyHeadline = clampText(narrative.hook, 100);
 
-	const tweetTop = quote;
-	const sentences = quote.split(/(?<=[.!?])\s+/).filter(Boolean);
+	// Tweet: hook on top, source video as quoted reply context below
+	const tweetTop = clampText(narrative.hook, 220);
 	const tweetBottom =
-		sentences.length > 1
-			? clampText(sentences.slice(1).join(' '), 200)
-			: clampText(source.title, 200);
+		narrative.sentences.length > 1 && !isMetaCopy(narrative.sentences[1]!)
+			? clampText(narrative.sentences[1]!, 200)
+			: sourceLabel;
 
-	const carouselName = clampText(source.title || 'Highlights', 48);
+	// Carousel: profile = clip topic, body = 2–3 clean sentences
+	const carouselName = clampText(narrative.headline, 48);
 	const carouselHandle = handleFromTitle(carouselName);
-	let carouselBody = stripTimestampMarkup(clip.transcript ?? '');
-	if (!carouselBody || isMetaCopy(carouselBody)) {
-		carouselBody = quote;
-	}
-	if (!carouselBody.trim()) carouselBody = source.title;
-	carouselBody = clampText(carouselBody, 900);
+	const carouselBody =
+		carouselBodyFromSentences(narrative.sentences) ||
+		carouselBodyFromSentences([narrative.hook]) ||
+		carouselBodyFromSentences([sourceLabel]);
 
 	return {
-		newsHeadline: clampText(newsHeadline, 420),
+		newsHeadline,
 		newsSource: watermark,
-		storyHeadline: clampText(storyHeadline, 320),
+		storyHeadline,
 		storyWatermark: watermark,
-		tweetTop: clampText(tweetTop, 230),
+		tweetTop,
 		tweetBottom,
 		carouselName,
 		carouselHandle,

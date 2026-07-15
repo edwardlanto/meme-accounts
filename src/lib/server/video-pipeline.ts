@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { env } from '$env/dynamic/private';
+import { timedTranscriptFromSubtitles } from '$lib/video-clips/transcript-segments';
 
 export type ToolCheck = {
 	ffmpeg: boolean;
@@ -25,21 +26,43 @@ function binFromEnv(name: 'FFMPEG_PATH' | 'YT_DLP_PATH', fallback: string): stri
 	return v || fallback;
 }
 
+const FFMPEG_FALLBACKS = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'];
+const FFPROBE_FALLBACKS = ['/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe'];
+const YTDLP_FALLBACKS = ['/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp'];
+
+let cachedFfmpegPath: string | null = null;
+let cachedFfprobePath: string | null = null;
+let cachedYtDlpPath: string | null = null;
+
+async function resolveExecutable(
+	configured: string,
+	fallbacks: string[],
+): Promise<{ path: string; ok: boolean }> {
+	if (await commandExists(configured)) return { path: configured, ok: true };
+	for (const fb of fallbacks) {
+		if (await commandExists(fb)) return { path: fb, ok: true };
+	}
+	return { path: configured, ok: false };
+}
+
 export function getFfmpegPath(): string {
-	return binFromEnv('FFMPEG_PATH', 'ffmpeg');
+	return cachedFfmpegPath ?? binFromEnv('FFMPEG_PATH', 'ffmpeg');
 }
 
 export function getFfprobePath(): string {
-	return binFromEnv('FFPROBE_PATH', 'ffprobe');
+	return cachedFfprobePath ?? (env.FFPROBE_PATH?.trim() || 'ffprobe');
 }
 
 export function getYtDlpPath(): string {
-	return binFromEnv('YT_DLP_PATH', 'yt-dlp');
+	return cachedYtDlpPath ?? binFromEnv('YT_DLP_PATH', 'yt-dlp');
 }
 
 async function commandExists(cmd: string): Promise<boolean> {
+	const base = cmd.split('/').pop() ?? cmd;
+	// ffmpeg 8+ uses -version, not --version
+	const versionArgs = /^(ffmpeg|ffprobe)$/i.test(base) ? ['-version'] : ['--version'];
 	return new Promise((resolve) => {
-		const child = spawn(cmd, ['--version'], { stdio: 'ignore' });
+		const child = spawn(cmd, versionArgs, { stdio: 'ignore' });
 		child.on('error', () => resolve(false));
 		child.on('close', (code) => resolve(code === 0));
 	});
@@ -55,21 +78,24 @@ async function pathReadable(p: string): Promise<boolean> {
 }
 
 export async function checkVideoTools(): Promise<ToolCheck> {
-	const ffmpegPath = getFfmpegPath();
-	const ytDlpPath = getYtDlpPath();
+	const ffmpeg = await resolveExecutable(binFromEnv('FFMPEG_PATH', 'ffmpeg'), FFMPEG_FALLBACKS);
+	const ytDlp = await resolveExecutable(binFromEnv('YT_DLP_PATH', 'yt-dlp'), YTDLP_FALLBACKS);
+	const ffprobe = await resolveExecutable(getFfprobePath(), FFPROBE_FALLBACKS);
+	cachedFfmpegPath = ffmpeg.path;
+	cachedYtDlpPath = ytDlp.path;
+	cachedFfprobePath = ffprobe.path;
+
 	const cookiesPath = env.YT_DLP_COOKIES?.trim() ?? '';
 	const cookiesBrowser = env.YT_DLP_COOKIES_BROWSER?.trim() ?? '';
-	const [ffmpeg, ytDlp, ytDlpDeno, cookiesOk] = await Promise.all([
-		commandExists(ffmpegPath),
-		commandExists(ytDlpPath),
+	const [ytDlpDeno, cookiesOk] = await Promise.all([
 		commandExists('deno'),
 		cookiesPath ? pathReadable(cookiesPath) : Promise.resolve(false),
 	]);
 	return {
-		ffmpeg,
-		ytDlp,
-		ffmpegPath,
-		ytDlpPath,
+		ffmpeg: ffmpeg.ok,
+		ytDlp: ytDlp.ok,
+		ffmpegPath: ffmpeg.path,
+		ytDlpPath: ytDlp.path,
 		ytDlpCookiesFile: cookiesOk ? cookiesPath : undefined,
 		ytDlpCookiesBrowser: cookiesBrowser || undefined,
 		ytDlpDeno,
@@ -128,6 +154,10 @@ function youtubeExtractorArgs(strategyPart?: string): string[] {
 type YtStrategy = { label: string; extractor?: string; format: string };
 
 const YOUTUBE_DOWNLOAD_STRATEGIES: YtStrategy[] = [
+	{
+		label: '720p',
+		format: 'b[height<=720]/best[height<=720]/b[height<=1080]/best',
+	},
 	{
 		label: 'default',
 		format: 'b[height<=1080]/best[height<=1080]/best',
@@ -253,7 +283,7 @@ async function runYtDlpDownload(
 			outTemplate,
 			videoUrl,
 		],
-		{ cwd: workDir, timeoutMs: 600_000 },
+		{ cwd: workDir, timeoutMs: 300_000 },
 	);
 }
 
@@ -271,7 +301,9 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 	const errors: string[] = [];
 	for (const strategy of YOUTUBE_DOWNLOAD_STRATEGIES) {
 		try {
+			console.info(`[video-pipeline] yt-dlp download (${strategy.label})…`);
 			await runYtDlpDownload(tools.ytDlpPath, videoUrl, workDir, strategy);
+			console.info(`[video-pipeline] yt-dlp download ok (${strategy.label})`);
 			errors.length = 0;
 			break;
 		} catch (e: unknown) {
@@ -305,7 +337,7 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 	const subFile = files.find((f) => /\.vtt$/i.test(f) || /\.srt$/i.test(f));
 	if (subFile) {
 		const raw = await readFile(join(workDir, subFile), 'utf8');
-		transcript = vttToTranscript(raw);
+		transcript = timedTranscriptFromSubtitles(raw);
 	}
 
 	let title = 'YouTube video';
@@ -334,22 +366,76 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 	};
 }
 
-function vttToTranscript(vtt: string): string {
-	const lines: string[] = [];
-	const seen = new Set<string>();
-	for (const block of vtt.split(/\n\n+/)) {
-		const text = block
-			.split('\n')
-			.filter((l) => l && !l.startsWith('WEBVTT') && !/^\d+$/.test(l) && !/-->/.test(l))
-			.join(' ')
-			.replace(/<[^>]+>/g, '')
-			.trim();
-		if (text && !seen.has(text)) {
-			seen.add(text);
-			lines.push(text);
-		}
+/** Re-encode to 720p H.264 MP4 for smaller R2 storage. */
+export async function compressVideoForStorage(inputPath: string, outputPath: string): Promise<void> {
+	const tools = await checkVideoTools();
+	if (!tools.ffmpeg) {
+		throw new Error('ffmpeg is not available');
 	}
-	return lines.join('\n');
+	const maxH = Number(env.VIDEO_MAX_HEIGHT) || 720;
+	const crf = Number(env.VIDEO_CRF) || 28;
+	await mkdir(dirname(outputPath), { recursive: true });
+	await runProcess(
+		tools.ffmpegPath,
+		[
+			'-nostdin',
+			'-y',
+			'-i',
+			inputPath,
+			'-vf',
+			`scale=-2:${maxH}`,
+			'-c:v',
+			'libx264',
+			'-preset',
+			'veryfast',
+			'-crf',
+			String(crf),
+			'-c:a',
+			'aac',
+			'-b:a',
+			'96k',
+			'-movflags',
+			'+faststart',
+			outputPath,
+		],
+		{ timeoutMs: 300_000 },
+	);
+}
+
+const COMPRESS_SKIP_BYTES = 80 * 1024 * 1024;
+
+/** Compress for R2 when worthwhile; never blocks upload on compress failure. */
+export async function bytesForR2Storage(sourcePath: string, workDir: string): Promise<Uint8Array> {
+	const { stat } = await import('node:fs/promises');
+	const rawSize = (await stat(sourcePath)).size;
+	const skipCompress =
+		env.VIDEO_COMPRESS?.trim() === '0' || rawSize <= COMPRESS_SKIP_BYTES;
+
+	if (skipCompress) {
+		console.info(`[video-pipeline] skipping compress (${(rawSize / 1e6).toFixed(1)}MB)`);
+		return readFile(sourcePath);
+	}
+
+	const tools = await checkVideoTools();
+	if (!tools.ffmpeg) {
+		console.warn('[video-pipeline] ffmpeg not found — uploading as-is');
+		return readFile(sourcePath);
+	}
+
+	const out = join(workDir, 'compressed.mp4');
+	try {
+		console.info(`[video-pipeline] compressing ${(rawSize / 1e6).toFixed(1)}MB…`);
+		await compressVideoForStorage(sourcePath, out);
+		const compressed = await readFile(out);
+		console.info(
+			`[video-pipeline] compressed ${(rawSize / 1e6).toFixed(1)}MB → ${(compressed.byteLength / 1e6).toFixed(1)}MB`,
+		);
+		return compressed;
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : String(e);
+		console.warn(`[video-pipeline] compress failed, uploading original: ${msg.slice(0, 200)}`);
+		return readFile(sourcePath);
+	}
 }
 
 export async function extractClipWithFfmpeg(params: {
@@ -367,6 +453,7 @@ export async function extractClipWithFfmpeg(params: {
 	await runProcess(
 		tools.ffmpegPath,
 		[
+			'-nostdin',
 			'-y',
 			'-ss',
 			String(params.startSec),
