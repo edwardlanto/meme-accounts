@@ -93,6 +93,12 @@ function bestHook(text: string): string {
 	return wordsHeadline(cleaned, 14) || cleaned.slice(0, 180);
 }
 
+function isGenericSegmentTitle(text: string): boolean {
+	const t = text.trim();
+	// Match "Segment 1", "Segment 2", "Part 1", "Clip 1", etc.
+	return /^(segment|part|clip)\s*\d+$/i.test(t);
+}
+
 /** Clean, deduped speech lines suitable for social templates. */
 export function clipNarrative(clip: VideoClip, source?: VideoImportMeta): ClipNarrative {
 	const raw = clipRawSpeech(clip, source);
@@ -100,7 +106,8 @@ export function clipNarrative(clip: VideoClip, source?: VideoImportMeta): ClipNa
 
 	const title = cleanClipSpeechText(clip.title);
 	const titleWords = title.split(/\s+/).filter(Boolean).length;
-	const titleOk = title.length >= 8 && titleWords >= 2 && titleWords <= 12;
+	// Don't use generic "Segment N" titles - they're placeholders, not real content
+	const titleOk = title.length >= 8 && titleWords >= 2 && titleWords <= 12 && !isGenericSegmentTitle(title);
 
 	const hook = sentences[0] ? bestHook(sentences[0]) : bestHook(raw);
 	const headline = titleOk ? title : wordsHeadline(hook, 8) || title || 'Clip highlight';

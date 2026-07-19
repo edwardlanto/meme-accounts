@@ -1,0 +1,78 @@
+import type { TemplateId } from '$lib/studio/template-ids';
+import { mapQueryParamToTemplateId, coerceTemplateId } from '$lib/studio/template-ids';
+
+export const STUDIO_CLIP_IMPORT_KEY = 'studio_clip_import_v1';
+
+/** Payload stashed before navigating Videos → Studio (avoids huge signed URLs in the query string). */
+export type StudioClipImport = {
+	template: TemplateId;
+	videoUrl: string;
+	clipStart: number;
+	clipEnd: number;
+	thumbnailUrl?: string;
+	newsHeadline?: string;
+	newsSource?: string;
+	storyHeadline?: string;
+	storyWatermark?: string;
+	tweetTop?: string;
+	tweetBottom?: string;
+	carouselName?: string;
+	carouselHandle?: string;
+	carouselBody?: string;
+};
+
+export function stashStudioClipImport(payload: StudioClipImport): void {
+	if (typeof window === 'undefined') return;
+	const json = JSON.stringify(payload);
+	try {
+		sessionStorage.setItem(STUDIO_CLIP_IMPORT_KEY, json);
+	} catch (e) {
+		console.warn('[studio] sessionStorage stash failed, trying localStorage', e);
+	}
+	try {
+		localStorage.setItem(STUDIO_CLIP_IMPORT_KEY, json);
+	} catch (e) {
+		console.warn('[studio] failed to stash clip import', e);
+	}
+}
+
+export function peekStudioClipImport(): StudioClipImport | null {
+	if (typeof window === 'undefined') return null;
+	const raw =
+		sessionStorage.getItem(STUDIO_CLIP_IMPORT_KEY) ??
+		localStorage.getItem(STUDIO_CLIP_IMPORT_KEY);
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw) as StudioClipImport;
+		if (!parsed?.videoUrl || !Number.isFinite(parsed.clipStart) || !Number.isFinite(parsed.clipEnd)) {
+			return null;
+		}
+		parsed.template = coerceTemplateId(parsed.template);
+		return parsed;
+	} catch {
+		return null;
+	}
+}
+
+export function consumeStudioClipImport(): StudioClipImport | null {
+	const payload = peekStudioClipImport();
+	try {
+		sessionStorage.removeItem(STUDIO_CLIP_IMPORT_KEY);
+	} catch {
+		/* ignore */
+	}
+	try {
+		localStorage.removeItem(STUDIO_CLIP_IMPORT_KEY);
+	} catch {
+		/* ignore */
+	}
+	return payload;
+}
+
+export function studioUrlForClipImport(templateRaw: string): string {
+	const template = mapQueryParamToTemplateId(templateRaw) ?? coerceTemplateId(templateRaw);
+	const params = new URLSearchParams();
+	params.set('from', 'clip');
+	params.set('template', template);
+	return `/dashboard/studio?${params.toString()}`;
+}

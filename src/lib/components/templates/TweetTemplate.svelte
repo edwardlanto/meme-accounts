@@ -446,7 +446,7 @@ let {
 				flex-direction: column;
 				box-sizing: border-box;
 				overflow: visible;
-				padding: 56px 72px 72px;
+				padding: 40px 60px 60px;
 			"
 		>
 			<!-- OP: avatar + name + badge + handle (classic tweet header) -->

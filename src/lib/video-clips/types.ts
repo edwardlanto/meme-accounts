@@ -22,6 +22,8 @@ export type VideoImportMeta = {
 	r2Key?: string;
 	youtubeId?: string;
 	thumbnailUrl?: string;
+	/** Full timed transcript (`[m:ss->m:ss] text`) for caption sync */
+	transcript?: string;
 };
 
 export type VideoAnalyzeResult = {

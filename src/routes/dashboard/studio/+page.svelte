@@ -14,6 +14,7 @@ import JSZip from 'jszip';
 	import BlackTextCarouselTemplate from '$lib/components/templates/BlackTextCarouselTemplate.svelte';
 	import StudioTextOverlays from '$lib/components/studio/StudioTextOverlays.svelte';
 	import StudioImageStickers from '$lib/components/studio/StudioImageStickers.svelte';
+	import StudioAssetsSidebar from '$lib/components/studio/StudioAssetsSidebar.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import LoadingLines from '$lib/components/LoadingLines.svelte';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
@@ -87,6 +88,11 @@ import JSZip from 'jszip';
 		type ExternalSlideMergeMode,
 	} from '$lib/studio/external-slide-merge';
 	import {
+		consumeStudioClipImport,
+		peekStudioClipImport,
+		type StudioClipImport,
+	} from '$lib/studio/clip-import';
+	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown
@@ -145,6 +151,9 @@ import JSZip from 'jszip';
 	let forcedBlankFromQuery = $state(false);
 	/** `?template=…` starter links (template carousel / nav) — don’t restore last autosave workspace on top of a “new” session. */
 	let skipLatestWorkspaceDraftRestore = $state(false);
+	/** Clip payload from Videos → Edit in Studio (sessionStorage), applied after template boot. */
+	let pendingClipImport = $state<StudioClipImport | null>(null);
+	let clipImportApplied = $state(false);
 
 	// News controls
 	let search = $state('');
@@ -153,6 +162,11 @@ import JSZip from 'jszip';
 	/** Sidebar mode for the News template generator: live articles vs synthetic fact/story. */
 	type NewsStudioContentMode = 'news' | 'fact' | 'story' | 'quote';
 	let newsContentMode = $state<NewsStudioContentMode>('news');
+	/** How Load & Fill fills backgrounds in News studio (News / fact / story / quote). */
+	type NewsImageSourceMode = 'pull' | 'ai';
+	let newsImageSourceMode = $state<NewsImageSourceMode>('pull');
+	/** Whether to generate/pull images at all (when off, only text is generated). */
+	let newsGenerateImages = $state(true);
 	let storyCategory = $state('health');
 	/** Sent to /api/news as syntheticHint when Random fact is selected. */
 	let factTopicPrompt = $state('');
@@ -362,6 +376,27 @@ import JSZip from 'jszip';
 		}
 		ensureTemplateDefaultsForSlide(t, idx);
 		finalizeTemplateSwitch(from, t, idx);
+		// Keep the current slide's clip when switching templates (video is stored per-template)
+		if (from !== t) {
+			const fromRow = [...(bgVideosByTemplate[from] ?? [])];
+			const toRow = [...(bgVideosByTemplate[t] ?? [])];
+			while (fromRow.length <= idx) fromRow.push('');
+			while (toRow.length <= idx) toRow.push('');
+			const srcVid = String(fromRow[idx] ?? '').trim();
+			if (srcVid && !String(toRow[idx] ?? '').trim()) {
+				toRow[idx] = srcVid;
+				bgVideosByTemplate = { ...bgVideosByTemplate, [t]: toRow };
+				const imgRow = [...(bgImagesByTemplate[t] ?? [])];
+				while (imgRow.length <= idx) imgRow.push('');
+				imgRow[idx] = '';
+				bgImagesByTemplate = { ...bgImagesByTemplate, [t]: imgRow };
+				if (t === 'news' || t === 'blank' || t === 'imageQuote') {
+					newsSolidBgBySlide = Array.from({ length: Math.max(slides.length, newsSolidBgBySlide.length) }, (_, i) =>
+						i === idx ? '' : (newsSolidBgBySlide[i] ?? ''),
+					);
+				}
+			}
+		}
 		if (t === 'videoStory') {
 			const row = [...(bgVideosByTemplate.videoStory ?? [])];
 			while (row.length <= idx) row.push('');
@@ -379,7 +414,7 @@ import JSZip from 'jszip';
 			}
 		}
 	}
-	function applyTemplateToAll(t: TemplateId) {
+	function applyTemplateToAll(t: TemplateId, opts?: { skipNewsSeed?: boolean }) {
 		const prevPerSlide = slideTemplates.map((x) => coerceTemplateId(x));
 		const wasAllBlank = prevPerSlide.every((x) => x === 'blank');
 		lastTemplateUsed = t;
@@ -389,7 +424,7 @@ import JSZip from 'jszip';
 			ensureTemplateDefaultsForSlide(t, i);
 			finalizeTemplateSwitch(from, t, i);
 		}
-		if (t === 'news') seedNewsStarterPlaceholderLayout();
+		if (t === 'news' && !opts?.skipNewsSeed) seedNewsStarterPlaceholderLayout();
 		if (t === 'blackText') {
 			const n = slides.length;
 			const prev = bgImagesByTemplate.blackText ?? [];
@@ -398,6 +433,151 @@ import JSZip from 'jszip';
 			);
 			bgImagesByTemplate = { ...bgImagesByTemplate, blackText: row };
 		}
+	}
+
+	/** Apply video + headlines from Videos page "Edit in Studio". */
+	function applyStudioClipImport(payload: StudioClipImport) {
+		const template = coerceTemplateId(payload.template);
+		const videoUrl = String(payload.videoUrl ?? '').trim();
+		const clipStart = Math.max(0, Number(payload.clipStart) || 0);
+		const clipEnd = Math.max(clipStart + 0.5, Number(payload.clipEnd) || clipStart + 15);
+		const hook =
+			payload.newsHeadline?.trim() ||
+			payload.storyHeadline?.trim() ||
+			payload.tweetTop?.trim() ||
+			'';
+
+		console.info('[studio] applying clip import', {
+			template,
+			clipStart,
+			clipEnd,
+			hasVideo: !!videoUrl,
+			videoUrlLen: videoUrl.length,
+		});
+
+		applyBlankCanvas();
+		// Skip auto-seed first so we can set slide-0 copy/video, then expand like a normal session
+		applyTemplateToAll(template, { skipNewsSeed: true });
+		activeSlide = 0;
+
+		const setSlide0 = (arr: string[], value: string | undefined, len: number) => {
+			const next = Array.from({ length: len }, (_, i) => arr[i] ?? '');
+			if (value?.trim()) next[0] = value.trim();
+			return next;
+		};
+
+		if (template === 'news' || template === 'imageQuote') {
+			slides = [hook || NEWS_PLACEHOLDER_HEADLINE];
+			if (payload.newsSource?.trim()) source = payload.newsSource.trim();
+			else if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
+			if (template === 'news') {
+				seedNewsStarterPlaceholderLayout();
+				if (hook) slides = slides.map((s, i) => (i === 0 ? hook : s));
+			} else {
+				imageQuoteTextBySlide = setSlide0(imageQuoteTextBySlide, hook || IMAGE_QUOTE_DEFAULTS.body, 1);
+			}
+		} else if (template === 'videoStory') {
+			slides = [''];
+			videoStoryHeadlineBySlide = setSlide0(
+				videoStoryHeadlineBySlide,
+				payload.storyHeadline || hook,
+				1,
+			);
+			videoStoryWatermarkBySlide = setSlide0(
+				videoStoryWatermarkBySlide,
+				payload.storyWatermark,
+				1,
+			);
+		} else if (template === 'tweet') {
+			slides = [''];
+			tweetTopTextBySlide = setSlide0(tweetTopTextBySlide, payload.tweetTop || hook, 1);
+			tweetBottomTextBySlide = setSlide0(tweetBottomTextBySlide, payload.tweetBottom, 1);
+		} else if (template === 'textCarousel') {
+			slides = [''];
+			textCarouselTextBySlide = setSlide0(
+				textCarouselTextBySlide,
+				payload.carouselBody || hook,
+				1,
+			);
+			textCarouselNameBySlide = setSlide0(textCarouselNameBySlide, payload.carouselName, 1);
+			textCarouselHandleBySlide = setSlide0(textCarouselHandleBySlide, payload.carouselHandle, 1);
+		} else if (template === 'blackText') {
+			slides = [''];
+			blackTextHeadlineBySlide = setSlide0(
+				blackTextHeadlineBySlide,
+				payload.storyHeadline || hook || BLACK_TEXT_CAROUSEL_DEFAULTS.headline,
+				1,
+			);
+			blackTextBodyBySlide = setSlide0(
+				blackTextBodyBySlide,
+				payload.carouselBody || payload.tweetBottom || BLACK_TEXT_CAROUSEL_DEFAULTS.body,
+				1,
+			);
+		} else if (template === 'article') {
+			slides = [''];
+			articleTextBySlide = setSlide0(
+				articleTextBySlide,
+				payload.carouselBody || hook || ARTICLE_DEFAULT_BODY,
+				1,
+			);
+		} else {
+			// blank / unknown — video is seeded below; user adds text in Studio
+			slides = [''];
+		}
+
+		const n = Math.max(1, slides.length);
+		slideTemplates = Array.from({ length: n }, () => template);
+		slideCount = n;
+		activeSlide = 0;
+
+		if (videoUrl) {
+			// Seed the clip onto every template that can show video so switching
+			// templates in Studio keeps the same clip.
+			const videoCapable: TemplateId[] = ['blank', 'news', 'tweet', 'videoStory', 'imageQuote'];
+			const nextVideos = { ...bgVideosByTemplate };
+			const nextImages = { ...bgImagesByTemplate };
+			for (const id of videoCapable) {
+				nextVideos[id] = Array.from({ length: n }, (_, i) => (i === 0 ? videoUrl : ''));
+				nextImages[id] = Array.from({ length: n }, () => '');
+			}
+			bgVideosByTemplate = nextVideos;
+			bgImagesByTemplate = nextImages;
+			if (template === 'news' || template === 'blank' || template === 'imageQuote') {
+				newsSolidBgBySlide = Array.from({ length: n }, () => '');
+			}
+			videoTrimStartSecBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? clipStart : 0));
+			videoTrimEndSecBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? clipEnd : 0));
+			videoDurationBySlide = Array.from({ length: n }, (_, i) =>
+				i === 0 ? Math.max(0, clipEnd - clipStart) : 0,
+			);
+			videoMutedBySlide = Array.from({ length: n }, () => true);
+			videoVolumeBySlide = Array.from({ length: n }, () => 0.8);
+			videoSeekSec = clipStart;
+		}
+
+		forcedTemplateFromQuery = template;
+		pendingClipImport = null;
+	}
+
+	function tryApplyPendingClipImport() {
+		if (clipImportApplied) return false;
+		const payload = pendingClipImport ?? peekStudioClipImport();
+		if (!payload?.videoUrl?.trim()) return false;
+		clipImportApplied = true;
+		pendingClipImport = null;
+		consumeStudioClipImport();
+		applyStudioClipImport(payload);
+		if (typeof window !== 'undefined') {
+			const cleanUrl = new URL(window.location.href);
+			cleanUrl.searchParams.delete('from');
+			cleanUrl.searchParams.delete('template');
+			cleanUrl.searchParams.delete('videoUrl');
+			cleanUrl.searchParams.delete('clipStart');
+			cleanUrl.searchParams.delete('clipEnd');
+			cleanUrl.searchParams.delete('clipText');
+			window.history.replaceState({}, '', cleanUrl);
+		}
+		return true;
 	}
 
 	// ── Undo (scoped to current template + slide) ─────────────────────────
@@ -948,7 +1128,7 @@ import JSZip from 'jszip';
 		closeToolbar();
 	}
 
-	// Parse starter URL flags. Actual blank/template application runs in the auth `onMount` `.finally`
+	// Parse starter URL flags. Actual blank/template/clip application runs in the auth `onMount` `.finally`
 	// so it wins over `loadLatestDraft()` (otherwise the last autosave overwrites “new from template”).
 	onMount(() => {
 		if (initialTemplateParamApplied) return;
@@ -960,6 +1140,20 @@ import JSZip from 'jszip';
 		const draftQ = params.get('draft');
 		const hasDraft = !!(draftQ && /^[0-9a-f-]{36}$/i.test(draftQ));
 		const blankRaw = params.get('blank');
+		const fromClip = params.get('from') === 'clip' || !!peekStudioClipImport();
+
+		if (fromClip && !hasSaved && !hasDraft) {
+			const payload = peekStudioClipImport();
+			const template =
+				mapQueryParamToTemplateId(params.get('template')?.trim() ?? '') ??
+				payload?.template ??
+				'news';
+			forcedTemplateFromQuery = template;
+			skipLatestWorkspaceDraftRestore = true;
+			pendingClipImport = payload;
+			return;
+		}
+
 		if (!hasSaved && !hasDraft && (blankRaw === '1' || blankRaw === 'true' || blankRaw === 'yes')) {
 			forcedBlankFromQuery = true;
 			forcedTemplateFromQuery = 'blank';
@@ -980,6 +1174,27 @@ import JSZip from 'jszip';
 		if (!url) return;
 		const pathNoTrailing = url.pathname.replace(/\/+$/, '') || '/';
 		if (!pathNoTrailing.endsWith('/studio') || pathNoTrailing.includes('burn-music')) return;
+
+		const fromClip = url.searchParams.get('from') === 'clip' || !!peekStudioClipImport();
+		if (fromClip) {
+			const peeked = peekStudioClipImport();
+			const template =
+				mapQueryParamToTemplateId(url.searchParams.get('template')?.trim() ?? '') ??
+				peeked?.template ??
+				'news';
+			forcedTemplateFromQuery = template;
+			skipLatestWorkspaceDraftRestore = true;
+			if (!clipImportApplied) {
+				pendingClipImport = peeked ?? pendingClipImport;
+			}
+			// Apply now only if studio already finished auth boot (client-side re-entry).
+			// On first load, auth `onMount` `.finally` applies — otherwise it wipes the clip.
+			if (!clipImportApplied && userId && !draftRestoring) {
+				tryApplyPendingClipImport();
+			}
+			return;
+		}
+
 		const savedQ = url.searchParams.get('saved');
 		const hasSaved = !!(savedQ && /^[0-9a-f-]{36}$/i.test(savedQ));
 		const draftQ = url.searchParams.get('draft');
@@ -1400,7 +1615,7 @@ import JSZip from 'jszip';
 	let bgOffsetY = $state(50); // vertical focal point
 	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in (cover mode only)
 	let bgFitMode = $state<'cover' | 'contain'>('contain'); // contain = full image visible + optional magnify
-	let bgContainMagnify = $state(140); // 50–200%, only when bgFitMode === 'contain'
+	let bgContainMagnify = $state(140); // 50–400%, only when bgFitMode === 'contain'
 
 	// Text panel drag (template px)
 	let textPanelOffsetY = $state(0);
@@ -2657,6 +2872,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		) {
 			newsContentMode = s.newsContentMode;
 		}
+		if (s.newsImageSourceMode === 'pull' || s.newsImageSourceMode === 'ai') {
+			newsImageSourceMode = s.newsImageSourceMode;
+		}
 		if (typeof s.storyCategory === 'string') storyCategory = s.storyCategory;
 		if (typeof (s as any).factTopicPrompt === 'string') factTopicPrompt = String((s as any).factTopicPrompt ?? '');
 		if (typeof (s as any).factTopicCategory === 'string') factTopicCategory = String((s as any).factTopicCategory ?? 'any');
@@ -3491,6 +3709,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			slideCount,
 			category,
 			newsContentMode,
+			newsImageSourceMode,
 			storyCategory,
 		factTopicPrompt,
 		factTopicCategory,
@@ -3790,7 +4009,16 @@ tweetTopImagePanYBySlide,
 				void (async () => {
 					await flushStudioLoadingPaint();
 					draftRestoring = false;
-					if (forcedBlankFromQuery) {
+					const clipPending =
+						!!pendingClipImport ||
+						(typeof window !== 'undefined' &&
+							new URLSearchParams(window.location.search).get('from') === 'clip') ||
+						!!peekStudioClipImport();
+					if (tryApplyPendingClipImport()) {
+						// Video clip import from Videos page applied
+					} else if (clipImportApplied || clipPending) {
+						// Clip import in progress / already applied — never wipe with blank starter
+					} else if (forcedBlankFromQuery) {
 						applyBlankCanvas();
 					} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
 						// Fresh session from template carousel / `?template=` — never overlay last autosave.
@@ -4286,17 +4514,25 @@ tweetTopImagePanYBySlide,
 				!syntheticHintStr;
 
 			if (useTestData && newsContentMode === 'news') {
-				// ── Mock mode: news articles only ───────────────────────────
+				// ── Mock only (never call live API while Test data is on) ───
 				await new Promise((r) => setTimeout(r, 400));
-				const pool = search
-					? MOCK_NEWS.filter(
-							(a) =>
-								a.title.toLowerCase().includes(search.toLowerCase()) ||
-								a.description.toLowerCase().includes(search.toLowerCase()),
-						)
-					: MOCK_NEWS;
-				const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
-
+				const q = search.trim().toLowerCase();
+				const cat = category.trim().toLowerCase();
+				let pool = MOCK_NEWS.filter((a) =>
+					(a.categories as readonly string[]).some((c) => c.toLowerCase() === cat),
+				);
+				if (!pool.length) pool = [...MOCK_NEWS];
+				if (q) {
+					const matched = pool.filter(
+						(a) =>
+							a.title.toLowerCase().includes(q) ||
+							a.description.toLowerCase().includes(q) ||
+							a.snippet.toLowerCase().includes(q),
+					);
+					// Stay on test data: if keyword misses, use category (or full) mock pool
+					if (matched.length) pool = matched;
+				}
+				const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0]!;
 				hookText = article.title;
 				rawText = `${article.title}. ${article.description}. ${article.snippet}`;
 				nextSource = sourceLabels[category] ?? article.source ?? 'News';
@@ -4342,6 +4578,7 @@ tweetTopImagePanYBySlide,
 						storyCategory,
 						search: newsContentMode === 'news' ? search || undefined : undefined,
 						categories: newsContentMode === 'news' ? category : undefined,
+						limit: 15,
 						autoHighlight:
 							studioTextHighlightsEnabled &&
 							(fillExistingDeck ? hasNewsSlidesInDeck : contentTemplate === 'news'),
@@ -4532,7 +4769,9 @@ tweetTopImagePanYBySlide,
 				if (contentTemplate === 'news') {
 					bgImagesByTemplate = {
 						...bgImagesByTemplate,
-						news: Array.from({ length: n }, (_, i) => (i === 0 ? articleImageUrl : '')),
+						news: Array.from({ length: n }, (_, i) =>
+							i === 0 && newsImageSourceMode === 'pull' && newsGenerateImages ? articleImageUrl : '',
+						),
 					};
 					bgVideosByTemplate = { ...bgVideosByTemplate, news: Array(n).fill('') };
 					generatingImagesByTemplate = { ...generatingImagesByTemplate, news: Array(n).fill(false) };
@@ -4546,7 +4785,8 @@ tweetTopImagePanYBySlide,
 					};
 					showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
 				} else {
-					const heroBgRow = templateAcceptsArticleHeroBackground(contentTemplate)
+					const heroBgRow =
+						templateAcceptsArticleHeroBackground(contentTemplate) && newsImageSourceMode === 'pull' && newsGenerateImages
 						? Array.from({ length: n }, (_, i) => (i === 0 ? articleImageUrl : ''))
 						: Array.from({ length: n }, (_, i) =>
 								contentTemplate === 'blackText' ? BLACK_TEXT_BG_DEFAULT : '',
@@ -4970,7 +5210,7 @@ tweetTopImagePanYBySlide,
 					studioImageGenPaintHold = false;
 				}
 			} else if (data.demo) {
-				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
+				bgError = data.message ?? 'Configure FAL_AI_API_KEY to enable AI images.';
 				setBgGeneratingFlag(template, slideIdx, false);
 			} else {
 				bgError = data.error ?? (res.ok ? 'Image generation failed' : `Request failed (${res.status})`);
@@ -5019,7 +5259,7 @@ tweetTopImagePanYBySlide,
 					studioImageGenPaintHold = false;
 				}
 			} else if (data.demo) {
-				bgError = data.message ?? 'Configure Google credentials to enable AI images.';
+				bgError = data.message ?? 'Configure FAL_AI_API_KEY to enable AI images.';
 			} else {
 				bgError = data.error ?? (res.ok ? 'Image generation failed' : `Request failed (${res.status})`);
 			}
@@ -5057,6 +5297,11 @@ tweetTopImagePanYBySlide,
 	 * runs again on a deck that already had backgrounds (fillExistingDeck).
 	 */
 	async function refreshNewsDeckImagesAfterFetch(articleImageUrl?: string) {
+		// Skip image generation if toggle is off
+		if (!newsGenerateImages) {
+			return;
+		}
+		
 		studioImageGenBatchDepth++;
 		const template: TemplateId = 'news';
 		const n = Math.max(1, slides.length);
@@ -5084,7 +5329,9 @@ tweetTopImagePanYBySlide,
 
 		const articleSrc = String(articleImageUrl ?? '').trim();
 		const skipSlide0Gen =
-			!!articleSrc && templateAcceptsArticleHeroBackground(template);
+			newsImageSourceMode === 'pull' &&
+			!!articleSrc &&
+			templateAcceptsArticleHeroBackground(template);
 		if (skipSlide0Gen) {
 			applyNewsSeedBackgroundLayout();
 			const safe = await toExportSafeImageUrl(articleSrc);
@@ -5124,6 +5371,11 @@ tweetTopImagePanYBySlide,
 
 	/** Replace tweet media on Load & Fill (article hero on first tweet slide, Vertex on the rest). */
 	async function refreshTweetDeckImagesAfterFetch(articleImageUrl?: string) {
+		// Skip image generation if toggle is off
+		if (!newsGenerateImages) {
+			return;
+		}
+		
 		const tweetSlideIdxs: number[] = [];
 		for (let i = 0; i < slides.length; i++) {
 			if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) === 'tweet') tweetSlideIdxs.push(i);
@@ -5139,7 +5391,8 @@ tweetTopImagePanYBySlide,
 			generatingImagesByTemplate = { ...generatingImagesByTemplate, tweet: genRow };
 
 			const primaryTweetSlide = tweetSlideIdxs[0]!;
-			const skipPrimaryGen = !!articleSrc;
+			const skipPrimaryGen =
+				newsImageSourceMode === 'pull' && !!articleSrc;
 			if (skipPrimaryGen) {
 				const safe = await toExportSafeImageUrl(articleSrc);
 				if (String(safe ?? '').trim()) {
@@ -5170,6 +5423,11 @@ tweetTopImagePanYBySlide,
 
 // ── Generate unique images for all slides in parallel ─────────────────
 	async function generateAllSlideImages(articleImageUrl?: string, template: TemplateId = 'news') {
+		// Skip image generation if toggle is off
+		if (!newsGenerateImages) {
+			return;
+		}
+		
 		studioImageGenBatchDepth++;
 		try {
 		const blankBgRow =
@@ -5215,9 +5473,13 @@ tweetTopImagePanYBySlide,
 		}
 		slideTemplates = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
-		// Slide 0: use article image directly if available (templates with hero media only), otherwise Vertex
+		// Slide 0: use article image when "Pull first image from news"; otherwise AI-generate all slides
 		const articleSrc = String(articleImageUrl ?? '').trim();
-		if (articleSrc && templateAcceptsArticleHeroBackground(template)) {
+		const usePulledHero =
+			newsImageSourceMode === 'pull' &&
+			!!articleSrc &&
+			templateAcceptsArticleHeroBackground(template);
+		if (usePulledHero) {
 			if (template === 'news') applyNewsSeedBackgroundLayout();
 			const safe = await toExportSafeImageUrl(articleSrc);
 			if (template === 'news' && String(safe ?? '').trim()) {
@@ -5226,10 +5488,10 @@ tweetTopImagePanYBySlide,
 			setSlideImage(0, safe, template);
 		}
 
-		// Fire all Vertex requests in parallel (skip slide 0 if we have article image)
+		// Fire all Fal/AI requests in parallel (skip slide 0 when using pulled news image)
 		const promises = slides.map((_, i) => {
 			if (template === 'blackText') return Promise.resolve();
-			if (i === 0 && articleImageUrl && templateAcceptsArticleHeroBackground(template)) return Promise.resolve(); // hero already set from article
+			if (i === 0 && usePulledHero) return Promise.resolve();
 			const cleanText = primarySlideTextForPrompt(template, i);
 			const prompt = i === 0
 				? (articleTitle || cleanText)
@@ -5520,7 +5782,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					break;
 				}
 				if (data.demo) {
-					bgError = data.message ?? 'Configure Google credentials to enable AI images.';
+					bgError = data.message ?? 'Configure FAL_AI_API_KEY to enable AI images.';
 					break;
 				}
 				const errStr = String(data.error ?? (res.ok ? '' : `Request failed (${res.status})`));
@@ -5657,6 +5919,80 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			setSlideImage(idx, reader.result as string, t);
 		};
 		reader.readAsDataURL(file);
+	}
+
+	/** Apply a saved library asset (`r2:…`) as the active slide background. */
+	async function applyAssetAsBackground(r2Ref: string) {
+		const ref = String(r2Ref ?? '').trim();
+		if (!ref) return;
+		await ensureR2Resolved(ref);
+		setSlideImage(activeSlide, ref, activeTemplate);
+	}
+
+	/** Apply an Unsplash photo as the active slide background (CORS-safe data URL for export). */
+	async function applyUnsplashAsBackground(photo: {
+		url: string;
+		downloadLocation: string;
+		photographer: string;
+	}) {
+		const src = String(photo?.url ?? '').trim();
+		if (!src) return;
+		// Guideline: ping download endpoint when a photo is used
+		if (photo.downloadLocation) {
+			void fetch('/api/unsplash/download', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ downloadLocation: photo.downloadLocation }),
+			}).catch(() => {});
+		}
+		const safe = await toExportSafeImageUrl(src);
+		const finalUrl = String(safe ?? '').trim() || src;
+		if (activeTemplate === 'news') applyNewsSeedBackgroundLayout();
+		setSlideImage(activeSlide, finalUrl, activeTemplate);
+		if (photo.photographer) {
+			// Soft credit in console — UI shows photographer on the Unsplash card
+			console.info(`[unsplash] Photo by ${photo.photographer} on Unsplash`);
+		}
+	}
+
+	/** Add a saved library asset as an image sticker on the active slide. */
+	async function applyAssetAsSticker(r2Ref: string) {
+		const ref = String(r2Ref ?? '').trim();
+		if (!ref) return;
+		await ensureR2Resolved(ref);
+		const resolved = resolveMediaUrl(ref);
+		const measureSrc = resolved || ref;
+		const img = new window.Image();
+		img.onload = () => {
+			const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+			const w = Math.min(300, img.naturalWidth || 300);
+			const h = w / aspect;
+			const idx = activeSlide;
+			const newOverlay: Overlay = {
+				id: crypto.randomUUID(),
+				src: ref,
+				x: Math.round((CANVAS_W - w) / 2),
+				y: Math.round((CANVAS_H - h) / 2),
+				w: Math.round(w),
+				h: Math.round(h),
+			};
+			const current = (slideOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
+			setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
+		};
+		img.onerror = () => {
+			const idx = activeSlide;
+			const newOverlay: Overlay = {
+				id: crypto.randomUUID(),
+				src: ref,
+				x: Math.round((CANVAS_W - 240) / 2),
+				y: Math.round((CANVAS_H - 240) / 2),
+				w: 240,
+				h: 240,
+			};
+			const current = (slideOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
+			setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
+		};
+		img.src = measureSrc;
 	}
 
 	function handleVideoUpload(e: Event) {
@@ -6314,6 +6650,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 <FloatingActions
 	{...({
 		slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
+		rightOffsetPx: 296,
 		posting: exportingAll,
 		exportingZip: exporting,
 		onExportZip: () => void exportPng(),
@@ -6338,7 +6675,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 <div class="flex h-full overflow-hidden">
 
-	<!-- ── Right panel: preview ──────────────────────────────────────────── -->
+	<!-- ── Main canvas column ─────────────────────────────────────────────── -->
 	<div
 		class="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#080808] p-6 gap-3 studio-right"
 		style="background: var(--app-bg);"
@@ -7742,6 +8079,79 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						</PopoverContent>
 					</Popover>
 
+					<!-- Image source — all News studio modes (News / fact / story / quote) -->
+					<Popover>
+						<PopoverTrigger
+							class="flex items-center gap-1.5 rounded-full border border-[#e2e2e2] bg-white px-3 py-[7px] text-[11.5px] font-semibold font-body text-[#111] transition-all duration-150 hover:border-[#c8c8c8] select-none shrink-0 max-w-[11.5rem]"
+							title="How to fill slide backgrounds"
+						>
+							{#if newsImageSourceMode === 'pull'}
+								<Image size={11} class="shrink-0" />
+								<span class="truncate">Pull news image</span>
+							{:else}
+								<Sparkles size={11} class="shrink-0" />
+								<span class="truncate">AI Generate</span>
+							{/if}
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent side="top" sideOffset={10} align="start" class="w-64 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Slide images</p>
+							<button
+								type="button"
+								onclick={() => (newsImageSourceMode = 'pull')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsImageSourceMode === 'pull'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Image size={13} class="mt-0.5 shrink-0" />
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Pull first image from news</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">First slide uses the article photo</span>
+								</span>
+								{#if newsImageSourceMode === 'pull'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (newsImageSourceMode = 'ai')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsImageSourceMode === 'ai'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Sparkles size={13} class="mt-0.5 shrink-0" />
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">AI Generate</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">Generate a new image for every slide</span>
+								</span>
+								{#if newsImageSourceMode === 'ai'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+						</PopoverContent>
+					</Popover>
+
+					<!-- Image generation toggle -->
+					<button
+						type="button"
+						onclick={() => (newsGenerateImages = !newsGenerateImages)}
+						class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-semibold font-body transition-all duration-150 select-none shrink-0
+							{newsGenerateImages
+								? 'border-[#10b981] bg-[#10b981] text-white hover:bg-[#059669]'
+								: 'border-[#e2e2e2] bg-white text-[#666] hover:border-[#c8c8c8]'}"
+						title={newsGenerateImages ? 'Image generation ON' : 'Image generation OFF - text only'}
+					>
+						{#if newsGenerateImages}
+							<Image size={11} class="shrink-0" />
+							<span>Images ON</span>
+						{:else}
+							<Type size={11} class="shrink-0" />
+							<span>Text only</span>
+						{/if}
+					</button>
+
 					<!-- Settings popover -->
 					<Popover>
 						<PopoverTrigger
@@ -7921,6 +8331,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			<!-- /Prompt bar (below filmstrip) -->
 		</div>
 	</div>
+
+	<StudioAssetsSidebar
+		{userId}
+		onUseAsBackground={(ref) => void applyAssetAsBackground(ref)}
+		onAddAsSticker={(ref) => void applyAssetAsSticker(ref)}
+		onUseUnsplashBackground={(photo) => applyUnsplashAsBackground(photo)}
+	/>
 
 </div>
 

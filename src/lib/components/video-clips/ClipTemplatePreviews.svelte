@@ -3,6 +3,8 @@
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
+	import BlankTemplate from '$lib/components/templates/BlankTemplate.svelte';
+	import BlackTextCarouselTemplate from '$lib/components/templates/BlackTextCarouselTemplate.svelte';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import {
 		buildClipTemplateCopy,
@@ -13,12 +15,18 @@
 		NEWS_DEFAULT_SOURCE,
 		TWEET_DEFAULTS,
 		VIDEO_STORY_DEFAULTS,
+		BLACK_TEXT_CAROUSEL_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
 	import {
 		STUDIO_FEED_CANVAS,
 		studioFeedPreviewScale,
 		studioFeedPreviewHeight,
 	} from '$lib/studio/clip-preview-canvas';
+	import {
+		stashStudioClipImport,
+		studioUrlForClipImport,
+	} from '$lib/studio/clip-import';
+	import { STUDIO_TEMPLATES, coerceTemplateId } from '$lib/studio/template-ids';
 	import { ExternalLink, Layout } from 'lucide-svelte';
 
 	interface Props {
@@ -56,12 +64,38 @@
 		watermark.trim() || topicHint.trim() || VIDEO_STORY_DEFAULTS.watermark,
 	);
 
-	const templates = [
-		{ id: 'news', label: 'News', studio: 'news' },
-		{ id: 'videoStory', label: 'Video story', studio: 'videoStory' },
-		{ id: 'tweet', label: 'Tweet', studio: 'tweet' },
-		{ id: 'textCarousel', label: 'Text carousel', studio: 'textCarousel' },
-	] as const;
+	const templates = STUDIO_TEMPLATES;
+
+	/** Stash clip media + headlines, then navigate (signed URLs are too long for query params). */
+	function openInStudio(templateRaw: string) {
+		const template = coerceTemplateId(templateRaw);
+		const videoUrl = directVideo || String(source.playbackUrl ?? '').trim();
+		const looksYoutube = /youtube\.com\/embed|youtu\.be\//i.test(videoUrl);
+		if (videoUrl && !looksYoutube) {
+			stashStudioClipImport({
+				template,
+				videoUrl,
+				clipStart: clip.startSec,
+				clipEnd: clip.endSec,
+				thumbnailUrl: thumb || undefined,
+				newsHeadline: copy.newsHeadline,
+				newsSource: copy.newsSource,
+				storyHeadline: copy.storyHeadline,
+				storyWatermark: copy.storyWatermark || storyWatermark,
+				tweetTop: copy.tweetTop,
+				tweetBottom: copy.tweetBottom,
+				carouselName: copy.carouselName,
+				carouselHandle: copy.carouselHandle,
+				carouselBody: copy.carouselBody,
+			});
+		} else {
+			console.warn('[videos] Edit in Studio: no direct video URL to import', {
+				hasDirect: !!directVideo,
+				r2Key: !!source.r2Key,
+			});
+		}
+		window.location.href = studioUrlForClipImport(template);
+	}
 </script>
 
 <section class="clip-template-previews" aria-label="Template previews for selected clip">
@@ -71,8 +105,8 @@
 			<h3 class="previews-title">How this clip could look</h3>
 			<p class="previews-sub">
 				{#if hasVideo}
-					Live preview · clip {Math.floor(clip.startSec)}s–{Math.floor(clip.endSec)}s · same
-					4:5 canvas as Studio
+					Live preview · clip {Math.floor(clip.startSec)}s–{Math.floor(clip.endSec)}s · open in any
+					Studio template
 				{:else}
 					Layout preview · download the full video to see it with your clip
 				{/if}
@@ -88,7 +122,7 @@
 					class="preview-frame"
 					style="width:{PREVIEW_W}px;height:{PREVIEW_H}px"
 				>
-					{#if t.id === 'news'}
+					{#if t.id === 'news' || t.id === 'imageQuote'}
 						<NewsTemplate
 							text={copy.newsHeadline}
 							source={copy.newsSource || NEWS_DEFAULT_SOURCE}
@@ -159,12 +193,55 @@
 							interactive={false}
 							showSwipe={true}
 						/>
+					{:else if t.id === 'blank'}
+						<BlankTemplate
+							backgroundImage={hasVideo ? '' : thumb}
+							backgroundVideo={videoSrc}
+							solidBackgroundColor="#0a0a0a"
+							w={CANVAS_W}
+							h={CANVAS_H}
+							{scale}
+							interactive={false}
+						/>
+					{:else if t.id === 'blackText'}
+						<BlackTextCarouselTemplate
+							backgroundImage=""
+							name={BLACK_TEXT_CAROUSEL_DEFAULTS.name}
+							handle={BLACK_TEXT_CAROUSEL_DEFAULTS.handle}
+							headline={copy.storyHeadline || copy.newsHeadline}
+							body={copy.carouselBody || copy.tweetBottom}
+							headlineColor={BLACK_TEXT_CAROUSEL_DEFAULTS.headlineColor}
+							canvasW={CANVAS_W}
+							canvasH={CANVAS_H}
+							{scale}
+							interactive={false}
+							showSwipe={true}
+						/>
+					{:else}
+						<NewsTemplate
+							text={copy.newsHeadline}
+							source={copy.newsSource || NEWS_DEFAULT_SOURCE}
+							backgroundImage={hasVideo ? '' : thumb}
+							backgroundVideo={videoSrc}
+							{...videoProps}
+							highlightColor="#F5A623"
+							textColor="#FFFFFF"
+							templateTheme="dark"
+							allowCircle={false}
+							showCircle2={false}
+							bgFitMode="cover"
+							bgZoom={100}
+							w={CANVAS_W}
+							h={CANVAS_H}
+							{scale}
+							interactive={false}
+						/>
 					{/if}
 				</div>
-				<a class="preview-studio-link" href="/dashboard/studio?template={t.studio}">
+				<button type="button" class="preview-studio-link" onclick={() => openInStudio(t.id)}>
 					<ExternalLink size={12} />
 					Edit in Studio
-				</a>
+				</button>
 			</article>
 		{/each}
 	</div>
@@ -207,21 +284,9 @@
 
 	.previews-grid {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 		gap: 1.5rem;
 		align-items: start;
-	}
-
-	@media (max-width: 1200px) {
-		.previews-grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-	}
-
-	@media (max-width: 560px) {
-		.previews-grid {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	.preview-card {
@@ -245,57 +310,36 @@
 	}
 
 	.preview-label {
-		font-size: 0.67rem;
+		font-size: 0.75rem;
 		font-weight: 700;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.04em;
 		text-transform: uppercase;
-		color: var(--app-text-muted, rgba(15, 23, 42, 0.42));
+		color: var(--app-text-muted, rgba(15, 23, 42, 0.55));
 	}
 
 	.preview-frame {
+		position: relative;
 		overflow: hidden;
-		border-radius: 14px;
-		border: 1px solid var(--app-border, rgba(0, 0, 0, 0.1));
-		box-shadow:
-			0 8px 24px rgba(0, 0, 0, 0.1),
-			0 2px 6px rgba(0, 0, 0, 0.06);
+		border-radius: 12px;
+		box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
 		background: #0a0a0a;
-		flex-shrink: 0;
-		line-height: 0;
-		transition:
-			transform 0.22s ease,
-			box-shadow 0.22s ease;
-		cursor: default;
-	}
-
-	.preview-frame:hover {
-		transform: translateY(-4px) scale(1.01);
-		box-shadow:
-			0 18px 44px rgba(0, 0, 0, 0.16),
-			0 4px 12px rgba(0, 0, 0, 0.1);
 	}
 
 	.preview-studio-link {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.32rem;
-		font-size: 0.73rem;
+		gap: 0.35rem;
+		padding: 0.4rem 0.75rem;
+		border-radius: 8px;
+		border: 1px solid var(--app-border, rgba(15, 23, 42, 0.12));
+		background: var(--app-surface, #fff);
+		color: var(--app-text, #0f172a);
+		font-size: 0.78rem;
 		font-weight: 600;
-		color: #db2777;
-		text-decoration: none;
-		padding: 0.3rem 0.65rem;
-		border-radius: 0.45rem;
-		border: 1px solid rgba(219, 39, 119, 0.22);
-		background: rgba(219, 39, 119, 0.05);
-		transition:
-			background 0.15s,
-			border-color 0.15s,
-			transform 0.12s;
+		cursor: pointer;
 	}
 
 	.preview-studio-link:hover {
-		background: rgba(219, 39, 119, 0.11);
-		border-color: rgba(219, 39, 119, 0.38);
-		transform: translateY(-1px);
+		border-color: var(--app-text, #0f172a);
 	}
 </style>

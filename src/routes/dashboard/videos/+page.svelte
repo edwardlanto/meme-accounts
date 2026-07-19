@@ -4,10 +4,30 @@
 	import { r2UploadVideo } from '$lib/r2Client';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import { formatClipDuration, formatTimestamp } from '$lib/video-clips/export-clip';
-	import { clipDisplayQuote } from '$lib/video-clips/clip-template-copy';
-	import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
+	import { clipDisplayQuote, buildClipTemplateCopy, clipDirectVideoUrl } from '$lib/video-clips/clip-template-copy';
+	import { cleanClipSpeechText, hasTimedTranscript, excerptTimedLinesFromTranscript } from '$lib/video-clips/transcript-segments';
 	import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 	import ClipTemplatePreviews from '$lib/components/video-clips/ClipTemplatePreviews.svelte';
+	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
+	import VideoCaptionControls from '$lib/components/video-clips/VideoCaptionControls.svelte';
+	import { getCaptionTemplate, type CaptionAnimation } from '$lib/video-clips/caption-templates';
+	import {
+		parseTimedTranscriptToSegments,
+		parseUntimedTranscriptToSegments,
+		type CaptionSegment,
+	} from '$lib/video-clips/caption-sync';
+	import {
+		segmentsToPhrases,
+		getActivePhrase,
+		getActiveWordIndex,
+		dedupeAdjacentSegments,
+		type CaptionPhrase,
+	} from '$lib/video-clips/caption-chunking';
+	import {
+		stashStudioClipImport,
+		studioUrlForClipImport,
+	} from '$lib/studio/clip-import';
+	import { STUDIO_TEMPLATES, coerceTemplateId } from '$lib/studio/template-ids';
 	import {
 		Link2,
 		Upload,
@@ -24,6 +44,8 @@
 		AlertCircle,
 		CheckCircle2,
 		RotateCcw,
+		Volume2,
+		VolumeX,
 	} from 'lucide-svelte';
 
 	type Phase = 'idle' | 'importing' | 'downloading' | 'analyzing' | 'ready' | 'exporting';
@@ -80,6 +102,119 @@
 	let clipMinSec = $state(10);
 	let clipMaxSec = $state(60);
 
+	// Caption state — CapCut-style chunked captions
+	let captionEnabled = $state(false);
+	let captionTemplateId = $state('capcut-pop');
+	let captionFontSize = $state(40);
+	let captionPosition = $state<'top' | 'center' | 'bottom'>('bottom');
+	let captionCustomColor = $state('#ffffff');
+	let captionCustomBgColor = $state('transparent');
+	let captionCustomHighlightColor = $state('#ffeb3b');
+	let captionDraggable = $state(false);
+	let captionCustomX = $state<number | null>(null);
+	let captionCustomY = $state<number | null>(null);
+	let captionSelectedFont = $state('Inter');
+	let captionStrokeEnabled = $state(true);
+	let captionAnimationOverride = $state<CaptionAnimation | null>(null);
+	let captionChunkOverride = $state<number | null>(null);
+	let captionSegments = $state<CaptionSegment[]>([]);
+	let captionPhrases = $state<CaptionPhrase[]>([]);
+	let activeCaptionPhrase = $state<CaptionPhrase | null>(null);
+	let activeCaptionWordIndex = $state(-1);
+	let videoCurrentTime = $state(0);
+	let videoMuted = $state(true);
+	/** Prevents reloading transcript from wiping in-progress text edits */
+	let captionSegmentsKey = $state('');
+	/** Latest phrases for rAF without re-subscribing every rebuild */
+	let captionPhrasesRef: CaptionPhrase[] = [];
+
+	function toggleVideoMuted() {
+		const v = playerVideo;
+		videoMuted = !videoMuted;
+		if (v) v.muted = videoMuted;
+	}
+
+	function seekCaptionTo(sec: number) {
+		const v = playerVideo;
+		if (!v) return;
+		v.currentTime = Math.max(0, sec);
+		videoCurrentTime = v.currentTime;
+		void v.play().catch(() => {});
+	}
+
+	function buildCaptionSegmentsForClip(): CaptionSegment[] {
+		const clip = selectedClip;
+		if (!clip) return [];
+
+		const fullTimed = source?.transcript;
+		if (fullTimed && hasTimedTranscript(fullTimed)) {
+			const timedExcerpt = excerptTimedLinesFromTranscript(
+				fullTimed,
+				clip.startSec,
+				clip.endSec,
+			);
+			if (timedExcerpt.trim()) {
+				return dedupeAdjacentSegments(parseTimedTranscriptToSegments(timedExcerpt));
+			}
+		}
+
+		const transcript = clip.transcript;
+		if (!transcript) return [];
+
+		if (hasTimedTranscript(transcript)) {
+			return dedupeAdjacentSegments(parseTimedTranscriptToSegments(transcript));
+		}
+		const duration = clip.endSec - clip.startSec;
+		return dedupeAdjacentSegments(
+			parseUntimedTranscriptToSegments(transcript, clip.startSec, duration),
+		);
+	}
+
+	function resetCaptionEdits() {
+		captionSegments = buildCaptionSegmentsForClip();
+	}
+
+	function openClipInStudio(clip: VideoClip, templateRaw: string = 'videoStory') {
+		if (!source) return;
+		const template = coerceTemplateId(templateRaw);
+		const directVideo = clipDirectVideoUrl(source);
+		const videoUrl = directVideo || String(source.playbackUrl ?? '').trim();
+		const looksYoutube = /youtube\.com\/embed|youtu\.be\//i.test(videoUrl);
+		const copy = buildClipTemplateCopy(clip, source, {
+			watermark: topicHint.trim() || 'VIRAL CLIP',
+			topicHint: topicHint.trim(),
+		});
+		if (videoUrl && !looksYoutube) {
+			stashStudioClipImport({
+				template,
+				videoUrl,
+				clipStart: clip.startSec,
+				clipEnd: clip.endSec,
+				thumbnailUrl: source.thumbnailUrl || undefined,
+				newsHeadline: copy.newsHeadline,
+				newsSource: copy.newsSource,
+				storyHeadline: copy.storyHeadline,
+				storyWatermark: copy.storyWatermark,
+				tweetTop: copy.tweetTop,
+				tweetBottom: copy.tweetBottom,
+				carouselName: copy.carouselName,
+				carouselHandle: copy.carouselHandle,
+				carouselBody: copy.carouselBody,
+			});
+		} else {
+			console.warn('[videos] Open in Studio: no direct video URL', {
+				hasDirect: !!directVideo,
+				r2Key: !!source.r2Key,
+			});
+		}
+		window.location.href = studioUrlForClipImport(template);
+	}
+
+	function handleCaptionPositionChange(x: number, y: number) {
+		captionCustomX = x;
+		captionCustomY = y;
+	}
+
 	const selectedClip = $derived(clips.find((c) => c.id === selectedClipId) ?? clips[0] ?? null);
 	const hasStoredVideo = $derived(!!source?.r2Key);
 	const isBusy = $derived(
@@ -117,11 +252,54 @@
 		const v = playerVideo;
 		const clip = selectedClip;
 		if (!v || !clip) return;
+		// When captions are on, rAF owns currentTime for snappy karaoke — avoid double state writes
+		if (!captionEnabled) {
+			videoCurrentTime = v.currentTime;
+		}
 		if (v.currentTime >= clip.endSec - 0.08) {
 			v.pause();
 			v.currentTime = clip.startSec;
 		}
 	}
+
+	// High-frequency caption sync — only write state when phrase/word changes (avoids 60fps Svelte churn)
+	let rafHandle: number | null = null;
+	let lastPhraseKey = '';
+	let lastWordIdx = -1;
+	function tickCaptionTime() {
+		const v = playerVideo;
+		if (v && !v.paused && captionEnabled) {
+			const t = v.currentTime;
+			const phrase = getActivePhrase(captionPhrasesRef, t);
+			const wordIdx = phrase ? getActiveWordIndex(phrase, t) : -1;
+			const phraseKey = phrase ? `${phrase.startSec}|${phrase.text}` : '';
+			if (phraseKey !== lastPhraseKey || wordIdx !== lastWordIdx) {
+				lastPhraseKey = phraseKey;
+				lastWordIdx = wordIdx;
+				videoCurrentTime = t;
+				activeCaptionPhrase = phrase;
+				activeCaptionWordIndex = wordIdx;
+			}
+		}
+		rafHandle = requestAnimationFrame(tickCaptionTime);
+	}
+
+	$effect(() => {
+		if (!captionEnabled) {
+			if (rafHandle != null) cancelAnimationFrame(rafHandle);
+			rafHandle = null;
+			activeCaptionPhrase = null;
+			activeCaptionWordIndex = -1;
+			lastPhraseKey = '';
+			lastWordIdx = -1;
+			return;
+		}
+		rafHandle = requestAnimationFrame(tickCaptionTime);
+		return () => {
+			if (rafHandle != null) cancelAnimationFrame(rafHandle);
+			rafHandle = null;
+		};
+	});
 
 	function syncClipsToPlayerDuration(v: HTMLVideoElement) {
 		const d = v.duration;
@@ -145,6 +323,34 @@
 		const v = playerVideo;
 		if (!clip || !v || phase !== 'ready') return;
 		if (v.readyState >= 1) playClipSegment(clip);
+	});
+
+	$effect(() => {
+		const clip = selectedClip;
+		if (!clip) {
+			captionSegments = [];
+			captionSegmentsKey = '';
+			return;
+		}
+
+		// Only rebuild when the clip / source transcript changes — preserve user edits otherwise
+		const key = `${clip.id}|${clip.startSec}|${clip.endSec}|${source?.transcript?.length ?? 0}|${clip.transcript?.length ?? 0}`;
+		if (key === captionSegmentsKey) return;
+		captionSegmentsKey = key;
+		captionSegments = buildCaptionSegmentsForClip();
+	});
+
+	$effect(() => {
+		if (!captionSegments.length) {
+			captionPhrases = [];
+			captionPhrasesRef = [];
+			return;
+		}
+		const tpl = getCaptionTemplate(captionTemplateId);
+		const chunkSize = captionChunkOverride ?? tpl.wordsPerChunk;
+		const phrases = segmentsToPhrases(captionSegments, chunkSize);
+		captionPhrases = phrases;
+		captionPhrasesRef = phrases;
 	});
 
 	function analyzeClipPayload(extra: Record<string, unknown>) {
@@ -607,19 +813,58 @@
 				<!-- Player -->
 				<div class="player-panel">
 					{#if hasStoredVideo}
-						<!-- svelte-ignore a11y_media_has_caption -->
-						<video
-							bind:this={playerVideo}
-							class="native-player"
-							controls
-							src={source.playbackUrl}
-							ontimeupdate={onPlayerTimeUpdate}
-							onloadedmetadata={(e) => {
-								const v = e.currentTarget;
-								syncClipsToPlayerDuration(v);
-								if (selectedClip) playClipSegment(selectedClip);
-							}}
-						></video>
+						<div class="video-wrapper">
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video
+								bind:this={playerVideo}
+								class="native-player"
+								controls
+								muted={videoMuted}
+								src={source.playbackUrl}
+								ontimeupdate={onPlayerTimeUpdate}
+								onvolumechange={(e) => (videoMuted = e.currentTarget.muted)}
+								onloadedmetadata={(e) => {
+									const v = e.currentTarget;
+									v.muted = videoMuted;
+									syncClipsToPlayerDuration(v);
+									if (selectedClip) playClipSegment(selectedClip);
+								}}
+							></video>
+							<VideoCaptionOverlay
+								phrase={activeCaptionPhrase}
+								currentTime={videoCurrentTime}
+								activeWordIndex={activeCaptionWordIndex}
+								template={getCaptionTemplate(captionTemplateId)}
+								enabled={captionEnabled}
+								position={captionPosition}
+								customColor={captionCustomColor}
+								customBgColor={captionCustomBgColor}
+								customFontSize={captionFontSize}
+								customHighlightColor={captionCustomHighlightColor}
+								animationOverride={captionAnimationOverride}
+								strokeEnabled={captionStrokeEnabled}
+								draggable={captionDraggable}
+								customX={captionCustomX}
+								customY={captionCustomY}
+								oncustomposition={handleCaptionPositionChange}
+							/>
+							<button
+								type="button"
+								class="mute-toggle"
+								class:mute-toggle-muted={videoMuted}
+								onclick={toggleVideoMuted}
+								aria-label={videoMuted ? 'Unmute video' : 'Mute video'}
+								title={videoMuted ? 'Click to unmute' : 'Click to mute'}
+							>
+								{#if videoMuted}
+									<VolumeX size={16} />
+									<span>Muted</span>
+								{:else}
+									<Volume2 size={16} />
+									<span>Sound On</span>
+								{/if}
+							</button>
+						</div>
 						<p class="player-note">
 							<CheckCircle2 size={12} /> Full video stored — export downloads MP4 via ffmpeg.
 						</p>
@@ -647,6 +892,26 @@
 								>
 							</span>
 						</div>
+					{/if}
+
+					{#if hasStoredVideo && selectedClip && (selectedClip.transcript || source?.transcript)}
+						<VideoCaptionControls
+							bind:enabled={captionEnabled}
+							bind:selectedTemplateId={captionTemplateId}
+							bind:fontSize={captionFontSize}
+							bind:position={captionPosition}
+							bind:customColor={captionCustomColor}
+							bind:customBgColor={captionCustomBgColor}
+							bind:customHighlightColor={captionCustomHighlightColor}
+							bind:draggable={captionDraggable}
+							bind:selectedFont={captionSelectedFont}
+							bind:strokeEnabled={captionStrokeEnabled}
+							bind:animationOverride={captionAnimationOverride}
+							bind:wordsPerChunkOverride={captionChunkOverride}
+							bind:segments={captionSegments}
+							onseek={seekCaptionTo}
+							onreset={resetCaptionEdits}
+						/>
 					{/if}
 				</div>
 
@@ -699,14 +964,26 @@
 										{/if}
 										Export MP4
 									</button>
-									<a
-										class="btn-small btn-studio"
-										href="/dashboard/studio?blank=1"
-										title="Design a post around this clip"
-									>
-										<Film size={13} />
-										Open in Studio
-									</a>
+									<label class="studio-template-pick">
+										<span class="sr-only">Studio template</span>
+										<select
+											class="studio-template-select"
+											onchange={(e) => {
+												e.stopPropagation();
+												const t = (e.currentTarget as HTMLSelectElement).value;
+												if (!t) return;
+												openClipInStudio(clip, t);
+												e.currentTarget.selectedIndex = 0;
+											}}
+											onclick={(e) => e.stopPropagation()}
+											title="Open this clip in any Studio template"
+										>
+											<option value="">Open in Studio…</option>
+											{#each STUDIO_TEMPLATES as t (t.id)}
+												<option value={t.id}>{t.label}</option>
+											{/each}
+										</select>
+									</label>
 								</div>
 							</li>
 						{/each}
@@ -1330,6 +1607,61 @@
 		top: 1.25rem;
 	}
 
+	.video-wrapper {
+		position: relative;
+		width: 100%;
+	}
+
+	.mute-toggle {
+		position: absolute;
+		top: 14px;
+		right: 14px;
+		z-index: 110;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		background: rgba(0, 0, 0, 0.65);
+		color: #fff;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 999px;
+		padding: 0.4rem 0.75rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		backdrop-filter: blur(8px);
+		transition:
+			background 0.15s ease,
+			transform 0.15s ease,
+			border-color 0.15s ease;
+	}
+
+	.mute-toggle:hover {
+		background: rgba(0, 0, 0, 0.85);
+		border-color: rgba(255, 255, 255, 0.3);
+		transform: translateY(-1px);
+	}
+
+	.mute-toggle-muted {
+		background: rgba(124, 58, 237, 0.75);
+		border-color: rgba(255, 255, 255, 0.25);
+		animation: mute-pulse 2.4s ease-in-out infinite;
+	}
+
+	.mute-toggle-muted:hover {
+		background: rgba(124, 58, 237, 0.9);
+	}
+
+	@keyframes mute-pulse {
+		0%,
+		100% {
+			box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.5);
+		}
+		50% {
+			box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
+		}
+	}
+
 	.yt-wrap {
 		position: relative;
 		width: 100%;
@@ -1582,6 +1914,43 @@
 	.btn-studio:hover {
 		border-color: color-mix(in oklab, #7c3aed 52%, var(--app-border));
 		color: #7c3aed;
+	}
+
+	.studio-template-pick {
+		display: inline-flex;
+		min-width: 0;
+	}
+
+	.studio-template-select {
+		appearance: none;
+		padding: 0.32rem 1.55rem 0.32rem 0.6rem;
+		border-radius: 0.45rem;
+		border: 1px solid color-mix(in oklab, #7c3aed 28%, var(--app-border));
+		background: var(--app-surface-2)
+			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237c3aed' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+			no-repeat right 0.4rem center;
+		font-size: 0.71rem;
+		font-weight: 600;
+		color: var(--app-text);
+		cursor: pointer;
+		max-width: 11rem;
+	}
+
+	.studio-template-select:hover {
+		border-color: color-mix(in oklab, #7c3aed 52%, var(--app-border));
+		color: #7c3aed;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	.btn-small:disabled {

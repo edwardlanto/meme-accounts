@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import { timedTranscriptFromSubtitles } from '$lib/video-clips/transcript-segments';
@@ -10,8 +10,10 @@ import { timedTranscriptFromSubtitles } from '$lib/video-clips/transcript-segmen
 export type ToolCheck = {
 	ffmpeg: boolean;
 	ytDlp: boolean;
+	whisper: boolean;
 	ffmpegPath: string;
 	ytDlpPath: string;
+	whisperPath: string;
 	/** Path to cookies.txt when YT_DLP_COOKIES is set and readable */
 	ytDlpCookiesFile?: string;
 	ytDlpCookiesBrowser?: string;
@@ -57,6 +59,10 @@ export function getYtDlpPath(): string {
 	return cachedYtDlpPath ?? binFromEnv('YT_DLP_PATH', 'yt-dlp');
 }
 
+export function getWhisperPath(): string {
+	return env.WHISPER_PATH?.trim() || 'whisper-cli';
+}
+
 async function commandExists(cmd: string): Promise<boolean> {
 	const base = cmd.split('/').pop() ?? cmd;
 	// ffmpeg 8+ uses -version, not --version
@@ -81,6 +87,7 @@ export async function checkVideoTools(): Promise<ToolCheck> {
 	const ffmpeg = await resolveExecutable(binFromEnv('FFMPEG_PATH', 'ffmpeg'), FFMPEG_FALLBACKS);
 	const ytDlp = await resolveExecutable(binFromEnv('YT_DLP_PATH', 'yt-dlp'), YTDLP_FALLBACKS);
 	const ffprobe = await resolveExecutable(getFfprobePath(), FFPROBE_FALLBACKS);
+	const whisper = await resolveExecutable(getWhisperPath(), ['/opt/homebrew/bin/whisper-cli']);
 	cachedFfmpegPath = ffmpeg.path;
 	cachedYtDlpPath = ytDlp.path;
 	cachedFfprobePath = ffprobe.path;
@@ -94,8 +101,10 @@ export async function checkVideoTools(): Promise<ToolCheck> {
 	return {
 		ffmpeg: ffmpeg.ok,
 		ytDlp: ytDlp.ok,
+		whisper: whisper.ok,
 		ffmpegPath: ffmpeg.path,
 		ytDlpPath: ytDlp.path,
+		whisperPath: whisper.path,
 		ytDlpCookiesFile: cookiesOk ? cookiesPath : undefined,
 		ytDlpCookiesBrowser: cookiesBrowser || undefined,
 		ytDlpDeno,
@@ -113,11 +122,11 @@ function ytDlpYoutubeBaseArgs(): string[] {
 		'--no-playlist',
 		'--no-warnings',
 		'--retries',
-		'5',
+		'3', // Reduced from 5 to avoid hammering YouTube
 		'--fragment-retries',
-		'10',
+		'5', // Reduced from 10
 		'--sleep-requests',
-		'1',
+		'2', // Increased from 1 to be more polite to YouTube
 	];
 
 	const cookies = env.YT_DLP_COOKIES?.trim();
@@ -261,28 +270,40 @@ async function runYtDlpDownload(
 	videoUrl: string,
 	workDir: string,
 	strategy: YtStrategy,
+	skipSubs: boolean = false,
 ): Promise<void> {
 	const outTemplate = join(workDir, 'video.%(ext)s');
 
-	await runProcess(
-		ytDlpPath,
-		[
-			...ytDlpYoutubeBaseArgs(),
-			...youtubeExtractorArgs(strategy.extractor),
+	const args = [
+		...ytDlpYoutubeBaseArgs(),
+		...youtubeExtractorArgs(strategy.extractor),
+		'-f',
+		strategy.format,
+		'--merge-output-format',
+		'mp4',
+		'-o',
+		outTemplate,
+		videoUrl,
+	];
+
+	// Check if user wants to skip subtitles via env var (YT_DLP_SKIP_SUBS=1)
+	const envSkipSubs = env.YT_DLP_SKIP_SUBS?.trim() === '1' || env.YT_DLP_SKIP_SUBS?.toLowerCase() === 'true';
+	
+	// Only download subtitles if not skipped (more conservative to avoid rate limits)
+	if (!skipSubs && !envSkipSubs) {
+		args.push(
 			'--write-auto-sub',
 			'--write-sub',
 			'--sub-langs',
-			'en.*,en',
+			'en', // Only request plain 'en', not 'en.*' to avoid rate limits
 			'--convert-subs',
 			'vtt',
-			'-f',
-			strategy.format,
-			'--merge-output-format',
-			'mp4',
-			'-o',
-			outTemplate,
-			videoUrl,
-		],
+		);
+	}
+
+	await runProcess(
+		ytDlpPath,
+		args,
 		{ cwd: workDir, timeoutMs: 300_000 },
 	);
 }
@@ -299,16 +320,37 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 	await mkdir(workDir, { recursive: true });
 
 	const errors: string[] = [];
+	let lastError429 = false;
+	
 	for (const strategy of YOUTUBE_DOWNLOAD_STRATEGIES) {
 		try {
 			console.info(`[video-pipeline] yt-dlp download (${strategy.label})…`);
-			await runYtDlpDownload(tools.ytDlpPath, videoUrl, workDir, strategy);
+			// Try with subtitles first
+			await runYtDlpDownload(tools.ytDlpPath, videoUrl, workDir, strategy, false);
 			console.info(`[video-pipeline] yt-dlp download ok (${strategy.label})`);
 			errors.length = 0;
 			break;
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e);
-			errors.push(`[${strategy.label}] ${msg.slice(-400)}`);
+			const is429 = msg.includes('429') || msg.toLowerCase().includes('too many requests');
+			
+			// If it's a 429 rate limit on subtitles, retry without subtitles
+			if (is429 && msg.toLowerCase().includes('subtitle')) {
+				console.warn(`[video-pipeline] Subtitle rate limit hit, retrying without subs (${strategy.label})…`);
+				try {
+					await runYtDlpDownload(tools.ytDlpPath, videoUrl, workDir, strategy, true);
+					console.info(`[video-pipeline] yt-dlp download ok without subs (${strategy.label})`);
+					errors.length = 0;
+					lastError429 = true;
+					break;
+				} catch (e2: unknown) {
+					const msg2 = e2 instanceof Error ? e2.message : String(e2);
+					errors.push(`[${strategy.label}] ${msg2.slice(-400)}`);
+				}
+			} else {
+				errors.push(`[${strategy.label}] ${msg.slice(-400)}`);
+			}
+			
 			const { readdir } = await import('node:fs/promises');
 			for (const f of await readdir(workDir).catch(() => [])) {
 				await rm(join(workDir, f), { force: true }).catch(() => {});
@@ -338,6 +380,29 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 	if (subFile) {
 		const raw = await readFile(join(workDir, subFile), 'utf8');
 		transcript = timedTranscriptFromSubtitles(raw);
+	} else if (lastError429) {
+		// Subtitle download was skipped due to rate limiting
+		console.warn('[video-pipeline] Subtitles unavailable due to YouTube rate limit (HTTP 429)');
+	}
+
+	// Prefer Whisper word-level timestamps when available.
+	// YouTube auto-captions are phrase-level — karaoke highlights will always drift
+	// if we guess per-word timing inside those phrases.
+	if (tools.whisper) {
+		try {
+			console.info('[video-pipeline] Transcribing with Whisper (word-level timestamps)...');
+			const audioPath = join(workDir, 'audio.wav');
+			await extractAudioForWhisper(videoPath, audioPath);
+			const srtContent = await transcribeWithWhisper(audioPath, workDir);
+			if (srtContent.trim()) {
+				transcript = timedTranscriptFromSubtitles(srtContent);
+			}
+		} catch (e) {
+			console.error('[video-pipeline] Whisper transcription failed:', e);
+			if (!transcript.trim()) {
+				console.warn('[video-pipeline] Falling back to YouTube/subtitle transcript');
+			}
+		}
 	}
 
 	let title = 'YouTube video';
@@ -364,6 +429,81 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 		transcript,
 		thumbnailUrl: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '',
 	};
+}
+
+/** Extract audio from video as WAV for Whisper transcription. */
+export async function extractAudioForWhisper(videoPath: string, outputPath: string): Promise<void> {
+	const tools = await checkVideoTools();
+	if (!tools.ffmpeg) throw new Error('ffmpeg is not available');
+	
+	await runProcess(
+		tools.ffmpegPath,
+		[
+			'-nostdin',
+			'-y',
+			'-i',
+			videoPath,
+			'-vn', // No video
+			'-acodec',
+			'pcm_s16le', // 16-bit PCM
+			'-ar',
+			'16000', // 16kHz sample rate
+			'-ac',
+			'1', // Mono
+			outputPath,
+		],
+		{ timeoutMs: 180_000 },
+	);
+}
+
+/** Transcribe audio using whisper-cli and return SRT content. */
+export async function transcribeWithWhisper(audioPath: string, workDir: string): Promise<string> {
+	const tools = await checkVideoTools();
+	if (!tools.whisper) {
+		console.warn('[video-pipeline] whisper-cli not available, skipping transcription');
+		return '';
+	}
+
+	const modelName = env.WHISPER_MODEL?.trim() || 'base.en';
+	const modelsDir = env.WHISPER_MODELS_DIR?.trim() || join(homedir(), '.cache', 'whisper-cpp');
+	const modelPath = join(modelsDir, `ggml-${modelName}.bin`);
+
+	// Check if model exists
+	try {
+		await access(modelPath);
+	} catch {
+		console.error(`[video-pipeline] Whisper model not found: ${modelPath}`);
+		console.error('[video-pipeline] Run: npm run whisper:download');
+		return '';
+	}
+	
+	try {
+		console.info('[video-pipeline] transcribing with whisper-cli...');
+		const outBase = join(workDir, 'whisper-out');
+		await runProcess(
+			tools.whisperPath,
+			[
+				'-m', modelPath,
+				'-f', audioPath,
+				'-osrt',
+				'-of', outBase,
+				'-l', 'en',
+				// Short phrases (~3–5 words) — much faster than -ml 1, still tight for CapCut chunking
+				'-ml', '18',
+				'--split-on-word',
+				'--suppress-nst',
+			],
+			{ cwd: workDir, timeoutMs: 600_000 },
+		);
+
+		const srtPath = `${outBase}.srt`;
+		const srtContent = await readFile(srtPath, 'utf8');
+		console.info('[video-pipeline] transcription complete (word-level SRT)');
+		return srtContent;
+	} catch (e) {
+		console.error('[video-pipeline] whisper transcription failed:', e);
+		return '';
+	}
 }
 
 /** Re-encode to 720p H.264 MP4 for smaller R2 storage. */

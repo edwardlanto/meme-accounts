@@ -1,13 +1,30 @@
-/** Remove VTT/ caption speaker tags like [Dr. Hromas] (not [m:ss] timestamps). */
-export function stripSpeakerLabels(s: string): string {
-	return s.replace(/\[(?!\d{1,2}:\d{2}(?::\d{2})?\])[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
+/** Decode common HTML entities from YouTube VTT/SRT (`&gt;` → `>`). */
+export function decodeHtmlEntities(s: string): string {
+	return s
+		.replace(/&nbsp;/gi, ' ')
+		.replace(/&amp;/gi, '&')
+		.replace(/&lt;/gi, '<')
+		.replace(/&gt;/gi, '>')
+		.replace(/&quot;/gi, '"')
+		.replace(/&#39;/gi, "'")
+		.replace(/&apos;/gi, "'")
+		.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+		.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
 
-/** Plain spoken text: no timestamps, speaker labels, or extra whitespace. */
+/** Remove VTT/ caption speaker tags like [Dr. Hromas] (not [m:ss] timestamps). */
+export function stripSpeakerLabels(s: string): string {
+	return decodeHtmlEntities(s)
+		.replace(/\[(?!\d{1,2}:\d{2}(?::\d{2})?\])[^\]]*\]/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+/** Plain spoken text: no timestamps, speaker labels, HTML entities, or extra whitespace. */
 export function cleanClipSpeechText(s: string): string {
 	return stripSpeakerLabels(
 		s
-			.replace(/^\[\d{1,2}:\d{2}(?::\d{2})?\]\s*/gm, '')
+			.replace(/^\[\d{1,2}:\d{2}(?::\d{2})?(?:->[^\]]+)?\]\s*/gm, '')
 			.replace(/\s+/g, ' ')
 			.trim(),
 	);
@@ -39,15 +56,41 @@ export function collapseRepeatedPhrases(text: string): string {
 	return words.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Parse [m:ss] or [h:mm:ss] timestamp from caption lines. */
+/** Parse [m:ss] or [h:mm:ss] timestamp from caption lines. Handles optional [start->end] ranges and ms. */
 export function parseTranscriptLineSec(line: string): number | null {
-	const m = line.match(/^\[(\d+):(\d{2})(?::(\d{2}))?\]\s*/);
-	if (!m) return null;
-	const a = Number(m[1]);
-	const b = Number(m[2]);
-	const c = m[3] != null ? Number(m[3]) : null;
-	if (c != null) return a * 3600 + b * 60 + c;
-	return a * 60 + b;
+	const range = parseTranscriptLineRange(line);
+	return range?.startSec ?? null;
+}
+
+/** Parse both start and end times from a `[start->end]` line. Returns null end if only start provided. */
+export function parseTranscriptLineRange(line: string): { startSec: number; endSec: number | null } | null {
+	const rangeMatch = line.match(
+		/^\[(\d+):(\d{2})(?::(\d{2}))?(?:\.(\d+))?->(\d+):(\d{2})(?::(\d{2}))?(?:\.(\d+))?\]\s*/,
+	);
+	if (rangeMatch) {
+		const [, sh, sm, ss, sms, eh, em, es, ems] = rangeMatch;
+		const startSec =
+			ss != null
+				? Number(sh) * 3600 + Number(sm) * 60 + Number(ss)
+				: Number(sh) * 60 + Number(sm);
+		const endSec =
+			es != null
+				? Number(eh) * 3600 + Number(em) * 60 + Number(es)
+				: Number(eh) * 60 + Number(em);
+		const startMs = sms ? Number(`0.${sms}`) : 0;
+		const endMs = ems ? Number(`0.${ems}`) : 0;
+		return { startSec: startSec + startMs, endSec: endSec + endMs };
+	}
+
+	const startOnly = line.match(/^\[(\d+):(\d{2})(?::(\d{2}))?(?:\.(\d+))?\]\s*/);
+	if (!startOnly) return null;
+	const [, sh, sm, ss, sms] = startOnly;
+	const startSec =
+		ss != null
+			? Number(sh) * 3600 + Number(sm) * 60 + Number(ss)
+			: Number(sh) * 60 + Number(sm);
+	const startMs = sms ? Number(`0.${sms}`) : 0;
+	return { startSec: startSec + startMs, endSec: null };
 }
 
 export function hasTimedTranscript(transcript: string): boolean {
@@ -75,7 +118,26 @@ function parseCueTimestamp(ts: string): number {
 	return parseFloat(t) || 0;
 }
 
-/** Convert VTT/SRT subtitle files to `[m:ss] line` transcript for segment excerpts. */
+/** Format seconds as m:ss.ms with millisecond precision (for range end times). */
+function formatTimestampWithMs(sec: number): string {
+	const s = Math.max(0, sec);
+	const whole = Math.floor(s);
+	const ms = Math.round((s - whole) * 1000);
+	const h = Math.floor(whole / 3600);
+	const m = Math.floor((whole % 3600) / 60);
+	const ss = whole % 60;
+	const base =
+		h > 0
+			? `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+			: `${m}:${String(ss).padStart(2, '0')}`;
+	return ms > 0 ? `${base}.${String(ms).padStart(3, '0')}` : base;
+}
+
+/**
+ * Convert VTT/SRT subtitle files to `[start->end] line` transcript.
+ * Preserving end times lets captions display exactly during their cue window
+ * instead of stretching across silent gaps between segments.
+ */
 export function timedTranscriptFromSubtitles(raw: string): string {
 	const lines: string[] = [];
 	const seen = new Set<string>();
@@ -86,6 +148,7 @@ export function timedTranscriptFromSubtitles(raw: string): string {
 			.map((l) => l.trim())
 			.filter(Boolean);
 		let cueStart: number | null = null;
+		let cueEnd: number | null = null;
 		const textParts: string[] = [];
 
 		for (const line of blockLines) {
@@ -100,7 +163,8 @@ export function timedTranscriptFromSubtitles(raw: string): string {
 			}
 			const timeMatch = line.match(/^([\d:,.\-]+)\s+-->\s+([\d:,.\-]+)/);
 			if (timeMatch) {
-				cueStart = parseCueTimestamp(timeMatch[1]);
+				cueStart = parseCueTimestamp(timeMatch[1]!);
+				cueEnd = parseCueTimestamp(timeMatch[2]!);
 				continue;
 			}
 			if (cueStart != null && !line.includes('-->')) {
@@ -117,10 +181,16 @@ export function timedTranscriptFromSubtitles(raw: string): string {
 		if (text && cueStart != null) {
 			const spoken = stripSpeakerLabels(text);
 			if (!spoken) continue;
-			const key = `${Math.floor(cueStart * 10)}|${spoken.slice(0, 80)}`;
+			const key = `${Math.floor(cueStart * 100)}|${spoken.slice(0, 80)}`;
 			if (!seen.has(key)) {
 				seen.add(key);
-				lines.push(`[${formatTranscriptTimestamp(cueStart)}] ${spoken}`);
+				const startFmt = formatTimestampWithMs(cueStart);
+				if (cueEnd != null && cueEnd > cueStart) {
+					const endFmt = formatTimestampWithMs(cueEnd);
+					lines.push(`[${startFmt}->${endFmt}] ${spoken}`);
+				} else {
+					lines.push(`[${startFmt}] ${spoken}`);
+				}
 			}
 		}
 	}
@@ -163,6 +233,38 @@ export function excerptFromTimedTranscript(
 		parts.push(text);
 	}
 	return collapseRepeatedPhrases(parts.join(' '));
+}
+
+/**
+ * Extract timed caption lines for a clip range, preserving `[start->end]` stamps.
+ * Used for CapCut-style caption sync (word timing needs real cue times).
+ */
+export function excerptTimedLinesFromTranscript(
+	transcript: string,
+	startSec: number,
+	endSec: number,
+): string {
+	const lines: string[] = [];
+	const seen = new Set<string>();
+	for (const line of transcript.split('\n')) {
+		const range = parseTranscriptLineRange(line);
+		if (!range) continue;
+		const { startSec: t, endSec: lineEnd } = range;
+		// Include if cue overlaps the clip window
+		const cueEnd = lineEnd ?? t + 2;
+		if (cueEnd < startSec - 0.25 || t > endSec + 0.25) continue;
+		const rawText = line.replace(/^\[[^\]]+\]\s*/, '').trim();
+		const text = collapseRepeatedPhrases(cleanClipSpeechText(rawText));
+		if (!text) continue;
+		// Skip punctuation-only noise (>>, …, etc.)
+		if (!/[\p{L}\p{N}]/u.test(text)) continue;
+		const key = `${Math.floor(t * 10)}|${text.slice(0, 60)}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		const stamp = line.match(/^\[[^\]]+\]/)?.[0] ?? `[${formatTranscriptTimestamp(t)}]`;
+		lines.push(`${stamp} ${text}`);
+	}
+	return lines.join('\n');
 }
 
 export function transcriptCueStartsSec(transcript: string): number[] {

@@ -95,6 +95,28 @@ function carouselBodyFromSentences(sentences: string[]): string {
 	});
 }
 
+/** Ensure carousel body always has meaningful content, even with poor clip data. */
+function ensureCarouselBody(narrative: ReturnType<typeof clipNarrative>, sourceLabel: string): string {
+	// Try sentences first (best quality)
+	let body = carouselBodyFromSentences(narrative.sentences);
+	if (body) return body;
+	
+	// Try hook as single paragraph
+	if (narrative.hook) {
+		body = carouselBodyFromSentences([narrative.hook]);
+		if (body) return body;
+	}
+	
+	// Try headline as single paragraph
+	if (narrative.headline && !isMetaCopy(narrative.headline)) {
+		body = carouselBodyFromSentences([narrative.headline]);
+		if (body) return body;
+	}
+	
+	// Last resort: use source label
+	return carouselBodyFromSentences([sourceLabel]) || sourceLabel;
+}
+
 /** Template-specific copy — headlines and hooks, not raw caption dumps. */
 export function buildClipTemplateCopy(
 	clip: VideoClip,
@@ -122,10 +144,7 @@ export function buildClipTemplateCopy(
 	// Carousel: profile = clip topic, body = 2–3 clean sentences
 	const carouselName = clampText(narrative.headline, 48);
 	const carouselHandle = handleFromTitle(carouselName);
-	const carouselBody =
-		carouselBodyFromSentences(narrative.sentences) ||
-		carouselBodyFromSentences([narrative.hook]) ||
-		carouselBodyFromSentences([sourceLabel]);
+	const carouselBody = ensureCarouselBody(narrative, sourceLabel);
 
 	return {
 		newsHeadline,
@@ -144,9 +163,12 @@ export function buildClipTemplateCopy(
 export function clipDirectVideoUrl(source: VideoImportMeta): string {
 	const url = String(source.playbackUrl ?? '').trim();
 	if (!url) return '';
-	if (/youtube\.com\/embed|youtube-nocookie\.com\/embed/i.test(url)) return '';
-	if (!source.r2Key && !/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url)) return '';
-	return url;
+	if (/youtube\.com\/embed|youtube-nocookie\.com\/embed|youtu\.be\//i.test(url)) return '';
+	if (source.r2Key) return url;
+	if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url)) return url;
+	// Signed R2/S3 URLs often omit a file extension in the path
+	if (/^https?:\/\//i.test(url)) return url;
+	return '';
 }
 
 export function clipVideoMediaFragment(url: string, startSec: number, endSec: number): string {

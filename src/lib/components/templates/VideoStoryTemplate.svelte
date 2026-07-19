@@ -69,8 +69,8 @@
 		previewMode = false,
 	}: Props = $props();
 
-	const headlinePad = $derived(previewMode ? '28px 32px 16px' : '56px 48px 24px');
-	const videoPad = $derived(previewMode ? '8px 24px 48px' : '12px 40px 72px');
+	const headlinePad = $derived(previewMode ? '20px 28px 12px' : '40px 40px 20px');
+	const videoPad = $derived(previewMode ? '4px 20px 40px' : '8px 32px 60px');
 
 	const DEFAULT_VIDEO = VIDEO_STORY_DEFAULTS.videoUrl;
 

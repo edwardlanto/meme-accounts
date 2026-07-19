@@ -3,6 +3,61 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
+/** Prefer /all when searching — category + keyword work more reliably than top-only. */
+const THENEWSAPI_ALL = 'https://api.thenewsapi.com/v1/news/all';
+
+const THENEWS_CATEGORIES = new Set([
+	'general',
+	'science',
+	'sports',
+	'business',
+	'health',
+	'entertainment',
+	'tech',
+	'politics',
+	'food',
+	'travel',
+]);
+
+/** Map UI categories to TheNewsAPI-supported ids. */
+function normalizeNewsCategories(raw: unknown): string {
+	const parts = String(raw ?? '')
+		.split(',')
+		.map((s) => s.trim().toLowerCase())
+		.filter(Boolean)
+		.map((c) => (c === 'finance' ? 'business' : c))
+		.filter((c) => THENEWS_CATEGORIES.has(c));
+	return [...new Set(parts)].join(',') || 'business';
+}
+
+/** Some sources tag every story with many categories; prefer tighter matches. */
+function categoryFitScore(article: { categories?: unknown }, wantedCsv: string): number {
+	const wanted = wantedCsv.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+	const cats = Array.isArray(article.categories)
+		? article.categories.map((c) => String(c).toLowerCase())
+		: [];
+	if (!wanted.some((w) => cats.includes(w))) return -1;
+	// Prefer fewer tags (yahoo often dumps general+business+sports+entertainment on everything)
+	let score = 20 - Math.min(cats.length, 12);
+	if (cats.includes(wanted[0]!) && !cats.includes('general')) score += 4;
+	if (cats.length === 1) score += 6;
+	return score;
+}
+
+function pickNewsArticle(articles: any[], pick: string, wantedCsv: string) {
+	const ranked = articles
+		.map((a, i) => ({ a, i, score: categoryFitScore(a, wantedCsv) }))
+		.filter((x) => x.score >= 0)
+		.sort((x, y) => y.score - x.score || x.i - y.i);
+	const pool = ranked.length ? ranked.map((x) => x.a) : articles;
+	const topScore = ranked[0]?.score ?? -1;
+	const top = ranked.length
+		? ranked.filter((x) => x.score >= topScore - 2).map((x) => x.a)
+		: pool;
+	const from = top.length ? top : pool;
+	if (pick === 'random') return from[Math.floor(Math.random() * from.length)] ?? articles[0];
+	return from[0] ?? articles[0];
+}
 
 type ContentMode = 'news' | 'fact' | 'story' | 'quote';
 type SyntheticMode = 'fact' | 'story' | 'quote';
@@ -417,32 +472,65 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json(demoArticle(), { status: 200 });
 	}
 
-	const params = new URLSearchParams({
-		api_token: env.THENEWSAPI_TOKEN,
-		locale,
-		language,
-		limit: String(Math.min(50, limit)),
-		...(search ? { search } : {}),
-		...(categories ? { categories } : {}),
-	});
+	const categoryParam = normalizeNewsCategories(categories);
+	const searchTerm = typeof search === 'string' ? search.trim() : '';
+	const fetchLimit = Math.min(50, Math.max(10, Number(limit) || 10));
 
-	let articles: any[] = [];
-	try {
-		const res = await fetch(`${THENEWSAPI_BASE}?${params}`, {
+	async function fetchArticles(extra: Record<string, string>): Promise<any[]> {
+		const params = new URLSearchParams({
+			api_token: env.THENEWSAPI_TOKEN!,
+			locale,
+			language,
+			limit: String(fetchLimit),
+			categories: categoryParam,
+			...extra,
+		});
+		const endpoint = extra.search ? THENEWSAPI_ALL : THENEWSAPI_BASE;
+		const res = await fetch(`${endpoint}?${params}`, {
 			headers: { Accept: 'application/json' },
 		});
 		if (!res.ok) throw new Error(`TheNewsAPI ${res.status}`);
 		const data = await res.json();
-		articles = data?.data ?? [];
-	} catch (err: any) {
-		console.error('[api/news] fetch error', err.message);
-		return json(demoArticle(), { status: 200 });
+		return data?.data ?? [];
 	}
 
-	if (!articles.length) return json(demoArticle(), { status: 200 });
+	let articles: any[] = [];
+	try {
+		if (searchTerm) {
+			articles = await fetchArticles({
+				search: searchTerm,
+				search_fields: 'title,description,keywords,main_text',
+			});
+			// Empty keyword hits (typos like "alchohol") → still return category news
+			if (!articles.length) {
+				articles = await fetchArticles({});
+			}
+		} else {
+			articles = await fetchArticles({});
+		}
+	} catch (err: any) {
+		console.error('[api/news] fetch error', err.message);
+		return json(
+			{
+				error: `News fetch failed (${err.message}). Check THENEWSAPI_TOKEN and try again.`,
+				demo: true,
+			},
+			{ status: 502 },
+		);
+	}
 
-	const article =
-		pick === 'random' ? articles[Math.floor(Math.random() * articles.length)] : articles[0];
+	if (!articles.length) {
+		return json(
+			{
+				error: searchTerm
+					? `No ${categoryParam} articles found for “${searchTerm}”. Try another keyword or category.`
+					: `No articles found in category “${categoryParam}”.`,
+			},
+			{ status: 404 },
+		);
+	}
+
+	const article = pickNewsArticle(articles, pick, categoryParam);
 
 	let overlayText = article.title ?? '';
 
@@ -455,7 +543,9 @@ Rules:
 - Max 28 words total
 - ALL CAPS (the template will uppercase it, but write in caps anyway)
 - No hashtags, no emojis
-- Short, punchy sentences — prioritize impact over completeness
+- Short, punchy sentences
+- MUST END WITH A COMPLETE THOUGHT — do not cut off mid-sentence
+- If the full story won't fit in 28 words, write a shorter complete hook instead
 - Start with the most shocking/interesting fact
 
 Headline & snippet: "${snippet}"
@@ -465,7 +555,7 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 		const candidate = await openRouterComplete(
 			[{ role: 'user', content: rewritePrompt }],
 			0.8,
-			120,
+			150,
 		);
 		if (candidate) overlayText = candidate;
 

@@ -104,7 +104,7 @@
 		bgZoom?: number;      // default 100
 		/** `cover` = fill frame (may crop). `contain` = whole image visible (letterbox). */
 		bgFitMode?: 'cover' | 'contain';
-		/** In `contain` mode: scale % (50–200). 100 = largest fit without crop; >100 zooms in. */
+		/** In `contain` mode: scale % (50–400). 100 = largest fit without crop; >100 zooms in / extends past frame. */
 		bgContainMagnify?: number;
 		textPanelOffsetY?: number; // bottom text panel offset (bindable, px)
 		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 75. */
@@ -465,8 +465,9 @@
 	const bgShrunkLeftPct = $derived(bgIsShrunk ? bgOffsetX * (100 - bgZoomPct) / 100 : 0);
 	const bgShrunkTopPct = $derived(bgIsShrunk ? bgOffsetY * (100 - bgZoomPct) / 100 : 0);
 
+	/** Rendered image size at current bgContainMagnify (50–400%). */
 	const bgContainMagnifyPct = $derived(
-		Math.max(50, Math.min(200, Number(bgContainMagnify) || 100)),
+		Math.max(50, Math.min(400, Number(bgContainMagnify) || 100)),
 	);
 
 	// Contain-mode pan: bgOffsetX/Y are reused as the focal point (50 = center).
@@ -1127,7 +1128,7 @@
 		const proj = (nx * dx + ny * dy) / len;
 		// Scale change: how many pixels we moved relative to half-canvas width
 		const delta = (proj / (W * 0.5)) * bgResizeStartMagnify;
-		bgContainMagnify = Math.max(50, Math.min(200, Math.round(bgResizeStartMagnify + delta)));
+		bgContainMagnify = Math.max(50, Math.min(400, Math.round(bgResizeStartMagnify + delta)));
 	}
 
 	function bgHandlePointerUp() {
@@ -1227,7 +1228,7 @@
 		const factor = e.deltaY > 0 ? 0.94 : 1.06;
 		if (bgFitMode === 'contain') {
 			const cur = Number(bgContainMagnify) || 100;
-			bgContainMagnify = Math.round(Math.max(50, Math.min(200, cur * factor)));
+			bgContainMagnify = Math.round(Math.max(50, Math.min(400, cur * factor)));
 		} else {
 			const cur = Number(bgZoom) || 100;
 			bgZoom = Math.round(Math.max(30, Math.min(300, cur * factor)));

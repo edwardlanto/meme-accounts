@@ -15,6 +15,8 @@ supabase/
 2. Run each file **in order** (000 → 001 → ...)
 3. Each file is safe to re-run (uses `if not exists` / `on conflict do nothing`)
 
+Latest: `011_studio_assets.sql` — persistent custom image library for News Studio.
+
 ## Adding a new migration
 
 Name it `NNN_description.sql` where `NNN` is the next number in sequence.

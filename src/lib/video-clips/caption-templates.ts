@@ -1,0 +1,314 @@
+export type CaptionAnimation =
+	| 'none'
+	| 'pop'
+	| 'bounce'
+	| 'slide-up'
+	| 'fade'
+	| 'karaoke'
+	| 'word-reveal'
+	| 'zoom';
+
+export type CaptionTemplate = {
+	id: string;
+	name: string;
+	fontFamily: string;
+	fontSize: number;
+	fontWeight: number | string;
+	textColor: string;
+	textTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+	letterSpacing: string;
+	lineHeight: string;
+	textAlign: 'left' | 'center' | 'right';
+	backgroundColor: string;
+	padding: string;
+	borderRadius: string;
+	textStroke: boolean;
+	strokeWidth: number;
+	strokeColor: string;
+	textShadow: string;
+	maxWidth: string;
+	/** CapCut-style animation */
+	animation: CaptionAnimation;
+	/** Words per phrase (0 = keep original segments) */
+	wordsPerChunk: number;
+	/** Color for karaoke / active word */
+	highlightColor?: string;
+	/** Optional background color for active word */
+	highlightBg?: string;
+};
+
+export const CAPTION_TEMPLATES: CaptionTemplate[] = [
+	{
+		id: 'capcut-pop',
+		name: 'CapCut Pop',
+		fontFamily: '"Inter", -apple-system, system-ui, sans-serif',
+		fontSize: 40,
+		fontWeight: 900,
+		textColor: '#ffffff',
+		textTransform: 'uppercase',
+		letterSpacing: '-0.01em',
+		lineHeight: '1.15',
+		textAlign: 'center',
+		backgroundColor: 'transparent',
+		padding: '6px 12px',
+		borderRadius: '0',
+		textStroke: true,
+		strokeWidth: 4,
+		strokeColor: '#000000',
+		textShadow: '0 4px 12px rgba(0, 0, 0, 0.6)',
+		maxWidth: '88%',
+		animation: 'pop',
+		wordsPerChunk: 3,
+		highlightColor: '#ffeb3b',
+	},
+	{
+		id: 'karaoke-yellow',
+		name: 'Karaoke Highlight',
+		fontFamily: '"Inter", -apple-system, sans-serif',
+		fontSize: 38,
+		fontWeight: 900,
+		textColor: '#ffffff',
+		textTransform: 'uppercase',
+		letterSpacing: '0.01em',
+		lineHeight: '1.2',
+		textAlign: 'center',
+		backgroundColor: 'transparent',
+		padding: '8px 14px',
+		borderRadius: '0',
+		textStroke: true,
+		strokeWidth: 3,
+		strokeColor: '#000000',
+		textShadow: '0 4px 10px rgba(0, 0, 0, 0.7)',
+		maxWidth: '90%',
+		animation: 'karaoke',
+		wordsPerChunk: 5,
+		highlightColor: '#ffeb3b',
+	},
+	{
+		id: 'bounce-word',
+		name: 'Bounce Word',
+		fontFamily: '"Poppins", "Inter", sans-serif',
+		fontSize: 44,
+		fontWeight: 900,
+		textColor: '#ffffff',
+		textTransform: 'uppercase',
+		letterSpacing: '0',
+		lineHeight: '1.1',
+		textAlign: 'center',
+		backgroundColor: 'transparent',
+		padding: '6px 12px',
+		borderRadius: '0',
+		textStroke: true,
+		strokeWidth: 5,
+		strokeColor: '#000000',
+		textShadow: '0 6px 14px rgba(0, 0, 0, 0.8)',
+		maxWidth: '85%',
+		animation: 'bounce',
+		wordsPerChunk: 1,
+		highlightColor: '#00ff88',
+	},
+	{
+		id: 'reveal-typewriter',
+		name: 'Word Reveal',
+		fontFamily: '"Inter", -apple-system, sans-serif',
+		fontSize: 34,
+		fontWeight: 800,
+		textColor: '#ffffff',
+		textTransform: 'none',
+		letterSpacing: '-0.01em',
+		lineHeight: '1.3',
+		textAlign: 'center',
+		backgroundColor: 'rgba(0, 0, 0, 0.65)',
+		padding: '10px 20px',
+		borderRadius: '12px',
+		textStroke: false,
+		strokeWidth: 0,
+		strokeColor: '#000000',
+		textShadow: '0 2px 6px rgba(0, 0, 0, 0.5)',
+		maxWidth: '85%',
+		animation: 'word-reveal',
+		wordsPerChunk: 4,
+	},
+	{
+		id: 'slide-neon',
+		name: 'Neon Slide',
+		fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+		fontSize: 36,
+		fontWeight: 800,
+		textColor: '#00ff88',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		lineHeight: '1.2',
+		textAlign: 'center',
+		backgroundColor: 'rgba(0, 0, 0, 0.7)',
+		padding: '10px 18px',
+		borderRadius: '8px',
+		textStroke: false,
+		strokeWidth: 0,
+		strokeColor: '#000000',
+		textShadow: '0 0 20px rgba(0, 255, 136, 0.8), 0 0 40px rgba(0, 255, 136, 0.4)',
+		maxWidth: '88%',
+		animation: 'slide-up',
+		wordsPerChunk: 3,
+	},
+	{
+		id: 'zoom-impact',
+		name: 'MrBeast Zoom',
+		fontFamily: '"Impact", "Haettenschweiler", "Arial Black", sans-serif',
+		fontSize: 52,
+		fontWeight: 900,
+		textColor: '#ffff00',
+		textTransform: 'uppercase',
+		letterSpacing: '0.02em',
+		lineHeight: '1.05',
+		textAlign: 'center',
+		backgroundColor: 'transparent',
+		padding: '4px 8px',
+		borderRadius: '0',
+		textStroke: true,
+		strokeWidth: 6,
+		strokeColor: '#000000',
+		textShadow: '0 6px 16px rgba(0, 0, 0, 0.9)',
+		maxWidth: '88%',
+		animation: 'zoom',
+		wordsPerChunk: 2,
+		highlightColor: '#ff3366',
+	},
+	{
+		id: 'tiktok-hype',
+		name: 'TikTok Hype',
+		fontFamily: '"SF Pro Display", -apple-system, system-ui, sans-serif',
+		fontSize: 42,
+		fontWeight: 900,
+		textColor: '#ffffff',
+		textTransform: 'uppercase',
+		letterSpacing: '-0.02em',
+		lineHeight: '1.15',
+		textAlign: 'center',
+		backgroundColor: 'transparent',
+		padding: '6px 12px',
+		borderRadius: '0',
+		textStroke: true,
+		strokeWidth: 3,
+		strokeColor: '#000000',
+		textShadow: '3px 3px 0px rgba(0, 0, 0, 0.9)',
+		maxWidth: '90%',
+		animation: 'pop',
+		wordsPerChunk: 2,
+		highlightColor: '#ff3366',
+		highlightBg: '#ffffff',
+	},
+	{
+		id: 'clean-modern',
+		name: 'Clean Modern',
+		fontFamily: '"Inter", -apple-system, sans-serif',
+		fontSize: 30,
+		fontWeight: 700,
+		textColor: '#ffffff',
+		textTransform: 'none',
+		letterSpacing: '-0.01em',
+		lineHeight: '1.35',
+		textAlign: 'center',
+		backgroundColor: 'rgba(0, 0, 0, 0.55)',
+		padding: '10px 18px',
+		borderRadius: '8px',
+		textStroke: false,
+		strokeWidth: 0,
+		strokeColor: '#000000',
+		textShadow: '0 2px 6px rgba(0, 0, 0, 0.4)',
+		maxWidth: '85%',
+		animation: 'fade',
+		wordsPerChunk: 4,
+	},
+	{
+		id: 'boxed-white',
+		name: 'Boxed White',
+		fontFamily: '"Arial", "Helvetica", sans-serif',
+		fontSize: 28,
+		fontWeight: 700,
+		textColor: '#1a1a1a',
+		textTransform: 'none',
+		letterSpacing: '-0.01em',
+		lineHeight: '1.35',
+		textAlign: 'center',
+		backgroundColor: '#ffffff',
+		padding: '12px 22px',
+		borderRadius: '10px',
+		textStroke: false,
+		strokeWidth: 0,
+		strokeColor: '#000000',
+		textShadow: 'none',
+		maxWidth: '82%',
+		animation: 'fade',
+		wordsPerChunk: 4,
+		highlightColor: '#ff3366',
+	},
+	{
+		id: 'dramatic',
+		name: 'Dramatic',
+		fontFamily: '"Bebas Neue", Impact, sans-serif',
+		fontSize: 54,
+		fontWeight: 900,
+		textColor: '#ff3366',
+		textTransform: 'uppercase',
+		letterSpacing: '0.08em',
+		lineHeight: '1.1',
+		textAlign: 'center',
+		backgroundColor: 'transparent',
+		padding: '6px 12px',
+		borderRadius: '0',
+		textStroke: true,
+		strokeWidth: 3,
+		strokeColor: '#ffffff',
+		textShadow: '0 6px 16px rgba(0, 0, 0, 0.9)',
+		maxWidth: '88%',
+		animation: 'zoom',
+		wordsPerChunk: 1,
+	},
+	{
+		id: 'subtitle-classic',
+		name: 'Classic Subtitle',
+		fontFamily: 'Arial, Helvetica, sans-serif',
+		fontSize: 24,
+		fontWeight: 700,
+		textColor: '#ffffff',
+		textTransform: 'none',
+		letterSpacing: '0',
+		lineHeight: '1.4',
+		textAlign: 'center',
+		backgroundColor: 'rgba(0, 0, 0, 0.85)',
+		padding: '8px 18px',
+		borderRadius: '4px',
+		textStroke: false,
+		strokeWidth: 0,
+		strokeColor: '#000000',
+		textShadow: '1px 1px 2px rgba(0, 0, 0, 0.8)',
+		maxWidth: '92%',
+		animation: 'fade',
+		wordsPerChunk: 0,
+	},
+];
+
+export function getCaptionTemplate(id: string): CaptionTemplate {
+	return CAPTION_TEMPLATES.find((t) => t.id === id) ?? CAPTION_TEMPLATES[0]!;
+}
+
+export const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
+	{ value: 'pop', label: 'Pop' },
+	{ value: 'bounce', label: 'Bounce' },
+	{ value: 'slide-up', label: 'Slide Up' },
+	{ value: 'zoom', label: 'Zoom' },
+	{ value: 'karaoke', label: 'Karaoke' },
+	{ value: 'word-reveal', label: 'Word Reveal' },
+	{ value: 'fade', label: 'Fade' },
+	{ value: 'none', label: 'None' },
+];
+
+export const CHUNK_SIZE_OPTIONS: { value: number; label: string }[] = [
+	{ value: 1, label: '1 word' },
+	{ value: 2, label: '2 words' },
+	{ value: 3, label: '3 words' },
+	{ value: 4, label: '4 words' },
+	{ value: 5, label: '5 words' },
+	{ value: 0, label: 'Full line' },
+];

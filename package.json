@@ -8,6 +8,7 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"worker:scheduler": "tsx ./src/worker/scheduler-worker.ts",
+		"whisper:download": "bash ./scripts/download-whisper-model.sh",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"

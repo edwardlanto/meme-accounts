@@ -27,7 +27,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 	{
 		id: 'news',
 		name: 'News Studio',
-		description: 'AI writes the copy, Vertex generates the images',
+		description: 'AI writes the copy, Fal generates the images',
 		href: '/dashboard/studio?template=news',
 		previewBg: '/placeholders/carousel/news-template-placeholder.png',
 		previewText: 'YOUR HEADLINE WILL APPEAR HERE',
