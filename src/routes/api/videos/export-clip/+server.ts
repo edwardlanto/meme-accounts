@@ -16,6 +16,15 @@ const schema = z.object({
 	startSec: z.number().min(0),
 	endSec: z.number().min(0.5),
 	filename: z.string().max(200).optional(),
+	speechWindows: z
+		.array(
+			z.object({
+				startSec: z.number().min(0),
+				endSec: z.number().min(0),
+			}),
+		)
+		.max(40)
+		.optional(),
 });
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -25,7 +34,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const parsed = await parseJsonBody(request, schema);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
-	const { r2Key, startSec, endSec, filename } = parsed.data;
+	const { r2Key, startSec, endSec, filename, speechWindows } = parsed.data;
 	if (!isValidOwnerR2Key(user.id, r2Key)) {
 		return json({ error: 'Invalid video key' }, { status: 403 });
 	}
@@ -53,6 +62,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				outputPath,
 				startSec,
 				endSec,
+				speechWindows,
 			});
 
 			return readFile(outputPath);

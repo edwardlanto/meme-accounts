@@ -54,7 +54,13 @@
 	};
 
 	const textColor = $derived(customColor || template.textColor);
-	const bgColor = $derived(customBgColor || template.backgroundColor);
+	/** Never treat missing/transparent as a solid fill — that accidentally boxes every word. */
+	const bgColor = $derived.by(() => {
+		const raw = (customBgColor ?? template.backgroundColor ?? 'transparent').trim();
+		if (!raw || raw === 'transparent' || raw === 'none') return 'transparent';
+		return raw;
+	});
+	const hasPhraseBox = $derived(bgColor !== 'transparent');
 	const fontSize = $derived(customFontSize || template.fontSize);
 	const highlight = $derived(customHighlightColor || template.highlightColor || '#ffeb3b');
 	const animation = $derived(animationOverride ?? template.animation);
@@ -125,6 +131,7 @@
 		{#key phraseKey}
 			<div
 				class="caption-text anim-{animation}"
+				class:caption-text-boxed={hasPhraseBox}
 				style="
 					font-family: {template.fontFamily};
 					font-size: {fontSize}px;
@@ -135,8 +142,8 @@
 					line-height: {template.lineHeight};
 					text-align: {template.textAlign};
 					background: {bgColor};
-					padding: {template.padding};
-					border-radius: {template.borderRadius};
+					padding: {hasPhraseBox ? template.padding : '0'};
+					border-radius: {hasPhraseBox ? template.borderRadius : '0'};
 					{textStrokeStyle(template)}
 					max-width: {template.maxWidth};
 				"
@@ -144,18 +151,25 @@
 				{#each phrase.words as word, i (i)}
 					{@const isActive = i === activeWordIndex}
 					{@const isPast = i < activeWordIndex}
+					{@const isKeyword = !!word.keyword}
 					<span
 						class="caption-word"
 						class:active={isActive}
 						class:past={isPast}
+						class:keyword={isKeyword}
 						style="
 							--i: {i};
 							--delay: {i * 0.06}s;
 							{animation === 'karaoke' && isActive ? `color: ${highlight};` : ''}
-							{animation === 'karaoke' && isActive && template.highlightBg ? `background: ${template.highlightBg}; padding: 0 6px; border-radius: 4px;` : ''}
+							{animation === 'karaoke' && isActive && template.highlightBg
+								? `background: ${template.highlightBg}; color: #111; padding: 0 6px; border-radius: 4px;`
+								: ''}
 							{animation === 'word-reveal' && !isActive && !isPast ? 'opacity: 0.15;' : ''}
 							{animation === 'bounce' && isActive ? `color: ${highlight};` : ''}
 							{animation === 'zoom' && isActive ? `color: ${highlight}; display: inline-block; transform: scale(1.15);` : ''}
+							{isKeyword && !isActive
+								? `color: ${highlight};`
+								: ''}
 						"
 					>
 						{word.text}{#if i < phrase.words.length - 1}&nbsp;{/if}
@@ -194,6 +208,10 @@
 		white-space: pre-wrap;
 		max-width: 95%;
 		user-select: none;
+	}
+
+	.caption-text-boxed {
+		/* padding/background come from inline styles when a real fill is set */
 	}
 
 	.caption-word {

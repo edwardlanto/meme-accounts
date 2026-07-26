@@ -3,13 +3,14 @@
 	import { supabase } from '$lib/supabase';
 	import { r2UploadVideo } from '$lib/r2Client';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
-	import { formatClipDuration, formatTimestamp } from '$lib/video-clips/export-clip';
-	import { clipDisplayQuote, buildClipTemplateCopy, clipDirectVideoUrl } from '$lib/video-clips/clip-template-copy';
+	import { formatTimestamp } from '$lib/video-clips/export-clip';
+	import { buildClipTemplateCopy, clipDirectVideoUrl } from '$lib/video-clips/clip-template-copy';
 	import { cleanClipSpeechText, hasTimedTranscript, excerptTimedLinesFromTranscript } from '$lib/video-clips/transcript-segments';
 	import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 	import ClipTemplatePreviews from '$lib/components/video-clips/ClipTemplatePreviews.svelte';
-	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
+	import ClipFeedCard from '$lib/components/video-clips/ClipFeedCard.svelte';
 	import VideoCaptionControls from '$lib/components/video-clips/VideoCaptionControls.svelte';
+	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
 	import { getCaptionTemplate, type CaptionAnimation } from '$lib/video-clips/caption-templates';
 	import {
 		parseTimedTranscriptToSegments,
@@ -26,32 +27,70 @@
 	import {
 		stashStudioClipImport,
 		studioUrlForClipImport,
+		type StudioClipCaptionImport,
 	} from '$lib/studio/clip-import';
-	import { STUDIO_TEMPLATES, coerceTemplateId } from '$lib/studio/template-ids';
+	import { coerceTemplateId } from '$lib/studio/template-ids';
+	import { r2SignRead } from '$lib/r2Client';
+	import {
+		saveVideoSession,
+		loadVideoSession,
+		clearVideoSession,
+		saveVideoFormPrefs,
+		loadVideoFormPrefs,
+		markVideoSessionForResume,
+		shouldAutoRestoreVideoSession,
+		migrateAwayFromLocalVideoSession,
+		type VideoWorkflowStep,
+	} from '$lib/video-clips/session-cache';
+	import {
+		CLIP_LENGTH_PRESETS,
+		VIDEO_ASPECT_RATIOS,
+		VIDEO_LAYOUT_TEMPLATES,
+		applyClipLengthPreset,
+		clipLengthPresetFromRange,
+		videoAspectById,
+		type ClipLengthPresetId,
+		type VideoAspectRatioId,
+		type VideoLayoutId,
+	} from '$lib/video-clips/clip-presets';
+	import {
+		DEFAULT_CAPTION_ENHANCE,
+		enhanceCaptionSegments,
+		enhancePhrases,
+		speechWindows,
+		type CaptionEnhanceOptions,
+	} from '$lib/video-clips/caption-enhance';
 	import {
 		Link2,
 		Upload,
 		Sparkles,
-		Play,
-		Download,
 		Loader,
 		Scissors,
 		Tv,
 		Film,
-		ChevronRight,
 		Zap,
 		FileVideo,
 		AlertCircle,
-		CheckCircle2,
 		RotateCcw,
 		Volume2,
 		VolumeX,
+		ChevronDown,
+		Check,
+		ArrowRight,
+		ArrowLeft,
 	} from 'lucide-svelte';
 
 	type Phase = 'idle' | 'importing' | 'downloading' | 'analyzing' | 'ready' | 'exporting';
 
+	const WORKFLOW_STEPS: { id: VideoWorkflowStep; label: string; hint: string }[] = [
+		{ id: 'source', label: 'Video', hint: 'Import' },
+		{ id: 'captions', label: 'Captions', hint: 'Style & edit' },
+		{ id: 'clips', label: 'Clips', hint: 'Review & export' },
+	];
+
 	let userId = $state('');
 	let phase = $state<Phase>('idle');
+	let workflowStep = $state<VideoWorkflowStep>('source');
 	let error = $state('');
 	let toolsWarning = $state('');
 	let ytDlpReady = $state(false);
@@ -67,6 +106,9 @@
 	let uploadProgress = $state(0);
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let playerVideo = $state<HTMLVideoElement | null>(null);
+	let captionsPreviewVideo = $state<HTMLVideoElement | null>(null);
+	/** Pause sibling clip players when one starts */
+	const clipVideoEls = new Map<string, HTMLVideoElement>();
 	let importTab = $state<'youtube' | 'upload'>('youtube');
 	let isDragging = $state(false);
 	let processingHint = $state('');
@@ -101,6 +143,16 @@
 	let clipCount = $state(8);
 	let clipMinSec = $state(10);
 	let clipMaxSec = $state(60);
+	let clipLengthPreset = $state<ClipLengthPresetId>('30to60');
+	let videoAspectRatio = $state<VideoAspectRatioId>('9:16');
+	let clipLayout = $state<VideoLayoutId>('fit');
+	let lengthMenuOpen = $state(false);
+	let ratioMenuOpen = $state(false);
+	let captionEnhance = $state<CaptionEnhanceOptions>({ ...DEFAULT_CAPTION_ENHANCE });
+	/** Optional session the user can resume manually (not auto-loaded on login). */
+	let resumableSession = $state<{ title: string; clipCount: number } | null>(null);
+	/** Gate persistence until cached session/prefs are loaded (avoids overwriting on boot). */
+	let sessionHydrated = $state(false);
 
 	// Caption state — CapCut-style chunked captions
 	let captionEnabled = $state(false);
@@ -129,9 +181,11 @@
 	let captionPhrasesRef: CaptionPhrase[] = [];
 
 	function toggleVideoMuted() {
-		const v = playerVideo;
 		videoMuted = !videoMuted;
-		if (v) v.muted = videoMuted;
+		for (const v of clipVideoEls.values()) {
+			v.muted = videoMuted;
+		}
+		if (playerVideo) playerVideo.muted = videoMuted;
 	}
 
 	function seekCaptionTo(sec: number) {
@@ -142,10 +196,10 @@
 		void v.play().catch(() => {});
 	}
 
-	function buildCaptionSegmentsForClip(): CaptionSegment[] {
-		const clip = selectedClip;
+	function buildCaptionSegmentsForClip(clip: VideoClip | null | undefined): CaptionSegment[] {
 		if (!clip) return [];
 
+		let segments: CaptionSegment[] = [];
 		const fullTimed = source?.transcript;
 		if (fullTimed && hasTimedTranscript(fullTimed)) {
 			const timedExcerpt = excerptTimedLinesFromTranscript(
@@ -154,29 +208,146 @@
 				clip.endSec,
 			);
 			if (timedExcerpt.trim()) {
-				return dedupeAdjacentSegments(parseTimedTranscriptToSegments(timedExcerpt));
+				segments = dedupeAdjacentSegments(parseTimedTranscriptToSegments(timedExcerpt));
 			}
 		}
 
-		const transcript = clip.transcript;
-		if (!transcript) return [];
+		if (!segments.length) {
+			const transcript = clip.transcript;
+			if (!transcript) return [];
 
-		if (hasTimedTranscript(transcript)) {
-			return dedupeAdjacentSegments(parseTimedTranscriptToSegments(transcript));
+			if (hasTimedTranscript(transcript)) {
+				segments = dedupeAdjacentSegments(parseTimedTranscriptToSegments(transcript));
+			} else {
+				const duration = clip.endSec - clip.startSec;
+				segments = dedupeAdjacentSegments(
+					parseUntimedTranscriptToSegments(transcript, clip.startSec, duration),
+				);
+			}
 		}
-		const duration = clip.endSec - clip.startSec;
-		return dedupeAdjacentSegments(
-			parseUntimedTranscriptToSegments(transcript, clip.startSec, duration),
-		);
+
+		return enhanceCaptionSegments(segments, captionEnhance);
+	}
+
+	const selectedClip = $derived(clips.find((c) => c.id === selectedClipId) ?? clips[0] ?? null);
+
+	function buildCaptionImportForClip(clip: VideoClip): StudioClipCaptionImport | null {
+		if (!captionEnabled) return null;
+		const segments =
+			clip.id === selectedClip?.id && captionSegments.length
+				? captionSegments
+				: buildCaptionSegmentsForClip(clip);
+		if (!segments.length) return null;
+		return {
+			enabled: true,
+			segments,
+			templateId: captionTemplateId,
+			fontSize: captionFontSize,
+			position: captionPosition,
+			customColor: captionCustomColor,
+			customBgColor: captionCustomBgColor,
+			customHighlightColor: captionCustomHighlightColor,
+			selectedFont: captionSelectedFont,
+			strokeEnabled: captionStrokeEnabled,
+			animationOverride: captionAnimationOverride,
+			wordsPerChunk: captionChunkOverride,
+			customX: captionCustomX,
+			customY: captionCustomY,
+		};
 	}
 
 	function resetCaptionEdits() {
-		captionSegments = buildCaptionSegmentsForClip();
+		captionSegments = buildCaptionSegmentsForClip(selectedClip);
 	}
 
-	function openClipInStudio(clip: VideoClip, templateRaw: string = 'videoStory') {
+	const captionTemplate = $derived(getCaptionTemplate(captionTemplateId));
+	const hasTranscriptForCaptions = $derived(
+		!!(
+			(source?.transcript && source.transcript.trim()) ||
+			clips.some((c) => !!(c.transcript && c.transcript.trim()))
+		),
+	);
+	const workflowStepIndex = $derived(
+		WORKFLOW_STEPS.findIndex((s) => s.id === workflowStep),
+	);
+
+	function enterCaptionsStep() {
+		phase = 'ready';
+		workflowStep = 'captions';
+		const hasTx = !!(
+			source?.transcript?.trim() ||
+			clips.some((c) => !!(c.transcript && c.transcript.trim()))
+		);
+		if (hasTx) captionEnabled = true;
+		const clip = clips[0];
+		if (clip) selectedClipId = clip.id;
+	}
+
+	function goToClipsStep() {
+		if (!source || !clips.length) return;
+		workflowStep = 'clips';
+		persistSession();
+	}
+
+	function goToCaptionsStep() {
+		if (!source || !clips.length) return;
+		if (phase !== 'ready' && phase !== 'exporting') return;
+		workflowStep = 'captions';
+		persistSession();
+	}
+
+	function setWorkflowStep(step: VideoWorkflowStep) {
+		if (step === 'source') {
+			chooseAnotherVideo();
+			return;
+		}
+		if (!source || !clips.length) return;
+		if (phase !== 'ready' && phase !== 'exporting') return;
+		workflowStep = step;
+		persistSession();
+	}
+
+	function onCaptionsPreviewReady(el: HTMLVideoElement) {
+		captionsPreviewVideo = el;
+		playerVideo = el;
+		const clip = selectedClip;
+		if (clip) {
+			el.currentTime = clip.startSec;
+		}
+		syncClipsToPlayerDuration(el);
+	}
+
+	function onCaptionsPreviewTimeUpdate() {
+		const v = captionsPreviewVideo;
+		const clip = selectedClip;
+		if (!v || !clip) return;
+		playerVideo = v;
+		if (v.currentTime < clip.startSec - 0.05) v.currentTime = clip.startSec;
+		if (v.currentTime >= clip.endSec - 0.05) {
+			v.pause();
+			v.currentTime = clip.startSec;
+		}
+		if (!captionEnabled) videoCurrentTime = v.currentTime;
+	}
+
+	function playCaptionsPreview() {
+		const v = captionsPreviewVideo;
+		const clip = selectedClip;
+		if (!v || !clip) return;
+		playerVideo = v;
+		if (v.currentTime < clip.startSec || v.currentTime >= clip.endSec - 0.05) {
+			v.currentTime = clip.startSec;
+		}
+		void v.play().catch(() => {});
+	}
+
+	function openClipInStudio(clip: VideoClip, templateRaw: string = 'videoFit') {
 		if (!source) return;
-		const template = coerceTemplateId(templateRaw);
+		const preferred =
+			templateRaw ||
+			VIDEO_LAYOUT_TEMPLATES.find((l) => l.id === clipLayout)?.studioId ||
+			'videoFit';
+		const template = coerceTemplateId(preferred);
 		const directVideo = clipDirectVideoUrl(source);
 		const videoUrl = directVideo || String(source.playbackUrl ?? '').trim();
 		const looksYoutube = /youtube\.com\/embed|youtu\.be\//i.test(videoUrl);
@@ -200,6 +371,7 @@
 				carouselName: copy.carouselName,
 				carouselHandle: copy.carouselHandle,
 				carouselBody: copy.carouselBody,
+				captions: buildCaptionImportForClip(clip),
 			});
 		} else {
 			console.warn('[videos] Open in Studio: no direct video URL', {
@@ -207,6 +379,8 @@
 				r2Key: !!source.r2Key,
 			});
 		}
+		persistSession();
+		markVideoSessionForResume();
 		window.location.href = studioUrlForClipImport(template);
 	}
 
@@ -215,8 +389,10 @@
 		captionCustomY = y;
 	}
 
-	const selectedClip = $derived(clips.find((c) => c.id === selectedClipId) ?? clips[0] ?? null);
 	const hasStoredVideo = $derived(!!source?.r2Key);
+	const captionImportPayload = $derived(
+		selectedClip ? buildCaptionImportForClip(selectedClip) : null,
+	);
 	const isBusy = $derived(
 		phase === 'analyzing' || phase === 'importing' || phase === 'downloading',
 	);
@@ -230,35 +406,49 @@
 				: `${clipMaxSec}s`,
 	);
 
+	const clipLengthLabel = $derived(
+		CLIP_LENGTH_PRESETS.find((p) => p.id === clipLengthPreset)?.label ?? 'Any length',
+	);
+	const aspectMeta = $derived(videoAspectById(videoAspectRatio));
+
+	function setClipLengthPreset(id: ClipLengthPresetId) {
+		clipLengthPreset = id;
+		const { minSec, maxSec } = applyClipLengthPreset(id);
+		clipMinSec = minSec;
+		clipMaxSec = maxSec;
+		lengthMenuOpen = false;
+	}
+
 	$effect(() => {
 		if (clipMaxSec < clipMinSec) clipMaxSec = clipMinSec;
 	});
 
-	function scoreColor(score: number) {
-		if (score >= 80) return '#22c55e';
-		if (score >= 60) return '#f59e0b';
-		if (score >= 40) return '#f97316';
-		return '#ef4444';
+	function registerClipVideo(clipId: string, el: HTMLVideoElement) {
+		clipVideoEls.set(clipId, el);
+		if (clipId === selectedClipId) playerVideo = el;
+		syncClipsToPlayerDuration(el);
+	}
+
+	function pauseOtherClipVideos(except: HTMLVideoElement | null) {
+		for (const el of clipVideoEls.values()) {
+			if (el !== except && !el.paused) el.pause();
+		}
 	}
 
 	function playClipSegment(clip: VideoClip) {
-		const v = playerVideo;
+		const v = clipVideoEls.get(clip.id) ?? playerVideo;
 		if (!v) return;
+		playerVideo = v;
+		pauseOtherClipVideos(v);
 		v.currentTime = clip.startSec;
 		void v.play().catch(() => {});
 	}
 
-	function onPlayerTimeUpdate() {
-		const v = playerVideo;
-		const clip = selectedClip;
-		if (!v || !clip) return;
-		// When captions are on, rAF owns currentTime for snappy karaoke — avoid double state writes
+	function onClipCardTimeUpdate(t: number, el: HTMLVideoElement) {
+		if (selectedClipId && clipVideoEls.get(selectedClipId) !== el && el !== playerVideo) return;
+		playerVideo = el;
 		if (!captionEnabled) {
-			videoCurrentTime = v.currentTime;
-		}
-		if (v.currentTime >= clip.endSec - 0.08) {
-			v.pause();
-			v.currentTime = clip.startSec;
+			videoCurrentTime = t;
 		}
 	}
 
@@ -313,16 +503,34 @@
 		}
 	}
 
-	function selectClip(clip: VideoClip) {
+	function selectClip(clip: VideoClip, opts: { play?: boolean } = {}) {
 		selectedClipId = clip.id;
-		playClipSegment(clip);
+		const el = clipVideoEls.get(clip.id) ?? (workflowStep === 'captions' ? captionsPreviewVideo : null);
+		if (el) {
+			playerVideo = el;
+			if (workflowStep === 'captions') {
+				el.currentTime = clip.startSec;
+				videoCurrentTime = clip.startSec;
+			}
+		}
+		if (opts.play !== false && workflowStep === 'clips') playClipSegment(clip);
+		requestAnimationFrame(() => {
+			document.getElementById(`clip-card-${clip.id}`)?.scrollIntoView({
+				behavior: 'smooth',
+				block: 'nearest',
+			});
+			document.getElementById(`clip-nav-${clip.id}`)?.scrollIntoView({
+				behavior: 'smooth',
+				block: 'nearest',
+			});
+		});
 	}
 
 	$effect(() => {
 		const clip = selectedClip;
-		const v = playerVideo;
-		if (!clip || !v || phase !== 'ready') return;
-		if (v.readyState >= 1) playClipSegment(clip);
+		if (!clip || phase !== 'ready') return;
+		const v = clipVideoEls.get(clip.id);
+		if (v) playerVideo = v;
 	});
 
 	$effect(() => {
@@ -333,11 +541,17 @@
 			return;
 		}
 
-		// Only rebuild when the clip / source transcript changes — preserve user edits otherwise
-		const key = `${clip.id}|${clip.startSec}|${clip.endSec}|${source?.transcript?.length ?? 0}|${clip.transcript?.length ?? 0}`;
+		// Rebuild when clip, transcript, or enhance toggles change
+		const enhKey = [
+			captionEnhance.addEmojis,
+			captionEnhance.highlightKeywords,
+			captionEnhance.autoCensor,
+			captionEnhance.removeSilences,
+		].join(',');
+		const key = `${clip.id}|${clip.startSec}|${clip.endSec}|${source?.transcript?.length ?? 0}|${clip.transcript?.length ?? 0}|${enhKey}`;
 		if (key === captionSegmentsKey) return;
 		captionSegmentsKey = key;
-		captionSegments = buildCaptionSegmentsForClip();
+		captionSegments = buildCaptionSegmentsForClip(selectedClip);
 	});
 
 	$effect(() => {
@@ -348,7 +562,7 @@
 		}
 		const tpl = getCaptionTemplate(captionTemplateId);
 		const chunkSize = captionChunkOverride ?? tpl.wordsPerChunk;
-		const phrases = segmentsToPhrases(captionSegments, chunkSize);
+		const phrases = enhancePhrases(segmentsToPhrases(captionSegments, chunkSize), captionEnhance);
 		captionPhrases = phrases;
 		captionPhrasesRef = phrases;
 	});
@@ -364,6 +578,139 @@
 				? { clipCount: Math.max(1, Math.min(40, Math.round(Number(clipCount)) || 1)) }
 				: {}),
 		};
+	}
+
+	function persistFormPrefs() {
+		if (!sessionHydrated) return;
+		saveVideoFormPrefs({
+			youtubeUrl,
+			topicHint,
+			importTab,
+			clipMode,
+			clipCount,
+			clipMinSec,
+			clipMaxSec,
+			videoAspectRatio,
+			clipLayout,
+		});
+	}
+
+	function persistSession() {
+		if (!sessionHydrated) return;
+		if (phase !== 'ready' || !source || !clips.length) return;
+		saveVideoSession({
+			youtubeUrl,
+			topicHint,
+			importTab,
+			clipMode,
+			clipCount,
+			clipMinSec,
+			clipMaxSec,
+			source,
+			clips,
+			summary,
+			demo,
+			model,
+			selectedClipId,
+			workflowStep: workflowStep === 'source' ? 'captions' : workflowStep,
+		});
+		persistFormPrefs();
+	}
+
+	async function refreshPlaybackUrlIfNeeded(meta: VideoImportMeta): Promise<VideoImportMeta> {
+		const key = String(meta.r2Key ?? '').trim();
+		if (!key) return meta;
+		try {
+			const { url } = await r2SignRead({ key });
+			if (url?.trim()) return { ...meta, playbackUrl: url.trim() };
+		} catch (e) {
+			console.warn('[videos] could not refresh signed playback URL', e);
+		}
+		return meta;
+	}
+
+	async function applyCachedSession(cached: NonNullable<ReturnType<typeof loadVideoSession>>) {
+		youtubeUrl = cached.youtubeUrl || youtubeUrl;
+		topicHint = cached.topicHint || topicHint;
+		importTab = cached.importTab === 'upload' ? 'upload' : 'youtube';
+		clipMode = cached.clipMode === 'all' ? 'all' : 'highlights';
+		clipCount = Math.max(1, Math.min(40, Number(cached.clipCount) || clipCount));
+		clipMinSec = Math.max(5, Number(cached.clipMinSec) || clipMinSec);
+		clipMaxSec = Math.max(clipMinSec, Number(cached.clipMaxSec) || clipMaxSec);
+		clipLengthPreset = clipLengthPresetFromRange(clipMinSec, clipMaxSec);
+
+		source = await refreshPlaybackUrlIfNeeded(cached.source);
+		clips = normalizeVideoClips(
+			cached.clips,
+			source.durationSec || 1,
+			clipMinSec,
+			clipMaxSec,
+		);
+		summary = cached.summary ?? '';
+		demo = !!cached.demo;
+		model = cached.model ?? '';
+		selectedClipId =
+			cached.selectedClipId && clips.some((c) => c.id === cached.selectedClipId)
+				? cached.selectedClipId
+				: (clips[0]?.id ?? null);
+		phase = 'ready';
+		workflowStep =
+			cached.workflowStep === 'captions' || cached.workflowStep === 'clips'
+				? cached.workflowStep
+				: 'clips';
+		resumableSession = null;
+	}
+
+	async function restoreCachedSession() {
+		migrateAwayFromLocalVideoSession();
+
+		const prefs = loadVideoFormPrefs();
+		if (prefs) {
+			youtubeUrl = prefs.youtubeUrl ?? '';
+			topicHint = prefs.topicHint ?? '';
+			importTab = prefs.importTab === 'upload' ? 'upload' : 'youtube';
+			clipMode = prefs.clipMode === 'all' ? 'all' : 'highlights';
+			clipCount = Math.max(1, Math.min(40, Number(prefs.clipCount) || 8));
+			clipMinSec = Math.max(5, Number(prefs.clipMinSec) || 10);
+			clipMaxSec = Math.max(clipMinSec, Number(prefs.clipMaxSec) || 60);
+			clipLengthPreset = clipLengthPresetFromRange(clipMinSec, clipMaxSec);
+			const ar = String(prefs.videoAspectRatio ?? '');
+			if (ar === '9:16' || ar === '1:1' || ar === '16:9') videoAspectRatio = ar;
+			const lay = String(prefs.clipLayout ?? '');
+			if (lay === 'fit' || lay === 'blur' || lay === 'story') clipLayout = lay;
+		}
+
+		const cached = loadVideoSession();
+		if (!cached) {
+			resumableSession = null;
+			return;
+		}
+
+		// Auto-restore only after Studio / browser Back — not on every login or nav click
+		if (shouldAutoRestoreVideoSession()) {
+			await applyCachedSession(cached);
+			return;
+		}
+
+		resumableSession = {
+			title: cached.source?.title?.trim() || 'Last video',
+			clipCount: cached.clips?.length ?? 0,
+		};
+	}
+
+	async function resumeLastSession() {
+		const cached = loadVideoSession();
+		if (!cached) {
+			resumableSession = null;
+			return;
+		}
+		await applyCachedSession(cached);
+		persistSession();
+	}
+
+	function dismissResumableSession() {
+		clearVideoSession();
+		resumableSession = null;
 	}
 
 	onMount(async () => {
@@ -387,6 +734,35 @@
 		} catch {
 			toolsWarning = 'Could not check video tools (yt-dlp / ffmpeg).';
 		}
+		await restoreCachedSession();
+		sessionHydrated = true;
+		// Save once after hydrate so refreshed signed URLs stick
+		if (phase === 'ready') persistSession();
+		else persistFormPrefs();
+	});
+
+	// Keep last session / form prefs warm while working
+	$effect(() => {
+		youtubeUrl;
+		topicHint;
+		importTab;
+		clipMode;
+		clipCount;
+		clipMinSec;
+		clipMaxSec;
+		persistFormPrefs();
+	});
+
+	$effect(() => {
+		phase;
+		source;
+		clips;
+		summary;
+		demo;
+		model;
+		selectedClipId;
+		workflowStep;
+		if (phase === 'ready' && source && clips.length) persistSession();
 	});
 
 	async function analyzeFromYoutube() {
@@ -418,10 +794,11 @@
 			model = data.model ?? '';
 			toolsWarning = String(data.warning ?? toolsWarning);
 			selectedClipId = clips[0]?.id ?? null;
-			phase = 'ready';
+			enterCaptionsStep();
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : String(e);
 			phase = 'idle';
+			workflowStep = 'source';
 		} finally {
 			stopProcessingHints();
 		}
@@ -483,10 +860,11 @@
 			model = data.model ?? '';
 			selectedClipId = clips[0]?.id ?? null;
 			uploadProgress = 100;
-			phase = 'ready';
+			enterCaptionsStep();
 		} catch (err: unknown) {
 			error = err instanceof Error ? err.message : String(err);
 			phase = 'idle';
+			workflowStep = 'source';
 		} finally {
 			if (fileInput) fileInput.value = '';
 		}
@@ -534,15 +912,21 @@
 		error = '';
 		phase = 'exporting';
 		try {
+			const body: Record<string, unknown> = {
+				r2Key: source.r2Key,
+				startSec: clip.startSec,
+				endSec: clip.endSec,
+				filename: clip.title,
+			};
+			if (captionEnhance.removeSilences) {
+				const segs = buildCaptionSegmentsForClip(clip);
+				const windows = speechWindows(segs, clip.startSec, clip.endSec);
+				if (windows.length > 1) body.speechWindows = windows;
+			}
 			const res = await fetch('/api/videos/export-clip', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					r2Key: source.r2Key,
-					startSec: clip.startSec,
-					endSec: clip.endSec,
-					filename: clip.title,
-				}),
+				body: JSON.stringify(body),
 			});
 			if (!res.ok) {
 				const data = await res.json().catch(() => ({}));
@@ -571,19 +955,70 @@
 		}
 	}
 
-	function reset() {
+	function chooseAnotherVideo() {
+		clearVideoSession();
+		resumableSession = null;
 		phase = 'idle';
+		workflowStep = 'source';
 		source = null;
 		clips = [];
 		summary = '';
 		selectedClipId = null;
 		error = '';
 		demo = false;
+		model = '';
+		captionEnabled = false;
+		captionSegments = [];
+		captionPhrases = [];
+		captionPhrasesRef = [];
+		captionSegmentsKey = '';
+		activeCaptionPhrase = null;
+		activeCaptionWordIndex = -1;
+		playerVideo = null;
+		captionsPreviewVideo = null;
+		clipVideoEls.clear();
+		persistFormPrefs();
 	}
 </script>
 
 <div class="videos-page">
-	<!-- ── HERO / IMPORT ── -->
+	<nav class="workflow-stepper" aria-label="Clip workflow">
+		{#each WORKFLOW_STEPS as step, i (step.id)}
+			{@const done = i < workflowStepIndex}
+			{@const active = step.id === workflowStep}
+			{@const reachable =
+				step.id === 'source'
+					? workflowStep !== 'source'
+					: (phase === 'ready' || phase === 'exporting') && !!source && clips.length > 0}
+			{#if i > 0}
+				<span class="stepper-line" class:stepper-line-on={done || active} aria-hidden="true"></span>
+			{/if}
+			<button
+				type="button"
+				class="stepper-step"
+				class:stepper-step-on={active}
+				class:stepper-step-done={done}
+				disabled={active || !reachable}
+				aria-current={active ? 'step' : undefined}
+				onclick={() => setWorkflowStep(step.id)}
+			>
+				<span class="stepper-num" aria-hidden="true">
+					{#if done}
+						<Check size={14} />
+					{:else}
+						{i + 1}
+					{/if}
+				</span>
+				<span class="stepper-copy">
+					<span class="stepper-label">{step.label}</span>
+					<span class="stepper-hint">{step.hint}</span>
+				</span>
+			</button>
+		{/each}
+	</nav>
+
+	<!-- ── HERO / IMPORT (step 1) ── -->
+	{#if workflowStep === 'source'}
 	<header class="videos-hero">
 		<div class="hero-glow" aria-hidden="true"></div>
 		<div class="videos-hero-inner">
@@ -599,6 +1034,26 @@
 				Paste a YouTube link or upload a file — Vertex Gemini finds the best moments, ffmpeg
 				exports the MP4s.
 			</p>
+
+			{#if resumableSession}
+				<div class="resume-banner" role="status">
+					<div class="resume-copy">
+						<strong>Continue last clips?</strong>
+						<span>
+							{resumableSession.title}
+							· {resumableSession.clipCount} clip{resumableSession.clipCount === 1 ? '' : 's'}
+						</span>
+					</div>
+					<div class="resume-actions">
+						<button type="button" class="btn-resume" onclick={() => void resumeLastSession()}>
+							Open clips
+						</button>
+						<button type="button" class="btn-resume-dismiss" onclick={dismissResumableSession}>
+							Dismiss
+						</button>
+					</div>
+				</div>
+			{/if}
 
 			{#if toolsWarning}
 				<div class="tools-warn" role="status">
@@ -729,36 +1184,104 @@
 						</p>
 					{/if}
 
-					<div class="clip-field">
-						<span class="clip-field-label">
-							Clip length: <strong>{clipMinSec}s</strong> – <strong>{clipMaxLabel}</strong>
-						</span>
-						<div class="clip-range-pair">
-							<label class="clip-range">
-								<span>Min</span>
-								<input
-									type="range"
-									min={10}
-									max={180}
-									step={5}
-									bind:value={clipMinSec}
-									disabled={isBusy}
-								/>
-							</label>
-							<label class="clip-range">
-								<span>Max</span>
-								<input
-									type="range"
-									min={10}
-									max={180}
-									step={5}
-									bind:value={clipMaxSec}
-									disabled={isBusy}
-								/>
-							</label>
+					<div class="clip-field clip-dropdown-field">
+						<span class="clip-field-label">Clip length</span>
+						<div class="dropdown-wrap">
+							<button
+								type="button"
+								class="dropdown-trigger"
+								disabled={isBusy}
+								aria-expanded={lengthMenuOpen}
+								onclick={() => {
+									lengthMenuOpen = !lengthMenuOpen;
+									ratioMenuOpen = false;
+								}}
+							>
+								<span>{clipLengthLabel}</span>
+								<ChevronDown size={16} />
+							</button>
+							{#if lengthMenuOpen}
+								<ul class="dropdown-menu" role="listbox">
+									{#each CLIP_LENGTH_PRESETS as p (p.id)}
+										<li>
+											<button
+												type="button"
+												class="dropdown-option"
+												class:dropdown-option-on={clipLengthPreset === p.id}
+												onclick={() => setClipLengthPreset(p.id)}
+											>
+												{#if clipLengthPreset === p.id}
+													<span class="dropdown-check" aria-hidden="true">✓</span>
+												{:else}
+													<span class="dropdown-check" aria-hidden="true"></span>
+												{/if}
+												{p.label}
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
 						</div>
-						<div class="clip-range-ticks">
-							<span>10s</span><span>1 min</span><span>3 min</span>
+					</div>
+
+					<div class="clip-field clip-dropdown-field">
+						<span class="clip-field-label">Aspect ratio</span>
+						<div class="dropdown-wrap">
+							<button
+								type="button"
+								class="dropdown-trigger"
+								disabled={isBusy}
+								aria-expanded={ratioMenuOpen}
+								onclick={() => {
+									ratioMenuOpen = !ratioMenuOpen;
+									lengthMenuOpen = false;
+								}}
+							>
+								<span>Ratio {videoAspectRatio}</span>
+								<ChevronDown size={16} />
+							</button>
+							{#if ratioMenuOpen}
+								<ul class="dropdown-menu" role="listbox">
+									{#each VIDEO_ASPECT_RATIOS as a (a.id)}
+										<li>
+											<button
+												type="button"
+												class="dropdown-option"
+												class:dropdown-option-on={videoAspectRatio === a.id}
+												onclick={() => {
+													videoAspectRatio = a.id;
+													ratioMenuOpen = false;
+												}}
+											>
+												{#if videoAspectRatio === a.id}
+													<span class="dropdown-check" aria-hidden="true">✓</span>
+												{:else}
+													<span class="dropdown-check" aria-hidden="true"></span>
+												{/if}
+												<span class="ratio-icon" data-ratio={a.id} aria-hidden="true"></span>
+												{a.label}
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+					</div>
+
+					<div class="clip-field">
+						<span class="clip-field-label">Video template</span>
+						<div class="layout-picker" role="listbox" aria-label="Video template">
+							{#each VIDEO_LAYOUT_TEMPLATES as lay (lay.id)}
+								<button
+									type="button"
+									class="layout-chip"
+									class:layout-chip-on={clipLayout === lay.id}
+									disabled={isBusy}
+									onclick={() => (clipLayout = lay.id)}
+								>
+									{lay.label}
+								</button>
+							{/each}
 						</div>
 					</div>
 				</fieldset>
@@ -782,10 +1305,197 @@
 			{/if}
 		</div>
 	</header>
+	{/if}
 
-	<!-- ── RESULTS ── -->
-	{#if phase === 'ready' && source}
-		<section class="results" aria-label="Analysis results">
+	<!-- ── CAPTIONS (step 2) ── -->
+	{#if workflowStep === 'captions' && source}
+		<section class="captions-step" aria-label="Caption settings">
+			{#if error}
+				<div class="videos-error results-error" role="alert">
+					<AlertCircle size={14} />
+					{error}
+				</div>
+			{/if}
+
+			<div class="captions-head">
+				<div class="captions-head-info">
+					<h2 class="results-title">Style your captions</h2>
+					<p class="captions-sub">
+						Tune subtitles for <strong>{source.title}</strong>
+						{#if clips.length}
+							· {clips.length} clip{clips.length === 1 ? '' : 's'} ready
+						{/if}
+					</p>
+				</div>
+				<div class="captions-head-actions">
+					<button type="button" class="btn-ghost" onclick={chooseAnotherVideo}>
+						<ArrowLeft size={13} /> Different video
+					</button>
+					<button type="button" class="btn-primary captions-continue" onclick={goToClipsStep}>
+						Continue to clips
+						<ArrowRight size={15} />
+					</button>
+				</div>
+			</div>
+
+			<div class="captions-layout">
+				<div class="captions-preview-col">
+					{#if clips.length > 1}
+						<div class="captions-clip-picker" role="listbox" aria-label="Preview clip">
+							{#each clips as clip, i (clip.id)}
+								<button
+									type="button"
+									class="captions-clip-chip"
+									class:captions-clip-chip-on={selectedClipId === clip.id}
+									onclick={() => selectClip(clip, { play: false })}
+								>
+									Clip {i + 1}
+								</button>
+							{/each}
+						</div>
+					{/if}
+
+					<div class="captions-phone" style="aspect-ratio: {aspectMeta.css}">
+						{#if hasStoredVideo && selectedClip}
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video
+								class="captions-preview-video"
+								src={source.playbackUrl}
+								preload="metadata"
+								playsinline
+								muted={videoMuted}
+								bind:this={captionsPreviewVideo}
+								onloadedmetadata={(e) => onCaptionsPreviewReady(e.currentTarget)}
+								ontimeupdate={onCaptionsPreviewTimeUpdate}
+								onclick={playCaptionsPreview}
+							></video>
+							<VideoCaptionOverlay
+								phrase={activeCaptionPhrase ?? captionPhrases[0] ?? null}
+								currentTime={videoCurrentTime}
+								activeWordIndex={activeCaptionWordIndex}
+								template={captionTemplate}
+								enabled={captionEnabled}
+								position={captionPosition}
+								customColor={captionCustomColor}
+								customBgColor={captionCustomBgColor}
+								customFontSize={captionFontSize}
+								customHighlightColor={captionCustomHighlightColor}
+								animationOverride={captionAnimationOverride}
+								strokeEnabled={captionStrokeEnabled}
+								draggable={captionDraggable}
+								customX={captionCustomX}
+								customY={captionCustomY}
+								oncustomposition={handleCaptionPositionChange}
+							/>
+							<button
+								type="button"
+								class="captions-play-fab"
+								onclick={playCaptionsPreview}
+								aria-label="Play preview"
+							>
+								Play preview
+							</button>
+						{:else}
+							<div class="captions-preview-empty">
+								<Film size={28} />
+								<p>
+									{#if !hasStoredVideo && source.youtubeId}
+										Caption styling applies after yt-dlp stores the video. You can still edit
+										text options, then continue to clips.
+									{:else}
+										No clip preview available yet — continue to review clips.
+									{/if}
+								</p>
+							</div>
+						{/if}
+					</div>
+
+					<div class="captions-preview-tools">
+						<button
+							type="button"
+							class="mute-chip"
+							class:mute-chip-on={videoMuted}
+							onclick={toggleVideoMuted}
+							aria-label={videoMuted ? 'Unmute' : 'Mute'}
+						>
+							{#if videoMuted}
+								<VolumeX size={14} /> Muted
+							{:else}
+								<Volume2 size={14} /> Sound
+							{/if}
+						</button>
+						{#if selectedClip}
+							<span class="captions-range">
+								{formatTimestamp(selectedClip.startSec)} – {formatTimestamp(selectedClip.endSec)}
+							</span>
+						{/if}
+					</div>
+				</div>
+
+				<div class="captions-controls-col">
+					<div class="enhance-grid" role="group" aria-label="Caption options">
+						<label class="enhance-opt">
+							<input type="checkbox" bind:checked={captionEnhance.addEmojis} />
+							<span class="enhance-box" aria-hidden="true"></span>
+							Add emojis
+						</label>
+						<label class="enhance-opt">
+							<input type="checkbox" bind:checked={captionEnhance.highlightKeywords} />
+							<span class="enhance-box" aria-hidden="true"></span>
+							Highlight keywords
+						</label>
+						<label class="enhance-opt">
+							<input type="checkbox" bind:checked={captionEnhance.removeSilences} />
+							<span class="enhance-box" aria-hidden="true"></span>
+							Remove silences
+						</label>
+						<label class="enhance-opt">
+							<input type="checkbox" bind:checked={captionEnhance.autoCensor} />
+							<span class="enhance-box" aria-hidden="true"></span>
+							Auto-censor
+						</label>
+					</div>
+
+					{#if hasTranscriptForCaptions && selectedClip}
+						<VideoCaptionControls
+							bind:enabled={captionEnabled}
+							bind:selectedTemplateId={captionTemplateId}
+							bind:fontSize={captionFontSize}
+							bind:position={captionPosition}
+							bind:customColor={captionCustomColor}
+							bind:customBgColor={captionCustomBgColor}
+							bind:customHighlightColor={captionCustomHighlightColor}
+							bind:draggable={captionDraggable}
+							bind:selectedFont={captionSelectedFont}
+							bind:strokeEnabled={captionStrokeEnabled}
+							bind:animationOverride={captionAnimationOverride}
+							bind:wordsPerChunkOverride={captionChunkOverride}
+							bind:segments={captionSegments}
+							onseek={seekCaptionTo}
+							onreset={resetCaptionEdits}
+						/>
+					{:else}
+						<div class="captions-empty-note" role="status">
+							<AlertCircle size={14} />
+							<span>
+								No transcript was found for this video. You can skip ahead and still review clips —
+								or re-analyze with Whisper / YouTube captions enabled.
+							</span>
+						</div>
+					{/if}
+
+					<button type="button" class="btn-primary captions-continue-mobile" onclick={goToClipsStep}>
+						Continue to clips
+						<ArrowRight size={15} />
+					</button>
+				</div>
+			</div>
+		</section>
+	{/if}
+
+	<!-- ── CLIPS (step 3) ── -->
+	{#if workflowStep === 'clips' && source}
+		<section class="results" aria-label="Clip results">
 			{#if error}
 				<div class="videos-error results-error" role="alert">
 					<AlertCircle size={14} />
@@ -804,190 +1514,112 @@
 					</div>
 					{#if summary}<p class="results-summary">{summary}</p>{/if}
 				</div>
-				<button type="button" class="btn-ghost" onclick={reset}>
-					<RotateCcw size={13} /> New video
-				</button>
+				<div class="results-head-actions">
+					<button type="button" class="btn-ghost" onclick={goToCaptionsStep}>
+						<ArrowLeft size={13} /> Captions
+					</button>
+					<button type="button" class="btn-ghost" onclick={chooseAnotherVideo}>
+						<RotateCcw size={13} /> Choose another video
+					</button>
+				</div>
 			</div>
 
-			<div class="results-grid">
-				<!-- Player -->
-				<div class="player-panel">
-					{#if hasStoredVideo}
-						<div class="video-wrapper">
-							<!-- svelte-ignore a11y_media_has_caption -->
-							<video
-								bind:this={playerVideo}
-								class="native-player"
-								controls
-								muted={videoMuted}
-								src={source.playbackUrl}
-								ontimeupdate={onPlayerTimeUpdate}
-								onvolumechange={(e) => (videoMuted = e.currentTarget.muted)}
-								onloadedmetadata={(e) => {
-									const v = e.currentTarget;
-									v.muted = videoMuted;
-									syncClipsToPlayerDuration(v);
-									if (selectedClip) playClipSegment(selectedClip);
-								}}
-							></video>
-							<VideoCaptionOverlay
-								phrase={activeCaptionPhrase}
-								currentTime={videoCurrentTime}
-								activeWordIndex={activeCaptionWordIndex}
-								template={getCaptionTemplate(captionTemplateId)}
-								enabled={captionEnabled}
-								position={captionPosition}
-								customColor={captionCustomColor}
-								customBgColor={captionCustomBgColor}
-								customFontSize={captionFontSize}
-								customHighlightColor={captionCustomHighlightColor}
-								animationOverride={captionAnimationOverride}
-								strokeEnabled={captionStrokeEnabled}
-								draggable={captionDraggable}
-								customX={captionCustomX}
-								customY={captionCustomY}
-								oncustomposition={handleCaptionPositionChange}
-							/>
+			<div class="results-layout">
+				<aside class="clip-rail" aria-label="Clip thumbnails">
+					<div class="clip-rail-label">AI CLIP</div>
+					<nav class="clip-rail-list">
+						{#each clips as clip, i (clip.id)}
 							<button
 								type="button"
-								class="mute-toggle"
-								class:mute-toggle-muted={videoMuted}
-								onclick={toggleVideoMuted}
-								aria-label={videoMuted ? 'Unmute video' : 'Mute video'}
-								title={videoMuted ? 'Click to unmute' : 'Click to mute'}
+								id="clip-nav-{clip.id}"
+								class="rail-thumb"
+								class:rail-thumb-on={selectedClipId === clip.id}
+								onclick={() => selectClip(clip)}
+								title={cleanClipSpeechText(clip.title) || `Clip ${i + 1}`}
 							>
-								{#if videoMuted}
-									<VolumeX size={16} />
-									<span>Muted</span>
+								<span class="rail-num">{i + 1}</span>
+								{#if source.thumbnailUrl || hasStoredVideo}
+									{#if hasStoredVideo}
+										<!-- svelte-ignore a11y_media_has_caption -->
+										<video
+											class="rail-video"
+											src="{source.playbackUrl}#t={Math.max(0.1, clip.startSec)}"
+											preload="metadata"
+											muted
+											playsinline
+										></video>
+									{:else}
+										<img
+											class="rail-img"
+											src={source.thumbnailUrl}
+											alt=""
+										/>
+									{/if}
 								{:else}
-									<Volume2 size={16} />
-									<span>Sound On</span>
+									<span class="rail-fallback">{(clip.viralityScore / 10).toFixed(1)}</span>
 								{/if}
+								<span class="rail-title">{cleanClipSpeechText(clip.title) || `Clip ${i + 1}`}</span>
 							</button>
-						</div>
-						<p class="player-note">
-							<CheckCircle2 size={12} /> Full video stored — export downloads MP4 via ffmpeg.
-						</p>
-					{:else if source.youtubeId}
-						<div class="yt-wrap">
-							{#key `${selectedClipId}-${selectedClip?.startSec}-${selectedClip?.endSec}`}
-								<iframe
-									title="YouTube preview"
-									src="https://www.youtube.com/embed/{source.youtubeId}?start={Math.floor(selectedClip?.startSec ?? 0)}&end={Math.ceil(selectedClip?.endSec ?? 0)}&autoplay=0"
-									allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-									allowfullscreen
-								></iframe>
-							{/key}
-						</div>
-						<p class="player-note">Install yt-dlp to download the full video and enable MP4 export.</p>
-					{/if}
-
-					{#if selectedClip}
-						<div class="now-playing">
-							<span class="now-playing-dot" aria-hidden="true"></span>
-							<span>
-								{selectedClip.title} · {formatTimestamp(selectedClip.startSec)}–{formatTimestamp(selectedClip.endSec)}
-								<span class="now-playing-dur"
-									>({formatClipDuration(selectedClip.startSec, selectedClip.endSec)})</span
-								>
-							</span>
-						</div>
-					{/if}
-
-					{#if hasStoredVideo && selectedClip && (selectedClip.transcript || source?.transcript)}
-						<VideoCaptionControls
-							bind:enabled={captionEnabled}
-							bind:selectedTemplateId={captionTemplateId}
-							bind:fontSize={captionFontSize}
-							bind:position={captionPosition}
-							bind:customColor={captionCustomColor}
-							bind:customBgColor={captionCustomBgColor}
-							bind:customHighlightColor={captionCustomHighlightColor}
-							bind:draggable={captionDraggable}
-							bind:selectedFont={captionSelectedFont}
-							bind:strokeEnabled={captionStrokeEnabled}
-							bind:animationOverride={captionAnimationOverride}
-							bind:wordsPerChunkOverride={captionChunkOverride}
-							bind:segments={captionSegments}
-							onseek={seekCaptionTo}
-							onreset={resetCaptionEdits}
-						/>
-					{/if}
-				</div>
-
-				<!-- Clips list -->
-				<div class="clips-panel">
-					<h3 class="clips-heading">
-						<Zap size={12} /> Ranked by virality
-					</h3>
-					<ul class="clips-list">
-						{#each clips as clip, i (clip.id)}
-							<li class="clip-item" style="--i: {i}">
-								<button
-									type="button"
-									class="clip-card"
-									class:clip-card-on={selectedClipId === clip.id}
-									onclick={() => selectClip(clip)}
-									style="--score-color: {scoreColor(clip.viralityScore)}"
-								>
-									<div
-										class="clip-score"
-										aria-label="Virality score {clip.viralityScore}"
-									>
-										<span class="score-num">{clip.viralityScore}</span>
-									</div>
-									<div class="clip-body">
-										<div class="clip-title">{cleanClipSpeechText(clip.title)}</div>
-										<div class="clip-hook">{clipDisplayQuote(clip, source ?? undefined)}</div>
-										<div class="clip-times">
-											{formatTimestamp(clip.startSec)} – {formatTimestamp(clip.endSec)}
-											· {formatClipDuration(clip.startSec, clip.endSec)}
-										</div>
-									</div>
-									<ChevronRight size={15} class="clip-chevron" />
-								</button>
-								<div class="clip-actions">
-									<button
-										type="button"
-										class="btn-small btn-export"
-										disabled={isExporting || !source?.r2Key}
-										onclick={(e) => {
-											e.stopPropagation();
-											void downloadClip(clip);
-										}}
-										title={source?.r2Key ? 'Download MP4 clip' : 'Requires yt-dlp download'}
-									>
-										{#if isExporting}
-											<Loader size={13} class="spin" />
-										{:else}
-											<Download size={13} />
-										{/if}
-										Export MP4
-									</button>
-									<label class="studio-template-pick">
-										<span class="sr-only">Studio template</span>
-										<select
-											class="studio-template-select"
-											onchange={(e) => {
-												e.stopPropagation();
-												const t = (e.currentTarget as HTMLSelectElement).value;
-												if (!t) return;
-												openClipInStudio(clip, t);
-												e.currentTarget.selectedIndex = 0;
-											}}
-											onclick={(e) => e.stopPropagation()}
-											title="Open this clip in any Studio template"
-										>
-											<option value="">Open in Studio…</option>
-											{#each STUDIO_TEMPLATES as t (t.id)}
-												<option value={t.id}>{t.label}</option>
-											{/each}
-										</select>
-									</label>
-								</div>
-							</li>
 						{/each}
-					</ul>
+					</nav>
+				</aside>
+
+				<div class="feed-main">
+					<div class="feed-toolbar">
+						<label class="select-all">
+							<input
+								type="checkbox"
+								checked={!!selectedClipId}
+								onchange={() => {
+									if (clips[0]) selectClip(clips[0], { play: false });
+								}}
+							/>
+							Select
+						</label>
+						<span class="feed-count">{clips.length} clips</span>
+						<span class="feed-sort">Highest score</span>
+						<button type="button" class="mute-chip" class:mute-chip-on={videoMuted} onclick={toggleVideoMuted}>
+							{#if videoMuted}
+								<VolumeX size={14} /> Muted
+							{:else}
+								<Volume2 size={14} /> Sound
+							{/if}
+						</button>
+					</div>
+
+					<div class="feed-list">
+						{#each clips as clip, i (clip.id)}
+							<ClipFeedCard
+								{clip}
+								index={i}
+								{source}
+								{hasStoredVideo}
+								selected={selectedClipId === clip.id}
+								exporting={isExporting}
+								muted={videoMuted}
+								layout={clipLayout}
+								aspectRatio={aspectMeta.css}
+								enhance={captionEnhance}
+								onselect={() => selectClip(clip, { play: false })}
+								onplay={(el) => {
+									selectedClipId = clip.id;
+									playerVideo = el;
+									pauseOtherClipVideos(el);
+								}}
+								onexport={() => void downloadClip(clip)}
+								onstudio={(tpl) => openClipInStudio(clip, tpl)}
+								ontimeupdate={onClipCardTimeUpdate}
+								onmutechange={(m) => (videoMuted = m)}
+								onvideoready={(el) => registerClipVideo(clip.id, el)}
+							/>
+						{/each}
+					</div>
+
+					{#if !hasStoredVideo && source.youtubeId}
+						<p class="player-note feed-note">
+							Preview uses YouTube embeds per clip range. Install yt-dlp to download the full video and enable MP4 export.
+						</p>
+					{/if}
 				</div>
 			</div>
 
@@ -997,6 +1629,7 @@
 					{source}
 					watermark={topicHint.trim() || 'VIRAL CLIP'}
 					topicHint={topicHint.trim()}
+					captions={captionImportPayload}
 				/>
 			{/if}
 		</section>
@@ -1009,6 +1642,287 @@
 		min-height: 100%;
 		background: var(--app-bg);
 		color: var(--app-text);
+	}
+
+	/* ── Workflow stepper ── */
+	.workflow-stepper {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0;
+		flex-wrap: wrap;
+		padding: 1rem 1.25rem 0.25rem;
+		max-width: 52rem;
+		margin: 0 auto;
+	}
+
+	.stepper-step {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.45rem 0.65rem;
+		border: none;
+		background: transparent;
+		border-radius: 0.65rem;
+		cursor: pointer;
+		color: #94a3b8;
+		text-align: left;
+	}
+
+	.stepper-step:disabled {
+		cursor: default;
+	}
+
+	.stepper-step:not(:disabled):hover {
+		background: #f1f5f9;
+		color: #475569;
+	}
+
+	.stepper-step-on {
+		color: #0f172a;
+	}
+
+	.stepper-step-done {
+		color: #2563eb;
+	}
+
+	.stepper-num {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.65rem;
+		height: 1.65rem;
+		border-radius: 999px;
+		font-size: 0.75rem;
+		font-weight: 700;
+		background: #e2e8f0;
+		color: inherit;
+		flex-shrink: 0;
+	}
+
+	.stepper-step-on .stepper-num {
+		background: #2563eb;
+		color: #fff;
+	}
+
+	.stepper-step-done .stepper-num {
+		background: #dbeafe;
+		color: #1d4ed8;
+	}
+
+	.stepper-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 0.05rem;
+		min-width: 0;
+	}
+
+	.stepper-label {
+		font-size: 0.82rem;
+		font-weight: 650;
+		line-height: 1.2;
+	}
+
+	.stepper-hint {
+		font-size: 0.68rem;
+		opacity: 0.75;
+		line-height: 1.2;
+	}
+
+	.stepper-line {
+		width: 1.5rem;
+		height: 2px;
+		background: #e2e8f0;
+		flex-shrink: 0;
+		margin: 0 0.15rem;
+	}
+
+	.stepper-line-on {
+		background: #93c5fd;
+	}
+
+	@media (max-width: 640px) {
+		.stepper-hint {
+			display: none;
+		}
+		.stepper-line {
+			width: 0.85rem;
+		}
+	}
+
+	/* ── Captions step ── */
+	.captions-step {
+		max-width: 72rem;
+		margin: 0 auto;
+		padding: 1rem 1.25rem 2.5rem;
+	}
+
+	.captions-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.captions-sub {
+		margin: 0.35rem 0 0;
+		color: #64748b;
+		font-size: 0.9rem;
+		line-height: 1.45;
+		max-width: 36rem;
+	}
+
+	.captions-head-actions,
+	.results-head-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.captions-continue {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.captions-continue-mobile {
+		display: none;
+		width: 100%;
+		justify-content: center;
+		gap: 0.4rem;
+		margin-top: 0.75rem;
+	}
+
+	.captions-layout {
+		display: grid;
+		grid-template-columns: minmax(240px, 360px) minmax(0, 1fr);
+		gap: 1.5rem;
+		align-items: start;
+	}
+
+	@media (max-width: 900px) {
+		.captions-layout {
+			grid-template-columns: 1fr;
+		}
+		.captions-continue {
+			display: none;
+		}
+		.captions-continue-mobile {
+			display: inline-flex;
+		}
+	}
+
+	.captions-clip-picker {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.captions-clip-chip {
+		padding: 0.35rem 0.7rem;
+		border-radius: 999px;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #64748b;
+		cursor: pointer;
+	}
+
+	.captions-clip-chip-on {
+		border-color: #2563eb;
+		background: #eff6ff;
+		color: #1d4ed8;
+	}
+
+	.captions-phone {
+		position: relative;
+		width: 100%;
+		max-width: 320px;
+		margin: 0 auto;
+		border-radius: 1rem;
+		overflow: hidden;
+		background: #0f172a;
+		box-shadow:
+			0 1px 3px rgba(15, 23, 42, 0.12),
+			0 12px 32px rgba(15, 23, 42, 0.12);
+	}
+
+	.captions-preview-video {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+		cursor: pointer;
+	}
+
+	.captions-preview-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		min-height: 280px;
+		padding: 1.5rem;
+		color: #94a3b8;
+		text-align: center;
+		font-size: 0.85rem;
+		line-height: 1.5;
+	}
+
+	.captions-play-fab {
+		position: absolute;
+		left: 50%;
+		bottom: 1rem;
+		transform: translateX(-50%);
+		z-index: 3;
+		padding: 0.45rem 0.85rem;
+		border: none;
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.72);
+		color: #fff;
+		font-size: 0.75rem;
+		font-weight: 600;
+		cursor: pointer;
+		backdrop-filter: blur(6px);
+	}
+
+	.captions-preview-tools {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		margin-top: 0.75rem;
+	}
+
+	.captions-range {
+		font-size: 0.75rem;
+		color: #64748b;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.captions-controls-col {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		min-width: 0;
+	}
+
+	.captions-empty-note {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.85rem 1rem;
+		border-radius: 0.75rem;
+		background: #fffbeb;
+		border: 1px solid #fcd34d;
+		color: #92400e;
+		font-size: 0.82rem;
+		line-height: 1.5;
 	}
 
 	/* ── Hero — clean white professional ── */
@@ -1081,6 +1995,82 @@
 		line-height: 1.65;
 		max-width: 34rem;
 		animation: slide-up 0.5s 0.09s ease both;
+	}
+
+	.resume-banner {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem 1rem;
+		max-width: 34rem;
+		margin: -0.5rem auto 1.25rem;
+		padding: 0.85rem 1rem;
+		border-radius: 0.75rem;
+		background: #eff6ff;
+		border: 1px solid #bfdbfe;
+		text-align: left;
+		animation: slide-up 0.45s 0.1s ease both;
+	}
+
+	.resume-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.resume-copy strong {
+		font-size: 0.85rem;
+		font-weight: 650;
+		color: #1e3a8a;
+	}
+
+	.resume-copy span {
+		font-size: 0.78rem;
+		color: #64748b;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.resume-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		flex-shrink: 0;
+	}
+
+	.btn-resume {
+		padding: 0.45rem 0.85rem;
+		border-radius: 0.5rem;
+		border: none;
+		background: #2563eb;
+		color: #fff;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.btn-resume:hover {
+		background: #1d4ed8;
+	}
+
+	.btn-resume-dismiss {
+		padding: 0.45rem 0.7rem;
+		border-radius: 0.5rem;
+		border: 1px solid #cbd5e1;
+		background: #fff;
+		color: #64748b;
+		font-size: 0.78rem;
+		font-weight: 550;
+		cursor: pointer;
+	}
+
+	.btn-resume-dismiss:hover {
+		background: #f8fafc;
+		color: #334155;
 	}
 
 	@keyframes slide-up {
@@ -1428,30 +2418,211 @@
 		opacity: 0.42;
 	}
 
-	.clip-range-pair {
+	.clip-dropdown-field {
+		position: relative;
+		z-index: 2;
+	}
+
+	.dropdown-wrap {
+		position: relative;
+	}
+
+	.dropdown-trigger {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0.65rem 0.85rem;
+		border-radius: 0.65rem;
+		border: 1.5px solid #c4b5fd;
+		background: #fff;
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: #475569;
+		cursor: pointer;
+	}
+
+	.dropdown-trigger:hover:not(:disabled) {
+		border-color: #7c3aed;
+	}
+
+	.dropdown-trigger:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.dropdown-menu {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: calc(100% + 4px);
+		z-index: 30;
+		margin: 0;
+		padding: 0.35rem;
+		list-style: none;
+		background: #fff;
+		border: 1px solid #e2e8f0;
+		border-radius: 0.75rem;
+		box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+		max-height: 240px;
+		overflow: auto;
+	}
+
+	.dropdown-option {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		width: 100%;
+		padding: 0.55rem 0.65rem;
+		border: 0;
+		border-radius: 0.45rem;
+		background: transparent;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #334155;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.dropdown-option:hover {
+		background: #f8fafc;
+	}
+
+	.dropdown-option-on {
+		color: #6d28d9;
+		background: #f5f3ff;
+	}
+
+	.dropdown-check {
+		width: 1rem;
+		font-size: 0.8rem;
+		color: #7c3aed;
+		flex-shrink: 0;
+	}
+
+	.ratio-icon {
+		width: 0.85rem;
+		height: 0.85rem;
+		border: 1.5px solid currentColor;
+		border-radius: 0.15rem;
+		flex-shrink: 0;
+		opacity: 0.7;
+	}
+
+	.ratio-icon[data-ratio='9:16'] {
+		width: 0.55rem;
+		height: 0.9rem;
+	}
+
+	.ratio-icon[data-ratio='16:9'] {
+		width: 0.95rem;
+		height: 0.55rem;
+	}
+
+	.layout-picker {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+	}
+
+	.layout-chip {
+		padding: 0.4rem 0.75rem;
+		border-radius: 0.5rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		font-size: 0.78rem;
+		font-weight: 700;
+		color: #64748b;
+		cursor: pointer;
+	}
+
+	.layout-chip-on {
+		border-color: #c4b5fd;
+		background: #f5f3ff;
+		color: #6d28d9;
+	}
+
+	.enhance-grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 0.75rem;
+		gap: 0.55rem 0.75rem;
+		padding: 0.75rem;
+		border-radius: 0.75rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+	}
+
+	.enhance-opt {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		font-size: 0.84rem;
+		font-weight: 650;
+		color: #1e293b;
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.enhance-opt input {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.enhance-box {
+		width: 1.15rem;
+		height: 1.15rem;
+		border-radius: 0.28rem;
+		border: 1.5px solid #cbd5e1;
+		background: #fff;
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		transition:
+			background 0.12s,
+			border-color 0.12s;
+	}
+
+	.enhance-opt input:checked + .enhance-box {
+		background: #7c3aed;
+		border-color: #7c3aed;
+	}
+
+	.enhance-opt input:checked + .enhance-box::after {
+		content: '';
+		width: 0.28rem;
+		height: 0.5rem;
+		border: solid #fff;
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg) translate(-0.5px, -1px);
+	}
+
+	.enhance-opt input:focus-visible + .enhance-box {
+		outline: 2px solid #a78bfa;
+		outline-offset: 2px;
+	}
+
+	.enhance-opt:has(input:disabled) {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.results-enhance {
+		margin-bottom: 1rem;
+	}
+
+	.clip-range-pair {
+		display: none;
 	}
 
 	.clip-range {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		font-size: 0.67rem;
-		color: #94a3b8;
-	}
-
-	.clip-range input {
-		width: 100%;
-		accent-color: #7c3aed;
+		display: none;
 	}
 
 	.clip-range-ticks {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.63rem;
-		color: #b0bac5;
+		display: none;
 	}
 
 	/* ── Topic hint ── */
@@ -1508,10 +2679,12 @@
 
 	/* ── Results section ── */
 	.results {
-		max-width: 1200px;
+		max-width: 1180px;
 		margin: 0 auto;
 		padding: 2.25rem 1.5rem 3.5rem;
 		animation: slide-up 0.4s ease both;
+		background: #f4f6f8;
+		border-radius: 0;
 	}
 
 	.results-error {
@@ -1525,7 +2698,8 @@
 		gap: 1rem;
 		margin-bottom: 1.75rem;
 		padding-bottom: 1.35rem;
-		border-bottom: 1px solid var(--app-border);
+		border-bottom: 1px solid #e2e8f0;
+		background: transparent;
 	}
 
 	.results-title {
@@ -1587,106 +2761,219 @@
 		background: var(--app-surface-2);
 	}
 
-	/* ── Results grid ── */
-	.results-grid {
+	/* ── Results feed (Vizard-style multi-clip) ── */
+	.results-layout {
 		display: grid;
-		grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.15fr);
-		gap: 1.75rem;
+		grid-template-columns: 7.5rem minmax(0, 1fr);
+		gap: 1.25rem;
 		align-items: start;
 	}
 
 	@media (max-width: 900px) {
-		.results-grid {
+		.results-layout {
 			grid-template-columns: 1fr;
 		}
+
+		.clip-rail {
+			position: static;
+			flex-direction: row;
+			overflow-x: auto;
+			padding-bottom: 0.35rem;
+		}
+
+		.clip-rail-list {
+			flex-direction: row;
+		}
+
+		.rail-thumb {
+			width: 4.5rem;
+			flex-shrink: 0;
+		}
 	}
 
-	/* ── Player ── */
-	.player-panel {
+	.clip-rail {
 		position: sticky;
-		top: 1.25rem;
+		top: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
+		max-height: calc(100vh - 2rem);
+		overflow: auto;
+		scrollbar-width: thin;
+		padding-right: 0.15rem;
 	}
 
-	.video-wrapper {
+	.clip-rail-label {
+		font-size: 0.62rem;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: #94a3b8;
+		padding: 0 0.15rem;
+	}
+
+	.clip-rail-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
+	}
+
+	.rail-thumb {
 		position: relative;
+		display: flex;
+		flex-direction: column;
+		gap: 0.28rem;
 		width: 100%;
-	}
-
-	.mute-toggle {
-		position: absolute;
-		top: 14px;
-		right: 14px;
-		z-index: 110;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		background: rgba(0, 0, 0, 0.65);
-		color: #fff;
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		border-radius: 999px;
-		padding: 0.4rem 0.75rem;
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0.02em;
+		padding: 0;
+		border: 2px solid transparent;
+		border-radius: 0.55rem;
+		background: transparent;
 		cursor: pointer;
-		backdrop-filter: blur(8px);
-		transition:
-			background 0.15s ease,
-			transform 0.15s ease,
-			border-color 0.15s ease;
+		text-align: left;
+		color: inherit;
+		transition: border-color 0.15s;
 	}
 
-	.mute-toggle:hover {
-		background: rgba(0, 0, 0, 0.85);
-		border-color: rgba(255, 255, 255, 0.3);
-		transform: translateY(-1px);
+	.rail-thumb-on {
+		border-color: #7c3aed;
 	}
 
-	.mute-toggle-muted {
-		background: rgba(124, 58, 237, 0.75);
-		border-color: rgba(255, 255, 255, 0.25);
-		animation: mute-pulse 2.4s ease-in-out infinite;
+	.rail-num {
+		position: absolute;
+		top: 4px;
+		left: 4px;
+		z-index: 2;
+		width: 1.15rem;
+		height: 1.15rem;
+		border-radius: 0.25rem;
+		background: rgba(0, 0, 0, 0.7);
+		color: #fff;
+		font-size: 0.62rem;
+		font-weight: 800;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 
-	.mute-toggle-muted:hover {
-		background: rgba(124, 58, 237, 0.9);
-	}
-
-	@keyframes mute-pulse {
-		0%,
-		100% {
-			box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.5);
-		}
-		50% {
-			box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
-		}
-	}
-
-	.yt-wrap {
-		position: relative;
+	.rail-video,
+	.rail-img {
 		width: 100%;
 		aspect-ratio: 9 / 16;
-		max-height: 70vh;
-		border-radius: 1rem;
+		object-fit: cover;
+		border-radius: 0.4rem;
+		background: #0f172a;
+		display: block;
+	}
+
+	.rail-fallback {
+		aspect-ratio: 9 / 16;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 0.4rem;
+		background: #f1f5f9;
+		font-weight: 800;
+		color: #7c3aed;
+		font-size: 0.95rem;
+	}
+
+	.rail-title {
+		font-size: 0.62rem;
+		font-weight: 650;
+		line-height: 1.25;
+		color: #64748b;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow: hidden;
-		background: #000;
-		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
 	}
 
-	.yt-wrap iframe {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		border: 0;
+	.rail-thumb-on .rail-title {
+		color: #0f172a;
 	}
 
-	.native-player {
-		width: 100%;
-		max-height: 70vh;
-		border-radius: 1rem;
-		background: #000;
-		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+	.feed-main {
+		min-width: 0;
+	}
+
+	.feed-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 0.85rem;
+		margin-bottom: 0.85rem;
+		padding: 0.35rem 0.15rem;
+		font-size: 0.78rem;
+		color: #64748b;
+	}
+
+	.select-all {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-weight: 650;
+		cursor: pointer;
+	}
+
+	.feed-count {
+		font-weight: 700;
+		color: #0f172a;
+	}
+
+	.feed-sort {
+		margin-left: auto;
+		font-weight: 650;
+		color: #7c3aed;
+	}
+
+	.feed-caption-bar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+		padding: 0.75rem 0.9rem;
+		border: 1px solid #e8edf2;
+		border-radius: 0.85rem;
+		background: #fff;
+	}
+
+	.feed-caption-bar :global(.caption-controls),
+	.feed-caption-bar > :global(*) {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.mute-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		flex-shrink: 0;
+		align-self: center;
+		border: 1px solid #e2e8f0;
+		background: #f8fafc;
+		border-radius: 999px;
+		padding: 0.4rem 0.75rem;
+		font-size: 0.72rem;
+		font-weight: 700;
+		cursor: pointer;
+		color: #475569;
+	}
+
+	.mute-chip-on {
+		background: color-mix(in oklab, #7c3aed 12%, #fff);
+		border-color: color-mix(in oklab, #7c3aed 28%, #e2e8f0);
+		color: #6d28d9;
+	}
+
+	.feed-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1.75rem;
+	}
+
+	.feed-note {
+		margin-top: 1rem;
 	}
 
 	.player-note {
@@ -1696,249 +2983,6 @@
 		font-size: 0.71rem;
 		color: var(--app-text-3);
 		margin: 0.6rem 0 0;
-	}
-
-	.now-playing {
-		display: flex;
-		align-items: center;
-		gap: 0.55rem;
-		margin-top: 0.8rem;
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: var(--app-text-2);
-	}
-
-	.now-playing-dot {
-		display: block;
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: #f43f5e;
-		flex-shrink: 0;
-		animation: pulse 1.8s ease-in-out infinite;
-	}
-
-	@keyframes pulse {
-		0%,
-		100% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		50% {
-			opacity: 0.5;
-			transform: scale(0.7);
-		}
-	}
-
-	.now-playing-dur {
-		color: var(--app-text-3);
-		font-weight: 400;
-	}
-
-	/* ── Clips panel ── */
-	.clips-heading {
-		display: flex;
-		align-items: center;
-		gap: 0.38rem;
-		font-size: 0.67rem;
-		text-transform: uppercase;
-		letter-spacing: 0.09em;
-		color: var(--app-text-3);
-		margin: 0 0 0.85rem;
-		font-weight: 700;
-	}
-
-	.clips-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.55rem;
-	}
-
-	.clip-item {
-		animation: clip-enter 0.35s calc(var(--i, 0) * 0.045s) ease both;
-	}
-
-	@keyframes clip-enter {
-		from {
-			opacity: 0;
-			transform: translateX(10px);
-		}
-		to {
-			opacity: 1;
-			transform: translateX(0);
-		}
-	}
-
-	.clip-card {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		width: 100%;
-		text-align: left;
-		padding: 0.85rem 0.75rem;
-		border-radius: 0.85rem;
-		border: 1px solid var(--app-border);
-		background: var(--app-surface);
-		cursor: pointer;
-		transition:
-			border-color 0.15s,
-			box-shadow 0.15s,
-			transform 0.12s,
-			background 0.15s;
-	}
-
-	.clip-card:hover {
-		border-color: color-mix(in oklab, var(--score-color, #e11d48) 38%, var(--app-border));
-		transform: translateX(2px);
-	}
-
-	.clip-card-on {
-		border-color: #e11d48;
-		box-shadow:
-			0 0 0 1px rgba(225, 29, 72, 0.2),
-			0 4px 18px rgba(225, 29, 72, 0.1);
-		background: color-mix(in oklab, #e11d48 3.5%, var(--app-surface));
-	}
-
-	.clip-score {
-		width: 2.6rem;
-		height: 2.6rem;
-		border-radius: 0.6rem;
-		background: color-mix(in oklab, var(--score-color) 14%, transparent);
-		border: 1.5px solid color-mix(in oklab, var(--score-color) 35%, transparent);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		transition: transform 0.15s;
-	}
-
-	.clip-card:hover .clip-score {
-		transform: scale(1.05);
-	}
-
-	.score-num {
-		font-size: 0.8rem;
-		font-weight: 800;
-		color: var(--score-color);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.clip-body {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.clip-title {
-		font-weight: 700;
-		font-size: 0.875rem;
-		margin-bottom: 0.2rem;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.clip-hook {
-		font-size: 0.775rem;
-		color: var(--app-text-2);
-		line-height: 1.4;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-
-	.clip-times {
-		font-size: 0.69rem;
-		color: var(--app-text-3);
-		margin-top: 0.3rem;
-		font-variant-numeric: tabular-nums;
-	}
-
-	:global(.clip-chevron) {
-		opacity: 0.2;
-		flex-shrink: 0;
-		transition:
-			opacity 0.15s,
-			transform 0.15s;
-	}
-
-	.clip-card:hover :global(.clip-chevron),
-	.clip-card-on :global(.clip-chevron) {
-		opacity: 0.55;
-		transform: translateX(2px);
-	}
-
-	.clip-actions {
-		display: flex;
-		gap: 0.35rem;
-		padding: 0.25rem 0.5rem 0.45rem 4.1rem;
-	}
-
-	.btn-small {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-		padding: 0.32rem 0.6rem;
-		border-radius: 0.45rem;
-		border: 1px solid var(--app-border);
-		background: var(--app-surface-2);
-		font-size: 0.71rem;
-		font-weight: 600;
-		cursor: pointer;
-		color: var(--app-text);
-		text-decoration: none;
-		transition:
-			background 0.12s,
-			border-color 0.12s,
-			color 0.12s;
-	}
-
-	.btn-small:hover {
-		background: var(--app-surface);
-	}
-
-	.btn-export:not(:disabled):hover {
-		border-color: color-mix(in oklab, #22c55e 35%, var(--app-border));
-		color: #16a34a;
-	}
-
-	.btn-studio {
-		border-color: color-mix(in oklab, #7c3aed 28%, var(--app-border));
-	}
-
-	.btn-studio:hover {
-		border-color: color-mix(in oklab, #7c3aed 52%, var(--app-border));
-		color: #7c3aed;
-	}
-
-	.studio-template-pick {
-		display: inline-flex;
-		min-width: 0;
-	}
-
-	.studio-template-select {
-		appearance: none;
-		padding: 0.32rem 1.55rem 0.32rem 0.6rem;
-		border-radius: 0.45rem;
-		border: 1px solid color-mix(in oklab, #7c3aed 28%, var(--app-border));
-		background: var(--app-surface-2)
-			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237c3aed' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
-			no-repeat right 0.4rem center;
-		font-size: 0.71rem;
-		font-weight: 600;
-		color: var(--app-text);
-		cursor: pointer;
-		max-width: 11rem;
-	}
-
-	.studio-template-select:hover {
-		border-color: color-mix(in oklab, #7c3aed 52%, var(--app-border));
-		color: #7c3aed;
 	}
 
 	.sr-only {
@@ -1951,11 +2995,6 @@
 		clip: rect(0, 0, 0, 0);
 		white-space: nowrap;
 		border: 0;
-	}
-
-	.btn-small:disabled {
-		opacity: 0.38;
-		cursor: not-allowed;
 	}
 
 	/* ── Animations ── */
@@ -1979,24 +3018,8 @@
 			padding: 1rem;
 		}
 
-		.clip-actions {
-			padding-left: 0.75rem;
-		}
-
 		.results {
 			padding: 1.5rem 1rem 2.5rem;
 		}
-	}
-
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
 	}
 </style>

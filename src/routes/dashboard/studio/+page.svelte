@@ -65,6 +65,8 @@ import JSZip from 'jszip';
 		STUDIO_TEMPLATES,
 		mapQueryParamToTemplateId,
 		coerceTemplateId,
+		isVideoStoryFamily,
+		videoLayoutForTemplate,
 		type TemplateId,
 		type StudioTemplateDef,
 	} from '$lib/studio/template-ids';
@@ -91,7 +93,16 @@ import JSZip from 'jszip';
 		consumeStudioClipImport,
 		peekStudioClipImport,
 		type StudioClipImport,
+		type StudioClipCaptionImport,
 	} from '$lib/studio/clip-import';
+	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
+	import { getCaptionTemplate } from '$lib/video-clips/caption-templates';
+	import {
+		segmentsToPhrases,
+		getActivePhrase,
+		getActiveWordIndex,
+		type CaptionPhrase,
+	} from '$lib/video-clips/caption-chunking';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, FlaskConical, Wifi, Layers,
@@ -154,6 +165,16 @@ import JSZip from 'jszip';
 	/** Clip payload from Videos → Edit in Studio (sessionStorage), applied after template boot. */
 	let pendingClipImport = $state<StudioClipImport | null>(null);
 	let clipImportApplied = $state(false);
+	/** Timed captions imported with a clip (CapCut-style overlay on the canvas video). */
+	let studioClipCaptions = $state<StudioClipCaptionImport | null>(null);
+	let studioCaptionPhrases = $state<CaptionPhrase[]>([]);
+	let studioCaptionPhrasesRef: CaptionPhrase[] = [];
+	let studioCaptionTime = $state(0);
+	let studioCaptionPhrase = $state<CaptionPhrase | null>(null);
+	let studioCaptionWordIndex = $state(-1);
+	let studioCaptionRaf: number | null = null;
+	let studioCaptionLastPhraseKey = '';
+	let studioCaptionLastWordIdx = -1;
 
 	// News controls
 	let search = $state('');
@@ -263,7 +284,7 @@ import JSZip from 'jszip';
 			}
 			return;
 		}
-		if (t === 'videoStory') {
+		if (isVideoStoryFamily(t)) {
 			if (!String(videoStoryHeadlineBySlide[idx] ?? '').trim()) {
 				videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, i) =>
 					i === idx ? VIDEO_STORY_DEFAULTS.headline : x,
@@ -397,12 +418,18 @@ import JSZip from 'jszip';
 				}
 			}
 		}
-		if (t === 'videoStory') {
-			const row = [...(bgVideosByTemplate.videoStory ?? [])];
+		if (isVideoStoryFamily(t)) {
+			const row = [...(bgVideosByTemplate[t] ?? [])];
 			while (row.length <= idx) row.push('');
 			if (!(row[idx] ?? '').trim()) {
-				row[idx] = VIDEO_STORY_DEFAULTS.videoUrl;
-				bgVideosByTemplate = { ...bgVideosByTemplate, videoStory: row };
+				// Prefer sibling video from another video layout if present
+				const sibling =
+					(bgVideosByTemplate.videoStory ?? [])[idx] ||
+					(bgVideosByTemplate.videoFit ?? [])[idx] ||
+					(bgVideosByTemplate.videoBlur ?? [])[idx] ||
+					VIDEO_STORY_DEFAULTS.videoUrl;
+				row[idx] = sibling;
+				bgVideosByTemplate = { ...bgVideosByTemplate, [t]: row };
 			}
 		}
 		if (t === 'blackText') {
@@ -476,7 +503,7 @@ import JSZip from 'jszip';
 			} else {
 				imageQuoteTextBySlide = setSlide0(imageQuoteTextBySlide, hook || IMAGE_QUOTE_DEFAULTS.body, 1);
 			}
-		} else if (template === 'videoStory') {
+		} else if (isVideoStoryFamily(template)) {
 			slides = [''];
 			videoStoryHeadlineBySlide = setSlide0(
 				videoStoryHeadlineBySlide,
@@ -533,7 +560,15 @@ import JSZip from 'jszip';
 		if (videoUrl) {
 			// Seed the clip onto every template that can show video so switching
 			// templates in Studio keeps the same clip.
-			const videoCapable: TemplateId[] = ['blank', 'news', 'tweet', 'videoStory', 'imageQuote'];
+			const videoCapable: TemplateId[] = [
+				'blank',
+				'news',
+				'tweet',
+				'videoStory',
+				'videoFit',
+				'videoBlur',
+				'imageQuote',
+			];
 			const nextVideos = { ...bgVideosByTemplate };
 			const nextImages = { ...bgImagesByTemplate };
 			for (const id of videoCapable) {
@@ -553,6 +588,26 @@ import JSZip from 'jszip';
 			videoMutedBySlide = Array.from({ length: n }, () => true);
 			videoVolumeBySlide = Array.from({ length: n }, () => 0.8);
 			videoSeekSec = clipStart;
+		}
+
+		// Transfer CapCut captions from Videos page onto this canvas
+		const caps = payload.captions;
+		if (caps?.enabled && Array.isArray(caps.segments) && caps.segments.length) {
+			studioClipCaptions = caps;
+			const tpl = getCaptionTemplate(caps.templateId);
+			const chunk = caps.wordsPerChunk ?? tpl.wordsPerChunk;
+			const phrases = segmentsToPhrases(caps.segments, chunk);
+			studioCaptionPhrases = phrases;
+			studioCaptionPhrasesRef = phrases;
+			studioCaptionPhrase = null;
+			studioCaptionWordIndex = -1;
+			studioCaptionTime = clipStart;
+		} else {
+			studioClipCaptions = null;
+			studioCaptionPhrases = [];
+			studioCaptionPhrasesRef = [];
+			studioCaptionPhrase = null;
+			studioCaptionWordIndex = -1;
 		}
 
 		forcedTemplateFromQuery = template;
@@ -579,6 +634,56 @@ import JSZip from 'jszip';
 		}
 		return true;
 	}
+
+	function tickStudioClipCaptions() {
+		const caps = studioClipCaptions;
+		if (caps?.enabled && studioCaptionPhrasesRef.length) {
+			const root =
+				exportRef ??
+				(typeof document !== 'undefined'
+					? document.querySelector<HTMLElement>('[data-studio-canvas-root]')
+					: null);
+			const v = root?.querySelector?.('video') as HTMLVideoElement | null | undefined;
+			if (v) {
+				const t = v.currentTime;
+				const phrase = getActivePhrase(studioCaptionPhrasesRef, t);
+				const wordIdx = phrase ? getActiveWordIndex(phrase, t) : -1;
+				const phraseKey = phrase ? `${phrase.startSec}|${phrase.text}` : '';
+				if (phraseKey !== studioCaptionLastPhraseKey || wordIdx !== studioCaptionLastWordIdx) {
+					studioCaptionLastPhraseKey = phraseKey;
+					studioCaptionLastWordIdx = wordIdx;
+					studioCaptionTime = t;
+					studioCaptionPhrase = phrase;
+					studioCaptionWordIndex = wordIdx;
+				}
+			}
+		}
+		studioCaptionRaf = requestAnimationFrame(tickStudioClipCaptions);
+	}
+
+	$effect(() => {
+		const on = !!(studioClipCaptions?.enabled && studioCaptionPhrases.length);
+		if (!on) {
+			if (studioCaptionRaf != null) cancelAnimationFrame(studioCaptionRaf);
+			studioCaptionRaf = null;
+			studioCaptionPhrase = null;
+			studioCaptionWordIndex = -1;
+			studioCaptionLastPhraseKey = '';
+			studioCaptionLastWordIdx = -1;
+			return;
+		}
+		studioCaptionRaf = requestAnimationFrame(tickStudioClipCaptions);
+		return () => {
+			if (studioCaptionRaf != null) cancelAnimationFrame(studioCaptionRaf);
+			studioCaptionRaf = null;
+		};
+	});
+
+	const studioCaptionTemplate = $derived(
+		studioClipCaptions
+			? getCaptionTemplate(studioClipCaptions.templateId)
+			: getCaptionTemplate('capcut-pop'),
+	);
 
 	// ── Undo (scoped to current template + slide) ─────────────────────────
 	type ScopedSnapshot =
@@ -622,7 +727,7 @@ import JSZip from 'jszip';
 		  }
 		| { template: 'article'; slide: number; data: { text: string; swipeText: string; image: string; logo: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
 		| { template: 'news'; slide: number; data: { headline: string; source: string; image: string; video: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
-		| { template: 'videoStory'; slide: number; data: { headline: string; watermark: string; video: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
+		| { template: 'videoStory' | 'videoFit' | 'videoBlur'; slide: number; data: { headline: string; watermark: string; video: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
 		| { template: 'blackText'; slide: number; data: { headline: string; body: string; image: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } }
 		| { template: 'imageQuote'; slide: number; data: { text: string; image: string; styles: Partial<Record<TextElementKind, TextStyle>>; offsets: Record<string, { x: number; y: number }> } };
 
@@ -635,6 +740,8 @@ import JSZip from 'jszip';
 		textCarousel: [],
 		imageQuote: [],
 		videoStory: [],
+		videoFit: [],
+		videoBlur: [],
 		blackText: [],
 	});
 
@@ -717,14 +824,14 @@ import JSZip from 'jszip';
 				},
 			};
 		}
-		if (template === 'videoStory') {
+		if (isVideoStoryFamily(template)) {
 			return {
-				template: 'videoStory',
+				template: template as 'videoStory' | 'videoFit' | 'videoBlur',
 				slide,
 				data: {
 					headline: videoStoryHeadlineBySlide[slide] ?? '',
 					watermark: videoStoryWatermarkBySlide[slide] ?? '',
-					video: (bgVideosByTemplate.videoStory ?? [])[slide] ?? '',
+					video: (bgVideosByTemplate[template] ?? [])[slide] ?? '',
 					styles,
 					offsets,
 				},
@@ -855,13 +962,15 @@ import JSZip from 'jszip';
 			};
 			return;
 		}
-		if (t === 'videoStory') {
+		if (snap.template === 'videoStory' || snap.template === 'videoFit' || snap.template === 'videoBlur') {
 			const d = snap.data;
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, idx) => (idx === i ? d.headline : x));
 			videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, idx) => (idx === i ? d.watermark : x));
 			bgVideosByTemplate = {
 				...bgVideosByTemplate,
-				videoStory: (bgVideosByTemplate.videoStory ?? []).map((x, idx) => (idx === i ? d.video : x)),
+				[snap.template]: (bgVideosByTemplate[snap.template] ?? []).map((x, idx) =>
+					idx === i ? d.video : x,
+				),
 			};
 			return;
 		}
@@ -1087,18 +1196,20 @@ import JSZip from 'jszip';
 			textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, idx) => (idx === i ? '' : x));
 			textCarouselAvatarInnerBgBySlide = textCarouselAvatarInnerBgBySlide.map((x, idx) => (idx === i ? '' : x));
 			textCarouselAvatarLabelBySlide = textCarouselAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
-		} else if (t === 'videoStory') {
+		} else if (isVideoStoryFamily(t)) {
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, idx) =>
 				idx === i ? VIDEO_STORY_DEFAULTS.headline : x,
 			);
 			videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, idx) =>
 				idx === i ? VIDEO_STORY_DEFAULTS.watermark : x,
 			);
+			const patchVideo = (arr: string[] | undefined) =>
+				(arr ?? []).map((x, idx) => (idx === i ? VIDEO_STORY_DEFAULTS.videoUrl : x));
 			bgVideosByTemplate = {
 				...bgVideosByTemplate,
-				videoStory: (bgVideosByTemplate.videoStory ?? []).map((x, idx) =>
-					idx === i ? VIDEO_STORY_DEFAULTS.videoUrl : x,
-				),
+				videoStory: patchVideo(bgVideosByTemplate.videoStory),
+				videoFit: patchVideo(bgVideosByTemplate.videoFit),
+				videoBlur: patchVideo(bgVideosByTemplate.videoBlur),
 			};
 		} else if (t === 'blackText') {
 			blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((x, idx) =>
@@ -1246,6 +1357,8 @@ import JSZip from 'jszip';
 		textCarousel: emptySlides(() => ''),
 		imageQuote: emptySlides(() => ''),
 		videoStory: emptySlides(() => ''),
+		videoFit: emptySlides(() => ''),
+		videoBlur: emptySlides(() => ''),
 		blackText: emptySlides(() => BLACK_TEXT_BG_DEFAULT),
 	});
 	let bgVideosByTemplate = $state<Record<TemplateId, string[]>>({
@@ -1256,6 +1369,8 @@ import JSZip from 'jszip';
 		textCarousel: emptySlides(() => ''),
 		imageQuote: emptySlides(() => ''),
 		videoStory: emptySlides(() => ''),
+		videoFit: emptySlides(() => ''),
+		videoBlur: emptySlides(() => ''),
 		blackText: emptySlides(() => ''),
 	}); // blob URLs — per template, per slide
 	let generatingImagesByTemplate = $state<Record<TemplateId, boolean[]>>({
@@ -1266,6 +1381,8 @@ import JSZip from 'jszip';
 		textCarousel: emptySlides(() => false),
 		imageQuote: emptySlides(() => false),
 		videoStory: emptySlides(() => false),
+		videoFit: emptySlides(() => false),
+		videoBlur: emptySlides(() => false),
 		blackText: emptySlides(() => false),
 	}); // per template, per slide
 
@@ -1631,6 +1748,8 @@ import JSZip from 'jszip';
 		textCarousel: emptySlides(() => []),
 		imageQuote: emptySlides(() => []),
 		videoStory: emptySlides(() => []),
+		videoFit: emptySlides(() => []),
+		videoBlur: emptySlides(() => []),
 		blackText: emptySlides(() => []),
 	});
 	const activeOverlays = $derived((slideOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? []);
@@ -1696,6 +1815,8 @@ import JSZip from 'jszip';
 		textCarousel: emptySlides(() => []),
 		imageQuote: emptySlides(() => []),
 		videoStory: emptySlides(() => []),
+		videoFit: emptySlides(() => []),
+		videoBlur: emptySlides(() => []),
 		blackText: emptySlides(() => []),
 	});
 	const activeTextOverlays = $derived((slideTextOverlaysByTemplate[activeTemplate] ?? [])[activeSlide] ?? []);
@@ -1725,6 +1846,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(bgImagesByTemplate.textCarousel ?? []), ''],
 			imageQuote: [...(bgImagesByTemplate.imageQuote ?? []), ''],
 			videoStory: [...(bgImagesByTemplate.videoStory ?? []), ''],
+			videoFit: [...(bgImagesByTemplate.videoStory ?? []), ''],
+			videoBlur: [...(bgImagesByTemplate.videoStory ?? []), ''],
 			blackText: [...(bgImagesByTemplate.blackText ?? []), BLACK_TEXT_BG_DEFAULT],
 		};
 		bgVideosByTemplate = {
@@ -1735,6 +1858,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(bgVideosByTemplate.textCarousel ?? []), ''],
 			imageQuote: [...(bgVideosByTemplate.imageQuote ?? []), ''],
 			videoStory: [...(bgVideosByTemplate.videoStory ?? []), ''],
+			videoFit: [...(bgVideosByTemplate.videoStory ?? []), ''],
+			videoBlur: [...(bgVideosByTemplate.videoStory ?? []), ''],
 			blackText: [...(bgVideosByTemplate.blackText ?? []), ''],
 		};
 		generatingImagesByTemplate = {
@@ -1745,6 +1870,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(generatingImagesByTemplate.textCarousel ?? []), false],
 			imageQuote: [...(generatingImagesByTemplate.imageQuote ?? []), false],
 			videoStory: [...(generatingImagesByTemplate.videoStory ?? []), false],
+			videoFit: [...(generatingImagesByTemplate.videoStory ?? []), false],
+			videoBlur: [...(generatingImagesByTemplate.videoStory ?? []), false],
 			blackText: [...(generatingImagesByTemplate.blackText ?? []), false],
 		};
 		// Keep overlays strictly template-scoped (avoid any accidental shared references).
@@ -1756,6 +1883,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(slideOverlaysByTemplate.textCarousel ?? []), []],
 			imageQuote: [...(slideOverlaysByTemplate.imageQuote ?? []), []],
 			videoStory: [...(slideOverlaysByTemplate.videoStory ?? []), []],
+			videoFit: [...(slideOverlaysByTemplate.videoStory ?? []), []],
+			videoBlur: [...(slideOverlaysByTemplate.videoStory ?? []), []],
 			blackText: [...(slideOverlaysByTemplate.blackText ?? []), []],
 		};
 		slideTextOverlaysByTemplate = {
@@ -1766,6 +1895,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(slideTextOverlaysByTemplate.textCarousel ?? []), []],
 			imageQuote: [...(slideTextOverlaysByTemplate.imageQuote ?? []), []],
 			videoStory: [...(slideTextOverlaysByTemplate.videoStory ?? []), []],
+			videoFit: [...(slideTextOverlaysByTemplate.videoStory ?? []), []],
+			videoBlur: [...(slideTextOverlaysByTemplate.videoStory ?? []), []],
 			blackText: [...(slideTextOverlaysByTemplate.blackText ?? []), []],
 		};
 		tweetTopNameBySlide = [...tweetTopNameBySlide, tweetTopNameBySlide[tweetTopNameBySlide.length - 1] ?? 'Chef 👨‍🍳'];
@@ -1857,6 +1988,8 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 		tweet: emptySlides(() => ({})),
 		imageQuote: emptySlides(() => ({})),
 		videoStory: emptySlides(() => ({})),
+		videoFit: emptySlides(() => ({})),
+		videoBlur: emptySlides(() => ({})),
 		blackText: emptySlides(() => ({})),
 	});
 	// Tweet has multiple independent text fields; keep their styles separate.
@@ -2939,6 +3072,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				textCarousel: (raw.textCarousel ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				imageQuote: (raw.imageQuote ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				videoStory: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+				videoFit: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+				videoBlur: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				blackText: (raw.blackText ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 			};
 		} else if (Array.isArray(s.slideOverlays)) {
@@ -2956,6 +3091,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				textCarousel: (raw.textCarousel ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				imageQuote: (raw.imageQuote ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				videoStory: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+				videoFit: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+				videoBlur: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				blackText: (raw.blackText ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 			};
 		} else if (Array.isArray(s.slideTextOverlays)) {
@@ -2981,6 +3118,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				textCarousel: norm(raw.textCarousel),
 				imageQuote: norm(raw.imageQuote),
 				videoStory: norm(raw.videoStory),
+				videoFit: norm(raw.videoStory),
+				videoBlur: norm(raw.videoStory),
 				blackText: norm(raw.blackText),
 			} as any;
 		} else {
@@ -3170,6 +3309,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textCarousel: [''],
 			imageQuote: [''],
 			videoStory: [''],
+			videoFit: [''],
+			videoBlur: [''],
 			blackText: [''],
 		});
 		bgImagesByTemplate = { ...emptyMediaUrls(), blackText: [BLACK_TEXT_BG_DEFAULT] };
@@ -3182,6 +3323,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textCarousel: [false],
 			imageQuote: [false],
 			videoStory: [false],
+			videoFit: [false],
+			videoBlur: [false],
 			blackText: [false],
 		};
 		newsSolidBgBySlide = ['#ffffff'];
@@ -3194,6 +3337,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textCarousel: [[]],
 			imageQuote: [[]],
 			videoStory: [[]],
+			videoFit: [[]],
+			videoBlur: [[]],
 			blackText: [[]],
 		});
 		slideOverlaysByTemplate = emptySticker();
@@ -3205,6 +3350,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textCarousel: [[]],
 			imageQuote: [[]],
 			videoStory: [[]],
+			videoFit: [[]],
+			videoBlur: [[]],
 			blackText: [[]],
 		};
 
@@ -3216,6 +3363,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textCarousel: [{}],
 			imageQuote: [{}],
 			videoStory: [{}],
+			videoFit: [{}],
+			videoBlur: [{}],
 			blackText: [{}],
 		};
 		tweetStylesBySlide = [{}];
@@ -3288,6 +3437,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textCarousel: [{ undo: [], redo: [] }],
 			imageQuote: [{ undo: [], redo: [] }],
 			videoStory: [{ undo: [], redo: [] }],
+			videoFit: [{ undo: [], redo: [] }],
+			videoBlur: [{ undo: [], redo: [] }],
 			blackText: [{ undo: [], redo: [] }],
 		};
 
@@ -4233,6 +4384,8 @@ tweetTopImagePanYBySlide,
 		textCarousel: 6000,
 		imageQuote: 130,
 		videoStory: 320,
+		videoFit: 320,
+		videoBlur: 320,
 		blackText: 200,
 		/** Black text template: long body under the hook line (separate from hook clamp). */
 		blackTextBody: 1100,
@@ -4355,7 +4508,7 @@ tweetTopImagePanYBySlide,
 			textCarouselTextBySlide = [...clipped];
 		} else if (template === 'imageQuote') {
 			imageQuoteTextBySlide = [...clipped];
-		} else if (template === 'videoStory') {
+		} else if (isVideoStoryFamily(template)) {
 			videoStoryHeadlineBySlide = [...clipped];
 		} else if (template === 'blackText') {
 			blackTextHeadlineBySlide = [...clipped];
@@ -4376,7 +4529,7 @@ tweetTopImagePanYBySlide,
 			textCarouselTextBySlide = textCarouselTextBySlide.map((s, idx) => (idx === i ? clipped : s));
 		} else if (template === 'imageQuote') {
 			imageQuoteTextBySlide = imageQuoteTextBySlide.map((s, idx) => (idx === i ? clipped : s));
-		} else if (template === 'videoStory') {
+		} else if (isVideoStoryFamily(template)) {
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((s, idx) => (idx === i ? clipped : s));
 		} else if (template === 'blackText') {
 			blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((s, idx) => (idx === i ? clipped : s));
@@ -6285,7 +6438,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						? (articleTextBySlide[i] ?? '')
 						: t === 'textCarousel'
 							? (textCarouselTextBySlide[i] ?? '')
-							: t === 'videoStory'
+							: isVideoStoryFamily(t)
 								? (videoStoryHeadlineBySlide[i] ?? '')
 								: t === 'blackText'
 									? (blackTextHeadlineBySlide[i] ?? '')
@@ -6343,7 +6496,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (t === 'blackText') return '#000000';
 		if (t === 'tweet') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 		if (t === 'textCarousel') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
-		if (t === 'videoStory') return '#000000';
+		if (isVideoStoryFamily(t)) return '#000000';
 		return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
 	}
 
@@ -7138,9 +7291,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
-			{:else if previewTemplate === 'videoStory'}
+			{:else if isVideoStoryFamily(previewTemplate)}
 				<VideoStoryTemplate
 					bind:exportRef
+					layout={videoLayoutForTemplate(previewTemplate)}
 					headline={videoStoryHeadlineBySlide[paintSlide] ?? VIDEO_STORY_DEFAULTS.headline}
 					watermark={videoStoryWatermarkBySlide[paintSlide] ?? VIDEO_STORY_DEFAULTS.watermark}
 					videoSrc={canvasBackgroundVideo}
@@ -7178,19 +7332,19 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					headlineStyle={canvasVideoStoryHeadlineStyle}
 					watermarkStyle={canvasVideoStoryWatermarkStyle}
 					selectedText={selectedText}
-					textOffsets={offsetsForTemplate(paintSlide, 'videoStory')}
+					textOffsets={offsetsForTemplate(paintSlide, previewTemplate)}
 					onTextOffsetChange={(kind, next) => {
 						if (!canvasInteractive) return;
-						setTemplateOffset(paintSlide, 'videoStory', String(kind), next);
+						setTemplateOffset(paintSlide, previewTemplate, String(kind), next);
 					}}
 					onHeadlineChange={(v) => {
 						if (!canvasInteractive) return;
-						pushUndo('videoStory', paintSlide);
+						pushUndo(previewTemplate, paintSlide);
 						videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, i) => (i === paintSlide ? v : x));
 					}}
 					onWatermarkChange={(v) => {
 						if (!canvasInteractive) return;
-						pushUndo('videoStory', paintSlide);
+						pushUndo(previewTemplate, paintSlide);
 						videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) => (i === paintSlide ? v : x));
 					}}
 					onTextSelect={onTextSelect}
@@ -7349,6 +7503,31 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 					parseHighlightMarkup={previewTemplate === 'news'}
 				/>
+			{/if}
+			{#if studioClipCaptions?.enabled && studioCaptionPhrases.length && canvasBackgroundVideo}
+				<div
+					class="pointer-events-none absolute left-0 top-0 z-[14] origin-top-left"
+					style="width: {CANVAS_W}px; height: {CANVAS_H}px; transform: scale({previewScale});"
+					aria-hidden="true"
+				>
+					<VideoCaptionOverlay
+						phrase={studioCaptionPhrase}
+						currentTime={studioCaptionTime}
+						activeWordIndex={studioCaptionWordIndex}
+						template={studioCaptionTemplate}
+						enabled={true}
+						position={studioClipCaptions.position}
+						customColor={studioClipCaptions.customColor}
+						customBgColor={studioClipCaptions.customBgColor}
+						customFontSize={studioClipCaptions.fontSize}
+						customHighlightColor={studioClipCaptions.customHighlightColor}
+						animationOverride={studioClipCaptions.animationOverride}
+						strokeEnabled={studioClipCaptions.strokeEnabled}
+						draggable={false}
+						customX={null}
+						customY={null}
+					/>
+				</div>
 			{/if}
 				</div>
 			</div>

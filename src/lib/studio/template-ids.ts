@@ -7,6 +7,8 @@ export type TemplateId =
 	| 'textCarousel'
 	| 'imageQuote'
 	| 'videoStory'
+	| 'videoFit'
+	| 'videoBlur'
 	| 'blackText';
 
 export type StudioTemplateDef = { id: TemplateId; label: string };
@@ -17,6 +19,8 @@ export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 	{ id: 'tweet', label: 'Tweet' },
 	// { id: 'article', label: 'Article' },
 	{ id: 'textCarousel', label: 'Text carousel' },
+	{ id: 'videoFit', label: 'Fit video' },
+	{ id: 'videoBlur', label: 'Blur' },
 	{ id: 'videoStory', label: 'Video story' },
 	{ id: 'imageQuote', label: 'Image quote' },
 	{ id: 'blackText', label: 'Black text' },
@@ -34,6 +38,12 @@ const QUERY_TEMPLATE_MAP: Record<string, TemplateId> = {
 	imagequote: 'imageQuote',
 	video: 'videoStory',
 	videostory: 'videoStory',
+	videofit: 'videoFit',
+	'video-fit': 'videoFit',
+	fit: 'videoFit',
+	videoblur: 'videoBlur',
+	'video-blur': 'videoBlur',
+	blur: 'videoBlur',
 	'black-text': 'blackText',
 	blacktext: 'blackText',
 	black: 'blackText',
@@ -54,6 +64,8 @@ const CANONICAL_TEMPLATE_IDS: TemplateId[] = [
 	'textCarousel',
 	'imageQuote',
 	'videoStory',
+	'videoFit',
+	'videoBlur',
 	'blackText',
 ];
 
@@ -69,4 +81,15 @@ export function coerceTemplateId(raw: unknown): TemplateId {
 	// includes(lower) against camelCase literals (always fails).
 	const hit = CANONICAL_TEMPLATE_IDS.find((id) => id.toLowerCase() === lower);
 	return hit ?? 'news';
+}
+
+/** Map fit/blur/story template ids to VideoStoryTemplate layout prop. */
+export function videoLayoutForTemplate(id: TemplateId): 'story' | 'fit' | 'blur' {
+	if (id === 'videoFit') return 'fit';
+	if (id === 'videoBlur') return 'blur';
+	return 'story';
+}
+
+export function isVideoStoryFamily(id: TemplateId): boolean {
+	return id === 'videoStory' || id === 'videoFit' || id === 'videoBlur';
 }

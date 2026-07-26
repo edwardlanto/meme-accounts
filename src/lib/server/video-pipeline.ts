@@ -583,13 +583,79 @@ export async function extractClipWithFfmpeg(params: {
 	outputPath: string;
 	startSec: number;
 	endSec: number;
+	/** Optional keep-windows (relative to source timeline) — concatenates speech, drops silence */
+	speechWindows?: Array<{ startSec: number; endSec: number }>;
 }): Promise<void> {
 	const tools = await checkVideoTools();
 	if (!tools.ffmpeg) {
 		throw new Error('ffmpeg is not installed. Install with: brew install ffmpeg (or set FFMPEG_PATH)');
 	}
-	const duration = Math.max(0.5, params.endSec - params.startSec);
 	await mkdir(dirname(params.outputPath), { recursive: true });
+
+	const windows = (params.speechWindows ?? []).filter((w) => w.endSec > w.startSec + 0.05);
+	if (windows.length >= 2) {
+		// Cut each window then concat (silence removal)
+		const parts: string[] = [];
+		for (let i = 0; i < windows.length; i++) {
+			const w = windows[i]!;
+			const part = join(dirname(params.outputPath), `part-${i}.mp4`);
+			const dur = Math.max(0.05, w.endSec - w.startSec);
+			await runProcess(
+				tools.ffmpegPath,
+				[
+					'-nostdin',
+					'-y',
+					'-ss',
+					String(w.startSec),
+					'-i',
+					params.inputPath,
+					'-t',
+					String(dur),
+					'-c:v',
+					'libx264',
+					'-preset',
+					'fast',
+					'-crf',
+					'23',
+					'-c:a',
+					'aac',
+					'-b:a',
+					'128k',
+					'-movflags',
+					'+faststart',
+					part,
+				],
+				{ timeoutMs: 600_000 },
+			);
+			parts.push(part);
+		}
+		const listPath = join(dirname(params.outputPath), 'concat.txt');
+		const { writeFile } = await import('node:fs/promises');
+		await writeFile(
+			listPath,
+			parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'),
+		);
+		await runProcess(
+			tools.ffmpegPath,
+			[
+				'-nostdin',
+				'-y',
+				'-f',
+				'concat',
+				'-safe',
+				'0',
+				'-i',
+				listPath,
+				'-c',
+				'copy',
+				params.outputPath,
+			],
+			{ timeoutMs: 600_000 },
+		);
+		return;
+	}
+
+	const duration = Math.max(0.5, params.endSec - params.startSec);
 	await runProcess(
 		tools.ffmpegPath,
 		[

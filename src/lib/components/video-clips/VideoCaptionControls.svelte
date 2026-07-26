@@ -59,8 +59,31 @@
 	);
 	let showEditor = $state(true);
 
+	/** <input type="color"> cannot hold "transparent" — keep a separate picker value. */
+	const bgColorPickerValue = $derived(
+		customBgColor && /^#[0-9a-fA-F]{6}$/.test(customBgColor) ? customBgColor : '#000000',
+	);
+	const hasCustomBg = $derived(
+		!!customBgColor && customBgColor !== 'transparent' && customBgColor !== 'none',
+	);
+
+	function setBackgroundFromPicker(value: string) {
+		customBgColor = value;
+	}
+
+	function clearBackground() {
+		customBgColor = 'transparent';
+	}
+
 	function handleTemplateClick(id: string) {
 		selectedTemplateId = id;
+		// Reset forced bg when switching to a transparent template so boxes don't stick
+		const next = getCaptionTemplate(id);
+		if (next.backgroundColor === 'transparent' || next.backgroundColor === 'none') {
+			customBgColor = 'transparent';
+		} else {
+			customBgColor = next.backgroundColor;
+		}
 	}
 
 	function handleFontSizeChange(values: number[]) {
@@ -351,15 +374,28 @@
 						<input
 							id="bg-color-setting"
 							type="color"
-							bind:value={customBgColor}
+							value={bgColorPickerValue}
 							class="color-picker"
+							onchange={(e) => setBackgroundFromPicker(e.currentTarget.value)}
 						/>
 						<input
 							type="text"
-							bind:value={customBgColor}
+							value={hasCustomBg ? customBgColor : 'transparent'}
 							class="color-hex-input"
-							placeholder="#000000"
+							placeholder="transparent"
+							oninput={(e) => {
+								const v = e.currentTarget.value.trim();
+								customBgColor = v || 'transparent';
+							}}
 						/>
+						<button
+							type="button"
+							class="bg-clear-btn"
+							class:bg-clear-on={!hasCustomBg}
+							onclick={clearBackground}
+						>
+							None
+						</button>
 					</div>
 				</div>
 
@@ -556,6 +592,29 @@
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
+	}
+
+	.bg-clear-btn {
+		padding: 0.3rem 0.55rem;
+		border-radius: 0.4rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		color: #64748b;
+		font-size: 0.72rem;
+		font-weight: 600;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.bg-clear-btn:hover {
+		background: #f8fafc;
+		color: #334155;
+	}
+
+	.bg-clear-on {
+		border-color: #93c5fd;
+		background: #eff6ff;
+		color: #1d4ed8;
 	}
 
 	.color-hex-input {

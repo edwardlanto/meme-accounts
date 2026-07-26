@@ -18,6 +18,8 @@ const BY_TEMPLATE: Partial<Record<TemplateId, StudioTemplateRuntime>> = {
 	textCarousel: DEFAULT,
 	imageQuote: DEFAULT,
 	videoStory: DEFAULT,
+	videoFit: DEFAULT,
+	videoBlur: DEFAULT,
 	blackText: DEFAULT,
 	tweet: { canvasOverflowClass: 'overflow-visible' },
 };

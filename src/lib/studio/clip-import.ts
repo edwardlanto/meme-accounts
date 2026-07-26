@@ -1,7 +1,27 @@
 import type { TemplateId } from '$lib/studio/template-ids';
 import { mapQueryParamToTemplateId, coerceTemplateId } from '$lib/studio/template-ids';
+import type { CaptionSegment } from '$lib/video-clips/caption-sync';
+import type { CaptionAnimation } from '$lib/video-clips/caption-templates';
 
 export const STUDIO_CLIP_IMPORT_KEY = 'studio_clip_import_v1';
+
+/** CapCut-style captions carried from Videos → Studio with the clip. */
+export type StudioClipCaptionImport = {
+	enabled: boolean;
+	segments: CaptionSegment[];
+	templateId: string;
+	fontSize: number;
+	position: 'top' | 'center' | 'bottom';
+	customColor: string;
+	customBgColor: string;
+	customHighlightColor: string;
+	selectedFont: string;
+	strokeEnabled: boolean;
+	animationOverride: CaptionAnimation | null;
+	wordsPerChunk: number | null;
+	customX: number | null;
+	customY: number | null;
+};
 
 /** Payload stashed before navigating Videos → Studio (avoids huge signed URLs in the query string). */
 export type StudioClipImport = {
@@ -19,6 +39,8 @@ export type StudioClipImport = {
 	carouselName?: string;
 	carouselHandle?: string;
 	carouselBody?: string;
+	/** Timed captions from the Videos page (when captions were on). */
+	captions?: StudioClipCaptionImport | null;
 };
 
 export function stashStudioClipImport(payload: StudioClipImport): void {

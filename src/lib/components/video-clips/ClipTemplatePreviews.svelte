@@ -25,8 +25,10 @@
 	import {
 		stashStudioClipImport,
 		studioUrlForClipImport,
+		type StudioClipCaptionImport,
 	} from '$lib/studio/clip-import';
-	import { STUDIO_TEMPLATES, coerceTemplateId } from '$lib/studio/template-ids';
+	import { markVideoSessionForResume } from '$lib/video-clips/session-cache';
+	import { STUDIO_TEMPLATES, coerceTemplateId, videoLayoutForTemplate, isVideoStoryFamily } from '$lib/studio/template-ids';
 	import { ExternalLink, Layout } from 'lucide-svelte';
 
 	interface Props {
@@ -34,9 +36,11 @@
 		source: VideoImportMeta;
 		watermark?: string;
 		topicHint?: string;
+		/** Captions from Videos page — transferred into Studio when set. */
+		captions?: StudioClipCaptionImport | null;
 	}
 
-	let { clip, source, watermark = '', topicHint = '' }: Props = $props();
+	let { clip, source, watermark = '', topicHint = '', captions = null }: Props = $props();
 
 	const PREVIEW_W = 240;
 	const CANVAS_W = STUDIO_FEED_CANVAS.w;
@@ -87,6 +91,7 @@
 				carouselName: copy.carouselName,
 				carouselHandle: copy.carouselHandle,
 				carouselBody: copy.carouselBody,
+				captions: captions ?? null,
 			});
 		} else {
 			console.warn('[videos] Edit in Studio: no direct video URL to import', {
@@ -94,6 +99,7 @@
 				r2Key: !!source.r2Key,
 			});
 		}
+		markVideoSessionForResume();
 		window.location.href = studioUrlForClipImport(template);
 	}
 </script>
@@ -141,8 +147,9 @@
 							{scale}
 							interactive={false}
 						/>
-					{:else if t.id === 'videoStory'}
+					{:else if isVideoStoryFamily(t.id)}
 						<VideoStoryTemplate
+							layout={videoLayoutForTemplate(t.id)}
 							headline={copy.storyHeadline}
 							watermark={storyWatermark}
 							videoSrc={videoSrc}
@@ -153,6 +160,7 @@
 							h={CANVAS_H}
 							{scale}
 							interactive={false}
+							previewMode={true}
 						/>
 					{:else if t.id === 'tweet'}
 						<TweetTemplate

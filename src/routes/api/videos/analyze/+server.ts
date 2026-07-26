@@ -32,8 +32,8 @@ const analyzeSchema = z.object({
 	durationSec: z.number().min(1).max(86_400).optional(),
 	topicHint: z.string().max(600).optional(),
 	clipCount: z.number().int().min(1).max(40).optional(),
-	clipMinSec: z.number().min(10).max(180).optional(),
-	clipMaxSec: z.number().min(10).max(180).optional(),
+	clipMinSec: z.number().min(10).max(300).optional(),
+	clipMaxSec: z.number().min(10).max(300).optional(),
 	segmentAll: z.boolean().optional(),
 });
 

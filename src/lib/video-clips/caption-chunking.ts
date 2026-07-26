@@ -4,6 +4,8 @@ export type CaptionWord = {
 	text: string;
 	startSec: number;
 	endSec: number;
+	/** Permanently emphasize (keyword highlight) when highlight-keywords is on */
+	keyword?: boolean;
 };
 
 export type CaptionPhrase = {
