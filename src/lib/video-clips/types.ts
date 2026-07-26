@@ -8,6 +8,11 @@ export type VideoClip = {
 	reason: string;
 	/** Optional transcript excerpt for this segment */
 	transcript?: string;
+	/**
+	 * Slash / FutureTech-style News overlay hook (ALL CAPS).
+	 * May include `[[phrase]]` highlight markers for the News template.
+	 */
+	newsHeadline?: string;
 };
 
 export type VideoSourceKind = 'upload' | 'youtube';
@@ -24,6 +29,10 @@ export type VideoImportMeta = {
 	thumbnailUrl?: string;
 	/** Full timed transcript (`[m:ss->m:ss] text`) for caption sync */
 	transcript?: string;
+	/** YouTube / source description — who & what context for News hooks */
+	description?: string;
+	/** Channel / uploader when known */
+	channel?: string;
 };
 
 export type VideoAnalyzeResult = {

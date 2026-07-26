@@ -67,6 +67,8 @@ export type YoutubeImportResult = {
 	thumbnailUrl: string;
 	transcript: string;
 	playbackUrl: string;
+	description?: string;
+	channel?: string;
 };
 
 export async function importYoutubeVideo(url: string): Promise<YoutubeImportResult> {
@@ -86,6 +88,37 @@ export async function importYoutubeVideo(url: string): Promise<YoutubeImportResu
 	let title = 'YouTube video';
 	const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
 	if (titleMatch?.[1]) title = titleMatch[1].replace(/\s*-\s*YouTube\s*$/i, '').trim();
+
+	let description = '';
+	const shortDesc = html.match(/"shortDescription"\s*:\s*"((?:\\.|[^"\\])*)"/);
+	if (shortDesc?.[1]) {
+		try {
+			description = JSON.parse(`"${shortDesc[1]}"`) as string;
+		} catch {
+			description = shortDesc[1]
+				.replace(/\\n/g, '\n')
+				.replace(/\\"/g, '"')
+				.replace(/\\u0026/g, '&');
+		}
+	}
+	if (!description.trim()) {
+		const metaDesc = html.match(/<meta\s+name="description"\s+content="([^"]*)"/i);
+		if (metaDesc?.[1]) description = metaDesc[1];
+	}
+	description = description.trim().slice(0, 4000);
+
+	let channel = '';
+	const ownerMatch =
+		html.match(/"ownerChannelName"\s*:\s*"((?:\\.|[^"\\])*)"/) ||
+		html.match(/"author"\s*:\s*"((?:\\.|[^"\\])*)"/);
+	if (ownerMatch?.[1]) {
+		try {
+			channel = JSON.parse(`"${ownerMatch[1]}"`) as string;
+		} catch {
+			channel = ownerMatch[1];
+		}
+	}
+	channel = channel.trim().slice(0, 200);
 
 	let durationSec = 0;
 	const lenMatch = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
@@ -124,5 +157,7 @@ export async function importYoutubeVideo(url: string): Promise<YoutubeImportResu
 		thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
 		transcript,
 		playbackUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1`,
+		description: description || undefined,
+		channel: channel || undefined,
 	};
 }

@@ -2,6 +2,10 @@ import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
 import { clipNarrative } from '$lib/video-clips/clip-speech';
 import {
+	demoNewsHeadlineFromClip,
+	looksLikeRawSpeechHeadline,
+} from '$lib/video-clips/news-headline';
+import {
 	fitTextCarouselBodyToCanvas,
 	joinTextCarouselParagraphs,
 	takeParagraphCount,
@@ -128,8 +132,15 @@ export function buildClipTemplateCopy(
 	const watermark = opts?.watermark?.trim() || topic || source.title.slice(0, 32) || 'CLIPS';
 	const sourceLabel = clampText(cleanClipSpeechText(source.title), 200);
 
-	// News: short headline only (not the full transcript)
-	const newsHeadline = clampText(narrative.headline, 90);
+	// News: Slash/FutureTech hook only — never dump the transcript onto the template
+	const speech = clip.transcript || clip.hook || narrative.hook;
+	const aiNews = clip.newsHeadline?.trim() ?? '';
+	const newsHeadline = clampText(
+		!looksLikeRawSpeechHeadline(aiNews, speech)
+			? aiNews
+			: demoNewsHeadlineFromClip(clip, source.title || source.description?.slice(0, 80)),
+		160,
+	);
 
 	// Video story: one punchy overlay line
 	const storyHeadline = clampText(narrative.hook, 100);

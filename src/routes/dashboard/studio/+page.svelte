@@ -588,6 +588,14 @@ import JSZip from 'jszip';
 			videoMutedBySlide = Array.from({ length: n }, () => true);
 			videoVolumeBySlide = Array.from({ length: n }, () => 0.8);
 			videoSeekSec = clipStart;
+			// Match Videos page News preview: full-bleed cover (not letterboxed contain)
+			if (template === 'news' || template === 'imageQuote' || template === 'blank') {
+				bgFitMode = 'cover';
+				bgZoom = 100;
+				bgOffsetX = 50;
+				bgOffsetY = 50;
+				bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
+			}
 		}
 
 		// Transfer CapCut captions from Videos page onto this canvas
@@ -1731,7 +1739,7 @@ import JSZip from 'jszip';
 	let bgOffsetX = $state(0); // horizontal focal point (≈0–100 typical; wider allowed)
 	let bgOffsetY = $state(50); // vertical focal point
 	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in (cover mode only)
-	let bgFitMode = $state<'cover' | 'contain'>('contain'); // contain = full image visible + optional magnify
+	let bgFitMode = $state<'cover' | 'contain'>('cover'); // cover = full-bleed (Videos preview); contain = letterbox + magnify
 	let bgContainMagnify = $state(140); // 50–400%, only when bgFitMode === 'contain'
 
 	// Text panel drag (template px)
@@ -8450,6 +8458,21 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										{/if}
 										{#if backgroundImage || backgroundVideo}
 											<div class="flex flex-col gap-1.5 pt-1">
+												<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-0.5">Fit</p>
+												<div class="flex gap-1.5 mb-1">
+													<button
+														type="button"
+														class="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-colors {bgFitMode === 'cover' ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-[#ebebeb] text-[#888]'}"
+														onclick={() => (bgFitMode = 'cover')}
+													>Fill</button
+													>
+													<button
+														type="button"
+														class="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-colors {bgFitMode === 'contain' ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-[#ebebeb] text-[#888]'}"
+														onclick={() => (bgFitMode = 'contain')}
+													>Fit</button
+													>
+												</div>
 												<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-0.5">Position</p>
 												<div class="flex min-w-0 items-center gap-2.5">
 													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">←</span>
@@ -8463,7 +8486,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 												</div>
 												<div class="flex min-w-0 items-center gap-2.5">
 													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">−</span>
-													<Slider type="single" bind:value={bgZoom} min={30} max={300} step={1} class="min-w-0 flex-1" />
+													{#if bgFitMode === 'contain'}
+														<Slider type="single" bind:value={bgContainMagnify} min={50} max={400} step={1} class="min-w-0 flex-1" />
+													{:else}
+														<Slider type="single" bind:value={bgZoom} min={30} max={300} step={1} class="min-w-0 flex-1" />
+													{/if}
 													<span class="w-3 text-right text-[10px] text-[#c0c0c0]">+</span>
 												</div>
 											</div>

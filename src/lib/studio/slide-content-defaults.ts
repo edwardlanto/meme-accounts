@@ -17,7 +17,7 @@ export const NEWS_DEFAULT_LAYOUT = {
 	bgOffsetX: 50,
 	bgOffsetY: 50,
 	bgZoom: 100,
-	bgFitMode: 'contain' as const,
+	bgFitMode: 'cover' as const,
 	bgContainMagnify: 140,
 	textPanelOffsetY: 0,
 	shadowHeight: 75,

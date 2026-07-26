@@ -70,6 +70,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			let ytTitle = 'YouTube video';
 			let ytDuration = 0;
 			let ytTranscript = '';
+			let ytDescription = '';
+			let ytChannel = '';
 			let ytThumb = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 			let storageKey = '';
 			let playbackUrl = '';
@@ -93,6 +95,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					ytTitle = result.dl.title;
 					ytDuration = result.dl.durationSec;
 					ytTranscript = result.dl.transcript;
+					ytDescription = result.dl.description ?? '';
+					ytChannel = result.dl.channel ?? '';
 					ytThumb = result.dl.thumbnailUrl || ytThumb;
 					storageKey = result.key;
 					playbackUrl = result.signed;
@@ -107,6 +111,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					ytTitle = yt.title;
 					ytDuration = yt.durationSec;
 					ytTranscript = yt.transcript;
+					ytDescription = yt.description ?? '';
+					ytChannel = yt.channel ?? '';
 					ytThumb = yt.thumbnailUrl;
 					playbackUrl = yt.playbackUrl;
 				}
@@ -117,6 +123,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						ytTranscript = fallback.transcript;
 						if (!ytTitle || ytTitle === 'YouTube video') ytTitle = fallback.title;
 						if (!ytDuration || ytDuration <= 1) ytDuration = fallback.durationSec;
+						if (!ytDescription.trim()) ytDescription = fallback.description ?? '';
+						if (!ytChannel.trim()) ytChannel = fallback.channel ?? '';
 					} catch {
 						ytTranscript = '[No captions — analysis uses video content only.]';
 					}
@@ -129,6 +137,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				console.info('[api/videos/analyze] running clip AI…');
 				const analyzed = await analyzeVideoForClips({
 					title: ytTitle,
+					description: ytDescription,
+					channel: ytChannel,
 					durationSec: ytDuration,
 					transcript: ytTranscript,
 					topicHint,
@@ -172,6 +182,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						youtubeId: videoId,
 						thumbnailUrl: ytThumb,
 						transcript: ytTranscript,
+						description: ytDescription || undefined,
+						channel: ytChannel || undefined,
 					},
 					clips,
 					summary: analyzed.summary,
@@ -185,6 +197,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			const yt = await importYoutubeVideo(url);
 			const analyzed = await analyzeVideoForClips({
 				title: yt.title,
+				description: yt.description,
+				channel: yt.channel,
 				durationSec: yt.durationSec,
 				transcript: yt.transcript,
 				topicHint,
@@ -223,6 +237,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					youtubeId: yt.videoId,
 					thumbnailUrl: yt.thumbnailUrl,
 					transcript: yt.transcript,
+					description: yt.description || undefined,
+					channel: yt.channel || undefined,
 				},
 				clips,
 				summary: analyzed.summary,

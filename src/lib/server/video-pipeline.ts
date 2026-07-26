@@ -263,6 +263,8 @@ export type YoutubeDownloadResult = {
 	durationSec: number;
 	transcript: string;
 	thumbnailUrl: string;
+	description?: string;
+	channel?: string;
 };
 
 async function runYtDlpDownload(
@@ -406,6 +408,8 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 	}
 
 	let title = 'YouTube video';
+	let description = '';
+	let channel = '';
 	try {
 		const { stdout } = await runProcess(
 			tools.ytDlpPath,
@@ -414,6 +418,26 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 		);
 		const t = stdout.trim().split('\n')[0]?.trim();
 		if (t) title = t;
+	} catch {
+		/* ignore */
+	}
+	try {
+		const { stdout } = await runProcess(
+			tools.ytDlpPath,
+			[...ytDlpYoutubeBaseArgs(), '--print', 'description', videoUrl],
+			{ timeoutMs: 60_000 },
+		);
+		description = stdout.trim().slice(0, 4000);
+	} catch {
+		/* ignore */
+	}
+	try {
+		const { stdout } = await runProcess(
+			tools.ytDlpPath,
+			[...ytDlpYoutubeBaseArgs(), '--print', 'channel', videoUrl],
+			{ timeoutMs: 60_000 },
+		);
+		channel = stdout.trim().split('\n')[0]?.trim().slice(0, 200) ?? '';
 	} catch {
 		/* ignore */
 	}
@@ -428,6 +452,8 @@ export async function downloadYoutubeToDir(videoUrl: string, workDir: string): P
 		durationSec: durationSec || 1,
 		transcript,
 		thumbnailUrl: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '',
+		description: description || undefined,
+		channel: channel || undefined,
 	};
 }
 

@@ -5,6 +5,11 @@ import { buildFullVideoClips } from '$lib/video-clips/clip-segmentation';
 import { excerptFromTimedTranscript } from '$lib/video-clips/transcript-segments';
 import type { VideoClip } from '$lib/video-clips/types';
 import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
+import {
+	demoNewsHeadlineFromClip,
+	ensureNewsHeadlinesForClips,
+	looksLikeRawSpeechHeadline,
+} from '$lib/server/news-headline-from-clip';
 
 const CLIPS_SCHEMA = `{
   "clips": [
@@ -16,7 +21,8 @@ const CLIPS_SCHEMA = `{
       "viralityScore": 85,
       "hook": "Optional short label — prefer putting spoken words in transcript",
       "reason": "Internal note for editors only (not shown on posts)",
-      "transcript": "Verbatim 1-3 sentences actually spoken in this segment"
+      "transcript": "Verbatim 1-3 sentences actually spoken in this segment",
+      "newsHeadline": "ALL CAPS Slash/FutureTech news hook with [[highlighted]] impact phrases"
     }
   ],
   "summary": "One paragraph overview of the best angles to clip from this video"
@@ -39,6 +45,7 @@ function parseClipsJson(raw: string): { clips: VideoClip[]; summary: string } {
 		const startSec = Number(o.startSec);
 		const endSec = Number(o.endSec);
 		if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) continue;
+		const newsRaw = o.newsHeadline != null ? String(o.newsHeadline).trim() : '';
 		clips.push({
 			id: String(o.id ?? clips.length + 1),
 			title: String(o.title ?? 'Clip').slice(0, 120),
@@ -48,6 +55,10 @@ function parseClipsJson(raw: string): { clips: VideoClip[]; summary: string } {
 			hook: String(o.hook ?? '').slice(0, 280),
 			reason: String(o.reason ?? '').slice(0, 500),
 			transcript: o.transcript != null ? String(o.transcript).slice(0, 800) : undefined,
+			newsHeadline:
+				newsRaw && !looksLikeRawSpeechHeadline(newsRaw, o.transcript != null ? String(o.transcript) : '')
+					? newsRaw.slice(0, 320)
+					: undefined,
 		});
 	}
 	clips.sort((a, b) => b.viralityScore - a.viralityScore);
@@ -90,17 +101,27 @@ function demoClips(
 		endSec = Math.min(dur, endSec);
 		const excerpt = excerptFromTimedTranscript(transcript, startSec, endSec);
 		const quote = excerpt || title || 'Clip from your video';
+		const shortTitle = excerpt
+			? quote.split(/\s+/).slice(0, 6).join(' ').replace(/[.!?]+$/, '')
+			: `Segment ${i + 1}`;
+		const demoHook = quote.slice(0, 200);
 		clips.push({
 			id: String(i + 1),
-			title: excerpt
-				? quote.split(/\s+/).slice(0, 6).join(' ').replace(/[.!?]+$/, '')
-				: `Segment ${i + 1}`,
+			title: shortTitle,
 			startSec,
 			endSec,
 			viralityScore: 88 - i * 5,
-			hook: quote.slice(0, 200),
+			hook: demoHook,
 			reason: '',
 			transcript: quote.slice(0, 800),
+			newsHeadline: demoNewsHeadlineFromClip(
+				{
+					title: shortTitle,
+					hook: demoHook,
+					transcript: quote.slice(0, 800),
+				},
+				title,
+			),
 		});
 	}
 
@@ -153,6 +174,9 @@ async function geminiGenerate(params: {
 
 export async function analyzeVideoForClips(opts: {
 	title: string;
+	/** YouTube / source description for WHO/WHAT context */
+	description?: string;
+	channel?: string;
 	durationSec: number;
 	transcript: string;
 	topicHint?: string;
@@ -171,6 +195,11 @@ export async function analyzeVideoForClips(opts: {
 		? 40
 		: Math.max(1, Math.min(40, opts.clipCount ?? 8));
 	const durationSec = Math.max(1, Number(opts.durationSec) || 1);
+	const newsHeadlineCtx = {
+		videoTitle: opts.title,
+		description: opts.description,
+		channel: opts.channel,
+	};
 
 	if (segmentAll) {
 		const clips = normalizeVideoClips(
@@ -199,7 +228,8 @@ export async function analyzeVideoForClips(opts: {
 			clipCount: want,
 			segmentAll: false,
 		});
-		return { ...demo, demo: true };
+		const withNews = await ensureNewsHeadlinesForClips(demo.clips, newsHeadlineCtx);
+		return { ...demo, clips: withNews, demo: true };
 	}
 
 	const transcriptBlock = sandboxUserPlaintext('TRANSCRIPT', opts.transcript.slice(0, 120_000), 120_000);
@@ -216,6 +246,18 @@ Rules:
 - title is a short topic headline (3-6 words), not a label about virality.
 - Each clip MUST have a unique title and transcript based on what is actually said in that time range — never repeat the full video title for every clip.
 - reason is for editors only (optional); transcript is what appears on social posts.
+- newsHeadline is a separate News-template overlay hook. NEVER paste or lightly edit the transcript — rewrite into a Slash / FutureTech viral-news HEADline:
+  - ALL CAPS, third-person news voice (not first-person speech)
+  - 12–28 words, one complete thought (never cut mid-sentence)
+  - MUST cover WHO (person/role from video title, channel, or description), WHAT the clip is about, and a HYPE / stakes angle
+  - Ground ONLY in facts/claims in the video title + description + channel + this segment — do not invent names, numbers, or events
+  - Prefer conflict, confession, money, career stakes, contrast, or a twist when present
+  - Wrap 1–3 impact phrases in [[...]] for highlight (plain phrases only — never grad(, marker(, pattern(, or #hex: inside brackets)
+  - No hashtags, no emojis, no quotation marks around the whole line
+  - Examples of the STYLE (do not copy these facts — invent nothing; mirror the cadence from THIS clip):
+    - [[PATRICK MAHOMES]] BREAKS DOWN THE PLAY THAT [[ALMOST COST]] THE CHIEFS THE SEASON
+    - THIS FOUNDER WON'T [[CONFIRM OR DENY]] THE ACCUSATIONS — BUT ADMITS THERE WAS [[PRE-MEDITATION]]
+    - A 20-YEAR-OLD SPENT [[$20 ON CLAUDE]], BUILT AN AI SPEED RADAR IN 9 DAYS, AND [[SOLD IT FOR $317K]]
 - startSec/endSec must be within 0 and ${durationSec} seconds.
 - Clips must not overlap heavily.
 - viralityScore is 0–100 (higher = more likely to go viral on TikTok/Reels/Shorts).
@@ -223,9 +265,13 @@ Rules:
 ${CLIPS_SCHEMA}
 
 Video title: ${opts.title}
+Channel: ${opts.channel?.trim() || '(unknown)'}
 Duration seconds: ${durationSec}
+${opts.description?.trim() ? sandboxUserPlaintext('DESCRIPTION', opts.description.trim().slice(0, 3500), 3500) : ''}
 ${hint}
-${transcriptBlock}`;
+${transcriptBlock}
+
+When writing newsHeadline, use TITLE + CHANNEL + DESCRIPTION for who/what the video is about, and the CLIP transcript for what happens in this moment.`;
 
 	try {
 		const accessToken = await getGoogleAccessToken();
@@ -268,8 +314,9 @@ ${transcriptBlock}`;
 			clipMaxSec,
 		);
 
+		const withNews = await ensureNewsHeadlinesForClips(clips.slice(0, want), newsHeadlineCtx);
 		return {
-			clips: clips.slice(0, want),
+			clips: withNews,
 			summary: parsed.summary,
 			demo: false,
 			model,
@@ -282,6 +329,7 @@ ${transcriptBlock}`;
 			clipCount: want,
 			segmentAll: false,
 		});
-		return { ...demo, demo: true };
+		const withNews = await ensureNewsHeadlinesForClips(demo.clips, newsHeadlineCtx);
+		return { ...demo, clips: withNews, demo: true };
 	}
 }
