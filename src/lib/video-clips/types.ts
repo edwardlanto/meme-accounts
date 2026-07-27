@@ -13,6 +13,12 @@ export type VideoClip = {
 	 * May include `[[phrase]]` highlight markers for the News template.
 	 */
 	newsHeadline?: string;
+	/** R2 key for a cut+reframed preview MP4 (standalone clip, starts at 0). */
+	reframedR2Key?: string;
+	/** Signed playback URL for `reframedR2Key`. */
+	reframedPlaybackUrl?: string;
+	/** Fingerprint of reframe settings used to produce the preview. */
+	reframeSettingsKey?: string;
 };
 
 export type VideoSourceKind = 'upload' | 'youtube';

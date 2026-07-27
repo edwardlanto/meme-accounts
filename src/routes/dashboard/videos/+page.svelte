@@ -61,6 +61,14 @@
 		type CaptionEnhanceOptions,
 	} from '$lib/video-clips/caption-enhance';
 	import {
+		DEFAULT_AUTO_REFRAME,
+		REFRAME_ASPECTS,
+		REFRAME_METHODS,
+		REFRAME_PADDING,
+		reframeSettingsKey,
+		type AutoReframeOptions,
+	} from '$lib/video-clips/reframe';
+	import {
 		Link2,
 		Upload,
 		Sparkles,
@@ -95,6 +103,7 @@
 	let toolsWarning = $state('');
 	let ytDlpReady = $state(false);
 	let ffmpegReady = $state(false);
+	let pyautoflipReady = $state(false);
 	let youtubeUrl = $state('');
 	let topicHint = $state('');
 	let source = $state<VideoImportMeta | null>(null);
@@ -149,6 +158,11 @@
 	let lengthMenuOpen = $state(false);
 	let ratioMenuOpen = $state(false);
 	let captionEnhance = $state<CaptionEnhanceOptions>({ ...DEFAULT_CAPTION_ENHANCE });
+	let autoReframe = $state<AutoReframeOptions>({ ...DEFAULT_AUTO_REFRAME });
+	let reframeBusy = $state(false);
+	let reframeProgress = $state({ done: 0, total: 0, clipTitle: '' });
+	let reframingClipId = $state<string | null>(null);
+	let reframeController: AbortController | null = null;
 	/** Optional session the user can resume manually (not auto-loaded on login). */
 	let resumableSession = $state<{ title: string; clipCount: number } | null>(null);
 	/** Gate persistence until cached session/prefs are loaded (avoids overwriting on boot). */
@@ -410,6 +424,34 @@
 		CLIP_LENGTH_PRESETS.find((p) => p.id === clipLengthPreset)?.label ?? 'Any length',
 	);
 	const aspectMeta = $derived(videoAspectById(videoAspectRatio));
+	const currentReframeKey = $derived(
+		reframeSettingsKey({
+			aspectRatio: autoReframe.aspectRatio,
+			method: autoReframe.method,
+			motionThreshold: autoReframe.motionThreshold,
+			paddingMethod: autoReframe.paddingMethod,
+			debug: autoReframe.debug,
+		}),
+	);
+	const reframeAspectCss = $derived(
+		autoReframe.aspectRatio === '9:16'
+			? '9 / 16'
+			: autoReframe.aspectRatio === '4:5'
+				? '4 / 5'
+				: autoReframe.aspectRatio === '1:1'
+					? '1 / 1'
+					: '16 / 9',
+	);
+	const clipsNeedingReframe = $derived(
+		clips.filter(
+			(c) => !c.reframedPlaybackUrl || c.reframeSettingsKey !== currentReframeKey,
+		).length,
+	);
+	const clipsReframedReady = $derived(
+		clips.filter(
+			(c) => !!c.reframedPlaybackUrl && c.reframeSettingsKey === currentReframeKey,
+		).length,
+	);
 
 	function setClipLengthPreset(id: ClipLengthPresetId) {
 		clipLengthPreset = id;
@@ -583,7 +625,7 @@
 	function persistFormPrefs() {
 		if (!sessionHydrated) return;
 		saveVideoFormPrefs({
-			youtubeUrl,
+			youtubeUrl: '',
 			topicHint,
 			importTab,
 			clipMode,
@@ -592,6 +634,12 @@
 			clipMaxSec,
 			videoAspectRatio,
 			clipLayout,
+			autoReframeEnabled: autoReframe.enabled,
+			reframeAspectRatio: autoReframe.aspectRatio,
+			reframeMethod: autoReframe.method,
+			reframeMotionThreshold: autoReframe.motionThreshold,
+			reframePaddingMethod: autoReframe.paddingMethod,
+			reframeDebug: autoReframe.debug,
 		});
 	}
 
@@ -666,7 +714,7 @@
 
 		const prefs = loadVideoFormPrefs();
 		if (prefs) {
-			youtubeUrl = prefs.youtubeUrl ?? '';
+			// Never restore YouTube URL — source step should start empty
 			topicHint = prefs.topicHint ?? '';
 			importTab = prefs.importTab === 'upload' ? 'upload' : 'youtube';
 			clipMode = prefs.clipMode === 'all' ? 'all' : 'highlights';
@@ -678,6 +726,31 @@
 			if (ar === '9:16' || ar === '1:1' || ar === '16:9') videoAspectRatio = ar;
 			const lay = String(prefs.clipLayout ?? '');
 			if (lay === 'fit' || lay === 'blur' || lay === 'story') clipLayout = lay;
+			if (typeof prefs.autoReframeEnabled === 'boolean') {
+				autoReframe = { ...autoReframe, enabled: prefs.autoReframeEnabled };
+			}
+			const rar = String(prefs.reframeAspectRatio ?? prefs.videoAspectRatio ?? '');
+			if (rar === '9:16' || rar === '1:1' || rar === '16:9' || rar === '4:5') {
+				autoReframe = { ...autoReframe, aspectRatio: rar };
+			}
+			const rm = String(prefs.reframeMethod ?? '');
+			if (rm === 'detection' || rm === 'saliency') {
+				autoReframe = { ...autoReframe, method: rm };
+			}
+			const mt = Number(prefs.reframeMotionThreshold);
+			if (Number.isFinite(mt)) {
+				autoReframe = {
+					...autoReframe,
+					motionThreshold: Math.min(1, Math.max(0, mt)),
+				};
+			}
+			const pad = String(prefs.reframePaddingMethod ?? '');
+			if (pad === 'blur' || pad === 'solid_color') {
+				autoReframe = { ...autoReframe, paddingMethod: pad };
+			}
+			if (typeof prefs.reframeDebug === 'boolean') {
+				autoReframe = { ...autoReframe, debug: prefs.reframeDebug };
+			}
 		}
 
 		const cached = loadVideoSession();
@@ -723,6 +796,7 @@
 			const t = await res.json();
 			ytDlpReady = !!t.ytDlp;
 			ffmpegReady = !!t.ffmpeg;
+			pyautoflipReady = !!t.pyautoflip;
 			if (!t.ytDlp) {
 				toolsWarning = 'Install yt-dlp for YouTube download + MP4 clips: brew install yt-dlp';
 			} else if (!t.ffmpeg) {
@@ -743,13 +817,20 @@
 
 	// Keep last session / form prefs warm while working
 	$effect(() => {
-		youtubeUrl;
 		topicHint;
 		importTab;
 		clipMode;
 		clipCount;
 		clipMinSec;
 		clipMaxSec;
+		videoAspectRatio;
+		clipLayout;
+		autoReframe.enabled;
+		autoReframe.aspectRatio;
+		autoReframe.method;
+		autoReframe.motionThreshold;
+		autoReframe.paddingMethod;
+		autoReframe.debug;
 		persistFormPrefs();
 	});
 
@@ -912,6 +993,30 @@
 		error = '';
 		phase = 'exporting';
 		try {
+			// Prefer already-reframed preview file when settings still match
+			if (
+				clip.reframedR2Key &&
+				clip.reframeSettingsKey === currentReframeKey &&
+				autoReframe.enabled
+			) {
+				const { url } = await r2SignRead({ key: clip.reframedR2Key });
+				const res = await fetch(url);
+				if (!res.ok) throw new Error('Could not download reframed clip');
+				const blob = await res.blob();
+				if (!blob.size) throw new Error('Export returned an empty file');
+				const filename = `${clip.title.replace(/[^\w.-]+/g, '_').slice(0, 80) || 'clip'}.mp4`;
+				const objectUrl = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = objectUrl;
+				a.download = filename;
+				a.rel = 'noopener';
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				URL.revokeObjectURL(objectUrl);
+				return;
+			}
+
 			const body: Record<string, unknown> = {
 				r2Key: source.r2Key,
 				startSec: clip.startSec,
@@ -955,11 +1060,170 @@
 		}
 	}
 
+	function clearClipReframes() {
+		clips = clips.map((c) => {
+			const { reframedR2Key: _k, reframedPlaybackUrl: _u, reframeSettingsKey: _s, ...rest } = c;
+			return rest;
+		});
+	}
+
+	function cancelReframe() {
+		reframeController?.abort();
+		reframeController = null;
+		reframeBusy = false;
+		reframingClipId = null;
+		reframeProgress = { done: 0, total: 0, clipTitle: '' };
+	}
+
+	function reframeGuards(): string | null {
+		if (!source?.r2Key) return 'Reframe needs a stored video. Analyze with yt-dlp first.';
+		if (!pyautoflipReady) return 'Auto-reframe needs pyautoflip. Run: npm run pyautoflip:install';
+		if (!ffmpegReady) return 'ffmpeg is required. Run: brew install ffmpeg';
+		return null;
+	}
+
+	async function reframeOneClip(clip: VideoClip, signal: AbortSignal): Promise<boolean> {
+		if (!source?.r2Key) return false;
+
+		const body: Record<string, unknown> = {
+			r2Key: source.r2Key,
+			startSec: clip.startSec,
+			endSec: clip.endSec,
+			clipId: clip.id,
+			reframe: {
+				aspectRatio: autoReframe.aspectRatio,
+				method: autoReframe.method,
+				motionThreshold: autoReframe.motionThreshold,
+				paddingMethod: autoReframe.paddingMethod,
+				debug: autoReframe.debug,
+			},
+		};
+		if (captionEnhance.removeSilences) {
+			const segs = buildCaptionSegmentsForClip(clip);
+			const windows = speechWindows(segs, clip.startSec, clip.endSec);
+			if (windows.length > 1) body.speechWindows = windows;
+		}
+
+		const res = await fetch('/api/videos/reframe-clip', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+			signal,
+		});
+		if (signal.aborted) return false;
+
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok) {
+			if (res.status === 499 || data.error === 'Canceled') return false;
+			throw new Error(data.error ?? `Reframe failed (${res.status})`);
+		}
+
+		clips = clips.map((c) =>
+			c.id === clip.id
+				? {
+						...c,
+						reframedR2Key: String(data.r2Key ?? ''),
+						reframedPlaybackUrl: String(data.playbackUrl ?? ''),
+						reframeSettingsKey: String(data.settingsKey ?? currentReframeKey),
+					}
+				: c,
+		);
+		persistSession();
+		return true;
+	}
+
+	async function reframeSingleClip(clip: VideoClip) {
+		const guard = reframeGuards();
+		if (guard) {
+			error = guard;
+			return;
+		}
+
+		error = '';
+		reframeController?.abort();
+		const controller = new AbortController();
+		reframeController = controller;
+		reframeBusy = true;
+		reframingClipId = clip.id;
+
+		try {
+			await reframeOneClip(clip, controller.signal);
+		} catch (e: unknown) {
+			if (e instanceof DOMException && e.name === 'AbortError') {
+				/* canceled */
+			} else if (e instanceof Error && e.name === 'AbortError') {
+				/* canceled */
+			} else {
+				error = e instanceof Error ? e.message : String(e);
+			}
+		} finally {
+			if (reframeController === controller) reframeController = null;
+			reframeBusy = false;
+			reframingClipId = null;
+		}
+	}
+
+	async function applyReframeToClips() {
+		const guard = reframeGuards();
+		if (guard) {
+			error = guard;
+			return;
+		}
+
+		const pending = clips.filter(
+			(c) => !c.reframedPlaybackUrl || c.reframeSettingsKey !== currentReframeKey,
+		);
+		if (!pending.length) return;
+
+		error = '';
+		reframeController?.abort();
+		const controller = new AbortController();
+		reframeController = controller;
+		reframeBusy = true;
+		reframeProgress = { done: 0, total: pending.length, clipTitle: '' };
+
+		try {
+			for (let i = 0; i < pending.length; i++) {
+				if (controller.signal.aborted) break;
+				const clip = pending[i]!;
+				reframingClipId = clip.id;
+				reframeProgress = {
+					done: i,
+					total: pending.length,
+					clipTitle: cleanClipSpeechText(clip.title) || `Clip ${i + 1}`,
+				};
+
+				const ok = await reframeOneClip(clip, controller.signal);
+				if (!ok) break;
+
+				reframeProgress = {
+					done: i + 1,
+					total: pending.length,
+					clipTitle: cleanClipSpeechText(clip.title) || `Clip ${i + 1}`,
+				};
+			}
+		} catch (e: unknown) {
+			if (e instanceof DOMException && e.name === 'AbortError') {
+				/* canceled */
+			} else if (e instanceof Error && e.name === 'AbortError') {
+				/* canceled */
+			} else {
+				error = e instanceof Error ? e.message : String(e);
+			}
+		} finally {
+			if (reframeController === controller) reframeController = null;
+			reframeBusy = false;
+			reframingClipId = null;
+		}
+	}
+
 	function chooseAnotherVideo() {
+		cancelReframe();
 		clearVideoSession();
 		resumableSession = null;
 		phase = 'idle';
 		workflowStep = 'source';
+		youtubeUrl = '';
 		source = null;
 		clips = [];
 		summary = '';
@@ -1565,6 +1829,154 @@
 				</aside>
 
 				<div class="feed-main">
+					<div class="reframe-panel" aria-label="Auto-reframe clip options">
+						<label class="enhance-opt reframe-toggle">
+							<input
+								type="checkbox"
+								checked={autoReframe.enabled}
+								disabled={reframeBusy}
+								onchange={(e) => {
+									const on = (e.currentTarget as HTMLInputElement).checked;
+									autoReframe = { ...autoReframe, enabled: on };
+									if (!on) clearClipReframes();
+								}}
+							/>
+							<span class="enhance-box" aria-hidden="true"></span>
+							Auto-reframe clips
+						</label>
+						{#if autoReframe.enabled}
+							<div class="reframe-options">
+								<label class="reframe-field">
+									<span>Target ratio</span>
+									<select
+										value={autoReframe.aspectRatio}
+										disabled={reframeBusy}
+										onchange={(e) => {
+											const v = (e.currentTarget as HTMLSelectElement).value;
+											if (v === '9:16' || v === '4:5' || v === '1:1' || v === '16:9') {
+												autoReframe = { ...autoReframe, aspectRatio: v };
+											}
+										}}
+									>
+										{#each REFRAME_ASPECTS as a}
+											<option value={a.id}>{a.label} — {a.hint}</option>
+										{/each}
+									</select>
+								</label>
+								<label class="reframe-field">
+									<span>Reframe type</span>
+									<select
+										value={autoReframe.method}
+										disabled={reframeBusy}
+										onchange={(e) => {
+											const v = (e.currentTarget as HTMLSelectElement).value;
+											if (v === 'detection' || v === 'saliency') {
+												autoReframe = { ...autoReframe, method: v };
+											}
+										}}
+									>
+										{#each REFRAME_METHODS as m}
+											<option value={m.id}>{m.label} — {m.hint}</option>
+										{/each}
+									</select>
+								</label>
+								<label class="reframe-field">
+									<span>Edge fill</span>
+									<select
+										value={autoReframe.paddingMethod}
+										disabled={reframeBusy}
+										onchange={(e) => {
+											const v = (e.currentTarget as HTMLSelectElement).value;
+											if (v === 'blur' || v === 'solid_color') {
+												autoReframe = { ...autoReframe, paddingMethod: v };
+											}
+										}}
+									>
+										{#each REFRAME_PADDING as p}
+											<option value={p.id}>{p.label} — {p.hint}</option>
+										{/each}
+									</select>
+								</label>
+								<label class="reframe-field reframe-motion">
+									<span>Camera motion {autoReframe.motionThreshold.toFixed(2)}</span>
+									<input
+										type="range"
+										min="0"
+										max="1"
+										step="0.05"
+										disabled={reframeBusy}
+										value={autoReframe.motionThreshold}
+										oninput={(e) => {
+											autoReframe = {
+												...autoReframe,
+												motionThreshold: Number((e.currentTarget as HTMLInputElement).value),
+											};
+										}}
+									/>
+								</label>
+								<label class="enhance-opt">
+									<input
+										type="checkbox"
+										checked={autoReframe.debug}
+										disabled={reframeBusy}
+										onchange={(e) => {
+											autoReframe = {
+												...autoReframe,
+												debug: (e.currentTarget as HTMLInputElement).checked,
+											};
+										}}
+									/>
+									<span class="enhance-box" aria-hidden="true"></span>
+									Debug mode
+								</label>
+							</div>
+
+							<div class="reframe-actions">
+								{#if reframeBusy}
+									<button type="button" class="btn-ghost reframe-cancel" onclick={cancelReframe}>
+										Cancel
+									</button>
+									<span class="reframe-progress" role="status">
+										<Loader size={14} class="spin" />
+										Reframing {Math.min(reframeProgress.done + 1, reframeProgress.total)}/{reframeProgress.total}
+										{#if reframeProgress.clipTitle}
+											— {reframeProgress.clipTitle}
+										{/if}
+									</span>
+								{:else}
+									<button
+										type="button"
+										class="btn-primary"
+										disabled={!pyautoflipReady || !hasStoredVideo || clipsNeedingReframe === 0}
+										onclick={() => void applyReframeToClips()}
+									>
+										{#if clipsNeedingReframe === 0 && clipsReframedReady > 0}
+											Clips reframed ({clipsReframedReady})
+										{:else}
+											Apply to {clipsNeedingReframe || clips.length} clip{clipsNeedingReframe === 1 ? '' : 's'}
+										{/if}
+									</button>
+								{/if}
+							</div>
+
+							{#if !pyautoflipReady}
+								<p class="reframe-warn" role="status">
+									<AlertCircle size={13} />
+									Install with <code>npm run pyautoflip:install</code>, then refresh.
+								</p>
+							{:else if clipsReframedReady > 0 && clipsNeedingReframe > 0}
+								<p class="reframe-hint">
+									{clipsReframedReady} ready · {clipsNeedingReframe} need apply (settings changed).
+								</p>
+							{:else}
+								<p class="reframe-hint">
+									Reframe one clip with the button under its preview, or apply to all at once.
+									Download uses the reframed file. Can take a while per clip.
+								</p>
+							{/if}
+						{/if}
+					</div>
+
 					<div class="feed-toolbar">
 						<label class="select-all">
 							<input
@@ -1595,10 +2007,20 @@
 								{source}
 								{hasStoredVideo}
 								selected={selectedClipId === clip.id}
-								exporting={isExporting}
+								exporting={isExporting || reframingClipId === clip.id}
+								reframeEnabled={autoReframe.enabled && hasStoredVideo}
+								reframing={reframingClipId === clip.id}
+								reframeReady={
+									!!clip.reframedPlaybackUrl && clip.reframeSettingsKey === currentReframeKey
+								}
+								reframeLocked={reframeBusy && reframingClipId !== clip.id}
 								muted={videoMuted}
 								layout={clipLayout}
-								aspectRatio={aspectMeta.css}
+								aspectRatio={
+									clip.reframedPlaybackUrl && clip.reframeSettingsKey === currentReframeKey
+										? reframeAspectCss
+										: aspectMeta.css
+								}
 								enhance={captionEnhance}
 								onselect={() => selectClip(clip, { play: false })}
 								onplay={(el) => {
@@ -1607,6 +2029,7 @@
 									pauseOtherClipVideos(el);
 								}}
 								onexport={() => void downloadClip(clip)}
+								onreframe={() => void reframeSingleClip(clip)}
 								onstudio={(tpl) => openClipInStudio(clip, tpl)}
 								ontimeupdate={onClipCardTimeUpdate}
 								onmutechange={(m) => (videoMuted = m)}
@@ -2905,6 +3328,117 @@
 		padding: 0.35rem 0.15rem;
 		font-size: 0.78rem;
 		color: #64748b;
+	}
+
+	.reframe-panel {
+		margin-bottom: 0.85rem;
+		padding: 0.75rem 0.85rem;
+		border-radius: 0.75rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+	}
+
+	.reframe-toggle {
+		margin-bottom: 0;
+	}
+
+	.reframe-options {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.65rem 0.85rem;
+		margin-top: 0.75rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid #f1f5f9;
+	}
+
+	.reframe-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.28rem;
+		font-size: 0.72rem;
+		font-weight: 650;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+
+	.reframe-field select,
+	.reframe-field input[type='range'] {
+		font: inherit;
+		text-transform: none;
+		letter-spacing: normal;
+		font-weight: 550;
+		color: #1e293b;
+		border: 1px solid #e2e8f0;
+		border-radius: 0.45rem;
+		padding: 0.4rem 0.5rem;
+		background: #f8fafc;
+	}
+
+	.reframe-motion {
+		grid-column: 1 / -1;
+	}
+
+	.reframe-motion input[type='range'] {
+		padding: 0;
+		border: none;
+		background: transparent;
+		accent-color: #7c3aed;
+	}
+
+	.reframe-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.65rem;
+		margin-top: 0.75rem;
+	}
+
+	.reframe-cancel {
+		border-color: #fecaca;
+		color: #b91c1c;
+	}
+
+	.reframe-cancel:hover {
+		background: #fef2f2;
+	}
+
+	.reframe-progress {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: #475569;
+	}
+
+	.reframe-warn,
+	.reframe-hint {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.4rem;
+		margin: 0.65rem 0 0;
+		font-size: 0.78rem;
+		line-height: 1.35;
+		color: #64748b;
+	}
+
+	.reframe-warn {
+		color: #b45309;
+	}
+
+	.reframe-warn code {
+		font-size: 0.72rem;
+		padding: 0.05rem 0.28rem;
+		border-radius: 0.25rem;
+		background: #f1f5f9;
+		color: #334155;
+	}
+
+	@media (max-width: 640px) {
+		.reframe-options {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	.select-all {

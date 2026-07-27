@@ -11,9 +11,11 @@ export type ToolCheck = {
 	ffmpeg: boolean;
 	ytDlp: boolean;
 	whisper: boolean;
+	pyautoflip: boolean;
 	ffmpegPath: string;
 	ytDlpPath: string;
 	whisperPath: string;
+	pyautoflipPath: string;
 	/** Path to cookies.txt when YT_DLP_COOKIES is set and readable */
 	ytDlpCookiesFile?: string;
 	ytDlpCookiesBrowser?: string;
@@ -84,10 +86,12 @@ async function pathReadable(p: string): Promise<boolean> {
 }
 
 export async function checkVideoTools(): Promise<ToolCheck> {
+	const { resolvePyautoflipPath } = await import('$lib/server/pyautoflip');
 	const ffmpeg = await resolveExecutable(binFromEnv('FFMPEG_PATH', 'ffmpeg'), FFMPEG_FALLBACKS);
 	const ytDlp = await resolveExecutable(binFromEnv('YT_DLP_PATH', 'yt-dlp'), YTDLP_FALLBACKS);
 	const ffprobe = await resolveExecutable(getFfprobePath(), FFPROBE_FALLBACKS);
 	const whisper = await resolveExecutable(getWhisperPath(), ['/opt/homebrew/bin/whisper-cli']);
+	const pyautoflip = await resolvePyautoflipPath();
 	cachedFfmpegPath = ffmpeg.path;
 	cachedYtDlpPath = ytDlp.path;
 	cachedFfprobePath = ffprobe.path;
@@ -102,9 +106,11 @@ export async function checkVideoTools(): Promise<ToolCheck> {
 		ffmpeg: ffmpeg.ok,
 		ytDlp: ytDlp.ok,
 		whisper: whisper.ok,
+		pyautoflip: pyautoflip.ok,
 		ffmpegPath: ffmpeg.path,
 		ytDlpPath: ytDlp.path,
 		whisperPath: whisper.path,
+		pyautoflipPath: pyautoflip.path,
 		ytDlpCookiesFile: cookiesOk ? cookiesPath : undefined,
 		ytDlpCookiesBrowser: cookiesBrowser || undefined,
 		ytDlpDeno,
@@ -196,30 +202,65 @@ const YOUTUBE_DOWNLOAD_STRATEGIES: YtStrategy[] = [
 function runProcess(
 	cmd: string,
 	args: string[],
-	opts?: { cwd?: string; timeoutMs?: number },
+	opts?: { cwd?: string; timeoutMs?: number; signal?: AbortSignal },
 ): Promise<{ stdout: string; stderr: string }> {
 	return new Promise((resolve, reject) => {
+		if (opts?.signal?.aborted) {
+			reject(new DOMException('Aborted', 'AbortError'));
+			return;
+		}
+
 		const child = spawn(cmd, args, { cwd: opts?.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
 		let stdout = '';
 		let stderr = '';
+		let settled = false;
+
+		const settle = (fn: () => void) => {
+			if (settled) return;
+			settled = true;
+			if (timer) clearTimeout(timer);
+			opts?.signal?.removeEventListener('abort', onAbort);
+			fn();
+		};
+
+		const onAbort = () => {
+			try {
+				child.kill('SIGKILL');
+			} catch {
+				/* ignore */
+			}
+			settle(() => reject(new DOMException('Aborted', 'AbortError')));
+		};
+
 		const timer =
 			opts?.timeoutMs != null
 				? setTimeout(() => {
-						child.kill('SIGKILL');
-						reject(new Error(`${cmd} timed out after ${opts.timeoutMs}ms`));
+						try {
+							child.kill('SIGKILL');
+						} catch {
+							/* ignore */
+						}
+						settle(() => reject(new Error(`${cmd} timed out after ${opts.timeoutMs}ms`)));
 					}, opts.timeoutMs)
 				: null;
+
+		opts?.signal?.addEventListener('abort', onAbort, { once: true });
 
 		child.stdout?.on('data', (d) => (stdout += String(d)));
 		child.stderr?.on('data', (d) => (stderr += String(d)));
 		child.on('error', (e) => {
-			if (timer) clearTimeout(timer);
-			reject(e);
+			settle(() => reject(e));
 		});
 		child.on('close', (code) => {
-			if (timer) clearTimeout(timer);
-			if (code === 0) resolve({ stdout, stderr });
-			else reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-2000) || stdout.slice(-500)}`));
+			if (opts?.signal?.aborted) {
+				settle(() => reject(new DOMException('Aborted', 'AbortError')));
+				return;
+			}
+			if (code === 0) settle(() => resolve({ stdout, stderr }));
+			else
+				settle(() =>
+					reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-2000) || stdout.slice(-500)}`)),
+				);
 		});
 	});
 }
@@ -611,6 +652,7 @@ export async function extractClipWithFfmpeg(params: {
 	endSec: number;
 	/** Optional keep-windows (relative to source timeline) — concatenates speech, drops silence */
 	speechWindows?: Array<{ startSec: number; endSec: number }>;
+	signal?: AbortSignal;
 }): Promise<void> {
 	const tools = await checkVideoTools();
 	if (!tools.ffmpeg) {
@@ -623,6 +665,7 @@ export async function extractClipWithFfmpeg(params: {
 		// Cut each window then concat (silence removal)
 		const parts: string[] = [];
 		for (let i = 0; i < windows.length; i++) {
+			if (params.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 			const w = windows[i]!;
 			const part = join(dirname(params.outputPath), `part-${i}.mp4`);
 			const dur = Math.max(0.05, w.endSec - w.startSec);
@@ -651,7 +694,7 @@ export async function extractClipWithFfmpeg(params: {
 					'+faststart',
 					part,
 				],
-				{ timeoutMs: 600_000 },
+				{ timeoutMs: 600_000, signal: params.signal },
 			);
 			parts.push(part);
 		}
@@ -676,7 +719,7 @@ export async function extractClipWithFfmpeg(params: {
 				'copy',
 				params.outputPath,
 			],
-			{ timeoutMs: 600_000 },
+			{ timeoutMs: 600_000, signal: params.signal },
 		);
 		return;
 	}
@@ -707,7 +750,7 @@ export async function extractClipWithFfmpeg(params: {
 			'+faststart',
 			params.outputPath,
 		],
-		{ timeoutMs: 600_000 },
+		{ timeoutMs: 600_000, signal: params.signal },
 	);
 }
 

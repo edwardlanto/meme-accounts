@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Download, Loader, Play, Pause, Film } from 'lucide-svelte';
+	import { Download, Loader, Play, Pause, Film, Volume2, VolumeX, Crop } from 'lucide-svelte';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import { formatTimestamp } from '$lib/video-clips/export-clip';
 	import { clipDisplayQuote } from '$lib/video-clips/clip-template-copy';
@@ -37,6 +37,12 @@
 		hasStoredVideo: boolean;
 		selected?: boolean;
 		exporting?: boolean;
+		/** Show per-clip reframe control (uses parent auto-reframe settings). */
+		reframeEnabled?: boolean;
+		reframing?: boolean;
+		reframeReady?: boolean;
+		/** Another clip is reframing — disable this button. */
+		reframeLocked?: boolean;
 		muted?: boolean;
 		/** fit = letterbox, blur = blurred fill, story = full cover */
 		layout?: 'story' | 'fit' | 'blur';
@@ -46,6 +52,7 @@
 		onselect?: () => void;
 		onplay?: (el: HTMLVideoElement) => void;
 		onexport?: () => void;
+		onreframe?: () => void;
 		onstudio?: (templateId: string) => void;
 		ontimeupdate?: (t: number, el: HTMLVideoElement) => void;
 		onmutechange?: (muted: boolean) => void;
@@ -59,6 +66,10 @@
 		hasStoredVideo,
 		selected = false,
 		exporting = false,
+		reframeEnabled = false,
+		reframing = false,
+		reframeReady = false,
+		reframeLocked = false,
 		muted = true,
 		layout = 'fit',
 		aspectRatio = '9 / 16',
@@ -66,6 +77,7 @@
 		onselect,
 		onplay,
 		onexport,
+		onreframe,
 		onstudio,
 		ontimeupdate,
 		onmutechange,
@@ -78,12 +90,27 @@
 	let activePhrase = $state<CaptionPhrase | null>(null);
 	let activeWordIndex = $state(-1);
 
+	$effect(() => {
+		if (videoEl) videoEl.muted = muted;
+	});
+
 	const scoreOutOf10 = $derived(Math.min(10, Math.max(0, clip.viralityScore / 10)));
 	const scoreLabel = $derived(scoreOutOf10.toFixed(1));
 	const durationSec = $derived(Math.max(0, Math.round(clip.endSec - clip.startSec)));
 	const durationLabel = $derived(
 		`${String(Math.floor(durationSec / 60)).padStart(2, '0')}:${String(durationSec % 60).padStart(2, '0')}`,
 	);
+	/** Standalone reframed MP4 — timeline starts at 0 instead of clip.startSec. */
+	const hasReframed = $derived(!!clip.reframedPlaybackUrl?.trim());
+	const mediaSrc = $derived(
+		hasReframed ? clip.reframedPlaybackUrl!.trim() : source.playbackUrl,
+	);
+	const playStart = $derived(hasReframed ? 0 : clip.startSec);
+	const playEnd = $derived(hasReframed ? Math.max(0.5, clip.endSec - clip.startSec) : clip.endSec);
+
+	function sourceTimeFromLocal(t: number) {
+		return hasReframed ? t + clip.startSec : t;
+	}
 	const headline = $derived(
 		cleanClipSpeechText(clip.title) || clipDisplayQuote(clip, source) || `Clip ${index + 1}`,
 	);
@@ -194,12 +221,12 @@
 	}
 
 	function clampToClip(v: HTMLVideoElement) {
-		if (v.currentTime < clip.startSec - 0.05) {
-			v.currentTime = clip.startSec;
+		if (v.currentTime < playStart - 0.05) {
+			v.currentTime = playStart;
 		}
-		if (v.currentTime >= clip.endSec - 0.05) {
+		if (v.currentTime >= playEnd - 0.05) {
 			v.pause();
-			v.currentTime = clip.startSec;
+			v.currentTime = playStart;
 			playing = false;
 			syncCaptionAt(clip.startSec);
 		}
@@ -209,7 +236,8 @@
 		const v = videoEl;
 		if (!v) return;
 		clampToClip(v);
-		if (enhance.removeSilences && silenceGaps.length) {
+		const sourceT = sourceTimeFromLocal(v.currentTime);
+		if (enhance.removeSilences && silenceGaps.length && !hasReframed) {
 			const jump = silenceSkipTarget(v.currentTime, silenceGaps);
 			if (jump != null && Number.isFinite(jump)) {
 				try {
@@ -219,15 +247,15 @@
 				}
 			}
 		}
-		localTime = Math.max(0, v.currentTime - clip.startSec);
-		syncCaptionAt(v.currentTime);
-		ontimeupdate?.(v.currentTime, v);
+		localTime = Math.max(0, v.currentTime - playStart);
+		syncCaptionAt(sourceT);
+		ontimeupdate?.(sourceT, v);
 	}
 
 	function handleLoadedMetadata() {
 		const v = videoEl;
 		if (!v) return;
-		v.currentTime = clip.startSec;
+		v.currentTime = playStart;
 		v.muted = muted;
 		syncCaptionAt(clip.startSec);
 		onvideoready?.(v);
@@ -237,8 +265,8 @@
 		const v = videoEl;
 		if (!v) return;
 		playing = true;
-		if (v.currentTime < clip.startSec || v.currentTime >= clip.endSec - 0.05) {
-			v.currentTime = clip.startSec;
+		if (v.currentTime < playStart || v.currentTime >= playEnd - 0.05) {
+			v.currentTime = playStart;
 		}
 		onplay?.(v);
 	}
@@ -253,13 +281,18 @@
 		const v = videoEl;
 		if (!v) return;
 		if (v.paused) {
-			if (v.currentTime < clip.startSec || v.currentTime >= clip.endSec - 0.05) {
-				v.currentTime = clip.startSec;
+			if (v.currentTime < playStart || v.currentTime >= playEnd - 0.05) {
+				v.currentTime = playStart;
 			}
 			void v.play().catch(() => {});
 		} else {
 			v.pause();
 		}
+	}
+
+	function toggleMute(e: MouseEvent) {
+		e.stopPropagation();
+		onmutechange?.(!muted);
 	}
 
 	function scoreTone(score: number) {
@@ -270,7 +303,7 @@
 	}
 
 	const progressPct = $derived(
-		Math.min(100, Math.max(0, (localTime / Math.max(0.1, clip.endSec - clip.startSec)) * 100)),
+		Math.min(100, Math.max(0, (localTime / Math.max(0.1, playEnd - playStart)) * 100)),
 	);
 
 	/** Words for karaoke highlight inside the caption box */
@@ -310,7 +343,7 @@
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
 						class="clip-video clip-video-blur"
-						src={source.playbackUrl}
+						src={mediaSrc}
 						preload="metadata"
 						playsinline
 						muted
@@ -318,22 +351,24 @@
 					></video>
 				{/if}
 				<!-- svelte-ignore a11y_media_has_caption -->
-				<video
-					bind:this={videoEl}
-					class="clip-video"
-					class:clip-video-contain={layout === 'fit'}
-					class:clip-video-mid={layout === 'blur'}
-					src={source.playbackUrl}
-					preload="metadata"
-					playsinline
-					muted={muted}
-					ontimeupdate={handleTimeUpdate}
-					onloadedmetadata={handleLoadedMetadata}
-					onplay={handlePlay}
-					onpause={handlePause}
-					onvolumechange={(e) => onmutechange?.(e.currentTarget.muted)}
-					onclick={togglePlay}
-				></video>
+				{#key mediaSrc}
+					<video
+						bind:this={videoEl}
+						class="clip-video"
+						class:clip-video-contain={layout === 'fit' && !hasReframed}
+						class:clip-video-mid={layout === 'blur'}
+						src={mediaSrc}
+						preload="metadata"
+						playsinline
+						muted={muted}
+						ontimeupdate={handleTimeUpdate}
+						onloadedmetadata={handleLoadedMetadata}
+						onplay={handlePlay}
+						onpause={handlePause}
+						onvolumechange={(e) => onmutechange?.(e.currentTarget.muted)}
+						onclick={togglePlay}
+					></video>
+				{/key}
 
 				<!-- Always-on captions (Vizard-style boxed overlay) -->
 				<div class="caption-box" aria-hidden="true">
@@ -366,12 +401,49 @@
 					<span class="dur-badge">{durationLabel}</span>
 				</button>
 
+				<button
+					type="button"
+					class="mute-fab"
+					class:mute-fab-on={muted}
+					onclick={toggleMute}
+					aria-label={muted ? 'Unmute' : 'Mute'}
+					title={muted ? 'Unmute' : 'Mute'}
+				>
+					{#if muted}
+						<VolumeX size={14} />
+					{:else}
+						<Volume2 size={14} />
+					{/if}
+				</button>
+
 				<div class="progress-track" aria-hidden="true">
 					<div class="progress-fill" style="width: {progressPct}%"></div>
 				</div>
 
-				<span class="res-pill">720p</span>
+				<span class="res-pill">{hasReframed ? 'Reframed' : '720p'}</span>
 			</div>
+			{#if reframeEnabled}
+				<button
+					type="button"
+					class="btn-reframe"
+					class:btn-reframe-done={reframeReady}
+					class:btn-reframe-busy={reframing}
+					disabled={reframing || exporting || reframeLocked || !source.r2Key}
+					onclick={() => onreframe?.()}
+					title={reframeReady ? 'Re-apply reframe with current settings' : 'Reframe this clip'}
+				>
+					{#if reframing}
+						<Loader size={14} class="spin" />
+						Reframing…
+					{:else if reframeReady}
+						<Crop size={14} />
+						Reframed
+					{:else}
+						<Crop size={14} />
+						Reframe
+					{/if}
+				</button>
+			{/if}
 		{:else if source.youtubeId}
 			<div class="phone-frame yt-frame">
 				{#key `${clip.id}-${clip.startSec}-${clip.endSec}`}
@@ -492,7 +564,49 @@
 	}
 
 	.feed-card-media {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
 		min-width: 0;
+	}
+
+	.btn-reframe {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+		width: 100%;
+		padding: 0.45rem 0.65rem;
+		border-radius: 0.55rem;
+		border: 1px solid #e2e8f0;
+		background: #f8fafc;
+		color: #475569;
+		font-size: 0.78rem;
+		font-weight: 650;
+		cursor: pointer;
+	}
+
+	.btn-reframe:hover:not(:disabled) {
+		background: #f1f5f9;
+		border-color: #cbd5e1;
+		color: #1e293b;
+	}
+
+	.btn-reframe:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.btn-reframe-done {
+		border-color: #c4b5fd;
+		background: #f5f3ff;
+		color: #6d28d9;
+	}
+
+	.btn-reframe-busy {
+		border-color: #c4b5fd;
+		background: #faf5ff;
+		color: #7c3aed;
 	}
 
 	.phone-frame {
@@ -719,6 +833,32 @@
 		padding: 0.2rem 0.4rem;
 		border-radius: 0.3rem;
 		pointer-events: none;
+	}
+
+	.mute-fab {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		z-index: 12;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border: 1px solid rgba(255, 255, 255, 0.25);
+		border-radius: 999px;
+		background: rgba(0, 0, 0, 0.55);
+		color: #fff;
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.mute-fab:hover {
+		background: rgba(0, 0, 0, 0.75);
+	}
+
+	.mute-fab-on {
+		color: #fbbf24;
 	}
 
 	.feed-card-meta {

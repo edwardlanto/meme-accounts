@@ -40,6 +40,12 @@ export type VideoFormPrefs = {
 	clipMaxSec: number;
 	videoAspectRatio?: '9:16' | '1:1' | '16:9';
 	clipLayout?: 'story' | 'fit' | 'blur';
+	autoReframeEnabled?: boolean;
+	reframeAspectRatio?: '9:16' | '1:1' | '16:9' | '4:5';
+	reframeMethod?: 'detection' | 'saliency';
+	reframeMotionThreshold?: number;
+	reframePaddingMethod?: 'blur' | 'solid_color';
+	reframeDebug?: boolean;
 };
 
 function writeSessionJson(key: string, value: unknown): boolean {

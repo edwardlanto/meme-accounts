@@ -1,10 +1,8 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
-import { readFile } from 'node:fs/promises';
 import type { RequestHandler } from './$types';
 import { parseJsonBody, isValidOwnerR2Key } from '$lib/server/request-security';
-import { r2SignGet } from '$lib/server/r2';
-import { extractClipWithFfmpeg, withTempDir } from '$lib/server/video-pipeline';
+import { buildClipMp4Bytes } from '$lib/server/clip-export';
 
 function attachmentFilename(raw: string): string {
 	const safe = (raw || 'clip').replace(/[^\w.-]+/g, '_').slice(0, 80);
@@ -25,6 +23,15 @@ const schema = z.object({
 		)
 		.max(40)
 		.optional(),
+	reframe: z
+		.object({
+			aspectRatio: z.enum(['9:16', '1:1', '16:9', '4:5']).default('9:16'),
+			method: z.enum(['detection', 'saliency']).default('detection'),
+			motionThreshold: z.number().min(0).max(1).default(0.5),
+			paddingMethod: z.enum(['blur', 'solid_color']).default('blur'),
+			debug: z.boolean().default(false),
+		})
+		.optional(),
 });
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -34,42 +41,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const parsed = await parseJsonBody(request, schema);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
-	const { r2Key, startSec, endSec, filename, speechWindows } = parsed.data;
+	const { r2Key, startSec, endSec, filename, speechWindows, reframe } = parsed.data;
 	if (!isValidOwnerR2Key(user.id, r2Key)) {
 		return json({ error: 'Invalid video key' }, { status: 403 });
 	}
 	if (endSec <= startSec) return json({ error: 'Invalid clip range' }, { status: 400 });
 
 	try {
-		const sourceUrl = await r2SignGet(r2Key, 3600);
 		const outName = attachmentFilename(filename ?? 'clip');
-
-		const clipBytes = await withTempDir(async (dir) => {
-			console.info('[api/videos/export-clip] fetching source from R2…');
-			const res = await fetch(sourceUrl);
-			if (!res.ok) throw new Error('Could not read source video from storage');
-			const buf = new Uint8Array(await res.arrayBuffer());
-			const inputPath = `${dir}/source.mp4`;
-			const outputPath = `${dir}/clip.mp4`;
-			const { writeFile } = await import('node:fs/promises');
-			await writeFile(inputPath, buf);
-
-			console.info(
-				`[api/videos/export-clip] cutting ${startSec.toFixed(1)}s–${endSec.toFixed(1)}s…`,
-			);
-			await extractClipWithFfmpeg({
-				inputPath,
-				outputPath,
-				startSec,
-				endSec,
-				speechWindows,
-			});
-
-			return readFile(outputPath);
+		const clipBytes = await buildClipMp4Bytes({
+			sourceR2Key: r2Key,
+			startSec,
+			endSec,
+			speechWindows,
+			reframe,
 		});
 
 		console.info(`[api/videos/export-clip] ready (${(clipBytes.byteLength / 1e6).toFixed(1)}MB)`);
-		return new Response(clipBytes, {
+		return new Response(Buffer.from(clipBytes), {
 			headers: {
 				'Content-Type': 'video/mp4',
 				'Content-Disposition': `attachment; filename="${outName}"; filename*=UTF-8''${encodeURIComponent(outName)}`,

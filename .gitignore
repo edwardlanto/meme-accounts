@@ -1,4 +1,6 @@
 node_modules
+.venv
+.venv-*
 
 # Output
 .output
@@ -22,3 +24,4 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/*
+.venv-pyautoflip
