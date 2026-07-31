@@ -32,6 +32,8 @@
 		onseek?: (sec: number) => void;
 		/** Reset segments to original transcript for this clip */
 		onreset?: () => void;
+		/** Fired when Top/Center/Bottom preset is chosen — clears free-drag coords */
+		onpositionpreset?: () => void;
 	};
 
 	let {
@@ -50,6 +52,7 @@
 		segments = $bindable([] as CaptionSegment[]),
 		onseek,
 		onreset,
+		onpositionpreset,
 	}: Props = $props();
 
 	let selectedTemplate = $derived(getCaptionTemplate(selectedTemplateId));
@@ -197,8 +200,8 @@
 						<Sparkles size={12} />
 						Style Preset
 					</Label>
-					<div class="drag-toggle">
-						<Label for="drag-caption" class="toggle-label-small">Drag</Label>
+					<div class="drag-toggle" title="Drag captions on the video preview">
+						<Label for="drag-caption" class="toggle-label-small">Move on preview</Label>
 						<Switch id="drag-caption" bind:checked={draggable} />
 					</div>
 				</div>
@@ -404,8 +407,15 @@
 					<Label for="position-select" class="setting-label">Subtitle Position</Label>
 					<select
 						id="position-select"
-						bind:value={position}
+						value={position}
 						class="position-select"
+						onchange={(e) => {
+							position = (e.currentTarget as HTMLSelectElement).value as
+								| 'top'
+								| 'center'
+								| 'bottom';
+							onpositionpreset?.();
+						}}
 					>
 						<option value="top">Top</option>
 						<option value="center">Center</option>

@@ -12,6 +12,13 @@ import JSZip from 'jszip';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
 	import BlackTextCarouselTemplate from '$lib/components/templates/BlackTextCarouselTemplate.svelte';
+	import BrandCtaTemplate from '$lib/components/templates/BrandCtaTemplate.svelte';
+	import {
+		DEFAULT_BRAND_CTA,
+		loadBrandCta,
+		saveBrandCta,
+		type BrandCtaSettings,
+	} from '$lib/studio/brand-cta';
 	import StudioTextOverlays from '$lib/components/studio/StudioTextOverlays.svelte';
 	import StudioImageStickers from '$lib/components/studio/StudioImageStickers.svelte';
 	import StudioAssetsSidebar from '$lib/components/studio/StudioAssetsSidebar.svelte';
@@ -211,6 +218,13 @@ import JSZip from 'jszip';
 	// Multi-slide state
 	let slides = $state<string[]>(emptySlides(() => NEWS_PLACEHOLDER_HEADLINE));
 	let activeSlide = $state(0);
+	/** Optional brand follow slide — saved globally, appended as last slide when enabled. */
+	let brandCta = $state<BrandCtaSettings>({ ...DEFAULT_BRAND_CTA });
+	let brandCtaEnabled = $state(false);
+	let editingBrandCta = $state(false);
+	let exportingBrandCta = $state(false);
+	let brandCtaSavedNote = $state('');
+	let brandCtaImageInput = $state<HTMLInputElement | null>(null);
 	/** When set, main canvas renders this slide for PNG capture without changing `activeSlide` (no UI “slide show”). */
 	let canvasRasterSlide = $state<number | null>(null);
 	let articleSnippet = $state(''); // full article text for variants call
@@ -464,7 +478,6 @@ import JSZip from 'jszip';
 
 	/** Apply video + headlines from Videos page "Edit in Studio". */
 	function applyStudioClipImport(payload: StudioClipImport) {
-		const template = coerceTemplateId(payload.template);
 		const videoUrl = String(payload.videoUrl ?? '').trim();
 		const clipStart = Math.max(0, Number(payload.clipStart) || 0);
 		const clipEnd = Math.max(clipStart + 0.5, Number(payload.clipEnd) || clipStart + 15);
@@ -474,8 +487,17 @@ import JSZip from 'jszip';
 			payload.tweetTop?.trim() ||
 			'';
 
+		const carouselRaw = Array.isArray(payload.carouselTemplates)
+			? payload.carouselTemplates.map((t) => coerceTemplateId(t))
+			: [];
+		const templates: TemplateId[] =
+			carouselRaw.length >= 2
+				? carouselRaw.slice(0, 10)
+				: [coerceTemplateId(payload.template)];
+		const primary = templates[0]!;
+
 		console.info('[studio] applying clip import', {
-			template,
+			templates,
 			clipStart,
 			clipEnd,
 			hasVideo: !!videoUrl,
@@ -483,83 +505,114 @@ import JSZip from 'jszip';
 		});
 
 		applyBlankCanvas();
-		// Skip auto-seed first so we can set slide-0 copy/video, then expand like a normal session
-		applyTemplateToAll(template, { skipNewsSeed: true });
-		activeSlide = 0;
+		// Multi-template carousel: one slide per template, same clip on each.
+		// Single-template: keep prior news-seed behavior for a full news starter.
+		const multi = templates.length >= 2;
+		if (multi) {
+			slides = templates.map((t) =>
+				t === 'news' ? hook || NEWS_PLACEHOLDER_HEADLINE : '',
+			);
+			slideTemplates = [...templates];
+			slideCount = slides.length;
+			activeSlide = 0;
+			lastTemplateUsed = primary;
+			for (let i = 0; i < templates.length; i++) {
+				ensureTemplateDefaultsForSlide(templates[i]!, i);
+			}
+		} else {
+			applyTemplateToAll(primary, { skipNewsSeed: true });
+			activeSlide = 0;
+		}
 
-		const setSlide0 = (arr: string[], value: string | undefined, len: number) => {
+		const setAt = (arr: string[], value: string | undefined, len: number, idx: number) => {
 			const next = Array.from({ length: len }, (_, i) => arr[i] ?? '');
-			if (value?.trim()) next[0] = value.trim();
+			if (value?.trim()) next[idx] = value.trim();
 			return next;
 		};
 
-		if (template === 'news' || template === 'imageQuote') {
-			slides = [hook || NEWS_PLACEHOLDER_HEADLINE];
-			if (payload.newsSource?.trim()) source = payload.newsSource.trim();
-			else if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
-			if (template === 'news') {
-				seedNewsStarterPlaceholderLayout();
-				if (hook) slides = slides.map((s, i) => (i === 0 ? hook : s));
-			} else {
-				imageQuoteTextBySlide = setSlide0(imageQuoteTextBySlide, hook || IMAGE_QUOTE_DEFAULTS.body, 1);
+		const n = Math.max(1, slides.length);
+
+		for (let i = 0; i < templates.length; i++) {
+			const template = templates[i]!;
+			if (template === 'news' || template === 'imageQuote') {
+				if (payload.newsSource?.trim()) source = payload.newsSource.trim();
+				else if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
+				if (template === 'news' && !multi) {
+					seedNewsStarterPlaceholderLayout();
+					if (hook) slides = slides.map((s, si) => (si === 0 ? hook : s));
+				} else if (template === 'news' && multi) {
+					slides = slides.map((s, si) =>
+						si === i ? hook || NEWS_PLACEHOLDER_HEADLINE : s,
+					);
+				} else if (template === 'imageQuote') {
+					imageQuoteTextBySlide = setAt(
+						imageQuoteTextBySlide,
+						hook || IMAGE_QUOTE_DEFAULTS.body,
+						n,
+						i,
+					);
+				}
+			} else if (isVideoStoryFamily(template)) {
+				videoStoryHeadlineBySlide = setAt(
+					videoStoryHeadlineBySlide,
+					payload.storyHeadline || hook,
+					n,
+					i,
+				);
+				videoStoryWatermarkBySlide = setAt(
+					videoStoryWatermarkBySlide,
+					payload.storyWatermark,
+					n,
+					i,
+				);
+			} else if (template === 'tweet') {
+				tweetTopTextBySlide = setAt(tweetTopTextBySlide, payload.tweetTop || hook, n, i);
+				tweetBottomTextBySlide = setAt(tweetBottomTextBySlide, payload.tweetBottom, n, i);
+			} else if (template === 'textCarousel') {
+				textCarouselTextBySlide = setAt(
+					textCarouselTextBySlide,
+					payload.carouselBody || hook,
+					n,
+					i,
+				);
+				textCarouselNameBySlide = setAt(textCarouselNameBySlide, payload.carouselName, n, i);
+				textCarouselHandleBySlide = setAt(
+					textCarouselHandleBySlide,
+					payload.carouselHandle,
+					n,
+					i,
+				);
+			} else if (template === 'blackText') {
+				blackTextHeadlineBySlide = setAt(
+					blackTextHeadlineBySlide,
+					payload.storyHeadline || hook || BLACK_TEXT_CAROUSEL_DEFAULTS.headline,
+					n,
+					i,
+				);
+				blackTextBodyBySlide = setAt(
+					blackTextBodyBySlide,
+					payload.carouselBody || payload.tweetBottom || BLACK_TEXT_CAROUSEL_DEFAULTS.body,
+					n,
+					i,
+				);
+			} else if (template === 'article') {
+				articleTextBySlide = setAt(
+					articleTextBySlide,
+					payload.carouselBody || hook || ARTICLE_DEFAULT_BODY,
+					n,
+					i,
+				);
 			}
-		} else if (isVideoStoryFamily(template)) {
-			slides = [''];
-			videoStoryHeadlineBySlide = setSlide0(
-				videoStoryHeadlineBySlide,
-				payload.storyHeadline || hook,
-				1,
-			);
-			videoStoryWatermarkBySlide = setSlide0(
-				videoStoryWatermarkBySlide,
-				payload.storyWatermark,
-				1,
-			);
-		} else if (template === 'tweet') {
-			slides = [''];
-			tweetTopTextBySlide = setSlide0(tweetTopTextBySlide, payload.tweetTop || hook, 1);
-			tweetBottomTextBySlide = setSlide0(tweetBottomTextBySlide, payload.tweetBottom, 1);
-		} else if (template === 'textCarousel') {
-			slides = [''];
-			textCarouselTextBySlide = setSlide0(
-				textCarouselTextBySlide,
-				payload.carouselBody || hook,
-				1,
-			);
-			textCarouselNameBySlide = setSlide0(textCarouselNameBySlide, payload.carouselName, 1);
-			textCarouselHandleBySlide = setSlide0(textCarouselHandleBySlide, payload.carouselHandle, 1);
-		} else if (template === 'blackText') {
-			slides = [''];
-			blackTextHeadlineBySlide = setSlide0(
-				blackTextHeadlineBySlide,
-				payload.storyHeadline || hook || BLACK_TEXT_CAROUSEL_DEFAULTS.headline,
-				1,
-			);
-			blackTextBodyBySlide = setSlide0(
-				blackTextBodyBySlide,
-				payload.carouselBody || payload.tweetBottom || BLACK_TEXT_CAROUSEL_DEFAULTS.body,
-				1,
-			);
-		} else if (template === 'article') {
-			slides = [''];
-			articleTextBySlide = setSlide0(
-				articleTextBySlide,
-				payload.carouselBody || hook || ARTICLE_DEFAULT_BODY,
-				1,
-			);
-		} else {
-			// blank / unknown — video is seeded below; user adds text in Studio
-			slides = [''];
 		}
 
-		const n = Math.max(1, slides.length);
-		slideTemplates = Array.from({ length: n }, () => template);
-		slideCount = n;
-		activeSlide = 0;
+		const finalN = Math.max(1, slides.length);
+		if (!multi) {
+			slideTemplates = Array.from({ length: finalN }, () => primary);
+			slideCount = finalN;
+			activeSlide = 0;
+		}
 
 		if (videoUrl) {
-			// Seed the clip onto every template that can show video so switching
-			// templates in Studio keeps the same clip.
 			const videoCapable: TemplateId[] = [
 				'blank',
 				'news',
@@ -572,30 +625,26 @@ import JSZip from 'jszip';
 			const nextVideos = { ...bgVideosByTemplate };
 			const nextImages = { ...bgImagesByTemplate };
 			for (const id of videoCapable) {
-				nextVideos[id] = Array.from({ length: n }, (_, i) => (i === 0 ? videoUrl : ''));
-				nextImages[id] = Array.from({ length: n }, () => '');
+				// Same clip on every slide + every video-capable bag so template switches keep it
+				nextVideos[id] = Array.from({ length: finalN }, () => videoUrl);
+				nextImages[id] = Array.from({ length: finalN }, () => '');
 			}
 			bgVideosByTemplate = nextVideos;
 			bgImagesByTemplate = nextImages;
-			if (template === 'news' || template === 'blank' || template === 'imageQuote') {
-				newsSolidBgBySlide = Array.from({ length: n }, () => '');
-			}
-			videoTrimStartSecBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? clipStart : 0));
-			videoTrimEndSecBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? clipEnd : 0));
-			videoDurationBySlide = Array.from({ length: n }, (_, i) =>
-				i === 0 ? Math.max(0, clipEnd - clipStart) : 0,
+			newsSolidBgBySlide = Array.from({ length: finalN }, () => '');
+			videoTrimStartSecBySlide = Array.from({ length: finalN }, () => clipStart);
+			videoTrimEndSecBySlide = Array.from({ length: finalN }, () => clipEnd);
+			videoDurationBySlide = Array.from({ length: finalN }, () =>
+				Math.max(0, clipEnd - clipStart),
 			);
-			videoMutedBySlide = Array.from({ length: n }, () => true);
-			videoVolumeBySlide = Array.from({ length: n }, () => 0.8);
+			videoMutedBySlide = Array.from({ length: finalN }, () => true);
+			videoVolumeBySlide = Array.from({ length: finalN }, () => 0.8);
 			videoSeekSec = clipStart;
-			// Match Videos page News preview: full-bleed cover (not letterboxed contain)
-			if (template === 'news' || template === 'imageQuote' || template === 'blank') {
-				bgFitMode = 'cover';
-				bgZoom = 100;
-				bgOffsetX = 50;
-				bgOffsetY = 50;
-				bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
-			}
+			bgFitMode = 'cover';
+			bgZoom = 100;
+			bgOffsetX = 50;
+			bgOffsetY = 50;
+			bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
 		}
 
 		// Transfer CapCut captions from Videos page onto this canvas
@@ -618,7 +667,7 @@ import JSZip from 'jszip';
 			studioCaptionWordIndex = -1;
 		}
 
-		forcedTemplateFromQuery = template;
+		forcedTemplateFromQuery = primary;
 		pendingClipImport = null;
 	}
 
@@ -1496,6 +1545,8 @@ import JSZip from 'jszip';
 	];
 	let slideMusic = $state<(MusicTrack | null)[]>([]);
 	let musicPickerForSlide = $state<number | null>(null); // which slide's picker is open
+	/** Filmstrip “+” menu: pick a template and reuse the current slide’s clip. */
+	let addSlideMenuOpen = $state(false);
 	const activeMusic = $derived(slideMusic[activeSlide] ?? null);
 
 	// Subject cutouts — transparent PNG of the foreground subject, per slide.
@@ -1837,15 +1888,111 @@ import JSZip from 'jszip';
 		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: cur };
 	}
 
-	function addSlide() {
+	const VIDEO_CAPABLE_TEMPLATES: TemplateId[] = [
+		'blank',
+		'news',
+		'tweet',
+		'videoStory',
+		'videoFit',
+		'videoBlur',
+		'imageQuote',
+	];
+
+	/** Find video URL + trim on a slide, checking every template bag. */
+	function getSlideClipMedia(slideIdx: number): {
+		url: string;
+		start: number;
+		end: number;
+		duration: number;
+	} | null {
+		const i = Math.max(0, slideIdx);
+		let url = '';
+		for (const id of VIDEO_CAPABLE_TEMPLATES) {
+			url = String((bgVideosByTemplate[id] ?? [])[i] ?? '').trim();
+			if (url) break;
+		}
+		if (!url) return null;
+		const start = Math.max(0, Number(videoTrimStartSecBySlide[i] ?? 0) || 0);
+		const endRaw = Number(videoTrimEndSecBySlide[i] ?? 0) || 0;
+		const end = endRaw > start ? endRaw : start;
+		const duration =
+			end > start
+				? end - start
+				: Math.max(0, Number(videoDurationBySlide[i] ?? 0) || 0);
+		return { url, start, end, duration };
+	}
+
+	/** Put the same clip onto one slide across all video-capable templates. */
+	function putClipOnSlide(
+		slideIdx: number,
+		clip: { url: string; start: number; end: number; duration: number },
+	) {
+		const i = Math.max(0, slideIdx);
+		const nextVideos = { ...bgVideosByTemplate };
+		const nextImages = { ...bgImagesByTemplate };
+		for (const id of VIDEO_CAPABLE_TEMPLATES) {
+			const vRow = [...(nextVideos[id] ?? [])];
+			const iRow = [...(nextImages[id] ?? [])];
+			while (vRow.length <= i) vRow.push('');
+			while (iRow.length <= i) iRow.push('');
+			vRow[i] = clip.url;
+			iRow[i] = '';
+			nextVideos[id] = vRow;
+			nextImages[id] = iRow;
+		}
+		bgVideosByTemplate = nextVideos;
+		bgImagesByTemplate = nextImages;
+
+		const padNum = (arr: number[], fill: number) => {
+			const next = [...arr];
+			while (next.length <= i) next.push(0);
+			next[i] = fill;
+			return next;
+		};
+		const padBool = (arr: boolean[], fill: boolean) => {
+			const next = [...arr];
+			while (next.length <= i) next.push(fill);
+			next[i] = fill;
+			return next;
+		};
+		videoTrimStartSecBySlide = padNum(videoTrimStartSecBySlide, clip.start);
+		videoTrimEndSecBySlide = padNum(videoTrimEndSecBySlide, clip.end);
+		videoDurationBySlide = padNum(
+			videoDurationBySlide,
+			clip.duration || Math.max(0, clip.end - clip.start),
+		);
+		videoMutedBySlide = padBool(videoMutedBySlide, true);
+		if (videoVolumeBySlide.length <= i) {
+			videoVolumeBySlide = [
+				...videoVolumeBySlide,
+				...Array.from({ length: i + 1 - videoVolumeBySlide.length }, () => 0.8),
+			];
+		}
+		while (newsSolidBgBySlide.length <= i) {
+			newsSolidBgBySlide = [...newsSolidBgBySlide, ''];
+		}
+		newsSolidBgBySlide = newsSolidBgBySlide.map((c, idx) => (idx === i ? '' : c));
+	}
+
+	const activeSlideHasClip = $derived(!!getSlideClipMedia(activeSlide)?.url);
+
+	function addSlide(opts?: { template?: TemplateId; copyClipFrom?: number | null }) {
 		if (slides.length >= 10) return;
-		// New slides should start with sensible defaults so the canvas doesn't look "broken".
-		// For News, use the placeholder headline; for other templates keep it empty.
-		const nextText = coerceTemplateId(lastTemplateUsed) === 'news' ? NEWS_PLACEHOLDER_HEADLINE : '';
+		const fromIdx = Math.max(
+			0,
+			Math.min(slides.length - 1, opts?.copyClipFrom ?? activeSlide),
+		);
+		// Capture clip BEFORE mutating video arrays. copyClipFrom: null = empty slide.
+		const shouldCopyClip = opts?.copyClipFrom !== null;
+		const clip = shouldCopyClip ? getSlideClipMedia(fromIdx) : null;
+		const nextTemplate = coerceTemplateId(opts?.template ?? lastTemplateUsed);
+		const nextText = nextTemplate === 'news' ? NEWS_PLACEHOLDER_HEADLINE : '';
 		slides = [...slides, nextText];
 		slideCount = slides.length;
-		activeSlide = slides.length - 1;
-		// Keep background media per-template, per-slide.
+		const newIdx = slides.length - 1;
+		activeSlide = newIdx;
+		lastTemplateUsed = nextTemplate;
+		editingBrandCta = false;
 		bgImagesByTemplate = {
 			blank: [...(bgImagesByTemplate.blank ?? []), ''],
 			news: [...(bgImagesByTemplate.news ?? []), ''],
@@ -1854,8 +2001,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(bgImagesByTemplate.textCarousel ?? []), ''],
 			imageQuote: [...(bgImagesByTemplate.imageQuote ?? []), ''],
 			videoStory: [...(bgImagesByTemplate.videoStory ?? []), ''],
-			videoFit: [...(bgImagesByTemplate.videoStory ?? []), ''],
-			videoBlur: [...(bgImagesByTemplate.videoStory ?? []), ''],
+			videoFit: [...(bgImagesByTemplate.videoFit ?? []), ''],
+			videoBlur: [...(bgImagesByTemplate.videoBlur ?? []), ''],
 			blackText: [...(bgImagesByTemplate.blackText ?? []), BLACK_TEXT_BG_DEFAULT],
 		};
 		bgVideosByTemplate = {
@@ -1866,8 +2013,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(bgVideosByTemplate.textCarousel ?? []), ''],
 			imageQuote: [...(bgVideosByTemplate.imageQuote ?? []), ''],
 			videoStory: [...(bgVideosByTemplate.videoStory ?? []), ''],
-			videoFit: [...(bgVideosByTemplate.videoStory ?? []), ''],
-			videoBlur: [...(bgVideosByTemplate.videoStory ?? []), ''],
+			videoFit: [...(bgVideosByTemplate.videoFit ?? []), ''],
+			videoBlur: [...(bgVideosByTemplate.videoBlur ?? []), ''],
 			blackText: [...(bgVideosByTemplate.blackText ?? []), ''],
 		};
 		generatingImagesByTemplate = {
@@ -1878,11 +2025,10 @@ import JSZip from 'jszip';
 			textCarousel: [...(generatingImagesByTemplate.textCarousel ?? []), false],
 			imageQuote: [...(generatingImagesByTemplate.imageQuote ?? []), false],
 			videoStory: [...(generatingImagesByTemplate.videoStory ?? []), false],
-			videoFit: [...(generatingImagesByTemplate.videoStory ?? []), false],
-			videoBlur: [...(generatingImagesByTemplate.videoStory ?? []), false],
+			videoFit: [...(generatingImagesByTemplate.videoFit ?? []), false],
+			videoBlur: [...(generatingImagesByTemplate.videoBlur ?? []), false],
 			blackText: [...(generatingImagesByTemplate.blackText ?? []), false],
 		};
-		// Keep overlays strictly template-scoped (avoid any accidental shared references).
 		slideOverlaysByTemplate = {
 			blank: [...(slideOverlaysByTemplate.blank ?? []), []],
 			news: [...(slideOverlaysByTemplate.news ?? []), []],
@@ -1891,8 +2037,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(slideOverlaysByTemplate.textCarousel ?? []), []],
 			imageQuote: [...(slideOverlaysByTemplate.imageQuote ?? []), []],
 			videoStory: [...(slideOverlaysByTemplate.videoStory ?? []), []],
-			videoFit: [...(slideOverlaysByTemplate.videoStory ?? []), []],
-			videoBlur: [...(slideOverlaysByTemplate.videoStory ?? []), []],
+			videoFit: [...(slideOverlaysByTemplate.videoFit ?? []), []],
+			videoBlur: [...(slideOverlaysByTemplate.videoBlur ?? []), []],
 			blackText: [...(slideOverlaysByTemplate.blackText ?? []), []],
 		};
 		slideTextOverlaysByTemplate = {
@@ -1903,8 +2049,8 @@ import JSZip from 'jszip';
 			textCarousel: [...(slideTextOverlaysByTemplate.textCarousel ?? []), []],
 			imageQuote: [...(slideTextOverlaysByTemplate.imageQuote ?? []), []],
 			videoStory: [...(slideTextOverlaysByTemplate.videoStory ?? []), []],
-			videoFit: [...(slideTextOverlaysByTemplate.videoStory ?? []), []],
-			videoBlur: [...(slideTextOverlaysByTemplate.videoStory ?? []), []],
+			videoFit: [...(slideTextOverlaysByTemplate.videoFit ?? []), []],
+			videoBlur: [...(slideTextOverlaysByTemplate.videoBlur ?? []), []],
 			blackText: [...(slideTextOverlaysByTemplate.blackText ?? []), []],
 		};
 		tweetTopNameBySlide = [...tweetTopNameBySlide, tweetTopNameBySlide[tweetTopNameBySlide.length - 1] ?? 'Chef 👨‍🍳'];
@@ -1915,12 +2061,12 @@ import JSZip from 'jszip';
 		tweetBottomTextBySlide = [...tweetBottomTextBySlide, TWEET_DEFAULTS.bottomText];
 		tweetReplyCountBySlide = [...tweetReplyCountBySlide, tweetReplyCountBySlide[tweetReplyCountBySlide.length - 1] ?? '4.2K'];
 		tweetRepostCountBySlide = [...tweetRepostCountBySlide, tweetRepostCountBySlide[tweetRepostCountBySlide.length - 1] ?? '12.8K'];
-tweetLikeCountBySlide = [...tweetLikeCountBySlide, tweetLikeCountBySlide[tweetLikeCountBySlide.length - 1] ?? '89.4K'];
-tweetTopImageHeightBySlide = [...tweetTopImageHeightBySlide, tweetTopImageHeightBySlide[tweetTopImageHeightBySlide.length - 1] ?? 720];
-tweetTopImageWidthBySlide = [...tweetTopImageWidthBySlide, tweetTopImageWidthBySlide[tweetTopImageWidthBySlide.length - 1] ?? 920];
-tweetTopImageZoomBySlide = [...tweetTopImageZoomBySlide, tweetTopImageZoomBySlide[tweetTopImageZoomBySlide.length - 1] ?? 1];
-tweetTopImagePanXBySlide = [...tweetTopImagePanXBySlide, tweetTopImagePanXBySlide[tweetTopImagePanXBySlide.length - 1] ?? 50];
-tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlide[tweetTopImagePanYBySlide.length - 1] ?? 50];
+		tweetLikeCountBySlide = [...tweetLikeCountBySlide, tweetLikeCountBySlide[tweetLikeCountBySlide.length - 1] ?? '89.4K'];
+		tweetTopImageHeightBySlide = [...tweetTopImageHeightBySlide, tweetTopImageHeightBySlide[tweetTopImageHeightBySlide.length - 1] ?? 720];
+		tweetTopImageWidthBySlide = [...tweetTopImageWidthBySlide, tweetTopImageWidthBySlide[tweetTopImageWidthBySlide.length - 1] ?? 920];
+		tweetTopImageZoomBySlide = [...tweetTopImageZoomBySlide, tweetTopImageZoomBySlide[tweetTopImageZoomBySlide.length - 1] ?? 1];
+		tweetTopImagePanXBySlide = [...tweetTopImagePanXBySlide, tweetTopImagePanXBySlide[tweetTopImagePanXBySlide.length - 1] ?? 50];
+		tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlide[tweetTopImagePanYBySlide.length - 1] ?? 50];
 		tweetTopAvatarImageBySlide = [...tweetTopAvatarImageBySlide, tweetTopAvatarImageBySlide[tweetTopAvatarImageBySlide.length - 1] ?? ''];
 		tweetTopAvatarInnerBgBySlide = [...tweetTopAvatarInnerBgBySlide, tweetTopAvatarInnerBgBySlide[tweetTopAvatarInnerBgBySlide.length - 1] ?? ''];
 		tweetTopAvatarLabelBySlide = [...tweetTopAvatarLabelBySlide, tweetTopAvatarLabelBySlide[tweetTopAvatarLabelBySlide.length - 1] ?? ''];
@@ -1966,6 +2112,32 @@ tweetTopImagePanYBySlide = [...tweetTopImagePanYBySlide, tweetTopImagePanYBySlid
 		];
 		slideIds = [...slideIds, newSlideId()];
 		slideMusic = [...slideMusic, null];
+		videoTrimStartSecBySlide = [...videoTrimStartSecBySlide, 0];
+		videoTrimEndSecBySlide = [...videoTrimEndSecBySlide, 0];
+		videoDurationBySlide = [...videoDurationBySlide, 0];
+		videoMutedBySlide = [...videoMutedBySlide, true];
+		videoVolumeBySlide = [...videoVolumeBySlide, 0.8];
+		newsSolidBgBySlide = [...newsSolidBgBySlide, ''];
+
+		slideTemplates = Array.from({ length: slides.length }, (_, i) =>
+			i === newIdx ? nextTemplate : coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed),
+		);
+		ensureTemplateDefaultsForSlide(nextTemplate, newIdx);
+
+		if (clip) {
+			putClipOnSlide(newIdx, clip);
+			if (clip.end > clip.start) videoSeekSec = clip.start;
+		}
+		addSlideMenuOpen = false;
+	}
+
+	/** One-tap: new slide + chosen template + same clip as the current slide. */
+	function addSlideWithClipAs(template: TemplateId) {
+		addSlide({ template, copyClipFrom: activeSlide });
+	}
+
+	function addEmptySlide() {
+		addSlide({ template: lastTemplateUsed, copyClipFrom: null });
 	}
 
 	function addTextOverlay() {
@@ -3293,6 +3465,48 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				new Array(slides.length).fill(false),
 			]),
 		) as unknown) as Record<TemplateId, boolean[]>;
+
+		if (typeof (s as any).brandCtaEnabled === 'boolean') {
+			brandCtaEnabled = (s as any).brandCtaEnabled;
+		}
+	}
+
+	function persistBrandCta() {
+		if (!userId) return;
+		if (saveBrandCta(userId, brandCta)) {
+			brandCtaSavedNote = 'Saved to your brand';
+			setTimeout(() => {
+				brandCtaSavedNote = '';
+			}, 2200);
+		}
+	}
+
+	function selectBrandCtaSlide() {
+		editingBrandCta = true;
+		brandCtaEnabled = true;
+	}
+
+	function selectContentSlide(i: number) {
+		editingBrandCta = false;
+		addSlideMenuOpen = false;
+		activeSlide = i;
+	}
+
+	function handleBrandCtaImageUpload(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = () => {
+			brandCta = { ...brandCta, image: String(reader.result ?? '') };
+			persistBrandCta();
+		};
+		reader.readAsDataURL(file);
+		(e.target as HTMLInputElement).value = '';
+	}
+
+	function clearBrandCtaImage() {
+		brandCta = { ...brandCta, image: '' };
+		persistBrandCta();
 	}
 
 	function applyBlankCanvas() {
@@ -3962,6 +4176,7 @@ tweetTopImagePanYBySlide,
 			draftPreviewUrl,
 			draftPreviewKey: draftPreviewKey.trim(),
 			draftPreviewPath: draftPreviewKey.trim(),
+			brandCtaEnabled,
 			// Don’t persist `exportedSlides` (huge data URLs) in drafts — it makes restore slow.
 			// We can always re-export when needed.
 			exportedSlides: [],
@@ -4146,6 +4361,7 @@ tweetTopImagePanYBySlide,
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
+		brandCta = loadBrandCta(user.id);
 		draftRestoring = true;
 		const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 		const savedParam = sp?.get('saved') ?? null;
@@ -6356,6 +6572,28 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				} as any);
 				out.push(dataUrl);
 			}
+
+			if (brandCtaEnabled) {
+				exportingBrandCta = true;
+				editingBrandCta = true;
+				canvasRasterSlide = null;
+				await tick();
+				await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+				const ctaNode = exportRef;
+				if (!ctaNode) throw new Error('Follow slide preview not ready for export');
+
+				try { await (document as any).fonts?.ready; } catch { /* ignore */ }
+				const ctaUrl = await toPng(ctaNode, {
+					width: CANVAS_W,
+					height: CANVAS_H,
+					pixelRatio: 1,
+					backgroundColor: '#0a0a0a',
+					style: { transform: 'scale(1)', transformOrigin: 'top left' },
+					cacheBust: true,
+				} as any);
+				out.push(ctaUrl);
+			}
 			exportedSlides = out;
 			return out.length;
 		} catch (e: any) {
@@ -6374,6 +6612,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			return 0;
 		} finally {
 			canvasRasterSlide = null;
+			exportingBrandCta = false;
 			exportingAll = false;
 		}
 	}
@@ -6943,7 +7182,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</p>
 				</div>
 			{/if}
-			{#if previewTemplate === 'blank'}
+			{#if editingBrandCta || exportingBrandCta}
+				<BrandCtaTemplate
+					bind:exportRef
+					image={brandCta.image}
+					headline={brandCta.headline}
+					subline={brandCta.subline}
+					canvasW={CANVAS_W}
+					canvasH={CANVAS_H}
+					scale={previewScale}
+				/>
+			{:else if previewTemplate === 'blank'}
 				<!-- Export root must include background + stickers + text overlays (not just BlankTemplate). -->
 				<div
 					bind:this={exportRef}
@@ -7549,6 +7798,110 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 		<!-- Slide filmstrip: drag to reorder (show for single-slide decks so Hook + Add stay visible) -->
 		{#if slides.length >= 1}
+			{#if activeSlideHasClip && !editingBrandCta}
+				<div class="mx-auto mb-2 flex max-w-3xl flex-wrap items-center justify-center gap-2 px-2">
+					<span class="text-[10px] text-white/40">Reuse this clip as</span>
+					{#each TEMPLATES.filter((t) => ['news', 'blank', 'videoFit', 'tweet'].includes(t.id)) as t (t.id)}
+						<button
+							type="button"
+							class="rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-white/80 hover:border-violet-400/50 hover:bg-violet-500/15 hover:text-white transition-colors"
+							onclick={() => addSlideWithClipAs(t.id)}
+						>
+							{t.label}
+						</button>
+					{/each}
+					<button
+						type="button"
+						class="rounded-full border border-dashed border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/45 hover:text-white/70 transition-colors"
+						onclick={() => (addSlideMenuOpen = true)}
+					>
+						More…
+					</button>
+				</div>
+			{/if}
+			{#if editingBrandCta}
+				<div
+					class="brand-cta-panel mx-auto mb-2 max-w-3xl rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5"
+					role="region"
+					aria-label="Follow slide settings"
+				>
+					<div class="flex flex-wrap items-center gap-2 mb-2">
+						<label class="flex items-center gap-2 text-[11px] font-medium text-white/75 cursor-pointer">
+							<input
+								type="checkbox"
+								checked={brandCtaEnabled}
+								onchange={(e) => {
+									brandCtaEnabled = (e.currentTarget as HTMLInputElement).checked;
+									if (!brandCtaEnabled) editingBrandCta = false;
+								}}
+							/>
+							Include follow slide at end
+						</label>
+						{#if brandCtaSavedNote}
+							<span class="text-[10px] text-emerald-400">{brandCtaSavedNote}</span>
+						{:else}
+							<span class="text-[10px] text-white/35">Saved to your brand</span>
+						{/if}
+					</div>
+					<div class="grid gap-2 sm:grid-cols-[auto_1fr] sm:items-start">
+						<div class="flex items-center gap-2">
+							<button
+								type="button"
+								class="rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-white/85 hover:bg-white/10"
+								onclick={() => brandCtaImageInput?.click()}
+							>
+								{brandCta.image ? 'Change image' : 'Upload image'}
+							</button>
+							{#if brandCta.image}
+								<button
+									type="button"
+									class="text-[10px] text-white/45 hover:text-white/70"
+									onclick={clearBrandCtaImage}
+								>
+									Remove
+								</button>
+							{/if}
+						</div>
+						<div class="grid gap-2 sm:grid-cols-2">
+							<label class="grid gap-1 text-[10px] text-white/45">
+								Headline
+								<input
+									class="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-[12px] text-white"
+									value={brandCta.headline}
+									oninput={(e) => {
+										brandCta = {
+											...brandCta,
+											headline: (e.currentTarget as HTMLInputElement).value,
+										};
+									}}
+									onchange={() => persistBrandCta()}
+								/>
+							</label>
+							<label class="grid gap-1 text-[10px] text-white/45">
+								Follow line
+								<input
+									class="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-[12px] text-white"
+									value={brandCta.subline}
+									oninput={(e) => {
+										brandCta = {
+											...brandCta,
+											subline: (e.currentTarget as HTMLInputElement).value,
+										};
+									}}
+									onchange={() => persistBrandCta()}
+								/>
+							</label>
+						</div>
+					</div>
+					<input
+						bind:this={brandCtaImageInput}
+						type="file"
+						accept="image/*"
+						class="sr-only"
+						onchange={handleBrandCtaImageUpload}
+					/>
+				</div>
+			{/if}
 			{@const orderIds = filmstripIds.length ? filmstripIds : slideIds}
 			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
 			{@const dndItems = orderIds.map((id) => {
@@ -7618,9 +7971,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					>
 						<button
 							type="button"
-							onclick={() => activeSlide = item.slideIndex}
+							onclick={() => selectContentSlide(item.slideIndex)}
 							class="w-16 h-20 rounded-lg overflow-hidden border-2 transition-all relative
-								{activeSlide === item.slideIndex ? 'border-white/70 shadow-[0_0_0_1px_rgba(255,255,255,0.15)]' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/25')}"
+								{!editingBrandCta && activeSlide === item.slideIndex ? 'border-white/70 shadow-[0_0_0_1px_rgba(255,255,255,0.15)]' : (isPlaceholder ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/25')}"
 							aria-label={`Focus slide ${i + 1}`}
 							style="touch-action: none; background: var(--app-surface-3);"
 						>
@@ -7767,7 +8120,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									</div>
 								</div>
 							{/if}
-						<span class="text-[9px] font-mono flex items-center gap-1 {activeSlide === item.slideIndex ? 'text-violet-400' : 'text-white/20'}">
+						<span class="text-[9px] font-mono flex items-center gap-1 {!editingBrandCta && activeSlide === item.slideIndex ? 'text-violet-400' : 'text-white/20'}">
 							{i === 0 ? 'Hook' : `Slide ${i + 1}`}
 							{#if isVideo}
 								<Play size={7} class="text-cyan-400/60" fill="currentColor" />
@@ -7776,16 +8129,96 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					</div>
 				{/each}
 
-				<!-- Add slide -->
+				<!-- Brand follow slide (optional, saved to your brand) -->
 				<button
 					type="button"
-					onclick={addSlide}
-					class="flex-shrink-0 w-16 h-20 rounded-lg border-2 border-dashed border-white/[0.10] hover:border-violet-500/50 bg-white/[0.02] hover:bg-white/[0.04] transition-all flex items-center justify-center text-white/35 hover:text-white"
-					aria-label="Add slide"
-					title="Add slide"
+					onclick={selectBrandCtaSlide}
+					class="flex-shrink-0 flex flex-col items-center gap-1 group"
+					title="Follow slide — saved to your brand"
 				>
-					<span class="text-2xl leading-none">+</span>
+					<div
+						class="w-16 h-20 rounded-lg overflow-hidden border-2 transition-all relative
+							{editingBrandCta
+							? 'border-violet-400/80 shadow-[0_0_0_1px_rgba(167,139,250,0.35)]'
+							: brandCtaEnabled
+								? 'border-white/25'
+								: 'border-dashed border-white/12'}"
+						style="background: var(--app-surface-3);"
+					>
+						{#if brandCta.image}
+							<img src={brandCta.image} alt="" class="w-full h-full object-cover opacity-90" />
+						{:else}
+							<div class="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-white/40 px-1 text-center leading-tight">
+								Follow
+							</div>
+						{/if}
+						{#if brandCtaEnabled}
+							<span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+						{/if}
+					</div>
+					<span class="text-[9px] font-mono {editingBrandCta ? 'text-violet-400' : 'text-white/20'}">
+						Follow
+					</span>
 				</button>
+
+				<!-- Add slide — pick template + reuse current clip -->
+				<div class="relative flex-shrink-0">
+					<button
+						type="button"
+						onclick={() => {
+							addSlideMenuOpen = !addSlideMenuOpen;
+							musicPickerForSlide = null;
+						}}
+						class="w-16 h-20 rounded-lg border-2 border-dashed transition-all flex flex-col items-center justify-center gap-0.5
+							{addSlideMenuOpen
+							? 'border-violet-400/70 bg-violet-500/10 text-violet-200'
+							: 'border-white/[0.10] hover:border-violet-500/50 bg-white/[0.02] hover:bg-white/[0.04] text-white/35 hover:text-white'}"
+						aria-label="Add slide"
+						aria-expanded={addSlideMenuOpen}
+						title={activeSlideHasClip
+							? 'Add slide — reuse this clip as another template'
+							: 'Add slide'}
+					>
+						<span class="text-2xl leading-none">+</span>
+						{#if activeSlideHasClip}
+							<span class="text-[8px] font-mono uppercase tracking-wide opacity-80">Reuse</span>
+						{/if}
+					</button>
+
+					{#if addSlideMenuOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div
+							class="absolute bottom-[88px] left-1/2 -translate-x-1/2 z-50 w-56 rounded-xl border border-white/12 bg-[#141414] p-2 shadow-2xl"
+							onclick={(e) => e.stopPropagation()}
+						>
+							{#if activeSlideHasClip}
+								<p class="px-1.5 pb-1.5 text-[10px] font-medium text-white/55 leading-snug">
+									Reuse this clip as…
+								</p>
+								<div class="flex flex-col gap-0.5 max-h-56 overflow-y-auto">
+									{#each TEMPLATES as t (t.id)}
+										<button
+											type="button"
+											class="w-full rounded-lg px-2.5 py-2 text-left text-[12px] font-medium text-white/85 hover:bg-violet-500/20 hover:text-white transition-colors"
+											onclick={() => addSlideWithClipAs(t.id)}
+										>
+											{t.label}
+										</button>
+									{/each}
+								</div>
+								<div class="my-1.5 h-px bg-white/10"></div>
+							{/if}
+							<button
+								type="button"
+								class="w-full rounded-lg px-2.5 py-2 text-left text-[12px] font-medium text-white/55 hover:bg-white/5 hover:text-white/80 transition-colors"
+								onclick={addEmptySlide}
+							>
+								{activeSlideHasClip ? 'Empty slide (no clip)' : 'Add empty slide'}
+							</button>
+						</div>
+					{/if}
+				</div>
 				</div>
 
 				<!-- Drag overlay: makes the dragged item feel smooth & "attached" -->

@@ -25,7 +25,14 @@ export type StudioClipCaptionImport = {
 
 /** Payload stashed before navigating Videos → Studio (avoids huge signed URLs in the query string). */
 export type StudioClipImport = {
+	/** Primary / first-slide template (also used in ?template= URL). */
 	template: TemplateId;
+	/**
+	 * Optional ordered templates for a multi-slide carousel that reuses the same clip.
+	 * e.g. ['news', 'blank'] → slide 1 News + slide 2 Blank, both with this video.
+	 * When omitted or length ≤ 1, behaves as a single-template import.
+	 */
+	carouselTemplates?: TemplateId[];
 	videoUrl: string;
 	clipStart: number;
 	clipEnd: number;
@@ -70,6 +77,9 @@ export function peekStudioClipImport(): StudioClipImport | null {
 			return null;
 		}
 		parsed.template = coerceTemplateId(parsed.template);
+		if (Array.isArray(parsed.carouselTemplates) && parsed.carouselTemplates.length) {
+			parsed.carouselTemplates = parsed.carouselTemplates.map((t) => coerceTemplateId(t));
+		}
 		return parsed;
 	} catch {
 		return null;

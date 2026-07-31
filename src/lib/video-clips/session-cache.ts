@@ -4,6 +4,8 @@ export const VIDEO_SESSION_KEY = 'videos_clip_session_v1';
 export const VIDEO_FORM_PREFS_KEY = 'videos_clip_form_prefs_v1';
 /** Set when leaving Videos → Studio so Back / return restores clips once. */
 export const VIDEO_RESUME_FLAG_KEY = 'videos_resume_once_v1';
+/** Explicitly saved clip jobs (localStorage) — reopen from Videos home. */
+export const VIDEO_SAVED_CLIPS_KEY = 'videos_saved_clips_v1';
 
 export type VideoWorkflowStep = 'source' | 'captions' | 'clips';
 
@@ -27,6 +29,17 @@ export type VideoSessionCache = {
 	/** Where the user left the stepper (defaults to clips for older caches). */
 	workflowStep?: VideoWorkflowStep;
 };
+
+export type SavedVideoClipsEntry = {
+	id: string;
+	savedAt: number;
+	title: string;
+	clipCount: number;
+	thumbnailUrl?: string;
+	session: Omit<VideoSessionCache, 'v' | 'savedAt'> & { v?: 1; savedAt?: number };
+};
+
+const MAX_SAVED_CLIPS = 12;
 
 /** Form prefs even before analysis (URL, slider settings, etc.). */
 export type VideoFormPrefs = {
@@ -110,18 +123,10 @@ function removeLocalKey(key: string): void {
 	}
 }
 
-/** Drop legacy localStorage session so logins stop auto-loading old videos.
- *  One-time move into sessionStorage so "Continue last clips" still works. */
+/** Drop legacy localStorage session so logins stop auto-loading old videos. */
 export function migrateAwayFromLocalVideoSession(): void {
 	if (typeof window === 'undefined') return;
-	try {
-		const raw = localStorage.getItem(VIDEO_SESSION_KEY);
-		if (raw && !sessionStorage.getItem(VIDEO_SESSION_KEY)) {
-			sessionStorage.setItem(VIDEO_SESSION_KEY, raw);
-		}
-	} catch {
-		/* ignore */
-	}
+	// Do not rehydrate into sessionStorage — that caused Videos to reopen old jobs.
 	removeLocalKey(VIDEO_SESSION_KEY);
 }
 
@@ -175,35 +180,60 @@ export function consumeVideoResumeFlag(): boolean {
 	}
 }
 
-function isBackForwardNavigation(): boolean {
-	if (typeof window === 'undefined') return false;
-	try {
-		const nav = performance.getEntriesByType('navigation')[0] as
-			| PerformanceNavigationTiming
-			| undefined;
-		if (nav?.type === 'back_forward') return true;
-	} catch {
-		/* ignore */
-	}
-	// Legacy
-	try {
-		const legacy = (performance as unknown as { navigation?: { type?: number } }).navigation;
-		// 2 === TYPE_BACK_FORWARD
-		if (legacy?.type === 2) return true;
-	} catch {
-		/* ignore */
-	}
-	return false;
-}
-
 /**
- * Auto-restore only when returning from Studio / browser Back —
- * not on fresh login or sidebar navigation to Videos.
+ * Auto-restore only when returning from Studio (one-shot flag).
+ * Never on homepage / sidebar / browser back — Videos always starts fresh otherwise.
  */
 export function shouldAutoRestoreVideoSession(): boolean {
-	if (consumeVideoResumeFlag()) return true;
-	if (isBackForwardNavigation()) return true;
-	return false;
+	return consumeVideoResumeFlag();
+}
+
+export function loadSavedVideoClips(): SavedVideoClipsEntry[] {
+	const parsed = readLocalJson<{ v: 1; items: SavedVideoClipsEntry[] }>(VIDEO_SAVED_CLIPS_KEY);
+	if (!parsed || parsed.v !== 1 || !Array.isArray(parsed.items)) return [];
+	return parsed.items
+		.filter((x) => x?.id && x?.session && Array.isArray(x.session?.clips) && x.session.clips.length)
+		.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+}
+
+function writeSavedVideoClips(items: SavedVideoClipsEntry[]): void {
+	writeLocalJson(VIDEO_SAVED_CLIPS_KEY, { v: 1 as const, items: items.slice(0, MAX_SAVED_CLIPS) });
+}
+
+/** Persist the current working session into the saved library (explicit user action). */
+export function saveVideoClipsToLibrary(
+	session: Omit<VideoSessionCache, 'v' | 'savedAt'>,
+): SavedVideoClipsEntry | null {
+	if (!session?.clips?.length || !session.source) return null;
+	const title =
+		session.source.title?.trim() ||
+		session.topicHint?.trim() ||
+		session.youtubeUrl?.trim() ||
+		'Saved clips';
+	const entry: SavedVideoClipsEntry = {
+		id: `saved_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+		savedAt: Date.now(),
+		title,
+		clipCount: session.clips.length,
+		thumbnailUrl: session.source.thumbnailUrl || undefined,
+		session: { ...session },
+	};
+	const next = [
+		entry,
+		...loadSavedVideoClips().filter(
+			(x) => !(x.title === title && x.clipCount === entry.clipCount),
+		),
+	];
+	writeSavedVideoClips(next);
+	return entry;
+}
+
+export function removeSavedVideoClips(id: string): void {
+	writeSavedVideoClips(loadSavedVideoClips().filter((x) => x.id !== id));
+}
+
+export function getSavedVideoClipsEntry(id: string): SavedVideoClipsEntry | null {
+	return loadSavedVideoClips().find((x) => x.id === id) ?? null;
 }
 
 export function saveVideoFormPrefs(prefs: Omit<VideoFormPrefs, 'v'>): void {

@@ -43,8 +43,11 @@
 	}: Props = $props();
 
 	let isDragging = $state(false);
-	let dragStartX = $state(0);
-	let dragStartY = $state(0);
+	let dragOriginX = $state(0);
+	let dragOriginY = $state(0);
+	/** Local coords so first-drag doesn't wait a tick / jump to 0,0 */
+	let liveX = $state<number | null>(null);
+	let liveY = $state<number | null>(null);
 	let captionElement: HTMLDivElement | null = $state(null);
 
 	const positionStyles = {
@@ -74,35 +77,85 @@
 	);
 	const phraseKey = $derived(phrase ? `${phrase.startSec}-${phrase.text}` : '');
 
-	function handleMouseDown(e: MouseEvent) {
-		if (!draggable || !captionElement) return;
-		isDragging = true;
-		dragStartX = e.clientX - (customX ?? 0);
-		dragStartY = e.clientY - (customY ?? 0);
-		e.preventDefault();
-	}
+	const posX = $derived(liveX ?? customX);
+	const posY = $derived(liveY ?? customY);
+	const hasCustomPos = $derived(posX != null && posY != null);
 
-	function handleMouseMove(e: MouseEvent) {
-		if (!isDragging || !draggable) return;
-		const newX = e.clientX - dragStartX;
-		const newY = e.clientY - dragStartY;
-		if (oncustomposition) oncustomposition(newX, newY);
-	}
-
-	function handleMouseUp() {
-		isDragging = false;
-	}
-
+	// When parent clears custom coords (e.g. Top/Center/Bottom preset), drop live too
 	$effect(() => {
-		if (draggable && isDragging) {
-			window.addEventListener('mousemove', handleMouseMove);
-			window.addEventListener('mouseup', handleMouseUp);
-			return () => {
-				window.removeEventListener('mousemove', handleMouseMove);
-				window.removeEventListener('mouseup', handleMouseUp);
-			};
+		if (customX == null && customY == null) {
+			liveX = null;
+			liveY = null;
 		}
 	});
+
+	function clampToParent(x: number, y: number, el: HTMLElement): { x: number; y: number } {
+		const parent = el.offsetParent as HTMLElement | null;
+		if (!parent) return { x, y };
+		const maxX = Math.max(0, parent.clientWidth - el.offsetWidth);
+		const maxY = Math.max(0, parent.clientHeight - el.offsetHeight);
+		return {
+			x: Math.min(maxX, Math.max(0, x)),
+			y: Math.min(maxY, Math.max(0, y)),
+		};
+	}
+
+	function handlePointerDown(e: PointerEvent) {
+		if (!draggable || !captionElement) return;
+		if (e.button !== 0) return;
+		e.preventDefault();
+		e.stopPropagation();
+
+		const parent = captionElement.offsetParent as HTMLElement | null;
+		const parentRect = parent?.getBoundingClientRect();
+		const elRect = captionElement.getBoundingClientRect();
+
+		let x = posX;
+		let y = posY;
+		if (x == null || y == null) {
+			if (parentRect) {
+				x = elRect.left - parentRect.left;
+				y = elRect.top - parentRect.top;
+			} else {
+				x = captionElement.offsetLeft;
+				y = captionElement.offsetTop;
+			}
+		}
+
+		liveX = x;
+		liveY = y;
+		dragOriginX = e.clientX - x;
+		dragOriginY = e.clientY - y;
+		isDragging = true;
+		try {
+			captionElement.setPointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function handlePointerMove(e: PointerEvent) {
+		if (!isDragging || !draggable || !captionElement) return;
+		const rawX = e.clientX - dragOriginX;
+		const rawY = e.clientY - dragOriginY;
+		const { x, y } = clampToParent(rawX, rawY, captionElement);
+		liveX = x;
+		liveY = y;
+		oncustomposition?.(x, y);
+	}
+
+	function handlePointerUp(e: PointerEvent) {
+		if (!isDragging) return;
+		isDragging = false;
+		if (liveX != null && liveY != null) {
+			oncustomposition?.(liveX, liveY);
+		}
+		try {
+			captionElement?.releasePointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
 
 	function textStrokeStyle(t: CaptionTemplate): string {
 		const useStroke = strokeEnabled || t.textStroke;
@@ -122,11 +175,15 @@
 		class="caption-overlay"
 		class:draggable
 		class:dragging={isDragging}
-		style="{draggable && customX != null && customY != null
-			? `left: ${customX}px; top: ${customY}px; transform: none;`
+		style="{hasCustomPos
+			? `left: ${posX}px; top: ${posY}px; transform: none;`
 			: positionStyles[position]}"
-		onmousedown={handleMouseDown}
+		onpointerdown={handlePointerDown}
+		onpointermove={handlePointerMove}
+		onpointerup={handlePointerUp}
+		onpointercancel={handlePointerUp}
 		role="presentation"
+		title={draggable ? 'Drag to reposition' : undefined}
 	>
 		{#key phraseKey}
 			<div
@@ -190,16 +247,21 @@
 		width: 90%;
 		display: flex;
 		justify-content: center;
+		touch-action: none;
 	}
 
 	.caption-overlay.draggable {
 		pointer-events: auto;
-		cursor: move;
+		cursor: grab;
 		width: auto;
+		outline: 1px dashed rgba(255, 255, 255, 0.35);
+		outline-offset: 6px;
+		border-radius: 4px;
 	}
 
 	.caption-overlay.dragging {
 		cursor: grabbing;
+		outline-color: rgba(167, 139, 250, 0.85);
 	}
 
 	.caption-text {

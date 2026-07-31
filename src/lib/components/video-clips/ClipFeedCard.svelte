@@ -53,7 +53,7 @@
 		onplay?: (el: HTMLVideoElement) => void;
 		onexport?: () => void;
 		onreframe?: () => void;
-		onstudio?: (templateId: string) => void;
+		onstudio?: (templateId: string | string[]) => void;
 		ontimeupdate?: (t: number, el: HTMLVideoElement) => void;
 		onmutechange?: (muted: boolean) => void;
 		onvideoready?: (el: HTMLVideoElement) => void;
@@ -89,6 +89,9 @@
 	let localTime = $state(0);
 	let activePhrase = $state<CaptionPhrase | null>(null);
 	let activeWordIndex = $state(-1);
+	/** Ordered templates for a multi-slide Studio carousel that reuses this clip. */
+	let carouselBuilderOpen = $state(false);
+	let carouselTemplates = $state<string[]>([]);
 
 	$effect(() => {
 		if (videoEl) videoEl.muted = muted;
@@ -514,7 +517,68 @@
 					{/each}
 				</select>
 			</label>
+			<button
+				type="button"
+				class="btn-carousel"
+				class:btn-carousel-on={carouselBuilderOpen}
+				onclick={() => {
+					carouselBuilderOpen = !carouselBuilderOpen;
+					if (carouselBuilderOpen && !carouselTemplates.length) {
+						carouselTemplates = ['news', 'blank'];
+					}
+				}}
+				title="Reuse this clip across multiple templates in one carousel"
+			>
+				Carousel
+			</button>
 		</div>
+
+		{#if carouselBuilderOpen}
+			<div class="carousel-builder" role="group" aria-label="Build Studio carousel">
+				<p class="carousel-builder-hint">
+					Pick templates in order — same clip on every slide. Example: News then Blank.
+				</p>
+				<div class="carousel-chips">
+					{#each STUDIO_TEMPLATES as t (t.id)}
+						{@const selected = carouselTemplates.includes(t.id)}
+						{@const ord = carouselTemplates.indexOf(t.id)}
+						<button
+							type="button"
+							class="carousel-chip"
+							class:carousel-chip-on={selected}
+							onclick={() => {
+								if (selected) {
+									carouselTemplates = carouselTemplates.filter((x) => x !== t.id);
+								} else if (carouselTemplates.length < 8) {
+									carouselTemplates = [...carouselTemplates, t.id];
+								}
+							}}
+						>
+							{#if selected}<span class="carousel-ord">{ord + 1}</span>{/if}
+							{t.label}
+						</button>
+					{/each}
+				</div>
+				{#if carouselTemplates.length}
+					<p class="carousel-order">
+						Order: {carouselTemplates
+							.map((id) => STUDIO_TEMPLATES.find((t) => t.id === id)?.label ?? id)
+							.join(' → ')}
+					</p>
+				{/if}
+				<button
+					type="button"
+					class="btn-open-carousel"
+					disabled={carouselTemplates.length < 2}
+					onclick={() => {
+						if (carouselTemplates.length < 2) return;
+						onstudio?.([...carouselTemplates]);
+					}}
+				>
+					Open {carouselTemplates.length || 0}-slide carousel
+				</button>
+			</div>
+		{/if}
 
 		<div class="reason-box">
 			<div class="reason-label">Viral reason</div>
@@ -997,6 +1061,105 @@
 		font-weight: 600;
 		color: #475569;
 		cursor: pointer;
+	}
+
+	.btn-carousel {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.42rem 0.75rem;
+		border-radius: 0.45rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		font-size: 0.78rem;
+		font-weight: 650;
+		color: #475569;
+		cursor: pointer;
+	}
+
+	.btn-carousel:hover,
+	.btn-carousel-on {
+		border-color: #c4b5fd;
+		background: #f5f3ff;
+		color: #6d28d9;
+	}
+
+	.carousel-builder {
+		margin-top: 0.55rem;
+		padding: 0.7rem 0.75rem;
+		border-radius: 0.65rem;
+		border: 1px solid #e9e5ff;
+		background: #faf8ff;
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
+	}
+
+	.carousel-builder-hint {
+		margin: 0;
+		font-size: 0.72rem;
+		line-height: 1.4;
+		color: #64748b;
+	}
+
+	.carousel-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+
+	.carousel-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.28rem 0.55rem;
+		border-radius: 999px;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: #475569;
+		cursor: pointer;
+	}
+
+	.carousel-chip-on {
+		border-color: #a78bfa;
+		background: #ede9fe;
+		color: #5b21b6;
+	}
+
+	.carousel-ord {
+		display: inline-grid;
+		place-items: center;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 999px;
+		background: #7c3aed;
+		color: #fff;
+		font-size: 0.58rem;
+		font-weight: 800;
+	}
+
+	.carousel-order {
+		margin: 0;
+		font-size: 0.7rem;
+		color: #64748b;
+	}
+
+	.btn-open-carousel {
+		align-self: flex-start;
+		padding: 0.4rem 0.85rem;
+		border-radius: 0.45rem;
+		border: 0;
+		background: #7c3aed;
+		color: #fff;
+		font-size: 0.78rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.btn-open-carousel:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.reason-box {

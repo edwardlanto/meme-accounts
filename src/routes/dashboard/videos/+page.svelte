@@ -40,7 +40,13 @@
 		markVideoSessionForResume,
 		shouldAutoRestoreVideoSession,
 		migrateAwayFromLocalVideoSession,
+		loadSavedVideoClips,
+		saveVideoClipsToLibrary,
+		removeSavedVideoClips,
+		getSavedVideoClipsEntry,
 		type VideoWorkflowStep,
+		type SavedVideoClipsEntry,
+		type VideoSessionCache,
 	} from '$lib/video-clips/session-cache';
 	import {
 		CLIP_LENGTH_PRESETS,
@@ -86,6 +92,8 @@
 		Check,
 		ArrowRight,
 		ArrowLeft,
+		Bookmark,
+		Trash2,
 	} from 'lucide-svelte';
 
 	type Phase = 'idle' | 'importing' | 'downloading' | 'analyzing' | 'ready' | 'exporting';
@@ -163,8 +171,9 @@
 	let reframeProgress = $state({ done: 0, total: 0, clipTitle: '' });
 	let reframingClipId = $state<string | null>(null);
 	let reframeController: AbortController | null = null;
-	/** Optional session the user can resume manually (not auto-loaded on login). */
-	let resumableSession = $state<{ title: string; clipCount: number } | null>(null);
+	/** Explicitly saved clip jobs — reopen from Videos home (never auto-loaded). */
+	let savedClipJobs = $state<SavedVideoClipsEntry[]>([]);
+	let clipsSavedNote = $state('');
 	/** Gate persistence until cached session/prefs are loaded (avoids overwriting on boot). */
 	let sessionHydrated = $state(false);
 
@@ -176,7 +185,7 @@
 	let captionCustomColor = $state('#ffffff');
 	let captionCustomBgColor = $state('transparent');
 	let captionCustomHighlightColor = $state('#ffeb3b');
-	let captionDraggable = $state(false);
+	let captionDraggable = $state(true);
 	let captionCustomX = $state<number | null>(null);
 	let captionCustomY = $state<number | null>(null);
 	let captionSelectedFont = $state('Inter');
@@ -287,7 +296,6 @@
 
 	function enterCaptionsStep() {
 		phase = 'ready';
-		workflowStep = 'captions';
 		const hasTx = !!(
 			source?.transcript?.trim() ||
 			clips.some((c) => !!(c.transcript && c.transcript.trim()))
@@ -295,6 +303,12 @@
 		if (hasTx) captionEnabled = true;
 		const clip = clips[0];
 		if (clip) selectedClipId = clip.id;
+		// Skip captions step when there's no stored video — preview would be empty
+		if (!source?.r2Key) {
+			workflowStep = 'clips';
+		} else {
+			workflowStep = 'captions';
+		}
 	}
 
 	function goToClipsStep() {
@@ -306,6 +320,12 @@
 	function goToCaptionsStep() {
 		if (!source || !clips.length) return;
 		if (phase !== 'ready' && phase !== 'exporting') return;
+		// Captions preview needs a stored video — stay on clips if we only have YouTube metadata
+		if (!source.r2Key) {
+			workflowStep = 'clips';
+			persistSession();
+			return;
+		}
 		workflowStep = 'captions';
 		persistSession();
 	}
@@ -317,7 +337,11 @@
 		}
 		if (!source || !clips.length) return;
 		if (phase !== 'ready' && phase !== 'exporting') return;
-		workflowStep = step;
+		if (step === 'captions' && !source.r2Key) {
+			workflowStep = 'clips';
+		} else {
+			workflowStep = step;
+		}
 		persistSession();
 	}
 
@@ -355,13 +379,20 @@
 		void v.play().catch(() => {});
 	}
 
-	function openClipInStudio(clip: VideoClip, templateRaw: string = 'videoFit') {
+	function openClipInStudio(
+		clip: VideoClip,
+		templateRaw: string | string[] = 'videoFit',
+	) {
 		if (!source) return;
+		const list = (Array.isArray(templateRaw) ? templateRaw : [templateRaw])
+			.map((t) => coerceTemplateId(t))
+			.filter(Boolean);
 		const preferred =
-			templateRaw ||
+			list[0] ||
 			VIDEO_LAYOUT_TEMPLATES.find((l) => l.id === clipLayout)?.studioId ||
 			'videoFit';
 		const template = coerceTemplateId(preferred);
+		const carouselTemplates = list.length >= 2 ? list.slice(0, 10) : undefined;
 		const directVideo = clipDirectVideoUrl(source);
 		const videoUrl = directVideo || String(source.playbackUrl ?? '').trim();
 		const looksYoutube = /youtube\.com\/embed|youtu\.be\//i.test(videoUrl);
@@ -372,6 +403,7 @@
 		if (videoUrl && !looksYoutube) {
 			stashStudioClipImport({
 				template,
+				carouselTemplates,
 				videoUrl,
 				clipStart: clip.startSec,
 				clipEnd: clip.endSec,
@@ -401,6 +433,11 @@
 	function handleCaptionPositionChange(x: number, y: number) {
 		captionCustomX = x;
 		captionCustomY = y;
+	}
+
+	function clearCaptionCustomPosition() {
+		captionCustomX = null;
+		captionCustomY = null;
 	}
 
 	const hasStoredVideo = $derived(!!source?.r2Key);
@@ -677,7 +714,9 @@
 		return meta;
 	}
 
-	async function applyCachedSession(cached: NonNullable<ReturnType<typeof loadVideoSession>>) {
+	async function applyCachedSession(
+		cached: NonNullable<ReturnType<typeof loadVideoSession>> | VideoSessionCache,
+	) {
 		youtubeUrl = cached.youtubeUrl || youtubeUrl;
 		topicHint = cached.topicHint || topicHint;
 		importTab = cached.importTab === 'upload' ? 'upload' : 'youtube';
@@ -706,11 +745,51 @@
 			cached.workflowStep === 'captions' || cached.workflowStep === 'clips'
 				? cached.workflowStep
 				: 'clips';
-		resumableSession = null;
+		// Captions step needs stored video — fall back to clips for YouTube-only sessions
+		if (workflowStep === 'captions' && !source.r2Key) {
+			workflowStep = 'clips';
+		}
+	}
+
+	function refreshSavedClipJobs() {
+		savedClipJobs = loadSavedVideoClips();
+	}
+
+	function buildSessionPayload(): Omit<VideoSessionCache, 'v' | 'savedAt'> | null {
+		if (!source || !clips.length) return null;
+		return {
+			youtubeUrl,
+			topicHint,
+			importTab,
+			clipMode,
+			clipCount,
+			clipMinSec,
+			clipMaxSec,
+			source,
+			clips,
+			summary,
+			demo,
+			model,
+			selectedClipId,
+			workflowStep: workflowStep === 'source' ? 'captions' : workflowStep,
+		};
+	}
+
+	function saveCurrentClipsToLibrary() {
+		const payload = buildSessionPayload();
+		if (!payload) return;
+		const entry = saveVideoClipsToLibrary(payload);
+		if (!entry) return;
+		refreshSavedClipJobs();
+		clipsSavedNote = 'Saved — find it on the Videos home screen';
+		setTimeout(() => {
+			clipsSavedNote = '';
+		}, 2800);
 	}
 
 	async function restoreCachedSession() {
 		migrateAwayFromLocalVideoSession();
+		refreshSavedClipJobs();
 
 		const prefs = loadVideoFormPrefs();
 		if (prefs) {
@@ -753,37 +832,52 @@
 			}
 		}
 
-		const cached = loadVideoSession();
-		if (!cached) {
-			resumableSession = null;
-			return;
-		}
-
-		// Auto-restore only after Studio / browser Back — not on every login or nav click
+		// Only restore when returning from Studio — otherwise always start fresh
 		if (shouldAutoRestoreVideoSession()) {
-			await applyCachedSession(cached);
-			return;
+			const cached = loadVideoSession();
+			if (cached) {
+				await applyCachedSession(cached);
+				return;
+			}
 		}
 
-		resumableSession = {
-			title: cached.source?.title?.trim() || 'Last video',
-			clipCount: cached.clips?.length ?? 0,
-		};
+		clearVideoSession();
+		phase = 'idle';
+		workflowStep = 'source';
+		source = null;
+		clips = [];
+		youtubeUrl = '';
+		selectedClipId = null;
 	}
 
-	async function resumeLastSession() {
-		const cached = loadVideoSession();
-		if (!cached) {
-			resumableSession = null;
-			return;
-		}
-		await applyCachedSession(cached);
+	async function openSavedClipJob(id: string) {
+		const entry = getSavedVideoClipsEntry(id);
+		if (!entry?.session) return;
+		const s = entry.session;
+		await applyCachedSession({
+			v: 1,
+			savedAt: entry.savedAt,
+			youtubeUrl: s.youtubeUrl ?? '',
+			topicHint: s.topicHint ?? '',
+			importTab: s.importTab === 'upload' ? 'upload' : 'youtube',
+			clipMode: s.clipMode === 'all' ? 'all' : 'highlights',
+			clipCount: s.clipCount ?? 8,
+			clipMinSec: s.clipMinSec ?? 10,
+			clipMaxSec: s.clipMaxSec ?? 60,
+			source: s.source,
+			clips: s.clips,
+			summary: s.summary ?? '',
+			demo: !!s.demo,
+			model: s.model ?? '',
+			selectedClipId: s.selectedClipId ?? null,
+			workflowStep: s.workflowStep === 'captions' ? 'captions' : 'clips',
+		});
 		persistSession();
 	}
 
-	function dismissResumableSession() {
-		clearVideoSession();
-		resumableSession = null;
+	function deleteSavedClipJob(id: string) {
+		removeSavedVideoClips(id);
+		refreshSavedClipJobs();
 	}
 
 	onMount(async () => {
@@ -1220,7 +1314,6 @@
 	function chooseAnotherVideo() {
 		cancelReframe();
 		clearVideoSession();
-		resumableSession = null;
 		phase = 'idle';
 		workflowStep = 'source';
 		youtubeUrl = '';
@@ -1241,6 +1334,7 @@
 		playerVideo = null;
 		captionsPreviewVideo = null;
 		clipVideoEls.clear();
+		refreshSavedClipJobs();
 		persistFormPrefs();
 	}
 </script>
@@ -1253,7 +1347,9 @@
 			{@const reachable =
 				step.id === 'source'
 					? workflowStep !== 'source'
-					: (phase === 'ready' || phase === 'exporting') && !!source && clips.length > 0}
+					: step.id === 'captions' && !hasStoredVideo
+						? false
+						: (phase === 'ready' || phase === 'exporting') && !!source && clips.length > 0}
 			{#if i > 0}
 				<span class="stepper-line" class:stepper-line-on={done || active} aria-hidden="true"></span>
 			{/if}
@@ -1299,23 +1395,49 @@
 				exports the MP4s.
 			</p>
 
-			{#if resumableSession}
-				<div class="resume-banner" role="status">
-					<div class="resume-copy">
-						<strong>Continue last clips?</strong>
-						<span>
-							{resumableSession.title}
-							· {resumableSession.clipCount} clip{resumableSession.clipCount === 1 ? '' : 's'}
-						</span>
+			{#if savedClipJobs.length}
+				<div class="saved-clips" aria-label="Saved clips">
+					<div class="saved-clips-head">
+						<strong>Saved clips</strong>
+						<span>Reopen anytime — Videos always starts fresh otherwise</span>
 					</div>
-					<div class="resume-actions">
-						<button type="button" class="btn-resume" onclick={() => void resumeLastSession()}>
-							Open clips
-						</button>
-						<button type="button" class="btn-resume-dismiss" onclick={dismissResumableSession}>
-							Dismiss
-						</button>
-					</div>
+					<ul class="saved-clips-list">
+						{#each savedClipJobs as job (job.id)}
+							<li class="saved-clips-item">
+								{#if job.thumbnailUrl}
+									<img class="saved-clips-thumb" src={job.thumbnailUrl} alt="" />
+								{:else}
+									<div class="saved-clips-thumb saved-clips-thumb-empty" aria-hidden="true">
+										<Film size={14} />
+									</div>
+								{/if}
+								<div class="saved-clips-copy">
+									<span class="saved-clips-title">{job.title}</span>
+									<span class="saved-clips-meta">
+										{job.clipCount} clip{job.clipCount === 1 ? '' : 's'}
+										· {new Date(job.savedAt).toLocaleDateString()}
+									</span>
+								</div>
+								<div class="saved-clips-actions">
+									<button
+										type="button"
+										class="btn-resume"
+										onclick={() => void openSavedClipJob(job.id)}
+									>
+										Open
+									</button>
+									<button
+										type="button"
+										class="btn-resume-dismiss"
+										onclick={() => deleteSavedClipJob(job.id)}
+										aria-label="Remove saved clips"
+									>
+										<Trash2 size={13} />
+									</button>
+								</div>
+							</li>
+						{/each}
+					</ul>
 				</div>
 			{/if}
 
@@ -1737,6 +1859,7 @@
 							bind:segments={captionSegments}
 							onseek={seekCaptionTo}
 							onreset={resetCaptionEdits}
+							onpositionpreset={clearCaptionCustomPosition}
 						/>
 					{:else}
 						<div class="captions-empty-note" role="status">
@@ -1779,8 +1902,14 @@
 					{#if summary}<p class="results-summary">{summary}</p>{/if}
 				</div>
 				<div class="results-head-actions">
-					<button type="button" class="btn-ghost" onclick={goToCaptionsStep}>
-						<ArrowLeft size={13} /> Captions
+					{#if hasStoredVideo}
+						<button type="button" class="btn-ghost" onclick={goToCaptionsStep}>
+							<ArrowLeft size={13} /> Captions
+						</button>
+					{/if}
+					<button type="button" class="btn-ghost" onclick={saveCurrentClipsToLibrary}>
+						<Bookmark size={13} />
+						{clipsSavedNote || 'Save clips'}
 					</button>
 					<button type="button" class="btn-ghost" onclick={chooseAnotherVideo}>
 						<RotateCcw size={13} /> Choose another video
@@ -2434,6 +2563,98 @@
 		border: 1px solid #bfdbfe;
 		text-align: left;
 		animation: slide-up 0.45s 0.1s ease both;
+	}
+
+	.saved-clips {
+		max-width: 34rem;
+		margin: -0.35rem auto 1.35rem;
+		padding: 0.9rem 1rem;
+		border-radius: 0.85rem;
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		text-align: left;
+		animation: slide-up 0.45s 0.1s ease both;
+	}
+
+	.saved-clips-head {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		margin-bottom: 0.7rem;
+	}
+
+	.saved-clips-head strong {
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: #0f172a;
+	}
+
+	.saved-clips-head span {
+		font-size: 0.72rem;
+		color: #64748b;
+	}
+
+	.saved-clips-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+	}
+
+	.saved-clips-item {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+		padding: 0.45rem 0.5rem;
+		border-radius: 0.65rem;
+		background: #fff;
+		border: 1px solid #e2e8f0;
+	}
+
+	.saved-clips-thumb {
+		width: 40px;
+		height: 40px;
+		border-radius: 0.45rem;
+		object-fit: cover;
+		flex-shrink: 0;
+		background: #e2e8f0;
+	}
+
+	.saved-clips-thumb-empty {
+		display: grid;
+		place-items: center;
+		color: #94a3b8;
+	}
+
+	.saved-clips-copy {
+		min-width: 0;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+
+	.saved-clips-title {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: #0f172a;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.saved-clips-meta {
+		font-size: 0.7rem;
+		color: #64748b;
+	}
+
+	.saved-clips-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		flex-shrink: 0;
 	}
 
 	.resume-copy {
