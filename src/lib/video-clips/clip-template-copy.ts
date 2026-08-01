@@ -182,6 +182,68 @@ export function clipDirectVideoUrl(source: VideoImportMeta): string {
 	return '';
 }
 
+/**
+ * Studio import media for a clip. Prefers a cut+reframed standalone MP4 when present
+ * (timeline starts at 0). Otherwise uses the full source + absolute trim window.
+ */
+export function studioImportMediaForClip(
+	clip: VideoClip,
+	source: VideoImportMeta,
+	opts?: { reframedUrlOverride?: string },
+): {
+	videoUrl: string;
+	clipStart: number;
+	clipEnd: number;
+	usedReframe: boolean;
+	/** Subtract from caption segment times when `usedReframe` is true. */
+	captionTimeOffsetSec: number;
+} {
+	const override = String(opts?.reframedUrlOverride ?? '').trim();
+	const reframed = override || String(clip.reframedPlaybackUrl ?? '').trim();
+	const duration = Math.max(0.5, (Number(clip.endSec) || 0) - (Number(clip.startSec) || 0));
+
+	if (reframed && !/youtube\.com\/embed|youtu\.be\//i.test(reframed)) {
+		return {
+			videoUrl: reframed,
+			clipStart: 0,
+			clipEnd: duration,
+			usedReframe: true,
+			captionTimeOffsetSec: Math.max(0, Number(clip.startSec) || 0),
+		};
+	}
+
+	const direct = clipDirectVideoUrl(source);
+	const fallback = direct || String(source.playbackUrl ?? '').trim();
+	return {
+		videoUrl: fallback,
+		clipStart: Math.max(0, Number(clip.startSec) || 0),
+		clipEnd: Math.max(
+			Math.max(0, Number(clip.startSec) || 0) + 0.5,
+			Number(clip.endSec) || 0,
+		),
+		usedReframe: false,
+		captionTimeOffsetSec: 0,
+	};
+}
+
+/** Shift caption cues so they match a standalone reframed clip (t=0 at clip start). */
+export function shiftCaptionImportTimes<T extends { segments: { startSec: number; endSec: number | null; text: string }[] }>(
+	captions: T | null | undefined,
+	offsetSec: number,
+): T | null {
+	if (!captions) return null;
+	const offset = Number(offsetSec) || 0;
+	if (!(offset > 0)) return captions;
+	return {
+		...captions,
+		segments: captions.segments.map((s) => ({
+			...s,
+			startSec: Math.max(0, s.startSec - offset),
+			endSec: s.endSec != null ? Math.max(0, s.endSec - offset) : null,
+		})),
+	};
+}
+
 export function clipVideoMediaFragment(url: string, startSec: number, endSec: number): string {
 	if (!url || !Number.isFinite(startSec)) return url;
 	const base = url.split('#')[0] ?? url;

@@ -10,6 +10,8 @@
 		buildClipTemplateCopy,
 		clipDirectVideoUrl,
 		clipVideoMediaFragment,
+		studioImportMediaForClip,
+		shiftCaptionImportTimes,
 	} from '$lib/video-clips/clip-template-copy';
 	import {
 		NEWS_DEFAULT_SOURCE,
@@ -73,14 +75,16 @@
 	/** Stash clip media + headlines, then navigate (signed URLs are too long for query params). */
 	function openInStudio(templateRaw: string) {
 		const template = coerceTemplateId(templateRaw);
-		const videoUrl = directVideo || String(source.playbackUrl ?? '').trim();
+		const media = studioImportMediaForClip(clip, source);
+		const videoUrl = media.videoUrl;
 		const looksYoutube = /youtube\.com\/embed|youtu\.be\//i.test(videoUrl);
+		const caps = shiftCaptionImportTimes(captions ?? null, media.captionTimeOffsetSec);
 		if (videoUrl && !looksYoutube) {
 			stashStudioClipImport({
 				template,
 				videoUrl,
-				clipStart: clip.startSec,
-				clipEnd: clip.endSec,
+				clipStart: media.clipStart,
+				clipEnd: media.clipEnd,
 				thumbnailUrl: thumb || undefined,
 				newsHeadline: copy.newsHeadline,
 				newsSource: copy.newsSource,
@@ -91,11 +95,12 @@
 				carouselName: copy.carouselName,
 				carouselHandle: copy.carouselHandle,
 				carouselBody: copy.carouselBody,
-				captions: captions ?? null,
+				captions: caps,
 			});
 		} else {
 			console.warn('[videos] Edit in Studio: no direct video URL to import', {
 				hasDirect: !!directVideo,
+				usedReframe: media.usedReframe,
 				r2Key: !!source.r2Key,
 			});
 		}

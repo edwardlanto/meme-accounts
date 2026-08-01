@@ -4,7 +4,7 @@
 	import { r2UploadVideo } from '$lib/r2Client';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import { formatTimestamp } from '$lib/video-clips/export-clip';
-	import { buildClipTemplateCopy, clipDirectVideoUrl } from '$lib/video-clips/clip-template-copy';
+	import { buildClipTemplateCopy, clipDirectVideoUrl, studioImportMediaForClip, shiftCaptionImportTimes } from '$lib/video-clips/clip-template-copy';
 	import { cleanClipSpeechText, hasTimedTranscript, excerptTimedLinesFromTranscript } from '$lib/video-clips/transcript-segments';
 	import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 	import ClipTemplatePreviews from '$lib/components/video-clips/ClipTemplatePreviews.svelte';
@@ -379,7 +379,7 @@
 		void v.play().catch(() => {});
 	}
 
-	function openClipInStudio(
+	async function openClipInStudio(
 		clip: VideoClip,
 		templateRaw: string | string[] = 'videoFit',
 	) {
@@ -393,20 +393,38 @@
 			'videoFit';
 		const template = coerceTemplateId(preferred);
 		const carouselTemplates = list.length >= 2 ? list.slice(0, 10) : undefined;
-		const directVideo = clipDirectVideoUrl(source);
-		const videoUrl = directVideo || String(source.playbackUrl ?? '').trim();
+
+		let reframedOverride = '';
+		const reframedKey = String(clip.reframedR2Key ?? '').trim();
+		if (reframedKey) {
+			try {
+				const { url } = await r2SignRead({ key: reframedKey });
+				if (url?.trim()) reframedOverride = url.trim();
+			} catch (e) {
+				console.warn('[videos] could not refresh reframed playback URL', e);
+			}
+		}
+
+		const media = studioImportMediaForClip(clip, source, {
+			reframedUrlOverride: reframedOverride || undefined,
+		});
+		const videoUrl = media.videoUrl;
 		const looksYoutube = /youtube\.com\/embed|youtu\.be\//i.test(videoUrl);
 		const copy = buildClipTemplateCopy(clip, source, {
 			watermark: topicHint.trim() || 'VIRAL CLIP',
 			topicHint: topicHint.trim(),
 		});
+		const captions = shiftCaptionImportTimes(
+			buildCaptionImportForClip(clip),
+			media.captionTimeOffsetSec,
+		);
 		if (videoUrl && !looksYoutube) {
 			stashStudioClipImport({
 				template,
 				carouselTemplates,
 				videoUrl,
-				clipStart: clip.startSec,
-				clipEnd: clip.endSec,
+				clipStart: media.clipStart,
+				clipEnd: media.clipEnd,
 				thumbnailUrl: source.thumbnailUrl || undefined,
 				newsHeadline: copy.newsHeadline,
 				newsSource: copy.newsSource,
@@ -417,11 +435,12 @@
 				carouselName: copy.carouselName,
 				carouselHandle: copy.carouselHandle,
 				carouselBody: copy.carouselBody,
-				captions: buildCaptionImportForClip(clip),
+				captions,
 			});
 		} else {
 			console.warn('[videos] Open in Studio: no direct video URL', {
-				hasDirect: !!directVideo,
+				hasDirect: !!clipDirectVideoUrl(source),
+				usedReframe: media.usedReframe,
 				r2Key: !!source.r2Key,
 			});
 		}
@@ -2159,7 +2178,7 @@
 								}}
 								onexport={() => void downloadClip(clip)}
 								onreframe={() => void reframeSingleClip(clip)}
-								onstudio={(tpl) => openClipInStudio(clip, tpl)}
+								onstudio={(tpl) => void openClipInStudio(clip, tpl)}
 								ontimeupdate={onClipCardTimeUpdate}
 								onmutechange={(m) => (videoMuted = m)}
 								onvideoready={(el) => registerClipVideo(clip.id, el)}
