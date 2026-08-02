@@ -49,14 +49,13 @@ export const TEXT_CAROUSEL_DEFAULTS = {
 	name: 'Captains of industry',
 	handle: '@captainsofindustryy',
 	body:
-		'Beijing and Washington will reaffirm plans to reopen the Strait of Hormuz together.\n\n' +
-		'The announcement follows months of quiet negotiation between regional partners and shipping insurers. Officials stressed that stability through the strait remains critical for energy markets — and for consumers far beyond the Gulf.\n\n' +
-		'Analysts expect a joint statement outlining timelines, escort protocols, and coordination with commercial fleets. Until routes normalize, volatility in futures markets may persist; traders are watching every headline.\n\n' +
-		'What this means for operators: supply chains that depend on Gulf transit should scenario-plan for both a quick reopening and a phased rollout. Clear communication to customers beats surprise every time.',
+		'Lead with a sharp hook on the first line.\n\n' +
+		'Use the second beat for proof, tone, or a CTA — keep it scannable.\n\n' +
+		'End with momentum — a reason to engage, click, or remember you.',
 } as const;
 
 /** Minimum plain-text length for text carousel body (studio + API fills). */
-export const TEXT_CAROUSEL_BODY_MIN_CHARS = 175;
+export const TEXT_CAROUSEL_BODY_MIN_CHARS = TEXT_CAROUSEL_DEFAULTS.body.trim().length;
 
 /**
  * If body is shorter than {@link TEXT_CAROUSEL_BODY_MIN_CHARS}, append the default deck copy
@@ -111,6 +110,163 @@ export const VIDEO_STORY_HEADLINE_STYLE = {
 	fontWeight: 600,
 	fontFamily: 'Satoshi',
 	fontSize: 46,
+} as const;
+
+/** Black letterbox + large white hook above the clip (Hook video template). */
+export const VIDEO_HOOK_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	watermark: '',
+	headline: 'One of the most uncomfortable live interviews ever',
+} as const;
+
+export const VIDEO_HOOK_HEADLINE_STYLE = {
+	color: '#ffffff',
+	fontWeight: 700,
+	fontFamily: 'Satoshi',
+	fontSize: 56,
+} as const;
+
+/**
+ * Creator hook: profile row + sentence-case headline (optional [[bold]] emphasis)
+ * above a letterboxed clip on black.
+ */
+export const VIDEO_CREATOR_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	name: 'Startup Revenue AI',
+	handle: '@startuprevenue.ai',
+	headline: 'He gave a 10 second pitch that [[broke the internet]]',
+} as const;
+
+export const VIDEO_CREATOR_HEADLINE_STYLE = {
+	color: '#ffffff',
+	fontWeight: 500,
+	fontFamily: 'Satoshi',
+	fontSize: 52,
+	align: 'left' as const,
+} as const;
+
+/**
+ * Clip post: profile row (no verified badge) + casual hook above a wide letterboxed clip.
+ */
+export const VIDEO_POST_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	name: 'Saturday Nite MMA',
+	handle: '@SaturdayNiteMMA',
+	avatarUrl: '/placeholders/carousel/clip-post-avatar.png',
+	headline: "Rampage Jackson found out he couldn't take his son anymore 😭💀",
+} as const;
+
+export const VIDEO_POST_HEADLINE_STYLE = {
+	color: '#ffffff',
+	fontWeight: 600,
+	fontFamily: 'Satoshi',
+	fontSize: 44,
+	align: 'left' as const,
+} as const;
+
+/** Full-bleed video with centered outlined white text (Text on video template). */
+export const VIDEO_TEXT_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	watermark: '',
+	headline: 'POV: you found the clip that explains everything',
+} as const;
+
+export const VIDEO_TEXT_HEADLINE_STYLE = {
+	color: '#ffffff',
+	fontWeight: 800,
+	fontFamily: 'Satoshi',
+	fontSize: 64,
+	align: 'center' as const,
+} as const;
+
+/**
+ * Source hook: left-aligned headline with neon-green [[highlight]] on the key word,
+ * letterboxed clip, and a "Source: …" line under the video.
+ */
+export const VIDEO_SOURCE_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	watermark: 'Source: The Venture Room',
+	headline: '[[Entrepreneur]] reveals the secret to finding billion-dollar ideas:',
+	highlightColor: '#39FF14',
+} as const;
+
+export const VIDEO_SOURCE_HEADLINE_STYLE = {
+	color: '#ffffff',
+	fontWeight: 700,
+	fontFamily: 'Satoshi',
+	fontSize: 48,
+	align: 'left' as const,
+} as const;
+
+/**
+ * Feature card: left-aligned headline + body with teal [[highlights]],
+ * rounded landscape media in the lower half on black.
+ */
+export const VIDEO_FEATURE_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	highlightColor: '#2EE6C5',
+	headline: 'Rocket.new just launched 1.0 as the world’s first [[Vibe Solutioning]] platform',
+	body:
+		'Data from 1.5M users shows 60–70% of vibe coding users still don’t know what they’re building... [[Rocket 1.0]] brings its original vision to life as a complete product.',
+} as const;
+
+export const VIDEO_FEATURE_HEADLINE_STYLE = {
+	color: '#ffffff',
+	fontWeight: 700,
+	fontFamily: 'Satoshi',
+	fontSize: 44,
+	align: 'left' as const,
+} as const;
+
+export const VIDEO_FEATURE_BODY_STYLE = {
+	color: '#ffffff',
+	fontWeight: 500,
+	fontFamily: 'Satoshi',
+	fontSize: 32,
+	align: 'left' as const,
+} as const;
+
+/** Image top + centered title/body on black (Topic card). */
+export const PHOTO_TOPIC_DEFAULTS = {
+	imageUrl: '/placeholders/carousel/photo-topic-placeholder.png',
+	headlineColor: '#A8D8FF',
+	headline: 'REGENERATIVE\nMEDICINE',
+	body: 'Stem cells, tissue engineering, and lab-grown organs aim to repair or replace failing body parts, reducing the need for transplants and extending functional lifespan.',
+} as const;
+
+/** Full-bleed photo with top gradient + left caption paragraphs (Photo caption). */
+export const PHOTO_CAPTION_DEFAULTS = {
+	imageUrl: '/placeholders/carousel/photo-caption-placeholder.png',
+	headline:
+		'Despite having no engineering background and no technical co-founder…',
+	body: 'Nico built the entire product using Lovable, working nights after putting his kids to bed.',
+} as const;
+
+/** White card: profile row + multi-paragraph thread body (no emoji CTA). */
+export const WHITE_THREAD_DEFAULTS = {
+	name: 'Katie & Luke Johnson',
+	handle: '@feetandmore',
+	avatarUrl: '/placeholders/carousel/white-thread-avatar.png',
+	body:
+		"A year ago today, I was diagnosed with a rare disease that left me with limited mobility and in need of a full-time caregiver.\n\n" +
+		"Today, I'm happy to report that I've made a full recovery.\n\n" +
+		"I never would have made it without Luke.\n\n" +
+		"He quit his job to take care of me.\n\n" +
+		"He carried me when I couldn't walk.\n\n" +
+		"He fed me when I couldn't feed myself.\n\n" +
+		'He never once complained.',
+} as const;
+
+/** White card: profile + short copy + rounded media attachment. */
+export const WHITE_MEDIA_DEFAULTS = {
+	name: 'chronically online',
+	handle: '@chronicallyon',
+	avatarUrl: '/placeholders/carousel/white-media-avatar.png',
+	imageUrl: '/placeholders/carousel/white-media-attachment.png',
+	body:
+		"If you've been scrolling this week, you've probably seen this image.\n\n" +
+		"It's a bizarre illustration from a Persian manuscript created in 1921.\n\n" +
+		"And somehow...it's become the internet's newest obsession.",
 } as const;
 
 /** Labels for docs / error messages when extending templates. */

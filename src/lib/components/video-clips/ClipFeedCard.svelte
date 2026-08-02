@@ -44,8 +44,8 @@
 		/** Another clip is reframing — disable this button. */
 		reframeLocked?: boolean;
 		muted?: boolean;
-		/** fit = letterbox, blur = blurred fill, story = full cover */
-		layout?: 'story' | 'fit' | 'blur';
+		/** Video preview layouts matching Studio video templates */
+		layout?: 'story' | 'fit' | 'blur' | 'hook' | 'creator' | 'text' | 'source' | 'feature';
 		/** CSS aspect-ratio value e.g. "9 / 16" */
 		aspectRatio?: string;
 		enhance?: CaptionEnhanceOptions;
@@ -118,6 +118,28 @@
 		cleanClipSpeechText(clip.title) || clipDisplayQuote(clip, source) || `Clip ${index + 1}`,
 	);
 	const hookLine = $derived(clipDisplayQuote(clip, source));
+	const videoHookLine = $derived(
+		(clip.videoHook?.trim() || hookLine || headline)
+			.replace(/\[\[([^\]]*)\]\]/g, '$1')
+			.slice(0, 120),
+	);
+	const studioTemplateForLayout = $derived(
+		layout === 'blur'
+			? 'videoBlur'
+			: layout === 'fit'
+				? 'videoFit'
+				: layout === 'hook'
+					? 'videoHook'
+					: layout === 'creator'
+						? 'videoCreator'
+						: layout === 'text'
+							? 'videoText'
+							: layout === 'source'
+								? 'videoSource'
+								: layout === 'feature'
+									? 'videoFeature'
+									: 'videoStory',
+	);
 	const reasonText = $derived(
 		(clip.reason || '').trim() ||
 			(clip.hook || '').trim() ||
@@ -338,6 +360,11 @@
 			<div
 				class="phone-frame"
 				class:layout-fit={layout === 'fit'}
+				class:layout-hook={layout === 'hook'}
+				class:layout-creator={layout === 'creator'}
+				class:layout-text={layout === 'text'}
+				class:layout-source={layout === 'source'}
+				class:layout-feature={layout === 'feature'}
 				class:layout-blur={layout === 'blur'}
 				class:layout-story={layout === 'story'}
 				style="aspect-ratio: {aspectRatio}"
@@ -353,13 +380,70 @@
 						aria-hidden="true"
 					></video>
 				{/if}
+				{#if layout === 'hook'}
+					<p class="hook-title" aria-hidden="true">{videoHookLine}</p>
+				{/if}
+				{#if layout === 'creator'}
+					<div class="creator-head" aria-hidden="true">
+						<div class="creator-avatar">
+							{#if source.thumbnailUrl}
+								<img src={source.thumbnailUrl} alt="" />
+							{/if}
+						</div>
+						<div class="creator-meta">
+							<div class="creator-name-row">
+								<span class="creator-name">{clip.title.slice(0, 28) || 'Creator'}</span>
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+									<circle cx="12" cy="12" r="10" fill="#1D9BF0" />
+									<path
+										d="M7.5 12.2l2.8 2.8 6.2-6.4"
+										stroke="#fff"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</div>
+							<span class="creator-handle">@clip</span>
+						</div>
+						<p class="creator-hook">{videoHookLine}</p>
+					</div>
+				{/if}
+				{#if layout === 'text'}
+					<p class="cover-text" aria-hidden="true">{videoHookLine}</p>
+				{/if}
+				{#if layout === 'source'}
+					{@const sourceWords = videoHookLine.trim().split(/\s+/).filter(Boolean)}
+					<div class="source-head" aria-hidden="true">
+						<p class="source-hook">
+							{#each sourceWords as w, wi (wi)}
+								<span class:source-hi={wi === 0}>{w}</span>{wi < sourceWords.length - 1 ? ' ' : ''}
+							{/each}
+						</p>
+					</div>
+					<p class="source-attr">Source: clip</p>
+				{/if}
+				{#if layout === 'feature'}
+					{@const featWords = videoHookLine.trim().split(/\s+/).filter(Boolean)}
+					<div class="feature-head" aria-hidden="true">
+						<p class="feature-hook">
+							{#each featWords as w, wi (wi)}
+								<span class:feature-hi={wi > 0 && wi < 3}>{w}</span
+								>{wi < featWords.length - 1 ? ' ' : ''}
+							{/each}
+						</p>
+						<p class="feature-body">{reasonText.slice(0, 110)}</p>
+					</div>
+				{/if}
 				<!-- svelte-ignore a11y_media_has_caption -->
 				{#key mediaSrc}
 					<video
 						bind:this={videoEl}
 						class="clip-video"
-						class:clip-video-contain={layout === 'fit' && !hasReframed}
+						class:clip-video-contain={(layout === 'fit' || layout === 'hook' || layout === 'creator' || layout === 'source') && !hasReframed}
 						class:clip-video-mid={layout === 'blur'}
+						class:clip-video-hook={layout === 'hook' || layout === 'creator' || layout === 'source'}
+						class:clip-video-feature={layout === 'feature'}
 						src={mediaSrc}
 						preload="metadata"
 						playsinline
@@ -483,7 +567,7 @@
 		</header>
 
 		<div class="action-row">
-			<button type="button" class="btn-publish" onclick={() => onstudio?.(layout === 'blur' ? 'videoBlur' : layout === 'fit' ? 'videoFit' : 'videoStory')}>
+			<button type="button" class="btn-publish" onclick={() => onstudio?.(studioTemplateForLayout)}>
 				Publish
 			</button>
 			<button
@@ -710,6 +794,228 @@
 		background: #000;
 	}
 
+	.layout-hook .clip-video-hook {
+		top: 22%;
+		bottom: 22%;
+		height: auto;
+		inset: 22% 0;
+		object-fit: contain;
+		background: #000;
+	}
+
+	.hook-title {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 3;
+		margin: 0;
+		padding: 10% 8% 0;
+		text-align: center;
+		color: #fff;
+		font-weight: 700;
+		font-size: clamp(0.85rem, 3.6vw, 1.15rem);
+		line-height: 1.25;
+		letter-spacing: -0.02em;
+		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+		pointer-events: none;
+	}
+
+	.creator-head {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 3;
+		padding: 8% 7% 0;
+		pointer-events: none;
+		display: grid;
+		grid-template-columns: auto 1fr;
+		grid-template-rows: auto auto;
+		column-gap: 0.45rem;
+		row-gap: 0.45rem;
+	}
+
+	.creator-avatar {
+		grid-row: 1;
+		width: 1.65rem;
+		height: 1.65rem;
+		border-radius: 50%;
+		overflow: hidden;
+		background: #334155;
+	}
+
+	.creator-avatar img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.creator-meta {
+		grid-row: 1;
+		min-width: 0;
+	}
+
+	.creator-name-row {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.creator-name {
+		color: #fff;
+		font-weight: 700;
+		font-size: 0.72rem;
+		line-height: 1.1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.creator-handle {
+		display: block;
+		color: rgba(255, 255, 255, 0.55);
+		font-size: 0.62rem;
+		line-height: 1.2;
+	}
+
+	.creator-hook {
+		grid-column: 1 / -1;
+		margin: 0;
+		color: #fff;
+		font-weight: 500;
+		font-size: clamp(0.78rem, 3.2vw, 1.05rem);
+		line-height: 1.25;
+		letter-spacing: -0.02em;
+		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+	}
+
+	.layout-creator .caption-box {
+		top: auto;
+		bottom: 28%;
+	}
+
+	.cover-text {
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		margin: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 12%;
+		text-align: center;
+		color: #fff;
+		font-weight: 800;
+		font-size: clamp(0.95rem, 4.2vw, 1.35rem);
+		line-height: 1.15;
+		letter-spacing: -0.03em;
+		-webkit-text-stroke: 1.25px #000;
+		paint-order: stroke fill;
+		text-shadow:
+			-1px -1px 0 #000,
+			1px -1px 0 #000,
+			-1px 1px 0 #000,
+			1px 1px 0 #000;
+		pointer-events: none;
+	}
+
+	.layout-text .caption-box {
+		opacity: 0;
+	}
+
+	.source-head {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 3;
+		padding: 8% 7% 0;
+		pointer-events: none;
+	}
+
+	.source-hook {
+		margin: 0;
+		color: #fff;
+		font-weight: 700;
+		font-size: clamp(0.78rem, 3.2vw, 1.05rem);
+		line-height: 1.22;
+		letter-spacing: -0.02em;
+		text-align: left;
+		text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+	}
+
+	.source-hi {
+		color: #39ff14;
+	}
+
+	.source-attr {
+		position: absolute;
+		left: 7%;
+		right: 7%;
+		bottom: 8%;
+		z-index: 3;
+		margin: 0;
+		color: #fff;
+		font-size: 0.65rem;
+		font-weight: 500;
+		pointer-events: none;
+		opacity: 0.9;
+	}
+
+	.layout-source .caption-box {
+		top: auto;
+		bottom: 30%;
+	}
+
+	.feature-head {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 3;
+		padding: 8% 7% 0;
+		pointer-events: none;
+	}
+
+	.feature-hook {
+		margin: 0 0 0.4rem;
+		color: #fff;
+		font-weight: 700;
+		font-size: clamp(0.72rem, 3vw, 0.98rem);
+		line-height: 1.2;
+		letter-spacing: -0.02em;
+		text-align: left;
+	}
+
+	.feature-hi {
+		color: #2ee6c5;
+	}
+
+	.feature-body {
+		margin: 0;
+		color: rgba(255, 255, 255, 0.88);
+		font-size: 0.62rem;
+		line-height: 1.35;
+		font-weight: 500;
+	}
+
+	.layout-feature .clip-video-feature {
+		top: auto;
+		bottom: 7%;
+		left: 7%;
+		right: 7%;
+		width: auto;
+		height: 38%;
+		object-fit: cover;
+		border-radius: 0.65rem;
+	}
+
+	.layout-feature .caption-box {
+		opacity: 0;
+	}
+
 	.layout-blur .clip-video-mid {
 		top: 29%;
 		bottom: 29%;
@@ -721,6 +1027,11 @@
 
 	.layout-fit .caption-box {
 		top: 8%;
+	}
+
+	.layout-hook .caption-box {
+		top: auto;
+		bottom: 28%;
 	}
 
 	.layout-blur .caption-box {

@@ -19,6 +19,11 @@
 		defaultColor?: string;
 		/** If false, `[[...]]` is shown as plain text (no accent spans). Default false — only News uses markup. */
 		parseHighlights?: boolean;
+		/**
+		 * When true with `parseHighlights`, highlighted spans keep the base text color
+		 * and use a heavier weight (Creator-hook emphasis) instead of a color accent.
+		 */
+		emphasisBold?: boolean;
 		/** Optional wrapper tag name for the rendered text. Defaults to span. */
 		as?: 'span' | 'div' | 'p';
 		/** Pass-through style string on the wrapping element. */
@@ -31,10 +36,17 @@
 		text,
 		defaultColor = '#F5A623',
 		parseHighlights = false,
+		emphasisBold = false,
 		as = 'span',
 		style = '',
 		class: klass = '',
 	}: Props = $props();
+
+	const boldSpanStyle = $derived(
+		emphasisBold
+			? 'color: inherit; font-weight: 800; font-style: inherit; text-decoration: inherit;'
+			: '',
+	);
 
 	const segments = $derived(
 		parseHighlights
@@ -71,6 +83,8 @@
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
 					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
+				{:else if emphasisBold}
+					<span style={boldSpanStyle}>{seg.text}</span>
 				{:else}
 					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
@@ -89,6 +103,8 @@
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
 					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
+				{:else if emphasisBold}
+					<span style={boldSpanStyle}>{seg.text}</span>
 				{:else}
 					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
@@ -107,6 +123,8 @@
 					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
 					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
+				{:else if emphasisBold}
+					<span style={boldSpanStyle}>{seg.text}</span>
 				{:else}
 					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}

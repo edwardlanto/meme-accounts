@@ -17,8 +17,20 @@
 		NEWS_DEFAULT_SOURCE,
 		TWEET_DEFAULTS,
 		VIDEO_STORY_DEFAULTS,
+		VIDEO_HOOK_HEADLINE_STYLE,
+		VIDEO_CREATOR_DEFAULTS,
+		VIDEO_CREATOR_HEADLINE_STYLE,
+		VIDEO_POST_DEFAULTS,
+		VIDEO_POST_HEADLINE_STYLE,
+		VIDEO_TEXT_HEADLINE_STYLE,
+		VIDEO_SOURCE_DEFAULTS,
+		VIDEO_SOURCE_HEADLINE_STYLE,
+		VIDEO_FEATURE_DEFAULTS,
+		VIDEO_FEATURE_HEADLINE_STYLE,
+		VIDEO_FEATURE_BODY_STYLE,
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
+	import { ensureFirstWordHighlight } from '$lib/video-clips/video-hook';
 	import {
 		STUDIO_FEED_CANVAS,
 		studioFeedPreviewScale,
@@ -89,6 +101,7 @@
 				newsHeadline: copy.newsHeadline,
 				newsSource: copy.newsSource,
 				storyHeadline: copy.storyHeadline,
+				videoHook: copy.videoHook,
 				storyWatermark: copy.storyWatermark || storyWatermark,
 				tweetTop: copy.tweetTop,
 				tweetBottom: copy.tweetBottom,
@@ -155,12 +168,71 @@
 					{:else if isVideoStoryFamily(t.id)}
 						<VideoStoryTemplate
 							layout={videoLayoutForTemplate(t.id)}
-							headline={copy.storyHeadline}
-							watermark={storyWatermark}
+							headline={
+								t.id === 'videoFeature'
+									? copy.videoHook || copy.storyHeadline || VIDEO_FEATURE_DEFAULTS.headline
+									: t.id === 'videoSource'
+										? ensureFirstWordHighlight(copy.videoHook || copy.storyHeadline)
+										: t.id === 'videoHook' ||
+											  t.id === 'videoCreator' ||
+											  t.id === 'videoPost' ||
+											  t.id === 'videoText'
+											? copy.videoHook || copy.storyHeadline
+											: copy.storyHeadline
+							}
+							body={
+								t.id === 'videoFeature'
+									? copy.carouselBody || copy.tweetBottom || VIDEO_FEATURE_DEFAULTS.body
+									: undefined
+							}
+							watermark={
+								t.id === 'videoSource'
+									? `Source: ${copy.newsSource || storyWatermark || 'Clips'}`
+									: t.id === 'videoHook' ||
+										  t.id === 'videoCreator' ||
+										  t.id === 'videoPost' ||
+										  t.id === 'videoText' ||
+										  t.id === 'videoFeature'
+										? ''
+										: storyWatermark
+							}
+							profileName={
+								t.id === 'videoPost'
+									? copy.carouselName || VIDEO_POST_DEFAULTS.name
+									: copy.carouselName || VIDEO_CREATOR_DEFAULTS.name
+							}
+							profileHandle={
+								t.id === 'videoPost'
+									? copy.carouselHandle || VIDEO_POST_DEFAULTS.handle
+									: copy.carouselHandle || VIDEO_CREATOR_DEFAULTS.handle
+							}
+							profileAvatar={thumb || (t.id === 'videoPost' ? VIDEO_POST_DEFAULTS.avatarUrl : '')}
 							videoSrc={videoSrc}
 							videoPoster={thumb}
 							{...videoProps}
-							highlightColor="#F5A623"
+							highlightColor={
+								t.id === 'videoFeature'
+									? VIDEO_FEATURE_DEFAULTS.highlightColor
+									: t.id === 'videoSource'
+										? VIDEO_SOURCE_DEFAULTS.highlightColor
+										: '#F5A623'
+							}
+							headlineStyle={
+								t.id === 'videoFeature'
+									? { ...VIDEO_FEATURE_HEADLINE_STYLE }
+									: t.id === 'videoSource'
+										? { ...VIDEO_SOURCE_HEADLINE_STYLE }
+										: t.id === 'videoText'
+											? { ...VIDEO_TEXT_HEADLINE_STYLE }
+											: t.id === 'videoPost'
+												? { ...VIDEO_POST_HEADLINE_STYLE }
+											: t.id === 'videoCreator'
+												? { ...VIDEO_CREATOR_HEADLINE_STYLE }
+												: t.id === 'videoHook'
+													? { ...VIDEO_HOOK_HEADLINE_STYLE }
+													: undefined
+							}
+							bodyStyle={t.id === 'videoFeature' ? { ...VIDEO_FEATURE_BODY_STYLE } : undefined}
 							w={CANVAS_W}
 							h={CANVAS_H}
 							{scale}

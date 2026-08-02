@@ -53,7 +53,8 @@ Use the VIDEO TITLE, CHANNEL, DESCRIPTION, and CLIP TRANSCRIPT together so you u
 - WHAT the video and this moment are about
 - WHY it is interesting (hype / stakes)
 
-Your job is NOT to quote the speaker. Write a third-person news hook.
+Your job is to INVENT a specific news title for THIS clip — not fill a template.
+Do NOT quote the speaker. Write a third-person news hook grounded in the facts.
 
 Rules:
 - ALL CAPS
@@ -64,6 +65,8 @@ Rules:
 - Prefer conflict, confession, money, career stakes, contrast, or a twist when present
 - Wrap 1–3 impact phrases in [[...]] (plain phrases only — never grad(, marker(, pattern(, or #hex:)
 - No hashtags, no emojis, no quotes around the whole line
+- FORBIDDEN phrases (never use): "STOPS THE SCROLL", "SKIP THE SCROLL", "DON'T SKIP", "IMPOSSIBLE TO IGNORE", "THE MOMENT THAT STOPS", "INSIDE [[…]] — THE MOMENT"
+- Each headline must be unique to this clip's facts — no generic hype slogans
 - Return ONLY the headline line`;
 
 export async function rewriteNewsHeadlineForClip(
@@ -89,32 +92,37 @@ ${description || '(none)'}
 
 Editor clip label: ${clip.title.slice(0, 80)}
 
-Clip transcript (this moment only — do NOT paste; rewrite into a headline):
+Clip transcript (this moment only — do NOT paste; invent a news title about it):
 """
 ${(speech || '(no transcript)').slice(0, 900)}
 """
 
-Style examples (cadence only — invent nothing from these):
+Style examples (cadence only — invent nothing from these; write a NEW title for the clip above):
 - [[PATRICK MAHOMES]] BREAKS DOWN THE PLAY THAT [[ALMOST COST]] THE CHIEFS THE SEASON
 - THIS FOUNDER WON'T [[CONFIRM OR DENY]] THE ACCUSATIONS — BUT ADMITS THERE WAS [[PRE-MEDITATION]]
-- [[YC STARTUP SCHOOL]]: A BUILDER WAS TALKING TO AN [[AI VERSION]] OF A PARTNER. THEN THE REAL ONE WALKED BY`;
+- [[YC STARTUP SCHOOL]]: A BUILDER WAS TALKING TO AN [[AI VERSION]] OF A PARTNER. THEN THE REAL ONE WALKED BY
+- [[3 MEN]] FOUND DEAD AFTER A [[PRIVATE FLIGHT]] — INVESTIGATORS ARE NOW ASKING ABOUT THE PILOT`;
 
-	const out = await openRouterComplete([{ role: 'user', content: prompt }], 0.7, 140);
-	if (!out) return null;
-	const line = out
-		.replace(/^["'`]+|["'`]+$/g, '')
-		.replace(/^```.*\n?/g, '')
-		.replace(/\n```$/g, '')
-		.split('\n')
-		.map((l) => l.trim())
-		.find((l) => l.length >= 16);
-	if (!line) return null;
-	const cleaned = line.slice(0, 320);
-	if (looksLikeRawSpeechHeadline(cleaned, speech)) return null;
-	return cleaned;
+	// Prefer a real invented title; retry once if the model echoes a banned slogan
+	for (const temperature of [0.85, 0.95]) {
+		const out = await openRouterComplete([{ role: 'user', content: prompt }], temperature, 160);
+		if (!out) continue;
+		const line = out
+			.replace(/^["'`]+|["'`]+$/g, '')
+			.replace(/^```.*\n?/g, '')
+			.replace(/\n```$/g, '')
+			.split('\n')
+			.map((l) => l.trim())
+			.find((l) => l.length >= 16);
+		if (!line) continue;
+		const cleaned = line.slice(0, 320);
+		if (looksLikeRawSpeechHeadline(cleaned, speech)) continue;
+		return cleaned;
+	}
+	return null;
 }
 
-/** Ensure every clip has a real news hook — rewrite speech dumps via OpenRouter when needed. */
+/** Ensure every clip has an AI news title — rewrite empty / speech / canned slogans. */
 export async function ensureNewsHeadlinesForClips(
 	clips: VideoClip[],
 	ctx: NewsHeadlineContext | string = {},
@@ -132,6 +140,7 @@ export async function ensureNewsHeadlinesForClips(
 		if (rewritten) {
 			out.push({ ...clip, newsHeadline: rewritten });
 		} else {
+			// Title-only last resort — never a "stops the scroll" slogan
 			out.push({
 				...clip,
 				newsHeadline: demoNewsHeadlineFromClip(clip, context.videoTitle),

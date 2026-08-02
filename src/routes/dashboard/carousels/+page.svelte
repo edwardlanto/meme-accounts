@@ -5,6 +5,7 @@
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import { stripMarkup } from '$lib/highlight';
 	import { coerceTemplateId, STUDIO_TEMPLATES } from '$lib/studio/template-ids';
+	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte` (workspace autosave rows). */
@@ -504,6 +505,9 @@
 						: tmpl.id === 'text'  ? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
 						: tmpl.id === 'black-text' ? 'hover:border-sky-500/35 hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]'
 						: tmpl.id === 'article' ? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
+						: tmpl.id.startsWith('video-') ? 'hover:border-fuchsia-500/40 hover:shadow-[0_0_28px_rgba(217,70,239,0.12)]'
+						: tmpl.id.startsWith('photo-') ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(56,189,248,0.12)]'
+						: tmpl.id.startsWith('white-') ? 'hover:border-neutral-400/50 hover:shadow-[0_0_28px_rgba(0,0,0,0.08)]'
 						: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}
 				{@const arrowColor =
 						tmpl.id === 'empty'   ? 'group-hover:text-neutral-400'
@@ -511,6 +515,9 @@
 						: tmpl.id === 'text'  ? 'group-hover:text-white/70'
 						: tmpl.id === 'black-text' ? 'group-hover:text-sky-400'
 						: tmpl.id === 'article' ? 'group-hover:text-emerald-400'
+						: tmpl.id.startsWith('video-') ? 'group-hover:text-fuchsia-400'
+						: tmpl.id.startsWith('photo-') ? 'group-hover:text-sky-300'
+						: tmpl.id.startsWith('white-') ? 'group-hover:text-neutral-500'
 						: 'group-hover:text-amber-400'}
 				<a
 					href={tmpl.href}
@@ -568,7 +575,7 @@
 									templateTheme={uiTheme}
 									name="Captains of industry"
 									handle="@captainsofindustryy"
-									text={"Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you."}
+									text={TEXT_CAROUSEL_DEFAULTS.body}
 									showSwipe={false}
 									scale={templateScale}
 									interactive={false}
@@ -584,6 +591,14 @@
 									draggable="false"
 								/>
 							{/if}
+						{:else if (tmpl.id.startsWith('video-') || tmpl.id.startsWith('photo-') || tmpl.id.startsWith('white-')) && tmpl.previewBg}
+							<img
+								src={tmpl.previewBg}
+								alt=""
+								class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
+								loading="lazy"
+								draggable="false"
+							/>
 						{:else if tmpl.id === 'article'}
 							<ArticleTemplate
 								templateTheme={uiTheme}

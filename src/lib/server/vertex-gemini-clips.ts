@@ -10,6 +10,11 @@ import {
 	ensureNewsHeadlinesForClips,
 	looksLikeRawSpeechHeadline,
 } from '$lib/server/news-headline-from-clip';
+import { ensureVideoHooksForClips } from '$lib/server/video-hook-from-clip';
+import {
+	demoVideoHookFromClip,
+	looksLikeRawVideoHook,
+} from '$lib/video-clips/video-hook';
 
 const CLIPS_SCHEMA = `{
   "clips": [
@@ -22,7 +27,8 @@ const CLIPS_SCHEMA = `{
       "hook": "Optional short label — prefer putting spoken words in transcript",
       "reason": "Internal note for editors only (not shown on posts)",
       "transcript": "Verbatim 1-3 sentences actually spoken in this segment",
-      "newsHeadline": "ALL CAPS Slash/FutureTech news hook with [[highlighted]] impact phrases"
+      "newsHeadline": "ALL CAPS Slash/FutureTech news hook with [[highlighted]] impact phrases",
+      "videoHook": "Casual sentence-case TikTok hook above the letterboxed clip"
     }
   ],
   "summary": "One paragraph overview of the best angles to clip from this video"
@@ -46,6 +52,8 @@ function parseClipsJson(raw: string): { clips: VideoClip[]; summary: string } {
 		const endSec = Number(o.endSec);
 		if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) continue;
 		const newsRaw = o.newsHeadline != null ? String(o.newsHeadline).trim() : '';
+		const hookRaw = o.videoHook != null ? String(o.videoHook).trim() : '';
+		const speechForCheck = o.transcript != null ? String(o.transcript) : '';
 		clips.push({
 			id: String(o.id ?? clips.length + 1),
 			title: String(o.title ?? 'Clip').slice(0, 120),
@@ -56,8 +64,12 @@ function parseClipsJson(raw: string): { clips: VideoClip[]; summary: string } {
 			reason: String(o.reason ?? '').slice(0, 500),
 			transcript: o.transcript != null ? String(o.transcript).slice(0, 800) : undefined,
 			newsHeadline:
-				newsRaw && !looksLikeRawSpeechHeadline(newsRaw, o.transcript != null ? String(o.transcript) : '')
+				newsRaw && !looksLikeRawSpeechHeadline(newsRaw, speechForCheck)
 					? newsRaw.slice(0, 320)
+					: undefined,
+			videoHook:
+				hookRaw && !looksLikeRawVideoHook(hookRaw, speechForCheck)
+					? hookRaw.slice(0, 140)
 					: undefined,
 		});
 	}
@@ -115,6 +127,14 @@ function demoClips(
 			reason: '',
 			transcript: quote.slice(0, 800),
 			newsHeadline: demoNewsHeadlineFromClip(
+				{
+					title: shortTitle,
+					hook: demoHook,
+					transcript: quote.slice(0, 800),
+				},
+				title,
+			),
+			videoHook: demoVideoHookFromClip(
 				{
 					title: shortTitle,
 					hook: demoHook,
@@ -229,7 +249,8 @@ export async function analyzeVideoForClips(opts: {
 			segmentAll: false,
 		});
 		const withNews = await ensureNewsHeadlinesForClips(demo.clips, newsHeadlineCtx);
-		return { ...demo, clips: withNews, demo: true };
+		const withHooks = await ensureVideoHooksForClips(withNews, newsHeadlineCtx);
+		return { ...demo, clips: withHooks, demo: true };
 	}
 
 	const transcriptBlock = sandboxUserPlaintext('TRANSCRIPT', opts.transcript.slice(0, 120_000), 120_000);
@@ -242,11 +263,11 @@ export async function analyzeVideoForClips(opts: {
 Rules:
 - Each clip must be ${clipMinSec}–${clipMaxSec} seconds long (endSec - startSec).
 - Each clip must be self-contained; transcript must be VERBATIM spoken words from that segment (quote what they say).
-- Do NOT write meta descriptions like "the clearest explanation" or "moment that stops the scroll" — only real dialogue/narration.
+- Do NOT write meta slogans like "the clearest explanation", "stops the scroll", "don't skip", or "impossible to ignore" — only real dialogue/narration in transcript; newsHeadline must be a specific invented title for THIS clip.
 - title is a short topic headline (3-6 words), not a label about virality.
 - Each clip MUST have a unique title and transcript based on what is actually said in that time range — never repeat the full video title for every clip.
 - reason is for editors only (optional); transcript is what appears on social posts.
-- newsHeadline is a separate News-template overlay hook. NEVER paste or lightly edit the transcript — rewrite into a Slash / FutureTech viral-news HEADline:
+- newsHeadline is a separate News-template overlay hook. NEVER paste or lightly edit the transcript — invent a Slash / FutureTech viral-news TITLE for this moment:
   - ALL CAPS, third-person news voice (not first-person speech)
   - 12–28 words, one complete thought (never cut mid-sentence)
   - MUST cover WHO (person/role from video title, channel, or description), WHAT the clip is about, and a HYPE / stakes angle
@@ -254,10 +275,19 @@ Rules:
   - Prefer conflict, confession, money, career stakes, contrast, or a twist when present
   - Wrap 1–3 impact phrases in [[...]] for highlight (plain phrases only — never grad(, marker(, pattern(, or #hex: inside brackets)
   - No hashtags, no emojis, no quotation marks around the whole line
+  - FORBIDDEN: "STOPS THE SCROLL", "SKIP THE SCROLL", "DON'T SKIP", "IMPOSSIBLE TO IGNORE", "INSIDE [[x]] — THE MOMENT THAT…"
+  - Invent a unique title per clip — never reuse a slogan template
   - Examples of the STYLE (do not copy these facts — invent nothing; mirror the cadence from THIS clip):
     - [[PATRICK MAHOMES]] BREAKS DOWN THE PLAY THAT [[ALMOST COST]] THE CHIEFS THE SEASON
     - THIS FOUNDER WON'T [[CONFIRM OR DENY]] THE ACCUSATIONS — BUT ADMITS THERE WAS [[PRE-MEDITATION]]
     - A 20-YEAR-OLD SPENT [[$20 ON CLAUDE]], BUILT AN AI SPEED RADAR IN 9 DAYS, AND [[SOLD IT FOR $317K]]
+- videoHook is a SEPARATE casual line for Hook / Creator video templates (white text above a letterboxed clip on black):
+  - Sentence case — NEVER ALL CAPS
+  - 6–14 words, curiosity / discomfort / irony (sounds like a TikTok comment)
+  - Do NOT paste the transcript; invent a short hook ABOUT the moment
+  - Optional single emoji at the end
+  - Optionally wrap ONE impact phrase in [[...]] for bold emphasis (Creator template)
+  - Examples of cadence: "One of the most uncomfortable live interviews ever 💀", "He gave a 10 second pitch that [[broke the internet]]"
 - startSec/endSec must be within 0 and ${durationSec} seconds.
 - Clips must not overlap heavily.
 - viralityScore is 0–100 (higher = more likely to go viral on TikTok/Reels/Shorts).
@@ -271,7 +301,7 @@ ${opts.description?.trim() ? sandboxUserPlaintext('DESCRIPTION', opts.descriptio
 ${hint}
 ${transcriptBlock}
 
-When writing newsHeadline, use TITLE + CHANNEL + DESCRIPTION for who/what the video is about, and the CLIP transcript for what happens in this moment.`;
+When writing newsHeadline and videoHook, use TITLE + CHANNEL + DESCRIPTION for who/what the video is about, and the CLIP transcript for what happens in this moment.`;
 
 	try {
 		const accessToken = await getGoogleAccessToken();
@@ -315,8 +345,9 @@ When writing newsHeadline, use TITLE + CHANNEL + DESCRIPTION for who/what the vi
 		);
 
 		const withNews = await ensureNewsHeadlinesForClips(clips.slice(0, want), newsHeadlineCtx);
+		const withHooks = await ensureVideoHooksForClips(withNews, newsHeadlineCtx);
 		return {
-			clips: withNews,
+			clips: withHooks,
 			summary: parsed.summary,
 			demo: false,
 			model,
@@ -330,6 +361,7 @@ When writing newsHeadline, use TITLE + CHANNEL + DESCRIPTION for who/what the vi
 			segmentAll: false,
 		});
 		const withNews = await ensureNewsHeadlinesForClips(demo.clips, newsHeadlineCtx);
-		return { ...demo, clips: withNews, demo: true };
+		const withHooks = await ensureVideoHooksForClips(withNews, newsHeadlineCtx);
+		return { ...demo, clips: withHooks, demo: true };
 	}
 }

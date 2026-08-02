@@ -4,11 +4,23 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { appendTextShadowCss } from '$lib/textStyleCss';
-	import { VIDEO_STORY_DEFAULTS } from '$lib/studio/slide-content-defaults';
+	import { stripMarkup } from '$lib/highlight';
+	import {
+		VIDEO_CREATOR_DEFAULTS,
+		VIDEO_FEATURE_DEFAULTS,
+		VIDEO_POST_DEFAULTS,
+		VIDEO_STORY_DEFAULTS,
+	} from '$lib/studio/slide-content-defaults';
 
 	interface Props {
 		headline?: string;
 		watermark?: string;
+		/** Feature-card body under the headline */
+		body?: string;
+		/** Creator-hook profile */
+		profileName?: string;
+		profileHandle?: string;
+		profileAvatar?: string;
 		videoSrc?: string;
 		/** When `videoSrc` is empty, show this image instead of the template placeholder clip. */
 		videoPoster?: string;
@@ -21,8 +33,12 @@
 		highlightColor?: string;
 		headlineStyle?: TextStyle;
 		watermarkStyle?: TextStyle;
+		bodyStyle?: TextStyle;
 		onHeadlineChange?: (v: string) => void;
 		onWatermarkChange?: (v: string) => void;
+		onBodyChange?: (v: string) => void;
+		onProfileNameChange?: (v: string) => void;
+		onProfileHandleChange?: (v: string) => void;
 		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
 		onHeadlineRangeSelect?: (start: number, end: number) => void;
 		textOffsets?: Record<string, { x: number; y: number }>;
@@ -37,13 +53,17 @@
 		onVideoDuration?: (durationSec: number) => void;
 		/** Tighter layout for dashboard clip previews */
 		previewMode?: boolean;
-		/** Visual layout — story (default inset), fit (letterbox), blur (blurred fill) */
-		layout?: 'story' | 'fit' | 'blur';
+		/** Visual layout — story / fit / blur / hook / creator / text / source / feature / post */
+		layout?: 'story' | 'fit' | 'blur' | 'hook' | 'creator' | 'text' | 'source' | 'feature' | 'post';
 	}
 
 	let {
 		headline = VIDEO_STORY_DEFAULTS.headline,
 		watermark = VIDEO_STORY_DEFAULTS.watermark,
+		body = VIDEO_FEATURE_DEFAULTS.body,
+		profileName = VIDEO_CREATOR_DEFAULTS.name,
+		profileHandle = VIDEO_CREATOR_DEFAULTS.handle,
+		profileAvatar = '',
 		videoSrc = '',
 		videoPoster = '',
 		w = 1080,
@@ -55,8 +75,12 @@
 		highlightColor = '#F5A623',
 		headlineStyle = {},
 		watermarkStyle = {},
+		bodyStyle = {},
 		onHeadlineChange,
 		onWatermarkChange,
+		onBodyChange,
+		onProfileNameChange,
+		onProfileHandleChange,
 		onTextSelect,
 		onHeadlineRangeSelect,
 		textOffsets = {},
@@ -72,8 +96,72 @@
 		layout = 'story',
 	}: Props = $props();
 
-	const headlinePad = $derived(previewMode ? '20px 28px 12px' : '40px 40px 20px');
+	const isHookLayout = $derived(layout === 'hook');
+	const headlinePad = $derived(
+		isHookLayout
+			? previewMode
+				? '28px 24px 16px'
+				: '72px 56px 28px'
+			: previewMode
+				? '20px 28px 12px'
+				: '40px 40px 20px',
+	);
 	const videoPad = $derived(previewMode ? '4px 20px 40px' : '8px 32px 60px');
+	const hookFontSize = $derived(
+		headlineStyle.fontSize ?? (previewMode ? 28 : 56),
+	);
+	const creatorFontSize = $derived(
+		headlineStyle.fontSize ?? (previewMode ? 26 : 52),
+	);
+	const postFontSize = $derived(
+		headlineStyle.fontSize ?? (previewMode ? 20 : 44),
+	);
+	const textOnVideoFontSize = $derived(
+		headlineStyle.fontSize ?? (previewMode ? 30 : 64),
+	);
+	const sourceFontSize = $derived(
+		headlineStyle.fontSize ?? (previewMode ? 22 : 48),
+	);
+	const featureHeadlineSize = $derived(
+		headlineStyle.fontSize ?? (previewMode ? 20 : 44),
+	);
+	const featureBodySize = $derived(
+		bodyStyle.fontSize ?? (previewMode ? 14 : 32),
+	);
+	const sourceLine = $derived.by(() => {
+		const w = (watermark ?? '').trim();
+		if (!w) return 'Source:';
+		return /^source\s*:/i.test(w) ? w : `Source: ${w}`;
+	});
+	/** Crisp black outline so white text stays readable on any footage. */
+	const textOnVideoStroke = $derived(
+		previewMode
+			? `
+				-webkit-text-stroke: 1.5px #000;
+				paint-order: stroke fill;
+				text-shadow:
+					-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+					0 2px 10px rgba(0,0,0,0.45);
+			`
+			: `
+				-webkit-text-stroke: 3px #000;
+				paint-order: stroke fill;
+				text-shadow:
+					-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+					0 4px 18px rgba(0,0,0,0.5);
+			`,
+	);
+
+	function profileInitials(n: string) {
+		return n
+			.replace(/[^\w\s]/g, '')
+			.trim()
+			.split(/\s+/)
+			.map((w) => w[0]?.toUpperCase() ?? '')
+			.slice(0, 2)
+			.join('');
+	}
+	const avatarInitials = $derived(profileInitials(profileName));
 
 	const DEFAULT_VIDEO = VIDEO_STORY_DEFAULTS.videoUrl;
 
@@ -272,7 +360,7 @@
 					minHeight="0px"
 					ariaLabel="Video headline"
 					fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
-					fontSize={headlineStyle.fontSize ?? (pill ? 36 : 46)}
+					fontSize={headlineStyle.fontSize ?? (pill ? 36 : isHookLayout ? hookFontSize : 46)}
 					{showToolbar}
 					onTextChange={onHeadlineChange}
 					onTextSelect={onTextSelect}
@@ -312,17 +400,24 @@
 							<div style="text-align: {headlineStyle.align ?? 'center'}; width: 100%;">
 								<HighlightedText
 									as="div"
-									text={headline}
+									text={isHookLayout ? stripMarkup(headline) : headline}
 									parseHighlights={false}
 									defaultColor={highlightColor}
 									style="
 										margin: 0;
 										white-space: pre-wrap;
 										word-break: break-word;
-										line-height: 1.18;
-										letter-spacing: -0.03em;
-										color: #f4f4f5;
-										{headlineCss}
+										line-height: {isHookLayout ? 1.22 : 1.18};
+										letter-spacing: {isHookLayout ? '-0.02em' : '-0.03em'};
+										color: {isHookLayout ? '#ffffff' : '#f4f4f5'};
+										font-weight: {isHookLayout ? 700 : (headlineStyle.fontWeight ?? 600)};
+										font-size: {isHookLayout ? hookFontSize : (headlineStyle.fontSize ?? 46)}px;
+										text-shadow: {isHookLayout
+										? '0 2px 18px rgba(0,0,0,0.55)'
+										: '0 2px 12px rgba(0,0,0,0.45)'};
+										max-width: {isHookLayout ? '92%' : '100%'};
+										margin-left: auto;
+										margin-right: auto;
 									"
 								/>
 							</div>
@@ -473,7 +568,784 @@
 			overflow: hidden;
 		"
 	>
-		{#if layout === 'fit'}
+		{#if layout === 'feature'}
+			<!-- Feature card: left headline + body (teal [[highlights]]) + rounded media -->
+			<div
+				style="
+					flex: 1;
+					min-height: 0;
+					display: flex;
+					flex-direction: column;
+					padding: {previewMode ? '22px 20px 16px' : '72px 64px 40px'};
+					box-sizing: border-box;
+					position: relative;
+					z-index: 5;
+					gap: {previewMode ? '12px' : '28px'};
+				"
+			>
+				<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: {previewMode ? '10px' : '24px'};">
+					<DraggableBlock
+						dx={textOffsets.videoStoryHeadline?.x ?? 0}
+						dy={textOffsets.videoStoryHeadline?.y ?? 0}
+						{interactive}
+						{scale}
+						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
+					>
+						{#snippet children()}
+							<CanvasMarkupTextBlock
+								value={headline}
+								{interactive}
+								defaultColor={highlightColor}
+								selected={selectedText === 'videoStoryHeadline'}
+								toolbarKind="videoStoryHeadline"
+								rows={4}
+								minHeight="0px"
+								ariaLabel="Feature headline"
+								fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+								fontSize={featureHeadlineSize}
+								{showToolbar}
+								onTextChange={onHeadlineChange}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+							>
+								{#snippet display()}
+									<div style="text-align: left; width: 100%;">
+										<HighlightedText
+											as="div"
+											text={headline}
+											parseHighlights={true}
+											defaultColor={highlightColor}
+											style="
+												margin: 0;
+												white-space: pre-wrap;
+												word-break: break-word;
+												line-height: 1.2;
+												letter-spacing: -0.03em;
+												color: #ffffff;
+												font-weight: {headlineStyle.fontWeight ?? 700};
+												font-size: {featureHeadlineSize}px;
+											"
+										/>
+									</div>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						{/snippet}
+					</DraggableBlock>
+
+					<DraggableBlock
+						dx={textOffsets.blackTextBody?.x ?? 0}
+						dy={textOffsets.blackTextBody?.y ?? 0}
+						{interactive}
+						{scale}
+						onChange={(x, y) => onTextOffsetChange?.('blackTextBody', { x, y })}
+					>
+						{#snippet children()}
+							<CanvasMarkupTextBlock
+								value={body}
+								{interactive}
+								defaultColor={highlightColor}
+								selected={selectedText === 'blackTextBody'}
+								toolbarKind="blackTextBody"
+								rows={6}
+								minHeight="0px"
+								ariaLabel="Feature body"
+								fontFamily={bodyStyle.fontFamily ?? 'Satoshi'}
+								fontSize={featureBodySize}
+								{showToolbar}
+								onTextChange={onBodyChange}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+							>
+								{#snippet display()}
+									<div style="text-align: left; width: 100%;">
+										<HighlightedText
+											as="div"
+											text={body}
+											parseHighlights={true}
+											defaultColor={highlightColor}
+											style="
+												margin: 0;
+												white-space: pre-wrap;
+												word-break: break-word;
+												line-height: 1.4;
+												letter-spacing: -0.015em;
+												color: rgba(255,255,255,0.92);
+												font-weight: {bodyStyle.fontWeight ?? 500};
+												font-size: {featureBodySize}px;
+											"
+										/>
+									</div>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						{/snippet}
+					</DraggableBlock>
+				</div>
+
+				<div
+					style="
+						flex: 1;
+						min-height: 0;
+						display: flex;
+						align-items: flex-end;
+						justify-content: center;
+						padding-top: {previewMode ? '8px' : '16px'};
+					"
+				>
+					<div
+						style="
+							position: relative;
+							width: 100%;
+							aspect-ratio: 16 / 10;
+							max-height: {previewMode ? '46%' : '42%'};
+							border-radius: {previewMode ? '14px' : '28px'};
+							overflow: hidden;
+							background: #111;
+							box-shadow: 0 18px 48px rgba(0,0,0,0.45);
+						"
+					>
+						{@render mediaLayer('cover')}
+					</div>
+				</div>
+			</div>
+		{:else if layout === 'source'}
+			<!-- Source hook: left headline with neon [[highlight]] + letterbox + Source line -->
+			<div
+				style="
+					flex-shrink: 0;
+					padding: {previewMode ? '22px 22px 12px' : '64px 56px 24px'};
+					box-sizing: border-box;
+					position: relative;
+					z-index: 5;
+				"
+			>
+				<DraggableBlock
+					dx={textOffsets.videoStoryHeadline?.x ?? 0}
+					dy={textOffsets.videoStoryHeadline?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
+				>
+					{#snippet children()}
+						<CanvasMarkupTextBlock
+							value={headline}
+							{interactive}
+							defaultColor={highlightColor}
+							selected={selectedText === 'videoStoryHeadline'}
+							toolbarKind="videoStoryHeadline"
+							rows={4}
+							minHeight="0px"
+							ariaLabel="Source hook headline"
+							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+							fontSize={sourceFontSize}
+							{showToolbar}
+							onTextChange={onHeadlineChange}
+							onTextSelect={onTextSelect}
+							onHeadlineRangeSelect={onHeadlineRangeSelect}
+						>
+							{#snippet display()}
+								<div style="text-align: {headlineStyle.align ?? 'left'}; width: 100%;">
+									<HighlightedText
+										as="div"
+										text={headline}
+										parseHighlights={true}
+										defaultColor={highlightColor}
+										style="
+											margin: 0;
+											white-space: pre-wrap;
+											word-break: break-word;
+											line-height: 1.22;
+											letter-spacing: -0.025em;
+											color: #ffffff;
+											font-weight: {headlineStyle.fontWeight ?? 700};
+											font-size: {sourceFontSize}px;
+											text-shadow: 0 2px 14px rgba(0,0,0,0.45);
+											max-width: 100%;
+										"
+									/>
+								</div>
+							{/snippet}
+						</CanvasMarkupTextBlock>
+					{/snippet}
+				</DraggableBlock>
+			</div>
+			<div
+				style="
+					flex: 1;
+					min-height: 0;
+					position: relative;
+					background: #000;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+				"
+			>
+				<div
+					style="
+						position: relative;
+						width: 100%;
+						height: {previewMode ? '50%' : '44%'};
+						min-height: 0;
+					"
+				>
+					{@render mediaLayer('contain')}
+				</div>
+			</div>
+			<DraggableBlock
+				dx={textOffsets.videoStoryWatermark?.x ?? 0}
+				dy={textOffsets.videoStoryWatermark?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('videoStoryWatermark', { x, y })}
+			>
+				{#snippet children()}
+					<div
+						style="
+							flex-shrink: 0;
+							padding: {previewMode ? '10px 22px 22px' : '20px 56px 56px'};
+							box-sizing: border-box;
+							position: relative;
+							z-index: 5;
+						"
+					>
+						<CanvasMarkupTextBlock
+							value={sourceLine}
+							{interactive}
+							defaultColor="#ffffff"
+							selected={selectedText === 'videoStoryWatermark'}
+							toolbarKind="videoStoryWatermark"
+							rows={1}
+							minHeight="0px"
+							ariaLabel="Source attribution"
+							fontFamily={watermarkStyle.fontFamily ?? 'Satoshi'}
+							fontSize={watermarkStyle.fontSize ?? (previewMode ? 12 : 26)}
+							{showToolbar}
+							onTextChange={onWatermarkChange}
+							onTextSelect={onTextSelect}
+						>
+							{#snippet display()}
+								<p
+									style="
+										margin: 0;
+										text-align: left;
+										color: #ffffff;
+										font-weight: 500;
+										font-size: {watermarkStyle.fontSize ?? (previewMode ? 12 : 26)}px;
+										letter-spacing: -0.01em;
+										opacity: 0.92;
+									"
+								>
+									{sourceLine}
+								</p>
+							{/snippet}
+						</CanvasMarkupTextBlock>
+					</div>
+				{/snippet}
+			</DraggableBlock>
+		{:else if layout === 'text'}
+			<!-- Text on video: full-bleed cover + centered outlined white text -->
+			<div style="position: absolute; inset: 0; z-index: 0;">
+				{@render mediaLayer('cover')}
+			</div>
+			<div
+				style="
+					position: relative;
+					z-index: 5;
+					flex: 1;
+					min-height: 0;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					padding: {previewMode ? '28px 22px' : '80px 72px'};
+					box-sizing: border-box;
+					pointer-events: none;
+				"
+			>
+				<div style="pointer-events: auto; width: 100%; max-width: 92%;">
+					<DraggableBlock
+						dx={textOffsets.videoStoryHeadline?.x ?? 0}
+						dy={textOffsets.videoStoryHeadline?.y ?? 0}
+						{interactive}
+						{scale}
+						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
+					>
+						{#snippet children()}
+							<CanvasMarkupTextBlock
+								value={headline}
+								{interactive}
+								defaultColor={highlightColor}
+								selected={selectedText === 'videoStoryHeadline'}
+								toolbarKind="videoStoryHeadline"
+								rows={6}
+								minHeight="0px"
+								ariaLabel="On-video text"
+								fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+								fontSize={textOnVideoFontSize}
+								{showToolbar}
+								onTextChange={onHeadlineChange}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+							>
+								{#snippet display()}
+									<div style="text-align: {headlineStyle.align ?? 'center'}; width: 100%;">
+										<HighlightedText
+											as="div"
+											text={stripMarkup(headline)}
+											parseHighlights={false}
+											defaultColor={highlightColor}
+											style="
+												margin: 0;
+												white-space: pre-wrap;
+												word-break: break-word;
+												line-height: 1.15;
+												letter-spacing: -0.03em;
+												color: #ffffff;
+												font-weight: {headlineStyle.fontWeight ?? 800};
+												font-size: {textOnVideoFontSize}px;
+												{textOnVideoStroke}
+											"
+										/>
+									</div>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						{/snippet}
+					</DraggableBlock>
+				</div>
+			</div>
+		{:else if layout === 'post'}
+			<!-- Clip post: profile (no badge) + casual hook above wide letterboxed clip -->
+			<div
+				style="
+					flex-shrink: 0;
+					padding: {previewMode ? '20px 20px 12px' : '56px 52px 24px'};
+					box-sizing: border-box;
+					position: relative;
+					z-index: 5;
+				"
+			>
+				<DraggableBlock
+					dx={textOffsets.videoCreatorProfile?.x ?? 0}
+					dy={textOffsets.videoCreatorProfile?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('videoCreatorProfile', { x, y })}
+				>
+					{#snippet children()}
+						<div
+							style="
+								display: flex;
+								align-items: center;
+								gap: {previewMode ? '10px' : '20px'};
+								margin-bottom: {previewMode ? '12px' : '26px'};
+							"
+						>
+							<div
+								style="
+									width: {previewMode ? 34 : 68}px;
+									height: {previewMode ? 34 : 68}px;
+									border-radius: 50%;
+									overflow: hidden;
+									flex-shrink: 0;
+									background: #1f2937;
+									display: flex;
+									align-items: center;
+									justify-content: center;
+								"
+							>
+								{#if (profileAvatar?.trim() || VIDEO_POST_DEFAULTS.avatarUrl)}
+									<img
+										src={profileAvatar?.trim() || VIDEO_POST_DEFAULTS.avatarUrl}
+										alt=""
+										style="width: 100%; height: 100%; object-fit: cover; display: block;"
+									/>
+								{:else}
+									<span
+										style="
+											font-size: {previewMode ? 11 : 20}px;
+											font-weight: 700;
+											color: #fff;
+											letter-spacing: -0.02em;
+										"
+									>
+										{avatarInitials}
+									</span>
+								{/if}
+							</div>
+							<div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: {previewMode ? 2 : 4}px;">
+								<CanvasMarkupTextBlock
+									value={profileName}
+									{interactive}
+									selected={selectedText === 'textCarouselName'}
+									toolbarKind="textCarouselName"
+									rows={1}
+									minHeight="0px"
+									ariaLabel="Account name"
+									fontFamily="Satoshi"
+									fontSize={previewMode ? 13 : 30}
+									{showToolbar}
+									onTextChange={onProfileNameChange}
+									onTextSelect={onTextSelect}
+								>
+									{#snippet display()}
+										<span
+											style="
+												font-size: {previewMode ? 13 : 30}px;
+												font-weight: 700;
+												color: #fff;
+												letter-spacing: -0.02em;
+												line-height: 1.15;
+											"
+										>
+											{profileName?.trim() || VIDEO_POST_DEFAULTS.name}
+										</span>
+									{/snippet}
+								</CanvasMarkupTextBlock>
+								<CanvasMarkupTextBlock
+									value={profileHandle}
+									{interactive}
+									selected={selectedText === 'textCarouselHandle'}
+									toolbarKind="textCarouselHandle"
+									rows={1}
+									minHeight="0px"
+									ariaLabel="Account handle"
+									fontFamily="Satoshi"
+									fontSize={previewMode ? 11 : 24}
+									{showToolbar}
+									onTextChange={onProfileHandleChange}
+									onTextSelect={onTextSelect}
+								>
+									{#snippet display()}
+										<span
+											style="
+												font-size: {previewMode ? 11 : 24}px;
+												font-weight: 400;
+												color: rgba(255,255,255,0.5);
+												letter-spacing: -0.01em;
+												line-height: 1.2;
+											"
+										>
+											{profileHandle?.trim() || VIDEO_POST_DEFAULTS.handle}
+										</span>
+									{/snippet}
+								</CanvasMarkupTextBlock>
+							</div>
+						</div>
+					{/snippet}
+				</DraggableBlock>
+
+				<DraggableBlock
+					dx={textOffsets.videoStoryHeadline?.x ?? 0}
+					dy={textOffsets.videoStoryHeadline?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
+				>
+					{#snippet children()}
+						<CanvasMarkupTextBlock
+							value={headline}
+							{interactive}
+							defaultColor="#ffffff"
+							selected={selectedText === 'videoStoryHeadline'}
+							toolbarKind="videoStoryHeadline"
+							rows={4}
+							minHeight="0px"
+							ariaLabel="Clip post hook"
+							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+							fontSize={postFontSize}
+							{showToolbar}
+							onTextChange={onHeadlineChange}
+							onTextSelect={onTextSelect}
+							onHeadlineRangeSelect={onHeadlineRangeSelect}
+						>
+							{#snippet display()}
+								<div style="text-align: left; width: 100%;">
+									<HighlightedText
+										as="div"
+										text={headline?.trim() || VIDEO_POST_DEFAULTS.headline}
+										parseHighlights={false}
+										defaultColor="#ffffff"
+										style="
+											margin: 0;
+											white-space: pre-wrap;
+											word-break: break-word;
+											line-height: 1.32;
+											letter-spacing: -0.02em;
+											color: #ffffff;
+											font-weight: {headlineStyle.fontWeight ?? 600};
+											font-size: {postFontSize}px;
+											max-width: 100%;
+										"
+									/>
+								</div>
+							{/snippet}
+						</CanvasMarkupTextBlock>
+					{/snippet}
+				</DraggableBlock>
+			</div>
+			<div
+				style="
+					flex: 1;
+					min-height: 0;
+					position: relative;
+					background: #000;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					padding: {previewMode ? '0 0 18px' : '0 0 48px'};
+					box-sizing: border-box;
+				"
+			>
+				<div
+					style="
+						position: relative;
+						width: 100%;
+						height: {previewMode ? '52%' : '48%'};
+						min-height: 0;
+					"
+				>
+					{@render mediaLayer('contain')}
+				</div>
+			</div>
+		{:else if layout === 'creator'}
+			<!-- Creator: profile + emphasis headline + letterboxed video -->
+			<div
+				style="
+					flex-shrink: 0;
+					padding: {previewMode ? '22px 22px 10px' : '64px 56px 20px'};
+					box-sizing: border-box;
+					position: relative;
+					z-index: 5;
+				"
+			>
+				<DraggableBlock
+					dx={textOffsets.videoCreatorProfile?.x ?? 0}
+					dy={textOffsets.videoCreatorProfile?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('videoCreatorProfile', { x, y })}
+				>
+					{#snippet children()}
+						<div
+							style="
+								display: flex;
+								align-items: center;
+								gap: {previewMode ? '12px' : '22px'};
+								margin-bottom: {previewMode ? '14px' : '28px'};
+							"
+						>
+							<div
+								style="
+									width: {previewMode ? 36 : 72}px;
+									height: {previewMode ? 36 : 72}px;
+									border-radius: 50%;
+									overflow: hidden;
+									flex-shrink: 0;
+									background: #1f2937;
+									display: flex;
+									align-items: center;
+									justify-content: center;
+								"
+							>
+								{#if profileAvatar?.trim()}
+									<img
+										src={profileAvatar}
+										alt=""
+										style="width: 100%; height: 100%; object-fit: cover; display: block;"
+									/>
+								{:else}
+									<span
+										style="
+											font-size: {previewMode ? 12 : 22}px;
+											font-weight: 700;
+											color: #fff;
+											letter-spacing: -0.02em;
+										"
+									>
+										{avatarInitials}
+									</span>
+								{/if}
+							</div>
+							<div style="min-width: 0; flex: 1;">
+								<div
+									style="
+										display: flex;
+										align-items: center;
+										gap: {previewMode ? 6 : 10}px;
+										flex-wrap: wrap;
+									"
+								>
+									<CanvasMarkupTextBlock
+										value={profileName}
+										{interactive}
+										selected={selectedText === 'textCarouselName'}
+										toolbarKind="textCarouselName"
+										rows={1}
+										minHeight="0px"
+										ariaLabel="Creator name"
+										fontFamily="Satoshi"
+										fontSize={previewMode ? 14 : 32}
+										{showToolbar}
+										onTextChange={onProfileNameChange}
+										onTextSelect={onTextSelect}
+									>
+										{#snippet display()}
+											<span
+												style="
+													font-size: {previewMode ? 14 : 32}px;
+													font-weight: 700;
+													color: #fff;
+													letter-spacing: -0.02em;
+													line-height: 1.15;
+												"
+											>
+												{profileName}
+											</span>
+										{/snippet}
+									</CanvasMarkupTextBlock>
+									<svg
+										width={previewMode ? 14 : 26}
+										height={previewMode ? 14 : 26}
+										viewBox="0 0 24 24"
+										fill="none"
+										aria-hidden="true"
+										style="flex-shrink: 0;"
+									>
+										<circle cx="12" cy="12" r="10" fill="#1D9BF0" />
+										<path
+											d="M7.5 12.2l2.8 2.8 6.2-6.4"
+											stroke="#fff"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</div>
+								<CanvasMarkupTextBlock
+									value={profileHandle}
+									{interactive}
+									selected={selectedText === 'textCarouselHandle'}
+									toolbarKind="textCarouselHandle"
+									rows={1}
+									minHeight="0px"
+									ariaLabel="Creator handle"
+									fontFamily="Satoshi"
+									fontSize={previewMode ? 12 : 26}
+									{showToolbar}
+									onTextChange={onProfileHandleChange}
+									onTextSelect={onTextSelect}
+								>
+									{#snippet display()}
+										<span
+											style="
+												font-size: {previewMode ? 12 : 26}px;
+												font-weight: 400;
+												color: rgba(255,255,255,0.55);
+												letter-spacing: -0.01em;
+												line-height: 1.2;
+											"
+										>
+											{profileHandle}
+										</span>
+									{/snippet}
+								</CanvasMarkupTextBlock>
+							</div>
+						</div>
+					{/snippet}
+				</DraggableBlock>
+
+				<DraggableBlock
+					dx={textOffsets.videoStoryHeadline?.x ?? 0}
+					dy={textOffsets.videoStoryHeadline?.y ?? 0}
+					{interactive}
+					{scale}
+					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
+				>
+					{#snippet children()}
+						<CanvasMarkupTextBlock
+							value={headline}
+							{interactive}
+							defaultColor={highlightColor}
+							selected={selectedText === 'videoStoryHeadline'}
+							toolbarKind="videoStoryHeadline"
+							rows={4}
+							minHeight="0px"
+							ariaLabel="Creator hook headline"
+							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+							fontSize={creatorFontSize}
+							{showToolbar}
+							onTextChange={onHeadlineChange}
+							onTextSelect={onTextSelect}
+							onHeadlineRangeSelect={onHeadlineRangeSelect}
+						>
+							{#snippet display()}
+								<div style="text-align: {headlineStyle.align ?? 'left'}; width: 100%;">
+									<HighlightedText
+										as="div"
+										text={headline}
+										parseHighlights={true}
+										emphasisBold={true}
+										defaultColor="#ffffff"
+										style="
+											margin: 0;
+											white-space: pre-wrap;
+											word-break: break-word;
+											line-height: 1.28;
+											letter-spacing: -0.025em;
+											color: #ffffff;
+											font-weight: {headlineStyle.fontWeight ?? 500};
+											font-size: {creatorFontSize}px;
+											text-shadow: 0 2px 16px rgba(0,0,0,0.45);
+											max-width: 100%;
+										"
+									/>
+								</div>
+							{/snippet}
+						</CanvasMarkupTextBlock>
+					{/snippet}
+				</DraggableBlock>
+			</div>
+			<div
+				style="
+					flex: 1;
+					min-height: 0;
+					position: relative;
+					background: #000;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					padding: {previewMode ? '0 0 28px' : '0 0 80px'};
+					box-sizing: border-box;
+				"
+			>
+				<div
+					style="
+						position: relative;
+						width: 100%;
+						height: {previewMode ? '46%' : '40%'};
+						min-height: 0;
+					"
+				>
+					{@render mediaLayer('contain')}
+				</div>
+			</div>
+		{:else if layout === 'hook'}
+			<!-- Hook: large white title on black + centered letterboxed video (no template karaoke) -->
+			{@render headlineBlock(false)}
+			<div
+				style="
+					flex: 1;
+					min-height: 0;
+					position: relative;
+					background: #000;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+				"
+			>
+				<div style="position: relative; width: 100%; height: {previewMode ? '48%' : '42%'}; min-height: 0;">
+					{@render mediaLayer('contain')}
+				</div>
+			</div>
+		{:else if layout === 'fit'}
 			<!-- Fit: letterboxed video + title + karaoke subtitle -->
 			{@render headlineBlock(false)}
 			<div

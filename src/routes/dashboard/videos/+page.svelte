@@ -429,6 +429,7 @@
 				newsHeadline: copy.newsHeadline,
 				newsSource: copy.newsSource,
 				storyHeadline: copy.storyHeadline,
+				videoHook: copy.videoHook,
 				storyWatermark: copy.storyWatermark,
 				tweetTop: copy.tweetTop,
 				tweetBottom: copy.tweetBottom,
@@ -823,7 +824,17 @@
 			const ar = String(prefs.videoAspectRatio ?? '');
 			if (ar === '9:16' || ar === '1:1' || ar === '16:9') videoAspectRatio = ar;
 			const lay = String(prefs.clipLayout ?? '');
-			if (lay === 'fit' || lay === 'blur' || lay === 'story') clipLayout = lay;
+			if (
+				lay === 'fit' ||
+				lay === 'blur' ||
+				lay === 'story' ||
+				lay === 'hook' ||
+				lay === 'creator' ||
+				lay === 'text' ||
+				lay === 'source' ||
+				lay === 'feature'
+			)
+				clipLayout = lay;
 			if (typeof prefs.autoReframeEnabled === 'boolean') {
 				autoReframe = { ...autoReframe, enabled: prefs.autoReframeEnabled };
 			}

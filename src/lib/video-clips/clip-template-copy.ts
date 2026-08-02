@@ -6,6 +6,10 @@ import {
 	looksLikeRawSpeechHeadline,
 } from '$lib/video-clips/news-headline';
 import {
+	demoVideoHookFromClip,
+	looksLikeRawVideoHook,
+} from '$lib/video-clips/video-hook';
+import {
 	fitTextCarouselBodyToCanvas,
 	joinTextCarouselParagraphs,
 	takeParagraphCount,
@@ -15,6 +19,8 @@ export type ClipTemplateCopy = {
 	newsHeadline: string;
 	newsSource: string;
 	storyHeadline: string;
+	/** Casual sentence-case line for the Hook video template. */
+	videoHook: string;
 	storyWatermark: string;
 	tweetTop: string;
 	tweetBottom: string;
@@ -145,6 +151,15 @@ export function buildClipTemplateCopy(
 	// Video story: one punchy overlay line
 	const storyHeadline = clampText(narrative.hook, 100);
 
+	// Hook video: casual AI sentence-case line above letterboxed clip
+	const aiHook = clip.videoHook?.trim() ?? '';
+	const videoHook = clampText(
+		!looksLikeRawVideoHook(aiHook, speech)
+			? aiHook
+			: demoVideoHookFromClip(clip, source.title || source.description?.slice(0, 80)),
+		120,
+	);
+
 	// Tweet: hook on top, source video as quoted reply context below
 	const tweetTop = clampText(narrative.hook, 220);
 	const tweetBottom =
@@ -161,6 +176,7 @@ export function buildClipTemplateCopy(
 		newsHeadline,
 		newsSource: watermark,
 		storyHeadline,
+		videoHook,
 		storyWatermark: watermark,
 		tweetTop,
 		tweetBottom,

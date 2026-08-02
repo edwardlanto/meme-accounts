@@ -4,7 +4,9 @@ import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
 const FILLER_RE =
 	/\b(uh|um|uhh|umm|you know what|i mean|kind of|sort of|yeah i mean|those those|not really the like)\b/i;
 
-const LAME_TEMPLATE_RE = /\bTHE CLIP THAT MAKES\b.*\bIMPOSSIBLE TO IGNORE\b/i;
+/** Hard-banned canned hooks — never treat these as finished AI titles. */
+const LAME_TEMPLATE_RE =
+	/\b(STOPS THE SCROLL|SKIP THE SCROLL|DON'?T SKIP|IMPOSSIBLE TO IGNORE|THE CLIP THAT MAKES|MOMENT THAT STOPS)\b/i;
 
 /** Strip [[highlight]] markers for comparison / word counts. */
 export function stripNewsHighlightMarkers(text: string): string {
@@ -33,7 +35,7 @@ function looksLikeSpeechFragmentTitle(title: string): boolean {
 	return false;
 }
 
-/** True when the "headline" is basically dumped speech, not a news hook. */
+/** True when the "headline" is raw speech, empty, or a banned canned template. */
 export function looksLikeRawSpeechHeadline(
 	headline: string | undefined | null,
 	transcript?: string | null,
@@ -43,6 +45,7 @@ export function looksLikeRawSpeechHeadline(
 	const plain = stripNewsHighlightMarkers(raw);
 	if (plain.length < 16) return true;
 	if (LAME_TEMPLATE_RE.test(plain)) return true;
+	if (/^INSIDE\s+\[\[/i.test(raw) && /\bTHE MOMENT THAT\b/i.test(plain)) return true;
 	if (FILLER_RE.test(plain)) return true;
 	const words = wordCount(plain);
 	if (words > 32) return true;
@@ -66,8 +69,7 @@ export function looksLikeRawSpeechHeadline(
 }
 
 /**
- * Deterministic fallback when the LLM rewrite is unavailable.
- * Prefer the video title (who's / what's about) — never paste speech fragments.
+ * Last-resort copy when every LLM path fails — just the video/clip title, never a viral slogan.
  */
 export function demoNewsHeadlineFromClip(
 	clip: Pick<VideoClip, 'title' | 'hook' | 'transcript'>,
@@ -80,12 +82,20 @@ export function demoNewsHeadlineFromClip(
 			? fromVideo
 			: fromClip && !looksLikeSpeechFragmentTitle(fromClip)
 				? fromClip
-				: 'THIS INTERVIEW';
+				: cleanClipSpeechText(clip.hook || '').slice(0, 80) || 'BREAKING UPDATE';
+
 	const words = topic
 		.toUpperCase()
+		.replace(/[^\w\s$%'-]/g, ' ')
 		.split(/\s+/)
 		.filter(Boolean)
-		.slice(0, 5)
-		.join(' ');
-	return `INSIDE [[${words}]] — THE MOMENT THAT [[STOPS THE SCROLL]]`.slice(0, 140);
+		.slice(0, 14);
+
+	if (words.length <= 3) {
+		return words.join(' ').slice(0, 140);
+	}
+	// Light highlight on the first meaningful chunk — still unique per video, no slogan
+	const head = words.slice(0, Math.min(4, words.length)).join(' ');
+	const rest = words.slice(Math.min(4, words.length)).join(' ');
+	return (rest ? `[[${head}]] ${rest}` : `[[${head}]]`).slice(0, 140);
 }

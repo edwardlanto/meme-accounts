@@ -60,11 +60,7 @@
 		ringColor = '#c9b97a',
 		bgColor   = '',
 		templateTheme = 'light',
-		text      =
-			'Beijing and Washington will reaffirm plans to reopen the Strait of Hormuz together.\n\n' +
-			'The announcement follows months of quiet negotiation between regional partners and shipping insurers. Officials stressed that stability through the strait remains critical for energy markets — and for consumers far beyond the Gulf.\n\n' +
-			'Analysts expect a joint statement outlining timelines, escort protocols, and coordination with commercial fleets. Until routes normalize, volatility in futures markets may persist; traders are watching every headline.\n\n' +
-			'What this means for operators: supply chains that depend on Gulf transit should scenario-plan for both a quick reopening and a phased rollout. Clear communication to customers beats surprise every time.',
+		text      = TEXT_CAROUSEL_DEFAULTS.body,
 		showSwipe = false,
 		canvasW   = 1080,
 		canvasH   = 1350,

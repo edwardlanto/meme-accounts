@@ -40,6 +40,8 @@ export type StudioClipImport = {
 	newsHeadline?: string;
 	newsSource?: string;
 	storyHeadline?: string;
+	/** Casual sentence-case hook for the Hook video template. */
+	videoHook?: string;
 	storyWatermark?: string;
 	tweetTop?: string;
 	tweetBottom?: string;

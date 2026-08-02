@@ -13,6 +13,11 @@ export type VideoClip = {
 	 * May include `[[phrase]]` highlight markers for the News template.
 	 */
 	newsHeadline?: string;
+	/**
+	 * Casual top-of-frame hook for the Hook video template (sentence case).
+	 * e.g. "One of the most uncomfortable live interviews ever"
+	 */
+	videoHook?: string;
 	/** R2 key for a cut+reframed preview MP4 (standalone clip, starts at 0). */
 	reframedR2Key?: string;
 	/** Signed playback URL for `reframedR2Key`. */
