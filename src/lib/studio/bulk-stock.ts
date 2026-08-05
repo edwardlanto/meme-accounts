@@ -2,7 +2,12 @@
 
 import { optimizeImageUrl } from '$lib/client/optimize-image-url';
 import type { TemplateId } from './template-ids';
-import { isPhotoStoryFamily, isVideoStoryFamily } from './template-ids';
+import {
+	isPhotoStoryFamily,
+	isVideoStoryFamily,
+	isVideoSplitFamily,
+	isBrandStackFamily,
+} from './template-ids';
 
 /** Full-slide preview (~2× feed preview width). */
 const STOCK_PREVIEW_W = 1080;
@@ -105,7 +110,7 @@ export function templateUsesStockImage(id: TemplateId): boolean {
 
 /** Templates that show a video clip. */
 export function templateUsesStockVideo(id: TemplateId): boolean {
-	return isVideoStoryFamily(id);
+	return isVideoStoryFamily(id) || isVideoSplitFamily(id) || isBrandStackFamily(id);
 }
 
 export function templateUsesStockMedia(id: TemplateId): boolean {

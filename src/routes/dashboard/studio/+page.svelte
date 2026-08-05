@@ -12,6 +12,7 @@ import JSZip from 'jszip';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
 	import BrandStackTemplate from '$lib/components/templates/BrandStackTemplate.svelte';
+	import VideoSplitTemplate from '$lib/components/templates/VideoSplitTemplate.svelte';
 	import BlackTextCarouselTemplate from '$lib/components/templates/BlackTextCarouselTemplate.svelte';
 	import PhotoStoryTemplate from '$lib/components/templates/PhotoStoryTemplate.svelte';
 	import WhitePostTemplate from '$lib/components/templates/WhitePostTemplate.svelte';
@@ -79,6 +80,7 @@ import JSZip from 'jszip';
 		coerceTemplateId,
 		isVideoStoryFamily,
 		isBrandStackFamily,
+		isVideoSplitFamily,
 		isPhotoStoryFamily,
 		isWhitePostFamily,
 		videoLayoutForTemplate,
@@ -110,6 +112,7 @@ import JSZip from 'jszip';
 		VIDEO_POST_DEFAULTS,
 		VIDEO_POST_HEADLINE_STYLE,
 		BRAND_STACK_DEFAULTS,
+		VIDEO_SPLIT_DEFAULTS,
 		BRAND_STACK_HEADLINE_STYLE,
 		PHOTO_TOPIC_DEFAULTS,
 		PHOTO_TOPIC_HEADLINE_STYLE,
@@ -144,7 +147,7 @@ import JSZip from 'jszip';
 	} from '$lib/video-clips/caption-chunking';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
-		Image, Type, Search, FlaskConical, Wifi, Layers, ListOrdered,
+		Image, Type, Search, Layers, ListOrdered,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown
 	} from 'lucide-svelte';
 
@@ -158,43 +161,8 @@ import JSZip from 'jszip';
 	const emptySlides = <T,>(factory: (i: number) => T): T[] =>
 		Array.from({ length: DEFAULT_STUDIO_SLIDE_COUNT }, (_, i) => factory(i));
 
-	// ── Mock data ─────────────────────────────────────────────────────────
-	const MOCK_NEWS = [
-		{
-			uuid: "8d906cbc-8d65-43d0-93ff-f67842145d66",
-			title: "The top 5 startup buyers in Silicon Valley",
-			description: "Silicon Valley giants made up 33% of total startup acquisition deals since 2000, an analysis found",
-			snippet: "Silicon Valley is known for nurturing some of the world's most successful tech startups and companies, making it not so surprising that it's also home to so...",
-			url: "https://qz.com/google-apple-meta-startup-acquisitions-silicon-valley-1851681629",
-			image_url: "https://i.kinja-img.com/image/upload/c_fill,h_675,pg_1,q_80,w_1200/0c461b0f4587d274f2cc0a13ac4c1e1a.jpg",
-			source: "qz.com",
-			categories: ["general", "business", "tech"],
-		},
-		{
-			uuid: "2a304e6c-774a-4820-8128-0e19d6121934",
-			title: "Mental-Health Startup Cerebral Investigated by FTC",
-			description: "Regulators focus on whether online provider engaged in deceptive or unfair marketing practices",
-			snippet: "Mental health startup Cerebral was subpoenaed last month by federal prosecutors as part of an investigation into possible violations of the Controlled Substance...",
-			url: "https://www.wsj.com/articles/ftc-launches-probe-of-cerebrals-business-practices-11655241983",
-			image_url: "https://images.wsj.net/im-563603/social",
-			source: "online.wsj.com",
-			categories: ["business"],
-		},
-		{
-			uuid: "b619002a-76ab-4223-8703-648ee7a17175",
-			title: "Top Startup Crowdfunding Campaigns To Invest In",
-			description: "If you're looking for startups to invest in, here's Benzinga's list of the top startup investments for August 2022.",
-			snippet: "If you're looking for startups to invest in, here's Benzinga's list of the top startup investments for August 2022. Gryphon is recognized as one of th...",
-			url: "https://www.benzinga.com/markets/22/08/28639261/top-startup-crowdfunding-campaigns-to-invest-in",
-			image_url: "https://cdn.benzinga.com/files/images/story/2022/08/25/shutterstock_1532955209.jpg?width=1200&height=800&fit=crop",
-			source: "benzinga.com",
-			categories: ["business"],
-		},
-	] as const;
-
 	// ── State ──────────────────────────────────────────────────────────────
 	let userId = $state('');
-	let useTestData = $state(true); // default to mock data
 	let initialTemplateParamApplied = $state(false);
 	let forcedTemplateFromQuery = $state<TemplateId | null>(null);
 	/** `?blank=1` — skip draft restore and open the Blank canvas template (custom layout; not News). */
@@ -632,6 +600,7 @@ import JSZip from 'jszip';
 				const sibling =
 					(bgVideosByTemplate.videoStory ?? [])[idx] ||
 					(bgVideosByTemplate.videoFit ?? [])[idx] ||
+					(bgVideosByTemplate.videoSplit ?? [])[idx] ||
 					(bgVideosByTemplate.videoBlur ?? [])[idx] ||
 					(bgVideosByTemplate.videoHook ?? [])[idx] ||
 					(bgVideosByTemplate.videoCreator ?? [])[idx] ||
@@ -642,6 +611,20 @@ import JSZip from 'jszip';
 					VIDEO_STORY_DEFAULTS.videoUrl;
 				row[idx] = sibling;
 				bgVideosByTemplate = { ...bgVideosByTemplate, [t]: row };
+			}
+		}
+		if (isVideoSplitFamily(t)) {
+			formatId = 'vertical';
+			const row = [...(bgVideosByTemplate.videoSplit ?? [])];
+			while (row.length <= idx) row.push('');
+			if (!(row[idx] ?? '').trim()) {
+				const sibling =
+					(bgVideosByTemplate.videoFit ?? [])[idx] ||
+					(bgVideosByTemplate.videoStory ?? [])[idx] ||
+					(bgVideosByTemplate.brandStack ?? [])[idx] ||
+					VIDEO_SPLIT_DEFAULTS.videoUrl;
+				row[idx] = sibling;
+				bgVideosByTemplate = { ...bgVideosByTemplate, videoSplit: row };
 			}
 		}
 		if (t === 'blackText' || isPhotoStoryFamily(t)) {
@@ -691,6 +674,21 @@ import JSZip from 'jszip';
 			finalizeTemplateSwitch(from, t, i);
 		}
 		if (t === 'news' && !opts?.skipNewsSeed) seedNewsStarterPlaceholderLayout();
+		if (isVideoSplitFamily(t)) {
+			formatId = 'vertical';
+			const n = slides.length;
+			const prev = bgVideosByTemplate.videoSplit ?? [];
+			const row = Array.from({ length: n }, (_, i) => {
+				const cur = String(prev[i] ?? '').trim();
+				if (cur) return cur;
+				return (
+					String((bgVideosByTemplate.videoFit ?? [])[i] ?? '').trim() ||
+					String((bgVideosByTemplate.videoStory ?? [])[i] ?? '').trim() ||
+					VIDEO_SPLIT_DEFAULTS.videoUrl
+				);
+			});
+			bgVideosByTemplate = { ...bgVideosByTemplate, videoSplit: row };
+		}
 		if (t === 'blackText' || isPhotoStoryFamily(t)) {
 			const n = slides.length;
 			const prev = bgImagesByTemplate[t] ?? [];
@@ -924,6 +922,7 @@ import JSZip from 'jszip';
 				'tweet',
 				'videoStory',
 				'videoFit',
+			'videoSplit',
 				'videoBlur',
 				'imageQuote',
 			];
@@ -952,6 +951,13 @@ import JSZip from 'jszip';
 			bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
 			const preferredFormat = payload.formatId ?? 'vertical';
 			formatId = normalizeStudioFormatId(preferredFormat);
+			const saliencyComposited =
+				!!payload.usedReframe &&
+				String(payload.reframeSettingsKey ?? '').includes('|saliency|');
+			videoSplitCompositedBySlide = Array.from({ length: finalN }, (_, i) => {
+				const t = coerceTemplateId(slideTemplates[i] ?? primary);
+				return saliencyComposited && isVideoSplitFamily(t);
+			});
 		}
 
 		// Transfer CapCut captions from Videos page onto this canvas
@@ -1107,6 +1113,7 @@ import JSZip from 'jszip';
 		imageQuote: [],
 		videoStory: [],
 		videoFit: [],
+		videoSplit: [],
 		videoBlur: [],
 		videoHook: [],
 		videoCreator: [],
@@ -1711,6 +1718,7 @@ import JSZip from 'jszip';
 				...bgVideosByTemplate,
 				videoStory: patchVideo(bgVideosByTemplate.videoStory),
 				videoFit: patchVideo(bgVideosByTemplate.videoFit),
+				videoSplit: patchVideo(bgVideosByTemplate.videoSplit),
 				videoBlur: patchVideo(bgVideosByTemplate.videoBlur),
 				videoHook: patchVideo(bgVideosByTemplate.videoHook),
 				videoCreator: patchVideo(bgVideosByTemplate.videoCreator),
@@ -1906,6 +1914,7 @@ import JSZip from 'jszip';
 		imageQuote: emptySlides(() => IMAGE_QUOTE_DEFAULTS.imageUrl),
 		videoStory: emptySlides(() => ''),
 		videoFit: emptySlides(() => ''),
+		videoSplit: emptySlides(() => ''),
 		videoBlur: emptySlides(() => ''),
 		videoHook: emptySlides(() => ''),
 		videoCreator: emptySlides(() => ''),
@@ -1929,6 +1938,7 @@ import JSZip from 'jszip';
 		imageQuote: emptySlides(() => ''),
 		videoStory: emptySlides(() => ''),
 		videoFit: emptySlides(() => ''),
+		videoSplit: emptySlides(() => ''),
 		videoBlur: emptySlides(() => ''),
 		videoHook: emptySlides(() => ''),
 		videoCreator: emptySlides(() => ''),
@@ -1952,6 +1962,7 @@ import JSZip from 'jszip';
 		imageQuote: emptySlides(() => false),
 		videoStory: emptySlides(() => false),
 		videoFit: emptySlides(() => false),
+		videoSplit: emptySlides(() => false),
 		videoBlur: emptySlides(() => false),
 		videoHook: emptySlides(() => false),
 		videoCreator: emptySlides(() => false),
@@ -2137,6 +2148,7 @@ import JSZip from 'jszip';
 		if (v) return v;
 		if (activeTemplate === 'videoStory') return VIDEO_STORY_DEFAULTS.videoUrl;
 		if (activeTemplate === 'brandStack') return BRAND_STACK_DEFAULTS.topVideoUrl;
+		if (activeTemplate === 'videoSplit') return VIDEO_SPLIT_DEFAULTS.videoUrl;
 		return '';
 	});
 
@@ -2350,6 +2362,7 @@ import JSZip from 'jszip';
 		imageQuote: emptySlides(() => []),
 		videoStory: emptySlides(() => []),
 		videoFit: emptySlides(() => []),
+		videoSplit: emptySlides(() => []),
 		videoBlur: emptySlides(() => []),
 		videoHook: emptySlides(() => []),
 		videoCreator: emptySlides(() => []),
@@ -2428,6 +2441,7 @@ import JSZip from 'jszip';
 		imageQuote: emptySlides(() => []),
 		videoStory: emptySlides(() => []),
 		videoFit: emptySlides(() => []),
+		videoSplit: emptySlides(() => []),
 		videoBlur: emptySlides(() => []),
 		videoHook: emptySlides(() => []),
 		videoCreator: emptySlides(() => []),
@@ -2458,6 +2472,7 @@ import JSZip from 'jszip';
 		'tweet',
 		'videoStory',
 		'videoFit',
+			'videoSplit',
 		'videoBlur',
 		'videoHook',
 		'videoCreator',
@@ -2573,6 +2588,7 @@ import JSZip from 'jszip';
 			imageQuote: [...(bgImagesByTemplate.imageQuote ?? []), IMAGE_QUOTE_DEFAULTS.imageUrl],
 			videoStory: [...(bgImagesByTemplate.videoStory ?? []), ''],
 			videoFit: [...(bgImagesByTemplate.videoFit ?? []), ''],
+			videoSplit: [...(bgImagesByTemplate.videoSplit ?? []), ''],
 			videoBlur: [...(bgImagesByTemplate.videoBlur ?? []), ''],
 			videoHook: [...(bgImagesByTemplate.videoHook ?? []), ''],
 			videoCreator: [...(bgImagesByTemplate.videoCreator ?? []), ''],
@@ -2596,6 +2612,7 @@ import JSZip from 'jszip';
 			imageQuote: [...(bgVideosByTemplate.imageQuote ?? []), ''],
 			videoStory: [...(bgVideosByTemplate.videoStory ?? []), ''],
 			videoFit: [...(bgVideosByTemplate.videoFit ?? []), ''],
+			videoSplit: [...(bgVideosByTemplate.videoSplit ?? []), ''],
 			videoBlur: [...(bgVideosByTemplate.videoBlur ?? []), ''],
 			videoHook: [...(bgVideosByTemplate.videoHook ?? []), ''],
 			videoCreator: [...(bgVideosByTemplate.videoCreator ?? []), ''],
@@ -2619,6 +2636,7 @@ import JSZip from 'jszip';
 			imageQuote: [...(generatingImagesByTemplate.imageQuote ?? []), false],
 			videoStory: [...(generatingImagesByTemplate.videoStory ?? []), false],
 			videoFit: [...(generatingImagesByTemplate.videoFit ?? []), false],
+			videoSplit: [...(generatingImagesByTemplate.videoSplit ?? []), false],
 			videoBlur: [...(generatingImagesByTemplate.videoBlur ?? []), false],
 			videoHook: [...(generatingImagesByTemplate.videoHook ?? []), false],
 			videoCreator: [...(generatingImagesByTemplate.videoCreator ?? []), false],
@@ -2642,6 +2660,7 @@ import JSZip from 'jszip';
 			imageQuote: [...(slideOverlaysByTemplate.imageQuote ?? []), []],
 			videoStory: [...(slideOverlaysByTemplate.videoStory ?? []), []],
 			videoFit: [...(slideOverlaysByTemplate.videoFit ?? []), []],
+			videoSplit: [...(slideOverlaysByTemplate.videoSplit ?? []), []],
 			videoBlur: [...(slideOverlaysByTemplate.videoBlur ?? []), []],
 			videoHook: [...(slideOverlaysByTemplate.videoHook ?? []), []],
 			videoCreator: [...(slideOverlaysByTemplate.videoCreator ?? []), []],
@@ -2665,6 +2684,7 @@ import JSZip from 'jszip';
 			imageQuote: [...(slideTextOverlaysByTemplate.imageQuote ?? []), []],
 			videoStory: [...(slideTextOverlaysByTemplate.videoStory ?? []), []],
 			videoFit: [...(slideTextOverlaysByTemplate.videoFit ?? []), []],
+			videoSplit: [...(slideTextOverlaysByTemplate.videoSplit ?? []), []],
 			videoBlur: [...(slideTextOverlaysByTemplate.videoBlur ?? []), []],
 			videoHook: [...(slideTextOverlaysByTemplate.videoHook ?? []), []],
 			videoCreator: [...(slideTextOverlaysByTemplate.videoCreator ?? []), []],
@@ -2738,6 +2758,10 @@ import JSZip from 'jszip';
 			brandStackBottomMediaBySlide[brandStackBottomMediaBySlide.length - 1] ??
 				BRAND_STACK_DEFAULTS.bottomMediaUrl,
 		];
+		videoSplitCompositedBySlide = [
+			...videoSplitCompositedBySlide,
+			videoSplitCompositedBySlide[videoSplitCompositedBySlide.length - 1] ?? false,
+		];
 		blackTextHeadlineBySlide = [
 			...blackTextHeadlineBySlide,
 			blackTextHeadlineBySlide[blackTextHeadlineBySlide.length - 1] ?? BLACK_TEXT_CAROUSEL_DEFAULTS.headline,
@@ -2806,6 +2830,7 @@ import JSZip from 'jszip';
 		imageQuote: emptySlides(() => ({})),
 		videoStory: emptySlides(() => ({})),
 		videoFit: emptySlides(() => ({})),
+		videoSplit: emptySlides(() => ({})),
 		videoBlur: emptySlides(() => ({})),
 		videoHook: emptySlides(() => ({})),
 		videoCreator: emptySlides(() => ({})),
@@ -2882,6 +2907,8 @@ import JSZip from 'jszip';
 	let videoStoryWatermarkBySlide = $state<string[]>(emptySlides(() => VIDEO_STORY_DEFAULTS.watermark));
 	let brandStackBrandBySlide = $state<string[]>(emptySlides(() => BRAND_STACK_DEFAULTS.brand));
 	let brandStackBottomMediaBySlide = $state<string[]>(emptySlides(() => BRAND_STACK_DEFAULTS.bottomMediaUrl));
+	/** True after a saliency (multi-face) reframe — show composited 9:16 full-bleed instead of CSS dual crop. */
+	let videoSplitCompositedBySlide = $state<boolean[]>(emptySlides(() => false));
 	let blackTextHeadlineBySlide = $state<string[]>(emptySlides(() => BLACK_TEXT_CAROUSEL_DEFAULTS.headline));
 	let blackTextBodyBySlide = $state<string[]>(emptySlides(() => BLACK_TEXT_CAROUSEL_DEFAULTS.body));
 
@@ -3004,6 +3031,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		videoStoryWatermarkBySlide = pickOr(videoStoryWatermarkBySlide, VIDEO_STORY_DEFAULTS.watermark);
 		brandStackBrandBySlide = pickOr(brandStackBrandBySlide, BRAND_STACK_DEFAULTS.brand);
 		brandStackBottomMediaBySlide = pickOr(brandStackBottomMediaBySlide, BRAND_STACK_DEFAULTS.bottomMediaUrl);
+		videoSplitCompositedBySlide = pickOr(videoSplitCompositedBySlide, false);
 		blackTextHeadlineBySlide = pickOr(blackTextHeadlineBySlide, BLACK_TEXT_CAROUSEL_DEFAULTS.headline);
 		blackTextBodyBySlide = pickOr(blackTextBodyBySlide, BLACK_TEXT_CAROUSEL_DEFAULTS.body);
 		articleSwipeTextBySlide = pickOr(articleSwipeTextBySlide, '«« Swipe');
@@ -3063,6 +3091,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		videoDurationBySlide = pickPerSlideArraysForOldIndices(keep, videoDurationBySlide, 0);
 		videoMutedBySlide = pickPerSlideArraysForOldIndices(keep, videoMutedBySlide, true);
 		videoVolumeBySlide = pickPerSlideArraysForOldIndices(keep, videoVolumeBySlide, 0.8);
+		videoSplitCompositedBySlide = pickPerSlideArraysForOldIndices(keep, videoSplitCompositedBySlide, false);
 		tweetReplyCountBySlide = pickPerSlideArraysForOldIndices(keep, tweetReplyCountBySlide, '4.2K');
 		tweetRepostCountBySlide = pickPerSlideArraysForOldIndices(keep, tweetRepostCountBySlide, '12.8K');
 		tweetLikeCountBySlide = pickPerSlideArraysForOldIndices(keep, tweetLikeCountBySlide, '89.4K');
@@ -4001,6 +4030,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				imageQuote: (raw.imageQuote ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				videoStory: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				videoFit: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
+				videoSplit: (raw.videoSplit ?? raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				videoBlur: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				videoHook: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
 				videoCreator: (raw.videoStory ?? []).map((row) => (row ?? []).map((o) => ({ ...(o as any) }))),
@@ -4031,6 +4061,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				imageQuote: (raw.imageQuote ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				videoStory: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				videoFit: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
+				videoSplit: (raw.videoSplit ?? raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				videoBlur: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				videoHook: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
 				videoCreator: (raw.videoStory ?? []).map((row) => (row ?? []).map((t) => ({ ...(t as any), style: { ...(((t as any).style ?? {}) as any) } }))),
@@ -4069,6 +4100,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				imageQuote: norm(raw.imageQuote),
 				videoStory: norm(raw.videoStory),
 				videoFit: norm(raw.videoStory),
+				videoSplit: norm(raw.videoSplit ?? raw.videoStory),
 				videoBlur: norm(raw.videoStory),
 				videoHook: norm(raw.videoStory),
 				videoCreator: norm(raw.videoStory),
@@ -4185,6 +4217,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray(s.videoDurationBySlide)) videoDurationBySlide = s.videoDurationBySlide;
 		if (Array.isArray(s.videoMutedBySlide)) videoMutedBySlide = s.videoMutedBySlide;
 		if (Array.isArray(s.videoVolumeBySlide)) videoVolumeBySlide = s.videoVolumeBySlide;
+		if (Array.isArray((s as any).videoSplitCompositedBySlide)) {
+			videoSplitCompositedBySlide = (s as any).videoSplitCompositedBySlide.map((x: unknown) => !!x);
+		}
 		if (Array.isArray(s.textOffsetsBySlide)) textOffsetsBySlide = s.textOffsetsBySlide;
 
 		{
@@ -4332,6 +4367,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			imageQuote: [''],
 			videoStory: [''],
 			videoFit: [''],
+			videoSplit: [''],
 			videoBlur: [''],
 			videoHook: [''],
 			videoCreator: [''],
@@ -4365,6 +4401,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			imageQuote: [false],
 			videoStory: [false],
 			videoFit: [false],
+			videoSplit: [false],
 			videoBlur: [false],
 			videoHook: [false],
 			videoCreator: [false],
@@ -4390,6 +4427,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			imageQuote: [[]],
 			videoStory: [[]],
 			videoFit: [[]],
+			videoSplit: [[]],
 			videoBlur: [[]],
 			videoHook: [[]],
 			videoCreator: [[]],
@@ -4414,6 +4452,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			imageQuote: [[]],
 			videoStory: [[]],
 			videoFit: [[]],
+			videoSplit: [[]],
 			videoBlur: [[]],
 			videoHook: [[]],
 			videoCreator: [[]],
@@ -4438,6 +4477,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			imageQuote: [{}],
 			videoStory: [{}],
 			videoFit: [{}],
+			videoSplit: [{}],
 			videoBlur: [{}],
 			videoHook: [{}],
 			videoCreator: [{}],
@@ -4491,6 +4531,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		videoStoryWatermarkBySlide = [VIDEO_STORY_DEFAULTS.watermark];
 		blackTextHeadlineBySlide = [BLACK_TEXT_CAROUSEL_DEFAULTS.headline];
 		blackTextBodyBySlide = [BLACK_TEXT_CAROUSEL_DEFAULTS.body];
+		videoSplitCompositedBySlide = [false];
 
 		textOffsetsBySlide = [{}];
 		slideIds = [newSlideId()];
@@ -4524,6 +4565,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			imageQuote: [{ undo: [], redo: [] }],
 			videoStory: [{ undo: [], redo: [] }],
 			videoFit: [{ undo: [], redo: [] }],
+			videoSplit: [{ undo: [], redo: [] }],
 			videoBlur: [{ undo: [], redo: [] }],
 			videoHook: [{ undo: [], redo: [] }],
 			videoCreator: [{ undo: [], redo: [] }],
@@ -4985,6 +5027,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			videoDurationBySlide,
 			videoMutedBySlide,
 			videoVolumeBySlide,
+			videoSplitCompositedBySlide,
 			textOffsetsBySlide,
 			slideOverlaysByTemplate,
 			slideTextOverlaysByTemplate,
@@ -5361,103 +5404,6 @@ tweetTopImagePanYBySlide,
 		{ id: 'money', label: 'Money' },
 	] as const;
 
-	const MOCK_QUOTES = [
-		{
-			hookText: 'YOU DO NOT NEED [[MORE TIME]] — YOU NEED [[FEWER LIES]] ABOUT WHAT MATTERS',
-			rawText:
-				'Most burnout is misalignment, not workload. We collect obligations that look impressive and feel hollow. The quote is a filter: if the answer is not clearly yes, the default can be no. Clarity is not cruelty; it is respect for the one life you are actually living.',
-			source: 'Quotes',
-		},
-		{
-			hookText: '[[COURAGE]] IS NOT THE ABSENCE OF FEAR — IT IS THE [[NEXT STEP]] ANYWAY',
-			rawText:
-				'Fear predicts loss; courage names what is still worth trying. On hard topics, people wait to feel ready before they act. Readiness is often a story told after the first honest move. The slide after the quote can name one small action that does not require perfection.',
-			source: 'Quotes',
-		},
-	] as const;
-
-	const MOCK_FACTS = [
-		{
-			hookText: 'OCTOPUSES HAVE [[THREE HEARTS]] — TWO STOP WHEN THEY SWIM',
-			rawText:
-				'Two branchial hearts pump blood to the gills while a systemic heart circulates blood to the rest of the body. When an octopus swims, the systemic heart actually pauses, which is one reason they prefer crawling. This unusual cardiovascular design supports their active, short-lived lives in complex reef environments.',
-			source: 'Did you know',
-		},
-		{
-			hookText: 'BANANAS ARE [[BERRIES]] — BUT STRAWBERRIES ARE NOT',
-			rawText:
-				'Botanically, a berry develops from a single ovary and typically contains seeds inside the flesh. Bananas fit that definition. Strawberries aggregate from multiple ovaries and wear their seeds on the outside. The everyday fruit names we use often diverge sharply from botanical taxonomy.',
-			source: 'Did you know',
-		},
-	] as const;
-
-	const MOCK_STORIES: Record<string, { hookText: string; rawText: string; source: string }[]> = {
-		health: [
-			{
-				hookText: 'SHE SWAPPED [[MIDNIGHT SNACKS]] FOR [[MAGNESIUM]] — SLEEP CHANGED FAST',
-				rawText:
-					'Her nights were restless from screens and sugar spikes. She moved protein earlier, dimmed lights, and tried magnesium glycinate on doctor advice. Week one felt placebo. By week four, wake-ups were fewer. It was not magic—just stacking small levers until the nervous system calmed.',
-				source: 'Health',
-			},
-		],
-		wealth: [
-			{
-				hookText: 'AT 28 HE HAD [[NO INHERITANCE]] — AT 35 HE HAD [[OPTIONALITY]]',
-				rawText:
-					'He avoided debt that did not build skills. Side income funded an emergency runway first, then index funds on autopilot. Raises were invisible to lifestyle. Friends bought cars; he bought time. Optionality meant saying no to bad jobs without panic.',
-				source: 'Wealth',
-			},
-		],
-		relationships: [
-			{
-				hookText: 'THEY AGREED TO [[ONE HARD CONVERSATION]] A WEEK — RESENTMENT [[SHRUNK]]',
-				rawText:
-					'Small irritations had become a background hum. They scheduled a protected hour: phones off, notes allowed, no winners. Topics rotated: money, family, intimacy. Some weeks were brutal. Others were boring. The habit mattered more than the perfect script.',
-				source: 'Relationships',
-			},
-		],
-		career: [
-			{
-				hookText: 'HER PORTFOLIO WAS [[MESSY]] — SO SHE SHIPPED [[ONE PUBLIC CASE STUDY]]',
-				rawText:
-					'Recruiters skim. She reframed one project with metrics, screenshots, and lessons learned. LinkedIn posts followed the same narrative arc. Interviews shifted from trivia to depth. One artifact did more than fifty bullet points on a resume.',
-				source: 'Career',
-			},
-		],
-		mindset: [
-			{
-				hookText: 'HE STOPPED CHASING [[CONFIDENCE]] AND STARTED COLLECTING [[PROOF]]',
-				rawText:
-					'Confidence felt like a mood he could not control. Proof was receipts: shipped work, saved messages, logged reps. He built a brag doc not for arrogance but for bad brain days. The inner critic lost a few debates on evidence.',
-				source: 'Mindset',
-			},
-		],
-		productivity: [
-			{
-				hookText: 'SHE TIME-BOXED [[SLACK]] TO 30 MINUTES — TEAM OUTPUT [[ROSE]]',
-				rawText:
-					'Constant pings fractured design work. She proposed office hours for questions. Leadership feared bottlenecks; instead, answers got documented. Async improved. Meetings shrank. The policy spread to two other teams after a quarter.',
-				source: 'Productivity',
-			},
-		],
-		fitness: [
-			{
-				hookText: 'HE COULD NOT DO [[ONE PULL-UP]] — SIX MONTHS LATER HE DID [[TWELVE]]',
-				rawText:
-					'Negatives and band-assisted reps built tendon patience. He tracked range of motion, not ego weight. Sleep and protein were boring pillars. Progress was invisible for weeks, then sudden. The lesson was patience with progressive overload.',
-				source: 'Fitness',
-			},
-		],
-		money: [
-			{
-				hookText: 'THEY FOUND [[$340]] A MONTH IN [[GHOST SUBSCRIPTIONS]]',
-				rawText:
-					'Old trials, duplicate streaming tiers, forgotten SaaS seats. They canceled ruthlessly for thirty days, then re-added only what they missed. Automated weekly account reviews kept drift low. The win was attention, not austerity.',
-				source: 'Money',
-			},
-		],
-	};
-
 	/** Strip highlight markers for prompts / previews. */
 	function stripHighlightMarkers(s: string) {
 		return String(s ?? '').replace(/\[\[|\]\]/g, '').trim();
@@ -5517,6 +5463,7 @@ tweetTopImagePanYBySlide,
 		imageQuote: 130,
 		videoStory: 320,
 		videoFit: 320,
+		videoSplit: 48,
 		videoBlur: 320,
 		videoHook: 90,
 		videoCreator: 320,
@@ -5842,134 +5789,44 @@ tweetTopImagePanYBySlide,
 							? stepsTopicPrompt.trim().slice(0, 600)
 							: '';
 
-			/** Synthetic modes without a topic use bundled mocks; any topic hits /api/news. */
-			const useBundledFactStoryMock =
-				useTestData &&
-				(newsContentMode === 'fact' ||
-					newsContentMode === 'story' ||
-					newsContentMode === 'quote' ||
-					newsContentMode === 'steps') &&
-				!syntheticHintStr;
+			const res = await fetch('/api/news', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					mode: newsContentMode,
+					storyCategory,
+					search: newsContentMode === 'news' ? search || undefined : undefined,
+					categories: newsContentMode === 'news' ? category : undefined,
+					limit: 15,
+					autoHighlight:
+						studioTextHighlightsEnabled &&
+						(fillExistingDeck ? hasNewsSlidesInDeck : contentTemplate === 'news'),
+					pick: newsContentMode === 'news' ? 'random' : 'first',
+					syntheticHint: syntheticHintStr || undefined,
+					stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
+					studioRegenAt: Date.now(),
+				}),
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
 
-			if (useTestData && newsContentMode === 'news') {
-				// ── Mock only (never call live API while Test data is on) ───
-				await new Promise((r) => setTimeout(r, 400));
-				const q = search.trim().toLowerCase();
-				const cat = category.trim().toLowerCase();
-				let pool = MOCK_NEWS.filter((a) =>
-					(a.categories as readonly string[]).some((c) => c.toLowerCase() === cat),
-				);
-				if (!pool.length) pool = [...MOCK_NEWS];
-				if (q) {
-					const matched = pool.filter(
-						(a) =>
-							a.title.toLowerCase().includes(q) ||
-							a.description.toLowerCase().includes(q) ||
-							a.snippet.toLowerCase().includes(q),
-					);
-					// Stay on test data: if keyword misses, use category (or full) mock pool
-					if (matched.length) pool = matched;
-				}
-				const article = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0]!;
-				hookText = article.title;
-				rawText = `${article.title}. ${article.description}. ${article.snippet}`;
-				nextSource = sourceLabels[category] ?? article.source ?? 'News';
-				nextArticleUrl = article.url;
-				nextArticleTitle = article.title;
-				articleImageUrl = article.image_url;
-			} else if (useBundledFactStoryMock) {
-				// ── Mock mode: canned fact/story/quote/steps when no custom topic ─────────
-				await new Promise((r) => setTimeout(r, 400));
-				if (newsContentMode === 'fact') {
-					const pick = MOCK_FACTS[Math.floor(Math.random() * MOCK_FACTS.length)] ?? MOCK_FACTS[0];
-					hookText = pick.hookText;
-					rawText = pick.rawText;
-					nextSource = pick.source;
-					nextArticleUrl = '';
-					nextArticleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
-					articleImageUrl = '';
-				} else if (newsContentMode === 'quote') {
-					const pick = MOCK_QUOTES[Math.floor(Math.random() * MOCK_QUOTES.length)] ?? MOCK_QUOTES[0];
-					hookText = pick.hookText;
-					rawText = pick.rawText;
-					nextSource = pick.source;
-					nextArticleUrl = '';
-					nextArticleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
-					articleImageUrl = '';
-				} else if (newsContentMode === 'steps') {
-					const nSteps = resolvedStepsCount;
-					hookText = `${nSteps} STEPS TO [[FEEL BETTER]] THIS WEEK`;
-					rawText =
-						`Listicle bible (${nSteps} steps).\n` +
-						Array.from({ length: nSteps }, (_, i) => {
-							const actions = [
-								'Audit what you already do daily.',
-								'Cut one habit that quietly hurts progress.',
-								'Add one small move you can finish today.',
-								'Track the change for seven days.',
-								'Protect the window when you actually follow through.',
-								'Repeat the minimum on hard days.',
-								'Reframe slips as data not failure.',
-								'Stack the habit onto something you never skip.',
-							];
-							return `${i + 1}. ${actions[i % actions.length]}`;
-						}).join('\n') +
-						`\nCTA: Start with step 1 this week and tell someone your plan.`;
-					nextSource = 'Steps';
-					nextArticleUrl = '';
-					nextArticleTitle = hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
-					articleImageUrl = '';
-				} else {
-					const pool = MOCK_STORIES[storyCategory] ?? MOCK_STORIES.health;
-					const pick = pool[Math.floor(Math.random() * pool.length)] ?? pool[0];
-					hookText = pick.hookText;
-					rawText = pick.rawText;
-					nextSource = pick.source;
-					nextArticleUrl = '';
-					nextArticleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
-					articleImageUrl = '';
-				}
-			} else {
-				// ── API: live news, or fact/story/quote/steps (including with Test data + topic) ─
-				const res = await fetch('/api/news', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						mode: newsContentMode,
-						storyCategory,
-						search: newsContentMode === 'news' ? search || undefined : undefined,
-						categories: newsContentMode === 'news' ? category : undefined,
-						limit: 15,
-						autoHighlight:
-							studioTextHighlightsEnabled &&
-							(fillExistingDeck ? hasNewsSlidesInDeck : contentTemplate === 'news'),
-						pick: newsContentMode === 'news' ? 'random' : 'first',
-						syntheticHint: syntheticHintStr || undefined,
-						stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
-						studioRegenAt: Date.now(),
-					}),
-				});
-				const data = await res.json();
-				if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
-
-				hookText = data.text ?? '';
-				rawText = data.description ?? data.title ?? '';
-				nextSource =
-					newsContentMode === 'news'
-						? sourceLabels[category] ?? data.source ?? 'News'
-						: typeof data.source === 'string' && data.source
-							? data.source
-							: newsContentMode === 'fact'
-								? 'Did you know'
-								: newsContentMode === 'quote'
-									? 'Quotes'
-									: newsContentMode === 'steps'
-										? 'Steps'
-										: storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Story';
-				nextArticleUrl = data.url ?? '';
-				nextArticleTitle = data.title ?? '';
-				articleImageUrl = data.imageUrl ?? '';
-			}
+			hookText = data.text ?? '';
+			rawText = data.description ?? data.title ?? '';
+			nextSource =
+				newsContentMode === 'news'
+					? sourceLabels[category] ?? data.source ?? 'News'
+					: typeof data.source === 'string' && data.source
+						? data.source
+						: newsContentMode === 'fact'
+							? 'Did you know'
+							: newsContentMode === 'quote'
+								? 'Quotes'
+								: newsContentMode === 'steps'
+									? 'Steps'
+									: storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Story';
+			nextArticleUrl = data.url ?? '';
+			nextArticleTitle = data.title ?? '';
+			articleImageUrl = data.imageUrl ?? '';
 
 			// Only write metadata into the workspace when we are *owning the deck* (not filling a custom template).
 			if (!fillExistingDeck) {
@@ -7115,6 +6972,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			brandStackBottomMediaBySlide = Array.from(
 				{ length: n },
 				(_, i) => brandStackBottomMediaBySlide[i] ?? BRAND_STACK_DEFAULTS.bottomMediaUrl,
+			);
+		}
+		if (videoSplitCompositedBySlide.length !== n) {
+			videoSplitCompositedBySlide = Array.from(
+				{ length: n },
+				(_, i) => videoSplitCompositedBySlide[i] ?? false,
 			);
 		}
 		if (blackTextHeadlineBySlide.length !== n) {
@@ -8849,6 +8712,78 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					}}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
 				/>
+			{:else if previewTemplate === 'videoSplit'}
+				<VideoSplitTemplate
+					bind:exportRef
+					videoSrc={canvasBackgroundVideo.trim()
+						? canvasBackgroundVideo
+						: VIDEO_SPLIT_DEFAULTS.videoUrl}
+					autoflipComposited={!!videoSplitCompositedBySlide[paintSlide]}
+					badgeLabel={VIDEO_SPLIT_DEFAULTS.badgeLabel}
+					videoMuted={canvasVideoMuted}
+					videoVolume={canvasVideoVolume}
+					videoSeekSec={videoSeekSec}
+					videoTrimStartSec={canvasVideoTrimStart}
+					videoTrimEndSec={canvasVideoTrimEnd || canvasVideoDuration || 0}
+					onVideoDuration={(d) => {
+						const dur = Number(d);
+						if (!Number.isFinite(dur) || dur <= 0) return;
+						videoDurationBySlide = Array.from(
+							{ length: slides.length },
+							(_, i) =>
+								i === paintSlide
+									? dur
+									: Number.isFinite(videoDurationBySlide[i])
+										? Math.max(0, videoDurationBySlide[i])
+										: 0,
+						);
+						const curEnd = videoTrimEndSecBySlide[paintSlide] ?? 0;
+						if (!curEnd) {
+							videoTrimEndSecBySlide = Array.from(
+								{ length: slides.length },
+								(_, i) =>
+									i === paintSlide
+										? dur
+										: Number.isFinite(videoTrimEndSecBySlide[i])
+											? Math.max(0, videoTrimEndSecBySlide[i])
+											: 0,
+							);
+						}
+					}}
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={canvasInteractive}
+				/>
+				<StudioImageStickers
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={canvasInteractive}
+					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
+					onOverlaysChange={(o) => {
+						if (!canvasInteractive) return;
+						setSlideOverlays(paintSlide, o, previewTemplate);
+					}}
+				/>
+				<StudioTextOverlays
+					w={CANVAS_W}
+					h={CANVAS_H}
+					scale={previewScale}
+					interactive={canvasInteractive}
+					highlightColor={highlightColor}
+					textOverlays={canvasTextOverlays}
+					activeTextKind={selectedText}
+					activeTextOverlayId={selectedTextOverlayId}
+					onRangeSelect={onTextOverlayRangeSelect}
+					onTextOverlaysChange={(o: any) => {
+						if (!canvasInteractive) return;
+						setSlideTextOverlays(paintSlide, o, previewTemplate);
+					}}
+					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
+					parseHighlightMarkup={false}
+				/>
 			{:else if previewTemplate === 'brandStack'}
 				<BrandStackTemplate
 					bind:exportRef
@@ -9353,7 +9288,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			{#if activeSlideHasClip && !editingBrandCta}
 				<div class="mx-auto mb-2 flex max-w-3xl flex-wrap items-center justify-center gap-2 px-2">
 					<span class="text-[10px] text-white/40">Reuse this clip as</span>
-					{#each TEMPLATES.filter((t) => ['news', 'blank', 'videoFit', 'tweet'].includes(t.id)) as t (t.id)}
+					{#each TEMPLATES.filter((t) =>
+						['news', 'blank', 'videoFit', 'videoSplit', 'tweet'].includes(t.id),
+					) as t (t.id)}
 						<button
 							type="button"
 							class="rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-white/80 hover:border-violet-400/50 hover:bg-violet-500/15 hover:text-white transition-colors"
@@ -10440,23 +10377,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							class="z-[400] max-h-[min(70vh,520px)] w-80 gap-0 overflow-y-auto rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 						>
 							<div class="p-4 flex flex-col gap-4">
-								<!-- Data source -->
-								<div class="flex items-center justify-between gap-3 rounded-xl bg-[#fafafa] border border-[#ebebeb] px-3 py-2.5">
-									<div class="flex items-center gap-2">
-										{#if useTestData}
-											<FlaskConical size={12} class="text-amber-500" />
-											<span class="text-xs font-medium text-amber-600">Test data</span>
-										{:else}
-											<Wifi size={12} class="text-emerald-500" />
-											<span class="text-xs font-medium text-emerald-600">Live API</span>
-										{/if}
-									</div>
-									<Switch bind:checked={useTestData} title={useTestData ? 'Switch to Live API' : 'Switch to Test Data'} class="shrink-0" />
-								</div>
-
 								{#if activeTemplate === 'news'}
 									<!-- Source label -->
-									<div class="space-y-2.5 pt-3.5 border-t border-[#f2f2f2]">
+									<div class="space-y-2.5">
 										<div class="flex items-center justify-between gap-2">
 											<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Source Label</Label>
 											<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
@@ -10600,11 +10523,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						onclick={() => void loadAndFill()}
 						disabled={fetchingNews}
 						title={fetchingNews
-							? useTestData
-								? 'Loading…'
-								: newsContentMode === 'news'
-									? 'Fetching…'
-									: 'Generating…'
+							? newsContentMode === 'news'
+								? 'Fetching…'
+								: 'Generating…'
 							: 'Load & Fill'}
 						class="prompt-bar-submit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-[#ffffff] transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
 					>

@@ -14,10 +14,21 @@ export type AutoReframeOptions = {
 	debug: boolean;
 };
 
+/** Default auto-reframe (face/object detection). */
 export const DEFAULT_AUTO_REFRAME: AutoReframeOptions = {
 	enabled: false,
 	aspectRatio: '9:16',
 	method: 'detection',
+	motionThreshold: 0.5,
+	paddingMethod: 'blur',
+	debug: false,
+};
+
+/** Preferred auto-reframe for the Multi split template — saliency enables pyautoflip’s multi-face stack. */
+export const VIDEO_SPLIT_AUTO_REFRAME: AutoReframeOptions = {
+	enabled: true,
+	aspectRatio: '9:16',
+	method: 'saliency',
 	motionThreshold: 0.5,
 	paddingMethod: 'blur',
 	debug: false,
@@ -78,7 +89,11 @@ export function canvasSizeForStudioFormat(formatId: StudioFormatFromReframe): { 
 /** How AutoFlip decides what stays in frame. */
 export const REFRAME_METHODS: { id: ReframeMethod; label: string; hint: string }[] = [
 	{ id: 'detection', label: 'Face & object', hint: 'Tracks people / objects (faster)' },
-	{ id: 'saliency', label: 'Saliency map', hint: 'Keeps visually important areas (slower)' },
+	{
+		id: 'saliency',
+		label: 'Multi-face split',
+		hint: 'When two faces are far apart, stacks them top/bottom (9:16)',
+	},
 ];
 
 /** When the subject doesn’t fill the target frame. */

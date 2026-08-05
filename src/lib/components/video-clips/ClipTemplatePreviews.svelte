@@ -2,6 +2,7 @@
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
+	import VideoSplitTemplate from '$lib/components/templates/VideoSplitTemplate.svelte';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import BlankTemplate from '$lib/components/templates/BlankTemplate.svelte';
@@ -31,12 +32,16 @@
 		VIDEO_FEATURE_BODY_STYLE,
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
+		VIDEO_SPLIT_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
 	import { ensureFirstWordHighlight } from '$lib/video-clips/video-hook';
 	import {
 		STUDIO_FEED_CANVAS,
+		STUDIO_VERTICAL_CANVAS,
 		studioFeedPreviewScale,
 		studioFeedPreviewHeight,
+		studioPreviewScale,
+		studioPreviewHeight,
 	} from '$lib/studio/clip-preview-canvas';
 	import {
 		parseReframeAspectFromSettingsKey,
@@ -48,7 +53,13 @@
 		type StudioClipCaptionImport,
 	} from '$lib/studio/clip-import';
 	import { markVideoSessionForResume } from '$lib/video-clips/session-cache';
-	import { STUDIO_TEMPLATES, coerceTemplateId, videoLayoutForTemplate, isVideoStoryFamily } from '$lib/studio/template-ids';
+	import {
+		STUDIO_TEMPLATES,
+		coerceTemplateId,
+		videoLayoutForTemplate,
+		isVideoStoryFamily,
+		isVideoSplitFamily,
+	} from '$lib/studio/template-ids';
 	import { ExternalLink, Layout } from 'lucide-svelte';
 
 	interface Props {
@@ -68,10 +79,18 @@
 	const scale = studioFeedPreviewScale(PREVIEW_W);
 	const PREVIEW_H = studioFeedPreviewHeight(PREVIEW_W);
 
+	const SPLIT_W = STUDIO_VERTICAL_CANVAS.w;
+	const SPLIT_H = STUDIO_VERTICAL_CANVAS.h;
+	const splitScale = studioPreviewScale(PREVIEW_W, SPLIT_W);
+	const SPLIT_PREVIEW_H = studioPreviewHeight(PREVIEW_W, SPLIT_W, SPLIT_H);
+
 	const copy = $derived(buildClipTemplateCopy(clip, source, { watermark, topicHint }));
 	const directVideo = $derived(clipDirectVideoUrl(source));
 	const thumb = $derived(source.thumbnailUrl ?? '');
 	const hasVideo = $derived(!!directVideo);
+	const splitComposited = $derived(
+		String(clip.reframeSettingsKey ?? '').includes('|saliency|'),
+	);
 
 	const videoSrc = $derived(
 		hasVideo ? clipVideoMediaFragment(directVideo, clip.startSec, clip.endSec) : '',
@@ -120,6 +139,7 @@
 				captions: caps,
 				formatId,
 				usedReframe: media.usedReframe,
+				reframeSettingsKey: clip.reframeSettingsKey,
 			});
 		} else {
 			console.warn('[videos] Edit in Studio: no direct video URL to import', {
@@ -155,7 +175,7 @@
 				<span class="preview-label">{t.label}</span>
 				<div
 					class="preview-frame"
-					style="width:{PREVIEW_W}px;height:{PREVIEW_H}px"
+					style="width:{PREVIEW_W}px;height:{isVideoSplitFamily(t.id) ? SPLIT_PREVIEW_H : PREVIEW_H}px"
 				>
 					{#if t.id === 'news'}
 						<NewsTemplate
@@ -190,6 +210,18 @@
 							canvasH={CANVAS_H}
 							{scale}
 							interactive={false}
+						/>
+					{:else if isVideoSplitFamily(t.id)}
+						<VideoSplitTemplate
+							videoSrc={videoSrc || VIDEO_SPLIT_DEFAULTS.videoUrl}
+							autoflipComposited={splitComposited}
+							badgeLabel={VIDEO_SPLIT_DEFAULTS.badgeLabel}
+							{...videoProps}
+							w={SPLIT_W}
+							h={SPLIT_H}
+							scale={splitScale}
+							interactive={false}
+							previewMode={true}
 						/>
 					{:else if isVideoStoryFamily(t.id)}
 						<VideoStoryTemplate

@@ -35,7 +35,7 @@
 	let youtubeUrl = $state('');
 	let topicHint = $state('');
 	let clipMode = $state<'highlights' | 'all'>('highlights');
-	let clipCount = $state(4);
+	let clipCount = $state(3);
 	let clipLengthPreset = $state<ClipLengthPresetId>('30to60');
 	let clipMinSec = $state(30);
 	let clipMaxSec = $state(60);

@@ -54,7 +54,7 @@
 		resolveStockForTemplate,
 		mapPool,
 	} from '$lib/studio/bulk-stock';
-	import { STUDIO_TEMPLATES, coerceTemplateId, type TemplateId } from '$lib/studio/template-ids';
+	import { STUDIO_TEMPLATES, coerceTemplateId, isVideoSplitFamily, type TemplateId } from '$lib/studio/template-ids';
 	import { GOOGLE_FONTS } from '$lib/fonts';
 	import { CAPTION_TEMPLATES } from '$lib/video-clips/caption-templates';
 	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
@@ -66,6 +66,7 @@
 	import { formatTimestamp } from '$lib/video-clips/export-clip';
 	import {
 		DEFAULT_AUTO_REFRAME,
+		VIDEO_SPLIT_AUTO_REFRAME,
 		REFRAME_ASPECTS,
 		REFRAME_METHODS,
 		REFRAME_PADDING,
@@ -861,6 +862,11 @@
 			template: next,
 			...(usesMedia ? {} : { mediaUrl: '', mediaKind: null, mediaThumb: '' }),
 		});
+
+		// Multi split → prefer pyautoflip saliency (multi-face top/bottom stack)
+		if (isVideoSplitFamily(next)) {
+			autoReframe = { ...VIDEO_SPLIT_AUTO_REFRAME };
+		}
 
 		if (autoStock && usesMedia && !mediaStillUsable) {
 			void fillStockForSlide(showId, slideId);

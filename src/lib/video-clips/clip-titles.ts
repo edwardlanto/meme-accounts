@@ -19,10 +19,17 @@ function titleFromExcerpt(excerpt: string, maxWords = 6): string {
 }
 
 function looksLikeVideoTitle(text: string, videoTitle: string): boolean {
-	const t = text.trim().toLowerCase();
-	const v = videoTitle.trim().toLowerCase();
+	const t = text.trim().toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+	const v = videoTitle.trim().toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 	if (!t || !v) return false;
-	return t === v || v.startsWith(t) || t.startsWith(v.slice(0, Math.min(t.length, v.length)));
+	if (t === v || v.startsWith(t) || t.startsWith(v.slice(0, Math.min(t.length, v.length)))) return true;
+	const tw = t.split(/\s+/).filter((w) => w.length > 2);
+	const vw = new Set(v.split(/\s+/).filter((w) => w.length > 2));
+	if (tw.length >= 4) {
+		const overlap = tw.filter((w) => vw.has(w)).length / tw.length;
+		if (overlap >= 0.7) return true;
+	}
+	return false;
 }
 
 /** Fill each clip with segment-specific title, hook, and transcript from timed captions. */

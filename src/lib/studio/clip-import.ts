@@ -53,6 +53,8 @@ export type StudioClipImport = {
 	/** Prefer this Studio canvas format (e.g. vertical for 9:16 reframed clips). */
 	formatId?: 'feed' | 'vertical' | 'wide' | 'square';
 	usedReframe?: boolean;
+	/** pyautoflip settings key (`aspect|method|…`) when the imported URL is a reframed export. */
+	reframeSettingsKey?: string;
 };
 
 export function stashStudioClipImport(payload: StudioClipImport): void {

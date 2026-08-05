@@ -3,7 +3,7 @@ import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
 import { clipNarrative } from '$lib/video-clips/clip-speech';
 import {
 	demoNewsHeadlineFromClip,
-	looksLikeRawSpeechHeadline,
+	needsNewsHeadlineRewrite,
 } from '$lib/video-clips/news-headline';
 import {
 	demoVideoHookFromClip,
@@ -142,7 +142,10 @@ export function buildClipTemplateCopy(
 	const speech = clip.transcript || clip.hook || narrative.hook;
 	const aiNews = clip.newsHeadline?.trim() ?? '';
 	const newsHeadline = clampText(
-		!looksLikeRawSpeechHeadline(aiNews, speech)
+		!needsNewsHeadlineRewrite(aiNews, {
+			transcript: speech,
+			videoTitle: source.title,
+		})
 			? aiNews
 			: demoNewsHeadlineFromClip(clip, source.title || source.description?.slice(0, 80)),
 		160,

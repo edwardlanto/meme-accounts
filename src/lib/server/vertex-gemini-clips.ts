@@ -8,7 +8,7 @@ import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 import {
 	demoNewsHeadlineFromClip,
 	ensureNewsHeadlinesForClips,
-	looksLikeRawSpeechHeadline,
+	needsNewsHeadlineRewrite,
 } from '$lib/server/news-headline-from-clip';
 import { ensureVideoHooksForClips } from '$lib/server/video-hook-from-clip';
 import {
@@ -64,7 +64,11 @@ function parseClipsJson(raw: string): { clips: VideoClip[]; summary: string } {
 			reason: String(o.reason ?? '').slice(0, 500),
 			transcript: o.transcript != null ? String(o.transcript).slice(0, 800) : undefined,
 			newsHeadline:
-				newsRaw && !looksLikeRawSpeechHeadline(newsRaw, speechForCheck)
+				newsRaw &&
+				!needsNewsHeadlineRewrite(newsRaw, {
+					transcript: speechForCheck,
+					videoTitle: undefined,
+				})
 					? newsRaw.slice(0, 320)
 					: undefined,
 			videoHook:

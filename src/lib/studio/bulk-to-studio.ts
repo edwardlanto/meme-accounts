@@ -1,7 +1,13 @@
 /** Bulk workspace: each idea is its own multi-slide slideshow. */
 
 import type { TemplateId } from './template-ids';
-import { coerceTemplateId, isPhotoStoryFamily, isVideoStoryFamily, isWhitePostFamily } from './template-ids';
+import {
+	coerceTemplateId,
+	isPhotoStoryFamily,
+	isVideoSplitFamily,
+	isVideoStoryFamily,
+	isWhitePostFamily,
+} from './template-ids';
 	import {
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
@@ -371,7 +377,7 @@ export function buildDraftStateFromShow(
 		const tpl = coerceTemplateId(r.template);
 		const url = String(r.mediaUrl ?? '').trim();
 		if (!url) return;
-		if (r.mediaKind === 'video' || isVideoStoryFamily(tpl)) {
+		if (r.mediaKind === 'video' || isVideoStoryFamily(tpl) || isVideoSplitFamily(tpl)) {
 			if (!bgVideosByTemplate[tpl]) bgVideosByTemplate[tpl] = Array.from({ length: n }, () => '');
 			bgVideosByTemplate[tpl]![i] = url;
 		} else {
@@ -429,6 +435,12 @@ export function buildDraftStateFromShow(
 		newsSubtextBySlide,
 		bgImagesByTemplate,
 		bgVideosByTemplate,
+		/** True when pyautoflip saliency already stacked faces into one 9:16 MP4. */
+		videoSplitCompositedBySlide: list.map(
+			(r) =>
+				isVideoSplitFamily(coerceTemplateId(r.template)) &&
+				String(r.reframeSettingsKey ?? '').includes('|saliency|'),
+		),
 		brandCtaEnabled: opts?.brandCtaEnabled === true,
 		exportedSlides: [],
 		_fromBulk: true,

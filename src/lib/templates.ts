@@ -182,6 +182,19 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		badgeColor: 'text-fuchsia-400',
 	},
 	{
+		id: 'video-split',
+		studioId: 'videoSplit',
+		name: 'Multi split',
+		description:
+			'Stacked dual panel (9:16) — uses pyautoflip multi-face saliency when two subjects are far apart',
+		href: '/dashboard/studio?template=split',
+		previewBg: '/placeholders/carousel/hook-video-placeholder.png',
+		previewText: '',
+		previewSource: '',
+		badge: 'Video',
+		badgeColor: 'text-fuchsia-400',
+	},
+	{
 		id: 'video-blur',
 		studioId: 'videoBlur',
 		layoutId: 'blur',

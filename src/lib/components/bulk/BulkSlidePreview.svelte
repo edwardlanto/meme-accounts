@@ -4,6 +4,7 @@
 	import {
 		coerceTemplateId,
 		isVideoStoryFamily,
+		isVideoSplitFamily,
 		videoLayoutForTemplate,
 	} from '$lib/studio/template-ids';
 	import {
@@ -36,6 +37,7 @@
 		VIDEO_SOURCE_DEFAULTS,
 		VIDEO_SOURCE_HEADLINE_STYLE,
 		VIDEO_STORY_DEFAULTS,
+		VIDEO_SPLIT_DEFAULTS,
 		VIDEO_TEXT_HEADLINE_STYLE,
 		WHITE_MEDIA_DEFAULTS,
 		WHITE_THREAD_DEFAULTS,
@@ -48,6 +50,7 @@
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
 	import WhitePostTemplate from '$lib/components/templates/WhitePostTemplate.svelte';
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
+	import VideoSplitTemplate from '$lib/components/templates/VideoSplitTemplate.svelte';
 	import BlackTextCarouselTemplate from '$lib/components/templates/BlackTextCarouselTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
@@ -74,6 +77,7 @@
 
 	/** Video / reframed clips preview in the matching Studio format (usually 9:16). */
 	const previewFormat = $derived.by(() => {
+		if (isVideoSplitFamily(coerceTemplateId(slide.template))) return 'vertical' as const;
 		if (slide.mediaKind === 'video') {
 			const aspect =
 				parseReframeAspectFromSettingsKey(slide.reframeSettingsKey) ??
@@ -83,7 +87,7 @@
 		return 'feed' as const;
 	});
 	const canvasSize = $derived(
-		slide.mediaKind === 'video'
+		slide.mediaKind === 'video' || isVideoSplitFamily(coerceTemplateId(slide.template))
 			? canvasSizeForStudioFormat(previewFormat)
 			: STUDIO_FEED_CANVAS,
 	);
@@ -238,6 +242,17 @@
 				avatar={template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.avatarUrl : WHITE_THREAD_DEFAULTS.avatarUrl}
 				text={whiteBody}
 				mediaImage={optimizeImageUrl(mediaUrl || WHITE_MEDIA_DEFAULTS.imageUrl, fetchW)}
+				w={CANVAS_W}
+				h={CANVAS_H}
+				{scale}
+				interactive={false}
+				previewMode={true}
+			/>
+		{:else if isVideoSplitFamily(template)}
+			<VideoSplitTemplate
+				videoSrc={mediaUrl || VIDEO_SPLIT_DEFAULTS.videoUrl}
+				autoflipComposited={String(slide.reframeSettingsKey ?? '').includes('|saliency|')}
+				badgeLabel={VIDEO_SPLIT_DEFAULTS.badgeLabel}
 				w={CANVAS_W}
 				h={CANVAS_H}
 				{scale}

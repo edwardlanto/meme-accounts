@@ -19,6 +19,7 @@ const BY_TEMPLATE: Partial<Record<TemplateId, StudioTemplateRuntime>> = {
 	imageQuote: DEFAULT,
 	videoStory: DEFAULT,
 	videoFit: DEFAULT,
+	videoSplit: DEFAULT,
 	videoBlur: DEFAULT,
 	videoHook: DEFAULT,
 	videoCreator: DEFAULT,

@@ -112,6 +112,7 @@ export function bulkSlideFromVideoClip(
 	const displayHeadline =
 		newsHeadlineForEditor(templateHeadline) ||
 		cleanClipSpeechText(clip.title) ||
+		cleanClipSpeechText(clip.hook || '') ||
 		'Clip';
 	const captionSegments = buildCaptionSegmentsForClip(clip, source);
 	const captionBody = captionPreviewText(captionSegments);

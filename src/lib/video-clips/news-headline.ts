@@ -35,6 +35,13 @@ function normWords(text: string): string[] {
 		.filter((w) => w.length > 2);
 }
 
+/** Stable key for duplicate detection across clips. */
+export function newsHeadlineDedupeKey(headline: string | undefined | null): string {
+	return normWords(String(headline ?? ''))
+		.join(' ')
+		.trim();
+}
+
 function looksLikeSpeechFragmentTitle(title: string): boolean {
 	const t = cleanClipSpeechText(title);
 	if (!t) return true;
@@ -42,6 +49,31 @@ function looksLikeSpeechFragmentTitle(title: string): boolean {
 	if (/^(segment|part|clip)\s*\d+$/i.test(t)) return true;
 	// Mid-sentence speech starts
 	if (/^(i |i'm |you |we |they |and |but |so |well )/i.test(t)) return true;
+	return false;
+}
+
+function isGenericSegmentTitle(title: string): boolean {
+	return /^(segment|part|clip)\s*\d+$/i.test(cleanClipSpeechText(title).trim());
+}
+
+/**
+ * True when the headline mostly restates the full video title
+ * (common Gemini failure: same overlay for every clip).
+ */
+export function headlineEchoesVideoTitle(
+	headline: string | undefined | null,
+	videoTitle: string | undefined | null,
+): boolean {
+	const h = normWords(String(headline ?? ''));
+	const v = normWords(String(videoTitle ?? ''));
+	if (h.length < 4 || v.length < 4) return false;
+	const vSet = new Set(v);
+	const overlap = h.filter((w) => vSet.has(w)).length / h.length;
+	if (overlap >= 0.62) return true;
+	const hKey = h.join(' ');
+	const vKey = v.join(' ');
+	if (hKey === vKey) return true;
+	if (vKey.startsWith(hKey) || hKey.startsWith(vKey.slice(0, Math.min(hKey.length, 48)))) return true;
 	return false;
 }
 
@@ -78,22 +110,48 @@ export function looksLikeRawSpeechHeadline(
 	return false;
 }
 
-/**
- * Last-resort copy when every LLM path fails — just the video/clip title, never a viral slogan.
- */
-export function demoNewsHeadlineFromClip(
-	clip: Pick<VideoClip, 'title' | 'hook' | 'transcript'>,
-	videoTitle?: string,
-): string {
-	const fromVideo = cleanClipSpeechText(videoTitle ?? '');
-	const fromClip = cleanClipSpeechText(clip.title || '');
-	const topic =
-		fromVideo && !looksLikeSpeechFragmentTitle(fromVideo)
-			? fromVideo
-			: fromClip && !looksLikeSpeechFragmentTitle(fromClip)
-				? fromClip
-				: cleanClipSpeechText(clip.hook || '').slice(0, 80) || 'BREAKING UPDATE';
+/** Whether this clip still needs a per-moment news title. */
+export function needsNewsHeadlineRewrite(
+	headline: string | undefined | null,
+	opts: {
+		transcript?: string | null;
+		videoTitle?: string | null;
+		/** Other headlines already used in this batch (dedupe keys). */
+		usedKeys?: Iterable<string>;
+	} = {},
+): boolean {
+	const speech = opts.transcript;
+	if (looksLikeRawSpeechHeadline(headline, speech)) return true;
+	if (headlineEchoesVideoTitle(headline, opts.videoTitle)) return true;
+	const key = newsHeadlineDedupeKey(headline);
+	if (!key) return true;
+	if (opts.usedKeys) {
+		for (const u of opts.usedKeys) {
+			if (u && u === key) return true;
+		}
+	}
+	return false;
+}
 
+/** Pull a short topic phrase from spoken words (not a full quote dump). */
+function topicFromSpeech(speech: string): string {
+	const cleaned = cleanClipSpeechText(speech);
+	const sentence = cleaned.split(/(?<=[.!?])\s+/)[0]?.trim() || cleaned;
+	const stripped = sentence
+		.replace(
+			/^(okay|ok|so|well|and|but|now|like|yeah|uh|um|look|listen|alright|all right)[,.]?\s+/i,
+			'',
+		)
+		.replace(/^(before i get into|let me|i want to|i'm going to|we're going to)\s+/i, '');
+	const words = stripped
+		.replace(/[.!?,;:]+$/g, '')
+		.split(/\s+/)
+		.filter((w) => w.length > 0 && !/^[\[\],.]+$/.test(w));
+	if (words.length === 0) return '';
+	return words.slice(0, Math.min(12, words.length)).join(' ');
+}
+
+function formatAllCapsNews(topic: string): string {
 	const words = topic
 		.toUpperCase()
 		.replace(/[^\w\s$%'-]/g, ' ')
@@ -101,11 +159,48 @@ export function demoNewsHeadlineFromClip(
 		.filter(Boolean)
 		.slice(0, 14);
 
-	if (words.length <= 3) {
-		return words.join(' ').slice(0, 140);
-	}
-	// Light highlight on the first meaningful chunk — still unique per video, no slogan
+	if (words.length === 0) return 'BREAKING UPDATE';
+	if (words.length <= 3) return words.join(' ').slice(0, 140);
+
 	const head = words.slice(0, Math.min(4, words.length)).join(' ');
 	const rest = words.slice(Math.min(4, words.length)).join(' ');
 	return (rest ? `[[${head}]] ${rest}` : `[[${head}]]`).slice(0, 140);
+}
+
+/**
+ * Last-resort copy when every LLM path fails — prefer THIS clip's moment,
+ * never stamp the full video title on every slide.
+ */
+export function demoNewsHeadlineFromClip(
+	clip: Pick<VideoClip, 'title' | 'hook' | 'transcript'>,
+	videoTitle?: string,
+): string {
+	const speech = cleanClipSpeechText(clip.transcript || clip.hook || '');
+	const fromClip = cleanClipSpeechText(clip.title || '');
+	const fromVideo = cleanClipSpeechText(videoTitle ?? '');
+
+	let topic = '';
+	if (
+		fromClip.length >= 8 &&
+		!looksLikeSpeechFragmentTitle(fromClip) &&
+		!isGenericSegmentTitle(fromClip) &&
+		!headlineEchoesVideoTitle(fromClip, fromVideo)
+	) {
+		topic = fromClip;
+	} else if (speech.length >= 20) {
+		topic = topicFromSpeech(speech);
+	} else if (
+		fromClip.length >= 8 &&
+		!isGenericSegmentTitle(fromClip) &&
+		!headlineEchoesVideoTitle(fromClip, fromVideo)
+	) {
+		topic = fromClip;
+	} else if (fromVideo) {
+		// Absolute last resort — only when this clip has no usable speech/title
+		topic = fromVideo;
+	} else {
+		topic = 'BREAKING UPDATE';
+	}
+
+	return formatAllCapsNews(topic || 'BREAKING UPDATE');
 }

@@ -136,6 +136,12 @@ export const BRAND_STACK_HEADLINE_STYLE = {
 	align: 'center' as const,
 } as const;
 
+/** Dual-panel 9:16 — pyautoflip saliency multi-face stack. */
+export const VIDEO_SPLIT_DEFAULTS = {
+	videoUrl: '/videos/video-template.mp4',
+	badgeLabel: 'Output (9:16)',
+} as const;
+
 /** Readable on the black video-story canvas (Studio + clip previews). */
 export const VIDEO_STORY_HEADLINE_STYLE = {
 	color: '#f4f4f5',
