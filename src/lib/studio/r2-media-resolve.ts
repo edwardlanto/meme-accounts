@@ -21,27 +21,51 @@ export function resolveStoredMediaUrl(u: unknown, r2UrlByKey: Record<string, str
 	return r2UrlByKey[key] ?? '';
 }
 
+/** In-flight sign promises keyed by R2 object key (module-level per call site via Map arg). */
 export async function ensureR2RefLoaded(
 	refOrUrl: string,
 	r2UrlByKey: Record<string, string>,
 	inFlight: Set<string>,
 	signRead: (p: { key: string }) => Promise<{ url: string }>,
 	onResolved: (key: string, url: string) => void,
+	inFlightPromises?: Map<string, Promise<void>>,
 ): Promise<void> {
 	if (!isR2Ref(refOrUrl)) return;
 	const key = r2KeyFromRef(refOrUrl);
 	if (!key) return;
 	if (r2UrlByKey[key]) return;
-	if (inFlight.has(key)) return;
-	inFlight.add(key);
-	try {
-		const { url } = await signRead({ key });
-		onResolved(key, url);
-	} catch {
-		// keep unresolved (renders blank)
-	} finally {
-		inFlight.delete(key);
+
+	const pending = inFlightPromises?.get(key);
+	if (pending) {
+		await pending;
+		return;
 	}
+
+	if (inFlight.has(key) && !inFlightPromises) {
+		const started = Date.now();
+		while (inFlight.has(key) && Date.now() - started < 15_000) {
+			await new Promise((r) => setTimeout(r, 40));
+			if (r2UrlByKey[key]) return;
+		}
+		return;
+	}
+
+	const run = (async () => {
+		inFlight.add(key);
+		try {
+			const { url } = await signRead({ key });
+			if (!url) return;
+			onResolved(key, url);
+		} catch {
+			// keep unresolved (renders blank) — callers can check resolveStoredMediaUrl
+		} finally {
+			inFlight.delete(key);
+			inFlightPromises?.delete(key);
+		}
+	})();
+
+	inFlightPromises?.set(key, run);
+	await run;
 }
 
 export type StudioR2PrefetchMedia = {

@@ -2,20 +2,24 @@
 
 import type { TemplateId } from './template-ids';
 import { coerceTemplateId, isPhotoStoryFamily, isVideoStoryFamily, isWhitePostFamily } from './template-ids';
-import {
-	BLACK_TEXT_CAROUSEL_DEFAULTS,
-	IMAGE_QUOTE_DEFAULTS,
-	NEWS_DEFAULT_LAYOUT,
-	PHOTO_CAPTION_DEFAULTS,
-	PHOTO_TOPIC_DEFAULTS,
-	TEXT_CAROUSEL_DEFAULTS,
-	VIDEO_STORY_DEFAULTS,
-	WHITE_MEDIA_DEFAULTS,
-	WHITE_THREAD_DEFAULTS,
-} from './slide-content-defaults';
-import type { StudioClipCaptionImport } from './clip-import';
-import type { CaptionSegment } from '$lib/video-clips/caption-sync';
-import { DEFAULT_BRAND_KIT } from './brand-kit';
+	import {
+		BLACK_TEXT_CAROUSEL_DEFAULTS,
+		IMAGE_QUOTE_DEFAULTS,
+		NEWS_DEFAULT_LAYOUT,
+		PHOTO_CAPTION_DEFAULTS,
+		PHOTO_TOPIC_DEFAULTS,
+		TEXT_CAROUSEL_DEFAULTS,
+		VIDEO_STORY_DEFAULTS,
+		WHITE_MEDIA_DEFAULTS,
+		WHITE_THREAD_DEFAULTS,
+	} from './slide-content-defaults';
+	import type { StudioClipCaptionImport } from './clip-import';
+	import type { CaptionSegment } from '$lib/video-clips/caption-sync';
+	import { DEFAULT_BRAND_KIT } from './brand-kit';
+	import {
+		parseReframeAspectFromSettingsKey,
+		studioFormatForReframeAspect,
+	} from '$lib/video-clips/reframe';
 
 export const STUDIO_BULK_IMPORT_KEY = 'studio_bulk_import_v1';
 export const BULK_CLIP_HANDOFF_KEY = 'bulk_clip_handoff_v1';
@@ -384,10 +388,23 @@ export function buildDraftStateFromShow(
 	// Studio blanks the canvas before applying an import, which zeroes the News
 	// shadow. Ship the defaults back so the headline keeps its dark shelf.
 	const usesNews = slideTemplates.includes('news');
+	const videoSlide = list.find((s) => s.mediaKind === 'video');
+	const reframeAspect =
+		parseReframeAspectFromSettingsKey(videoSlide?.reframeSettingsKey) ??
+		(videoSlide?.reframedPlaybackUrl ? '9:16' : null);
+	const formatId = videoSlide
+		? studioFormatForReframeAspect(reframeAspect ?? '9:16')
+		: 'feed';
 
 	return {
 		slideCount: n,
 		activeSlide: opts?.activeSlide ?? (activeIdx >= 0 ? activeIdx : 0),
+		formatId,
+		bgFitMode: NEWS_DEFAULT_LAYOUT.bgFitMode,
+		bgZoom: NEWS_DEFAULT_LAYOUT.bgZoom,
+		bgOffsetX: NEWS_DEFAULT_LAYOUT.bgOffsetX,
+		bgOffsetY: NEWS_DEFAULT_LAYOUT.bgOffsetY,
+		bgContainMagnify: NEWS_DEFAULT_LAYOUT.bgContainMagnify,
 		...(usesNews
 			? {
 					shadowHeight: NEWS_DEFAULT_LAYOUT.shadowHeight,

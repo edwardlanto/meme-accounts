@@ -55,6 +55,7 @@
 			<a href="/pricing">Pricing</a>
 			<a href="/fake-tweet-maker">Tweet Maker</a>
 			<a href="/instagram-carousel-maker">Instagram</a>
+			<a href="/instagram-grid-maker">Grid</a>
 			<a href="/linkedin-carousel-maker" aria-current="page">LinkedIn</a>
 		</div>
 		<div class="nav-actions">

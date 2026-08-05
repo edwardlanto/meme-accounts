@@ -9,6 +9,7 @@
 		interactive?: boolean;
 		overlays?: Overlay[];
 		onOverlaysChange?: (next: Overlay[]) => void;
+		resolveSrc?: (src: string) => string;
 	}
 
 	let {
@@ -18,6 +19,7 @@
 		interactive = true,
 		overlays = [],
 		onOverlaysChange,
+		resolveSrc,
 	}: Props = $props();
 
 	const W = $derived(Math.max(1, Number(w) || 1080));
@@ -56,6 +58,7 @@
 					{scale}
 					{interactive}
 					{onOverlaysChange}
+					{resolveSrc}
 				/>
 			{/if}
 		{/each}

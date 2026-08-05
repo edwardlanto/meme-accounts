@@ -7,6 +7,7 @@
 		// Search, FlaskConical, BarChart3, CalendarDays, Plug,
 		Rows3,
 		Video,
+		Grid3x3,
 	} from 'lucide-svelte';
 	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
 
@@ -18,6 +19,7 @@
 			items: [
 				{ href: '/dashboard',              label: 'Overview',     icon: LayoutDashboard },
 				{ href: '/dashboard/carousels',    label: 'Carousels',    icon: ImagePlus },
+				{ href: '/dashboard/grid',         label: 'Grid',         icon: Grid3x3 },
 				{ href: '/dashboard/bulk',         label: 'Bulk',         icon: Rows3 },
 				{ href: '/dashboard/videos',       label: 'Videos',       icon: Video },
 			]

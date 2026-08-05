@@ -50,6 +50,9 @@ export type StudioClipImport = {
 	carouselBody?: string;
 	/** Timed captions from the Videos page (when captions were on). */
 	captions?: StudioClipCaptionImport | null;
+	/** Prefer this Studio canvas format (e.g. vertical for 9:16 reframed clips). */
+	formatId?: 'feed' | 'vertical' | 'wide' | 'square';
+	usedReframe?: boolean;
 };
 
 export function stashStudioClipImport(payload: StudioClipImport): void {

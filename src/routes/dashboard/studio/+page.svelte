@@ -27,6 +27,7 @@ import JSZip from 'jszip';
 	import StudioAssetsSidebar from '$lib/components/studio/StudioAssetsSidebar.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import StudioCanvasSkeleton from '$lib/components/studio/StudioCanvasSkeleton.svelte';
+	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
 	import { fade } from 'svelte/transition';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import TextCarouselAvatarToolbar from '$lib/components/TextCarouselAvatarToolbar.svelte';
@@ -949,6 +950,8 @@ import JSZip from 'jszip';
 			bgOffsetX = 50;
 			bgOffsetY = 50;
 			bgContainMagnify = NEWS_DEFAULT_LAYOUT.bgContainMagnify;
+			const preferredFormat = payload.formatId ?? 'vertical';
+			formatId = normalizeStudioFormatId(preferredFormat);
 		}
 
 		// Transfer CapCut captions from Videos page onto this canvas
@@ -1859,6 +1862,16 @@ import JSZip from 'jszip';
 		forcedTemplateFromQuery = next;
 		if (!hasSaved && !hasDraft) {
 			skipLatestWorkspaceDraftRestore = true;
+			// Re-cover with skeleton while filmstrip re-captures (avoids canvas slide-cycle flash).
+			filmstripInitialPassPending = true;
+			studioSizeTransitions = false;
+			bootSkeletonShownAt = typeof performance !== 'undefined' ? performance.now() : 0;
+			// Re-lock current display size — don't recompute from a shifting host (that shook the slide).
+			if (bootShellW == null || bootShellH == null) {
+				const s = fitScaleFor(previewHostW, previewHostH, CANVAS_W, CANVAS_H);
+				bootShellW = CANVAS_W * s;
+				bootShellH = CANVAS_H * s;
+			}
 			applyBlankCanvas();
 			applyTemplateToAll(next);
 			seedNewsStarterPlaceholderLayout();
@@ -2077,11 +2090,19 @@ import JSZip from 'jszip';
 	// Resolution logic lives in `$lib/studio/r2-media-resolve.ts` (single source of truth).
 	let r2ResolvedUrlByKey = $state<Record<string, string>>({});
 	const r2Resolving = new Set<string>();
+	const r2ResolvingPromises = new Map<string, Promise<void>>();
 
 	async function ensureR2Resolved(refOrUrl: string) {
-		await ensureR2RefLoaded(refOrUrl, r2ResolvedUrlByKey, r2Resolving, r2SignRead, (key, url) => {
-			r2ResolvedUrlByKey = { ...r2ResolvedUrlByKey, [key]: url };
-		});
+		await ensureR2RefLoaded(
+			refOrUrl,
+			r2ResolvedUrlByKey,
+			r2Resolving,
+			r2SignRead,
+			(key, url) => {
+				r2ResolvedUrlByKey = { ...r2ResolvedUrlByKey, [key]: url };
+			},
+			r2ResolvingPromises,
+		);
 	}
 
 	function resolveMediaUrl(u: unknown): string {
@@ -2307,7 +2328,7 @@ import JSZip from 'jszip';
 	let circle2Size = $state(220);
 
 	// Background pan (extended range for extra drag headroom; template clamps)
-	let bgOffsetX = $state(0); // horizontal focal point (≈0–100 typical; wider allowed)
+	let bgOffsetX = $state(50); // horizontal focal point (≈0–100 typical; wider allowed)
 	let bgOffsetY = $state(50); // vertical focal point
 	let bgZoom    = $state(100); // background zoom %: <100 shrinks/letterboxes, >100 zooms in (cover mode only)
 	let bgFitMode = $state<'cover' | 'contain'>('cover'); // cover = full-bleed (Videos preview); contain = letterbox + magnify
@@ -7316,24 +7337,50 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	}
 
 	// ── Handle image uploads ──────────────────────────────────────────────
-	function handleBgUpload(e: Event) {
-		const file = (e.target as HTMLInputElement).files?.[0];
+	async function handleBgUpload(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
 		if (!file) return;
-		const reader = new FileReader();
+		input.value = '';
 		const idx = activeSlide;
 		const t = activeTemplate;
-		reader.onload = () => {
-			setSlideImage(idx, reader.result as string, t);
-		};
-		reader.readAsDataURL(file);
+		try {
+			const dataUrl = await prepareImageAsDataUrl(file, {
+				maxDim: 1600,
+				maxBytes: 1_800_000,
+				quality: 0.85,
+			});
+			setSlideImage(idx, dataUrl, t);
+		} catch (err) {
+			console.warn('[studio] bg upload failed', err);
+			alert(err instanceof Error ? err.message : 'Image upload failed');
+		}
 	}
 
 	/** Apply a saved library asset (`r2:…`) as the active slide background. */
 	async function applyAssetAsBackground(r2Ref: string) {
 		const ref = String(r2Ref ?? '').trim();
 		if (!ref) return;
-		await ensureR2Resolved(ref);
-		setSlideImage(activeSlide, ref, activeTemplate);
+		try {
+			await ensureR2Resolved(ref);
+			const resolved = resolveMediaUrl(ref);
+			if (!resolved) {
+				alert('Could not load this asset — try again or re-upload it.');
+				return;
+			}
+			const t = activeTemplate;
+			const i = activeSlide;
+			// Clear video without wiping the image slot (setSlideVideo blanks images).
+			const vids = templateMediaArraysPadded(t, i).videos;
+			bgVideosByTemplate = {
+				...bgVideosByTemplate,
+				[t]: vids.map((v, idx) => (idx === i ? '' : v)),
+			};
+			if (t === 'news' || t === 'blank') applyNewsSeedBackgroundLayout();
+			setSlideImage(i, ref, t);
+		} catch (e: unknown) {
+			alert(e instanceof Error ? e.message : 'Could not apply asset');
+		}
 	}
 
 	/** Brand stack: apply a library asset to the bottom media slot. */
@@ -7376,7 +7423,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (!ref) return;
 		await ensureR2Resolved(ref);
 		const resolved = resolveMediaUrl(ref);
-		const measureSrc = resolved || ref;
+		if (!resolved) {
+			alert('Could not load this asset — try again or re-upload it.');
+			return;
+		}
+		const measureSrc = resolved;
 		const img = new window.Image();
 		img.onload = () => {
 			const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
@@ -7395,17 +7446,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
 		};
 		img.onerror = () => {
-			const idx = activeSlide;
-			const newOverlay: Overlay = {
-				id: crypto.randomUUID(),
-				src: ref,
-				x: Math.round((CANVAS_W - 240) / 2),
-				y: Math.round((CANVAS_H - 240) / 2),
-				w: 240,
-				h: 240,
-			};
-			const current = (slideOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
-			setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
+			alert('Could not load this asset image.');
 		};
 		img.src = measureSrc;
 	}
@@ -7663,43 +7704,73 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	let previewHostH = $state(600);
 	/** False until the host is measured — the canvas stays behind the skeleton so the first resize isn't visible. */
 	let previewMeasured = $state(false);
-	/** True until the first post-boot filmstrip pass finishes (or is skipped) — only affects filmstrip debounce. */
+	/** True until the first post-boot filmstrip pass finishes (blocks canvas reveal — capture cycles the main preview). */
 	let filmstripInitialPassPending = $state(true);
-	/** Size transitions stay off until one frame after the boot overlay clears (avoids a width/height tween on reveal). */
+	/** Size transitions stay off until after the first stable reveal. */
 	let studioSizeTransitions = $state(false);
-	/** Locked shell size during boot — draft restore can change format without reflowing the dock/filmstrip. */
+	/** Locked shell size until reveal — frozen after first post-boot measure (avoids load shake). */
 	let bootShellW = $state<number | null>(null);
 	let bootShellH = $state<number | null>(null);
+	/** Ensures the boot skeleton is on-screen long enough to read (avoids instant pop). */
+	let bootSkeletonShownAt = $state(
+		typeof performance !== 'undefined' ? performance.now() : 0,
+	);
+
+	function fitScaleFor(hostW: number, hostH: number, canvasW: number, canvasH: number) {
+		return Math.min(
+			PREVIEW_COMFORT_MAX_W / canvasW,
+			PREVIEW_COMFORT_MAX_H / canvasH,
+			hostW / canvasW,
+			hostH / canvasH,
+		);
+	}
 
 	$effect(() => {
 		const el = studioPreviewHostEl;
 		const booting = studioBooting;
+		void CANVAS_W;
+		void CANVAS_H;
+		// Wait until draft/format restore finishes so the first lock matches the real canvas size.
+		if (booting) return;
+
+		const padX = 40;
+		const padY = 56;
+		const applyHostSize = (w: number, h: number, lockShell: boolean) => {
+			previewHostW = w;
+			previewHostH = h;
+			if (lockShell || bootShellW == null || bootShellH == null) {
+				const s = fitScaleFor(w, h, CANVAS_W, CANVAS_H);
+				bootShellW = CANVAS_W * s;
+				bootShellH = CANVAS_H * s;
+			}
+			previewMeasured = true;
+		};
+
 		if (typeof ResizeObserver === 'undefined') {
-			if (typeof window !== 'undefined') {
-				previewHostW = Math.max(240, window.innerWidth - 280);
-				previewHostH = Math.max(240, window.innerHeight - 220);
-				previewMeasured = true;
+			if (typeof window !== 'undefined' && !previewMeasured) {
+				applyHostSize(
+					Math.max(240, window.innerWidth - 280),
+					Math.max(240, window.innerHeight - 220),
+					true,
+				);
 			}
 			return;
 		}
 		if (!el) return;
-		const padX = 40;
-		const padY = 56;
+
 		const measure = () => {
 			const w = Math.max(200, el.clientWidth - padX);
 			const h = Math.max(200, el.clientHeight - padY);
-			// During boot, lock to the first measure so draft restore / format changes don't resize the shell.
-			if (booting) {
-				if (!previewMeasured) {
-					previewHostW = w;
-					previewHostH = h;
-					previewMeasured = true;
-				}
+			if (!previewMeasured) {
+				applyHostSize(w, h, true);
 				return;
 			}
+			// Frozen shell until reveal — do not chase format/host churn (that was the load shake).
+			if (bootShellW != null && bootShellH != null) return;
+			// Ignore sub-pixel / scrollbar flicker so the chosen slide doesn't keep resizing.
+			if (Math.abs(w - previewHostW) < 4 && Math.abs(h - previewHostH) < 4) return;
 			previewHostW = w;
 			previewHostH = h;
-			previewMeasured = true;
 		};
 		const ro = new ResizeObserver(measure);
 		ro.observe(el);
@@ -7707,57 +7778,71 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		return () => ro.disconnect();
 	});
 
-	/** Canvas shows once measured and draft/auth boot finished — filmstrip thumbs load independently. */
+	/** Canvas host measured + draft/auth boot finished. Filmstrip thumbs may still be capturing. */
 	const studioCanvasReady = $derived(previewMeasured && !studioBooting);
+	/**
+	 * First paint the user should see: wait for the initial filmstrip pass too.
+	 * Capture temporarily cycles `canvasRasterSlide` on the main export node — keep the
+	 * skeleton up so that doesn’t read as a shake/flicker on `?template=` boot.
+	 */
+	const studioRevealReady = $derived(studioCanvasReady && !filmstripInitialPassPending);
 
-	const previewScaleComfort = $derived(
-		Math.min(PREVIEW_COMFORT_MAX_W / CANVAS_W, PREVIEW_COMFORT_MAX_H / CANVAS_H),
-	);
-	const previewScaleFit = $derived(
-		Math.min(
-			PREVIEW_COMFORT_MAX_W / CANVAS_W,
-			PREVIEW_COMFORT_MAX_H / CANVAS_H,
-			previewHostW / CANVAS_W,
-			previewHostH / CANVAS_H,
-		),
-	);
-	/** Stable comfort cap while booting; snap to fit once boot completes (before size transitions enable). */
+	/**
+	 * While the shell is locked, scale from the locked box so format changes can't
+	 * resize the on-screen slide. After unlock, fit the live host.
+	 */
 	const previewScale = $derived(
-		studioBooting || !previewMeasured ? previewScaleComfort : previewScaleFit,
+		bootShellW != null && bootShellH != null && CANVAS_W > 0 && CANVAS_H > 0
+			? Math.min(bootShellW / CANVAS_W, bootShellH / CANVAS_H)
+			: fitScaleFor(previewHostW, previewHostH, CANVAS_W, CANVAS_H),
 	);
 	const previewDisplayW = $derived(bootShellW ?? CANVAS_W * previewScale);
 	const previewDisplayH = $derived(bootShellH ?? CANVAS_H * previewScale);
 
 	$effect(() => {
-		if (!studioCanvasReady) {
+		if (!studioRevealReady) {
 			studioSizeTransitions = false;
+			if (!bootSkeletonShownAt && typeof performance !== 'undefined') {
+				bootSkeletonShownAt = performance.now();
+			}
 			return;
 		}
+		// Unlock at the same pixel size (no tween), then allow size transitions only
+		// for later intentional resizes (format dock / window).
+		let cancelled = false;
+		let enableTimer = 0;
 		const id = requestAnimationFrame(() => {
-			studioSizeTransitions = true;
+			if (cancelled) return;
+			bootShellW = null;
+			bootShellH = null;
+			enableTimer = window.setTimeout(() => {
+				if (!cancelled) studioSizeTransitions = true;
+			}, 320);
 		});
-		return () => cancelAnimationFrame(id);
+		return () => {
+			cancelled = true;
+			cancelAnimationFrame(id);
+			window.clearTimeout(enableTimer);
+		};
 	});
 
-	$effect(() => {
-		if (!studioCanvasReady) return;
-		bootShellW = null;
-		bootShellH = null;
-	});
-
-	$effect(() => {
-		if (!studioBooting || !previewMeasured) return;
-		const w = CANVAS_W * previewScaleFit;
-		const h = CANVAS_H * previewScaleFit;
-		if (bootShellW === null) {
-			bootShellW = w;
-			bootShellH = h;
+	async function finishFilmstripInitialPass() {
+		if (!filmstripInitialPassPending) return;
+		const MIN_VISIBLE_MS = 450;
+		const shownAt = bootSkeletonShownAt || (typeof performance !== 'undefined' ? performance.now() : 0);
+		const elapsed = typeof performance !== 'undefined' ? performance.now() - shownAt : MIN_VISIBLE_MS;
+		if (elapsed < MIN_VISIBLE_MS) {
+			await new Promise((r) => setTimeout(r, MIN_VISIBLE_MS - elapsed));
 		}
-	});
-
-	function finishFilmstripInitialPass() {
 		if (filmstripInitialPassPending) filmstripInitialPassPending = false;
 	}
+
+	/** Don't leave filmstrip thumbs skeletoned forever if capture stalls. */
+	$effect(() => {
+		if (!studioCanvasReady || !filmstripInitialPassPending) return;
+		const t = setTimeout(() => void finishFilmstripInitialPass(), 8000);
+		return () => clearTimeout(t);
+	});
 
 	/** Raster snapshots for filmstrip (same pipeline as ZIP export, low pixel ratio). */
 	let filmstripPreviewUrls = $state<string[]>([]);
@@ -8112,7 +8197,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (n === 0) {
 			prevFilmstripSigs = [];
 			filmstripPreviewUrls = [];
-			finishFilmstripInitialPass();
+			void finishFilmstripInitialPass();
 			return;
 		}
 
@@ -8126,7 +8211,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 
 		if (!changed.length) {
-			finishFilmstripInitialPass();
+			void finishFilmstripInitialPass();
 			return;
 		}
 
@@ -8164,7 +8249,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				: refreshFilmstripPreviewSlices(changed);
 			void Promise.resolve(run).finally(() => {
 				if (passId !== filmstripPassId) return;
-				if (isInitialReveal) finishFilmstripInitialPass();
+				if (isInitialReveal) void finishFilmstripInitialPass();
 			});
 		}
 
@@ -8185,7 +8270,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 	<!-- ── Main canvas column ─────────────────────────────────────────────── -->
 	<div
-		class="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#080808] p-6 gap-3 studio-right"
+		class="flex-1 flex flex-col min-h-0 overflow-hidden p-6 gap-3 studio-right"
 		style="background: var(--app-bg);"
 	>
 	{#if draftError}
@@ -8219,6 +8304,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				bind:this={newsBgToolbarMediaInput}
 				onchange={handleNewsBgToolbarMediaChange}
 			/>
+			<div class="studio-dock-inner" class:studio-dock-dimmed={!studioRevealReady}>
 			<DockToolbar items={dockItems} inline />
 			<TemplateDockToolbar
 				templates={templateDockTabs}
@@ -8238,6 +8324,18 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				selectedId={formatId}
 				onSelect={(id) => (formatId = id as FormatId)}
 			/>
+			</div>
+			{#if !studioRevealReady}
+				<div class="studio-dock-skel" aria-hidden="true">
+					{#each Array(10) as _}
+						<span class="studio-dock-skel-pill"></span>
+					{/each}
+					<span class="studio-dock-skel-gap"></span>
+					{#each Array(4) as _}
+						<span class="studio-dock-skel-chip"></span>
+					{/each}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Slide indicator + nav arrows -->
@@ -8246,7 +8344,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 		<!-- Main preview + quick actions (next to canvas) -->
 		<div
-			class="flex min-h-0 w-full min-w-0 flex-1 items-start justify-center overflow-auto"
+			class="flex min-h-0 w-full min-w-0 flex-1 items-start justify-center overflow-hidden"
 			bind:this={studioPreviewHostEl}
 		>
 		<div class="flex shrink-0 justify-center py-2 px-1">
@@ -8254,24 +8352,40 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				style="width: {previewDisplayW}px;"
 				class="studio-canvas-shell relative z-10 max-w-full shrink-0"
 				class:is-measured={studioSizeTransitions}
+				class:is-ready={studioRevealReady}
 			>
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div
 					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
 					class="studio-canvas-frame relative rounded-2xl {previewCanvasOverflowClass}"
 					class:is-measured={studioSizeTransitions}
+					class:is-ready={studioRevealReady}
 				>
 
-		{#if !studioCanvasReady || studioCanvasBusyLoading}
+		{#if !studioRevealReady || studioCanvasBusyLoading}
 			<div
-				class="absolute inset-0 z-[22] overflow-hidden rounded-2xl"
-				transition:fade={{ duration: studioCanvasReady && studioCanvasBusyLoading ? 180 : 0 }}
+				class="studio-boot-overlay absolute inset-0 z-[40] overflow-hidden rounded-2xl"
+				class:studio-boot-veil={!studioRevealReady}
+				transition:fade={{
+					duration: studioRevealReady && studioCanvasBusyLoading ? 160 : 0,
+				}}
 				aria-live="polite"
 				aria-busy="true"
 			>
-				<StudioCanvasSkeleton label={!studioCanvasReady ? 'Restoring your last edit' : ''} />
+				<StudioCanvasSkeleton
+					label={!studioRevealReady
+						? skipLatestWorkspaceDraftRestore || forcedBlankFromQuery || forcedTemplateFromQuery
+							? 'Preparing template'
+							: 'Restoring your last edit'
+						: ''}
+				/>
 			</div>
 		{/if}
+		<div
+			class="studio-canvas-live"
+			class:is-live={studioRevealReady && !studioCanvasBusyLoading}
+			aria-hidden={!studioRevealReady}
+		>
 			{#if editingBrandCta || exportingBrandCta}
 				<BrandCtaTemplate
 					bind:exportRef
@@ -8305,6 +8419,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						scale={1}
 						interactive={canvasInteractive}
 						overlays={canvasOverlays}
+						resolveSrc={resolveMediaUrl}
 						onOverlaysChange={(o) => {
 							if (!canvasInteractive) return;
 							setSlideOverlays(paintSlide, o, 'blank');
@@ -8394,6 +8509,7 @@ showSubjectCutout={canvasShowCutout}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					textOverlays={[]}
 					headlineStyle={canvasHeadlineStyle}
 					sourceStyle={canvasSourceStyle}
@@ -8488,6 +8604,7 @@ showSubjectCutout={canvasShowCutout}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
@@ -8569,6 +8686,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
@@ -8622,6 +8740,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => { if (!canvasInteractive) return; setSlideOverlays(paintSlide, o, previewTemplate); }}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
@@ -8708,6 +8827,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => {
 						if (!canvasInteractive) return;
 						setSlideOverlays(paintSlide, o, previewTemplate);
@@ -8802,6 +8922,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => {
 						if (!canvasInteractive) return;
 						setSlideOverlays(paintSlide, o, previewTemplate);
@@ -8955,6 +9076,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => {
 						if (!canvasInteractive) return;
 						setSlideOverlays(paintSlide, o, previewTemplate);
@@ -9032,6 +9154,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => {
 						if (!canvasInteractive) return;
 						setSlideOverlays(paintSlide, o, previewTemplate);
@@ -9094,6 +9217,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => {
 						if (!canvasInteractive) return;
 						setSlideOverlays(paintSlide, o, previewTemplate);
@@ -9164,6 +9288,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
+					resolveSrc={resolveMediaUrl}
 					onOverlaysChange={(o) => {
 						if (!canvasInteractive) return;
 						setSlideOverlays(paintSlide, o, previewTemplate);
@@ -9212,6 +9337,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					/>
 				</div>
 			{/if}
+				</div><!-- /.studio-canvas-live -->
 				</div>
 			</div>
 		</div>
@@ -9342,7 +9468,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					/>
 				</div>
 			{/if}
-			{@const filmstripLoading = studioBooting || filmstripBulkCapturing}
+			{@const filmstripLoading =
+				studioBooting || filmstripInitialPassPending || filmstripBulkCapturing}
 			{@const orderIds = filmstripIds.length ? filmstripIds : slideIds}
 			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
 			{@const dndItems = orderIds.map((id) => {
@@ -9382,7 +9509,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				onDragEnd={endFilmstripDrag}
 			>
 				<div class="filmstrip-row mx-auto flex max-w-full items-end gap-2 px-1 pb-1">
-				<div class="no-scrollbar flex min-w-0 flex-1 items-end gap-2 overflow-x-auto overflow-y-visible">
+				<!-- pt reserves room for corner badges; overflow-x clips y too, so badges must sit inside the pad -->
+				<div class="filmstrip-scroll no-scrollbar flex min-w-0 flex-1 items-end gap-2 overflow-x-auto">
 				{#each dndItems as item, i (item.id)}
 					{@const tplate = slideTemplates[item.slideIndex] ?? 'news'}
 					{@const isPlaceholder =
@@ -9397,7 +9525,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					{@const thumbImgOpacity = tplate === 'tweet' && item.img ? '0.92' : '0.78'}
 					{@const rasterThumb = filmstripPreviewUrls[item.slideIndex] ?? ''}
 					{@const showThumbSkeleton =
-						filmstripLoading || item.loading || (!isPlaceholder && !rasterThumb && filmstripPreviewInFlight)}
+						!studioRevealReady ||
+						filmstripLoading ||
+						item.loading ||
+						(!isPlaceholder && !rasterThumb && filmstripPreviewInFlight)}
 					{@const sortable = useSortable({
 						id: item.id,
 						get index() { return i; },
@@ -9491,7 +9622,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									onclick={(e) => { e.stopPropagation(); musicPickerForSlide = musicPickerForSlide === item.slideIndex ? null : item.slideIndex; }}
 									title={hasMusic ? `Change music: ${item.music?.name}` : 'Add music — publishes as video'}
 									aria-label={`Choose music for slide ${i + 1}`}
-									class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center border transition-all z-[1]
+									class="filmstrip-corner-btn absolute top-0 right-0 w-5 h-5 rounded-full flex items-center justify-center border transition-all z-[2]
 										{hasMusic
 											? 'bg-orange-500/90 border-orange-400 text-white shadow-lg shadow-orange-500/30'
 											: 'bg-[#1a1a1a] border-white/10 text-white/40 hover:text-orange-400 hover:border-orange-400/50 opacity-0 group-hover:opacity-100 focus:opacity-100'}"
@@ -9553,7 +9684,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								</div>
 							{/if}
 						<span class="filmstrip-label text-[9px] font-mono flex items-center justify-center gap-1 {!editingBrandCta && activeSlide === item.slideIndex ? 'text-violet-400' : 'text-white/20'}">
-							{#if filmstripLoading}
+							{#if !studioRevealReady || filmstripLoading}
 								<span class="filmstrip-label-skel" aria-hidden="true"></span>
 							{:else}
 								{i === 0 ? 'Hook' : `Slide ${i + 1}`}
@@ -9988,9 +10119,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		{/if}
 
 		<!-- ── Prompt bar ── below the filmstrip ───────────────────── -->
-		<div class="shrink-0 px-4 pt-1.5 pb-3">
-			<div class="mx-auto w-full max-w-2xl">
-				<div class="prompt-bar overflow-hidden rounded-[20px] bg-[#f5f5f5] shadow-[0_4px_24px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)]">
+		<div class="studio-prompt-chrome relative z-[40] shrink-0 overflow-visible px-4 pt-1.5 pb-3">
+			<div class="mx-auto w-full max-w-2xl overflow-visible">
+				<div class="prompt-bar rounded-[20px] bg-[#f5f5f5] shadow-[0_4px_24px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)]">
 
 				<!-- Search input row -->
 				<div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
@@ -10068,7 +10199,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{/if}
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
-						<PopoverContent side="top" sideOffset={10} align="start" class="w-52 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-52 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
 							{#each ([
 								{ id: 'news',  icon: Newspaper, label: 'News' },
 								{ id: 'fact',  icon: Sparkles,  label: 'Random fact' },
@@ -10112,7 +10250,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{/if}
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
-						<PopoverContent side="top" sideOffset={10} align="start" class="w-64 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
 							{#if newsContentMode === 'news'}
 								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">News Category</p>
 								<div class="grid grid-cols-2 gap-1.5">
@@ -10213,7 +10358,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{/if}
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
-						<PopoverContent side="top" sideOffset={10} align="start" class="w-64 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
 							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Slide images</p>
 							<button
 								type="button"
@@ -10279,7 +10431,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						>
 							<SlidersHorizontal size={12} />
 						</PopoverTrigger>
-						<PopoverContent side="top" sideOffset={12} align="start" class="w-80 gap-0 rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]">
+						<PopoverContent
+							side="top"
+							sideOffset={12}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,520px)] w-80 gap-0 overflow-y-auto rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
 							<div class="p-4 flex flex-col gap-4">
 								<!-- Data source -->
 								<div class="flex items-center justify-between gap-3 rounded-xl bg-[#fafafa] border border-[#ebebeb] px-3 py-2.5">
@@ -11017,14 +11176,23 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	}
 
 	.filmstrip-row {
-		min-height: calc(5rem + 0.25rem + 14px + 0.25rem);
+		min-height: calc(5rem + 0.25rem + 14px + 0.25rem + 0.5rem);
 		flex-shrink: 0;
 		box-sizing: border-box;
+	}
+
+	.filmstrip-scroll {
+		padding-top: 0.5rem;
+		/* Keep corner buttons (music) inside the scrollport so overflow-x doesn't clip them */
 	}
 
 	/* Filmstrip: fixed thumb + label rows so Hook / Follow / Add bottoms align */
 	.filmstrip-cell {
 		width: 4rem; /* w-16 */
+		overflow: visible;
+	}
+	.filmstrip-corner-btn {
+		transform: translate(35%, -35%);
 	}
 	.filmstrip-thumb {
 		width: 4rem;
@@ -11094,10 +11262,89 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	.studio-canvas-frame.is-measured {
 		transition: height 200ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
+	/* Frame stays opaque so the boot skeleton (child) is visible. */
+	.studio-canvas-frame {
+		opacity: 1;
+		isolation: isolate;
+	}
+	/* Keep live canvas painted during boot — filmstrip toPng needs real pixels.
+	   The opaque .studio-boot-overlay covers it for the user. */
+	.studio-canvas-live {
+		min-height: 100%;
+	}
+	.studio-canvas-live:not(.is-live) {
+		pointer-events: none;
+	}
+	.studio-boot-overlay {
+		pointer-events: none;
+	}
+	.studio-boot-veil {
+		background: var(--app-surface, #f4f4f5);
+	}
+	:global(:root[data-theme='dark']) .studio-boot-veil {
+		background: var(--app-surface-2, #131316);
+	}
+	.studio-dock-inner {
+		display: flex;
+		flex-wrap: nowrap;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		min-width: 0;
+	}
+	.studio-dock-dimmed {
+		opacity: 0;
+		pointer-events: none;
+	}
+	.studio-dock-skel {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		padding: 0 0.5rem;
+		pointer-events: none;
+	}
+	.studio-dock-skel-pill {
+		width: 2rem;
+		height: 2rem;
+		border-radius: 0.55rem;
+		background: color-mix(in oklab, var(--app-text) 10%, transparent);
+		animation: studio-dock-pulse 1.2s ease-in-out infinite;
+	}
+	.studio-dock-skel-chip {
+		width: 4.25rem;
+		height: 1.85rem;
+		border-radius: 0.45rem;
+		background: color-mix(in oklab, var(--app-text) 10%, transparent);
+		animation: studio-dock-pulse 1.2s ease-in-out infinite;
+	}
+	.studio-dock-skel-gap {
+		width: 0.85rem;
+	}
+	.studio-dock-skel-pill:nth-child(odd),
+	.studio-dock-skel-chip:nth-child(odd) {
+		animation-delay: 0.15s;
+	}
+	@keyframes studio-dock-pulse {
+		0%,
+		100% {
+			opacity: 0.55;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
 	@media (prefers-reduced-motion: reduce) {
 		.studio-canvas-shell.is-measured,
 		.studio-canvas-frame.is-measured {
 			transition: none;
+		}
+		.studio-dock-skel-pill,
+		.studio-dock-skel-chip {
+			animation: none;
 		}
 	}
 

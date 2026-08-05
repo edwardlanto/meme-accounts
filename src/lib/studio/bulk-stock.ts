@@ -1,7 +1,13 @@
 /** Pick stock photo/video queries from slide copy for media templates. */
 
+import { optimizeImageUrl } from '$lib/client/optimize-image-url';
 import type { TemplateId } from './template-ids';
 import { isPhotoStoryFamily, isVideoStoryFamily } from './template-ids';
+
+/** Full-slide preview (~2× feed preview width). */
+const STOCK_PREVIEW_W = 1080;
+/** Filmstrip / poster thumb. */
+const STOCK_THUMB_W = 256;
 
 const STOP = new Set(
 	[
@@ -251,10 +257,12 @@ export async function fetchStockImage(query: string): Promise<StockPick | null> 
 
 	if (pick.source === 'unsplash') pingUnsplashDownload(pick.downloadLocation);
 
+	const full = pick.regular;
+	const small = pick.small || pick.regular;
 	return {
-		url: pick.regular,
+		url: optimizeImageUrl(full, STOCK_PREVIEW_W),
 		kind: 'image',
-		thumb: pick.small || pick.regular,
+		thumb: optimizeImageUrl(small, STOCK_THUMB_W),
 		alt: pick.alt || '',
 		photographer: pick.photographer || '',
 		source: pick.source,

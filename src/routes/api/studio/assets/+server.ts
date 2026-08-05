@@ -7,6 +7,22 @@ import { isValidOwnerR2Key, sniffStrictImageMime, parseJsonBody } from '$lib/ser
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
+function errMessage(e: unknown, fallback: string): string {
+	if (e instanceof Error && e.message) return e.message;
+	if (e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
+		const msg = (e as { message: string }).message.trim();
+		if (msg) return msg;
+	}
+	return fallback;
+}
+
+function migrateHint(message: string): string {
+	if (/studio_assets/i.test(message) && /schema cache|does not exist|PGRST205/i.test(message)) {
+		return 'Asset library table is missing — run supabase/migrations/011_studio_assets.sql in the Supabase SQL editor.';
+	}
+	return message;
+}
+
 async function ensurePublicUser(userId: string, email?: string | null) {
 	const admin = adminClient();
 	const { data } = await admin.from('users').select('id').eq('id', userId).maybeSingle();
@@ -52,8 +68,8 @@ export const GET: RequestHandler = async ({ locals }) => {
 		);
 		return json({ assets });
 	} catch (e: unknown) {
-		const message = e instanceof Error ? e.message : 'Failed to load assets';
-		console.error('[api/studio/assets] GET', message);
+		const message = migrateHint(errMessage(e, 'Failed to load assets'));
+		console.error('[api/studio/assets] GET', message, e);
 		return json({ error: message }, { status: 500 });
 	}
 };
@@ -102,13 +118,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			.select('id, name, r2_key, created_at, updated_at')
 			.single();
 
-		if (error) throw error;
+		if (error) {
+			try {
+				await r2Delete(key);
+			} catch {
+				/* best-effort cleanup */
+			}
+			throw error;
+		}
 
 		const thumbUrl = await r2SignGet(key, 7200);
 		return json({ asset: { ...data, thumbUrl } });
 	} catch (e: unknown) {
-		const message = e instanceof Error ? e.message : 'Upload failed';
-		console.error('[api/studio/assets] POST', message);
+		const message = migrateHint(errMessage(e, 'Upload failed'));
+		console.error('[api/studio/assets] POST', message, e);
 		return json({ error: message }, { status: 500 });
 	}
 };
@@ -140,7 +163,7 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		if (error) throw error;
 		return json({ asset: data });
 	} catch (e: unknown) {
-		const message = e instanceof Error ? e.message : 'Rename failed';
+		const message = errMessage(e, 'Rename failed');
 		return json({ error: message }, { status: 500 });
 	}
 };
@@ -182,7 +205,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 
 		return json({ ok: true });
 	} catch (e: unknown) {
-		const message = e instanceof Error ? e.message : 'Delete failed';
+		const message = errMessage(e, 'Delete failed');
 		console.error('[api/studio/assets] DELETE', message);
 		return json({ error: message }, { status: 500 });
 	}

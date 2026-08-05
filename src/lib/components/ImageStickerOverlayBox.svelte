@@ -14,6 +14,8 @@
 		scale?: number;
 		interactive?: boolean;
 		onOverlaysChange?: (next: Overlay[]) => void;
+		/** Resolve stored media (`r2:…`) to a displayable URL */
+		resolveSrc?: (src: string) => string;
 	}
 
 	let {
@@ -24,21 +26,35 @@
 		scale = 1,
 		interactive = true,
 		onOverlaysChange,
+		resolveSrc,
 	}: Props = $props();
 
 	const W = $derived(Math.max(1, Number(w) || 1080));
 	const H = $derived(Math.max(1, Number(h) || 1350));
 
+	const displaySrc = $derived.by(() => {
+		const raw = String(overlay.src ?? '').trim();
+		if (!raw) return '';
+		return resolveSrc?.(raw) || raw;
+	});
+
 	let popoverOpen = $state(false);
 	let active = $state(false);
 	let overlayAction = $state<'drag' | 'resize' | null>(null);
 	let hovered = $state(false);
+	let didDrag = $state(false);
 	let ovLastMx = 0;
 	let ovLastMy = 0;
 	let removingBg = $state(false);
 	let fileEl = $state<HTMLInputElement | null>(null);
+	let imgBroken = $state(false);
 
 	const showChrome = $derived(popoverOpen || active || hovered);
+
+	$effect(() => {
+		displaySrc;
+		imgBroken = false;
+	});
 
 	function apply(next: Overlay[]) {
 		onOverlaysChange?.(next);
@@ -50,7 +66,9 @@
 
 	function overlayDragDown(e: PointerEvent) {
 		if (!interactive) return;
+		if (e.button !== 0 && e.pointerType === 'mouse') return;
 		active = true;
+		didDrag = false;
 		overlayAction = 'drag';
 		ovLastMx = e.clientX;
 		ovLastMy = e.clientY;
@@ -62,6 +80,7 @@
 	function overlayResizeDown(e: PointerEvent) {
 		if (!interactive) return;
 		active = true;
+		didDrag = false;
 		overlayAction = 'resize';
 		ovLastMx = e.clientX;
 		ovLastMy = e.clientY;
@@ -74,6 +93,7 @@
 		if (!active) return;
 		const dx = (e.clientX - ovLastMx) / scale;
 		const dy = (e.clientY - ovLastMy) / scale;
+		if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) didDrag = true;
 		ovLastMx = e.clientX;
 		ovLastMy = e.clientY;
 
@@ -85,7 +105,7 @@
 			const ny = Math.max(0, Math.min(H - ov.h, ov.y + dy));
 			apply(overlays.map((o) => (o.id === overlay.id ? { ...o, x: nx, y: ny } : o)));
 		} else if (overlayAction === 'resize') {
-			const aspect = ov.w / ov.h;
+			const aspect = ov.w / Math.max(1, ov.h);
 			const newW = Math.max(60, Math.min(W - ov.x, ov.w + dx));
 			const newH = newW / aspect;
 			apply(overlays.map((o) => (o.id === overlay.id ? { ...o, w: newW, h: newH } : o)));
@@ -95,6 +115,8 @@
 	function overlayPointerUp() {
 		active = false;
 		overlayAction = null;
+		// Keep popover closed after a drag so it doesn’t jump open mid-move
+		if (didDrag) popoverOpen = false;
 	}
 
 	async function onRemoveBg() {
@@ -103,7 +125,11 @@
 		try {
 			const ov = overlays.find((o) => o.id === overlay.id);
 			if (!ov?.src) return;
-			const out = await removeBackground(ov.src);
+			const src = resolveSrc?.(ov.src) || ov.src;
+			if (!src || src.startsWith('r2:')) {
+				throw new Error('Image is still loading — try again in a moment');
+			}
+			const out = await removeBackground(src);
 			patch({ src: out });
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : 'Background removal failed';
@@ -160,8 +186,13 @@
 />
 
 {#snippet stickerTrigger({ props }: { props: Record<string, unknown> })}
+	{@const triggerProps = props as Record<string, unknown> & {
+		onpointerdown?: (e: PointerEvent) => void;
+		onclick?: (e: MouseEvent) => void;
+	}
+	}
 	<div
-		{...props}
+		{...triggerProps}
 		style="
 			position: absolute;
 			left: {overlay.x}px; top: {overlay.y}px;
@@ -171,11 +202,24 @@
 			cursor: {active && overlayAction === 'drag' ? 'grabbing' : interactive ? 'grab' : 'default'};
 			touch-action: none;
 			overflow: visible;
+			user-select: none;
 		"
-		onpointerdown={overlayDragDown}
+		onpointerdown={(e) => {
+			overlayDragDown(e);
+			// Don’t let the popover trigger steal the gesture while dragging
+		}}
 		onpointermove={overlayPointerMove}
 		onpointerup={overlayPointerUp}
 		onpointercancel={overlayPointerUp}
+		onclick={(e) => {
+			if (didDrag) {
+				e.preventDefault();
+				e.stopPropagation();
+				didDrag = false;
+				return;
+			}
+			triggerProps.onclick?.(e);
+		}}
 		onmouseenter={() => (hovered = true)}
 		onmouseleave={() => {
 			if (!active) hovered = false;
@@ -188,18 +232,36 @@
 				width: 100%; height: 100%;
 				overflow: hidden;
 				border-radius: {borderRadiusPx}px;
+				background: {imgBroken || !displaySrc ? 'rgba(0,0,0,0.25)' : 'transparent'};
 			"
 		>
-			<img
-				src={overlay.src}
-				alt=""
-				style="
-					width: 100%; height: 100%;
-					object-fit: contain;
-					pointer-events: none;
-					display: block;
-				"
-			/>
+			{#if displaySrc && !imgBroken}
+				<img
+					src={displaySrc}
+					alt=""
+					draggable="false"
+					style="
+						width: 100%; height: 100%;
+						object-fit: contain;
+						pointer-events: none;
+						display: block;
+						-webkit-user-drag: none;
+					"
+					onload={() => (imgBroken = false)}
+					onerror={() => (imgBroken = true)}
+				/>
+			{:else}
+				<div
+					style="
+						width: 100%; height: 100%;
+						display: flex; align-items: center; justify-content: center;
+						color: rgba(255,255,255,0.55); font-size: 12px; font-weight: 600;
+						pointer-events: none;
+					"
+				>
+					{displaySrc ? 'Image failed' : 'Loading…'}
+				</div>
+			{/if}
 			{#if removingBg}
 				<div
 					class="bg-background/55 absolute inset-0 flex items-center justify-center backdrop-blur-[1px]"
@@ -243,8 +305,8 @@
 
 <Popover bind:open={popoverOpen}>
 	<PopoverTrigger
-		openOnHover={!!interactive}
-		openDelay={0}
+		openOnHover={!!interactive && !active}
+		openDelay={120}
 		closeDelay={280}
 		child={stickerTrigger}
 	/>
@@ -300,7 +362,9 @@
 				>
 					<Minus size={16} class="text-foreground" strokeWidth={2} />
 				</Button>
-				<span class="min-w-[1.75rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(borderRadiusPx)}</span>
+				<span class="min-w-[1.75rem] text-center text-xs font-bold tabular-nums text-foreground"
+					>{Math.round(borderRadiusPx)}</span
+				>
 				<Button
 					variant="ghost"
 					size="icon"

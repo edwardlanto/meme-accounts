@@ -27,10 +27,14 @@
 	let ignoreNextActiveId = '';
 	let syncedActiveId = '';
 
+	let viewportEl: HTMLElement | null = null;
 	let dragPointerId: number | null = null;
 	let dragStartX = 0;
 	let dragStartOffset = 0;
+	let dragArmed = false;
 	let moveSamples: { x: number; t: number }[] = [];
+
+	const DRAG_THRESHOLD_PX = 6;
 
 	$effect(() => {
 		if (isDragging) return;
@@ -58,6 +62,13 @@
 		}
 
 		springTo(target);
+	});
+
+	$effect(() => {
+		return () => {
+			teardownDragListeners();
+			if (animId) cancelAnimationFrame(animId);
+		};
 	});
 
 	function clampIdx(idx: number) {
@@ -117,46 +128,95 @@
 		animId = requestAnimationFrame(step);
 	}
 
+	function teardownDragListeners() {
+		window.removeEventListener('pointerup', onWindowPointerEnd, true);
+		window.removeEventListener('pointercancel', onWindowPointerEnd, true);
+	}
+
+	function finishDrag(pointerId: number) {
+		if (!dragArmed && !isDragging) return;
+		if (dragPointerId != null && pointerId !== dragPointerId) return;
+
+		const wasDragging = isDragging;
+		const velocity = wasDragging ? releaseVelocityPxPerSec() : 0;
+
+		isDragging = false;
+		dragArmed = false;
+		const capturedId = dragPointerId;
+		dragPointerId = null;
+		teardownDragListeners();
+
+		if (viewportEl && capturedId != null) {
+			try {
+				if (viewportEl.hasPointerCapture(capturedId)) {
+					viewportEl.releasePointerCapture(capturedId);
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+
+		if (!wasDragging) return;
+
+		const projected = offsetX + velocity * 0.14;
+		const idx = clampIdx(Math.round(-projected / previewWidth));
+		selectIndex(idx, velocity);
+	}
+
+	function onWindowPointerEnd(e: PointerEvent) {
+		finishDrag(e.pointerId);
+	}
+
 	function onPointerDown(e: PointerEvent) {
 		if (slides.length < 2) return;
+		if (e.button !== 0 && e.pointerType === 'mouse') return;
+
 		if (animId) {
 			cancelAnimationFrame(animId);
 			animId = 0;
 		}
-		isDragging = true;
+
+		viewportEl = e.currentTarget as HTMLElement;
+		dragArmed = true;
+		isDragging = false;
 		dragPointerId = e.pointerId;
 		dragStartX = e.clientX;
 		dragStartOffset = offsetX;
 		moveSamples = [{ x: e.clientX, t: performance.now() }];
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+		try {
+			viewportEl.setPointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+
+		teardownDragListeners();
+		window.addEventListener('pointerup', onWindowPointerEnd, true);
+		window.addEventListener('pointercancel', onWindowPointerEnd, true);
 	}
 
 	function onPointerMove(e: PointerEvent) {
-		if (!isDragging || e.pointerId !== dragPointerId) return;
+		if ((!dragArmed && !isDragging) || e.pointerId !== dragPointerId) return;
+
+		const dx = e.clientX - dragStartX;
+		if (!isDragging) {
+			if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+			isDragging = true;
+		}
 
 		const now = performance.now();
 		moveSamples.push({ x: e.clientX, t: now });
 		if (moveSamples.length > 6) moveSamples.shift();
 
-		const dx = e.clientX - dragStartX;
 		offsetX = rubberBandX(dragStartOffset + dx);
 	}
 
-	function endDrag(e: PointerEvent) {
-		if (!isDragging || e.pointerId !== dragPointerId) return;
-		isDragging = false;
-		dragPointerId = null;
+	function onPointerUp(e: PointerEvent) {
+		finishDrag(e.pointerId);
+	}
 
-		try {
-			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-		} catch {
-			/* ignore */
-		}
-
-		const velocity = releaseVelocityPxPerSec();
-		const projected = offsetX + velocity * 0.14;
-		const idx = clampIdx(Math.round(-projected / previewWidth));
-		selectIndex(idx, velocity);
+	function onLostPointerCapture(e: PointerEvent) {
+		finishDrag(e.pointerId);
 	}
 
 	function slideVisualStyle(si: number): string {
@@ -168,19 +228,19 @@
 		return `transform: scale(${scale.toFixed(3)}); opacity: ${opacity.toFixed(3)};`;
 	}
 
-	const trackStyle = $derived(
-		`transform: translate3d(${offsetX}px, 0, 0);`,
-	);
+	const trackStyle = $derived(`transform: translate3d(${offsetX}px, 0, 0);`);
 </script>
 
 <div class="bulk-carousel">
 	<div
 		class="carousel-swipe-viewport"
+		class:is-dragging={isDragging}
 		style="width:{previewWidth}px"
 		onpointerdown={onPointerDown}
 		onpointermove={onPointerMove}
-		onpointerup={endDrag}
-		onpointercancel={endDrag}
+		onpointerup={onPointerUp}
+		onpointercancel={onPointerUp}
+		onlostpointercapture={onLostPointerCapture}
 		role="region"
 		aria-roledescription="carousel"
 		aria-label="Slide preview"
@@ -204,7 +264,11 @@
 							</div>
 						{/if}
 						{#if loadingSet.has(sl.id)}
-							<div class="carousel-skeleton" aria-hidden="true"></div>
+							<BulkSlidePreview
+								slide={sl}
+								width={previewWidth}
+								mediaFetching={true}
+							/>
 						{:else}
 							<BulkSlidePreview slide={sl} width={previewWidth} />
 						{/if}
@@ -248,13 +312,14 @@
 		user-select: none;
 		contain: layout style paint;
 	}
-	.carousel-swipe-viewport:active {
+	.carousel-swipe-viewport.is-dragging {
 		cursor: grabbing;
 	}
 	.carousel-swipe-track {
 		display: flex;
 		will-change: transform;
 		backface-visibility: hidden;
+		pointer-events: none;
 	}
 	.carousel-swipe-slide {
 		flex: 0 0 auto;
@@ -267,18 +332,6 @@
 		border-radius: 12px;
 		overflow: hidden;
 		box-shadow: 0 2px 10px color-mix(in oklab, var(--app-text) 12%, transparent);
-	}
-	.carousel-skeleton {
-		width: 100%;
-		aspect-ratio: 4 / 5;
-		background: linear-gradient(
-			110deg,
-			#f0f0f0 8%,
-			#fafafa 18%,
-			#f0f0f0 33%
-		);
-		background-size: 200% 100%;
-		animation: bulk-shimmer 1.4s ease-in-out infinite;
 	}
 	.film-num {
 		position: absolute;
@@ -363,13 +416,5 @@
 		width: 0.62rem;
 		background: var(--app-accent, #e8ff48);
 		transform: scale(1.08);
-	}
-	@keyframes bulk-shimmer {
-		0% {
-			background-position: 100% 0;
-		}
-		100% {
-			background-position: -100% 0;
-		}
 	}
 </style>

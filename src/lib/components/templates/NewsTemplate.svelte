@@ -119,6 +119,7 @@
 		gridOpacity?: number; // 0..1
 		overlays?: Overlay[];
 		textOverlays?: TextOverlay[];
+		resolveSrc?: (src: string) => string;
 		/** Per-element style overrides (font, size, weight, color, etc.) */
 		headlineStyle?: TextStyle;
 		sourceStyle?: TextStyle;
@@ -209,6 +210,7 @@
 		gridOpacity = 0.25,
 		overlays   = [],
 		textOverlays = [],
+		resolveSrc,
 		headlineStyle = {},
 		sourceStyle = {},
 		selectedText = null,
@@ -477,11 +479,6 @@
 		Math.max(50, Math.min(400, Number(bgContainMagnify) || 100)),
 	);
 
-	// Contain-mode pan: bgOffsetX/Y are reused as the focal point (50 = center).
-	// Convert to canvas-pixel translate so dragging is 1:1 with the cursor.
-	const containTranslateX = $derived((bgOffsetX - 50) / 100 * W);
-	const containTranslateY = $derived((bgOffsetY - 50) / 100 * H);
-
 	// Bottom shadow gradient — height/strength controllable.
 	const shadowGradient = $derived.by(() => {
 		const sh = Math.max(0, Math.min(100, shadowHeight));
@@ -499,6 +496,11 @@
 
 	const W = $derived(Math.max(320, Number(w) || 1080));
 	const H = $derived(Math.max(320, Number(h) || 1350));
+
+	// Contain-mode pan: bgOffsetX/Y are reused as the focal point (50 = center).
+	// Convert to canvas-pixel translate so dragging is 1:1 with the cursor.
+	const containTranslateX = $derived((bgOffsetX - 50) / 100 * W);
+	const containTranslateY = $derived((bgOffsetY - 50) / 100 * H);
 
 	let parsed   = $derived(parseHighlightMarkup(text, highlightColor));
 	let segments = $derived(segmentText(parsed));
@@ -1367,12 +1369,11 @@
 		<!-- Background: video takes priority over image.
 
 		     Zoom + pan model:
-		     - Fill frame (cover): max(zoom,105)% box + slight scale() so raster export
-		       doesn’t leave thin side gutters (html-to-image / subpixels).
-		       Pan sliders translate the oversize element.
+		     - Fill frame (cover): inset 0 + object-fit cover (always full-bleed).
+		       object-position pans; zoom>100 scales from the focal point.
 		     - At zoom < 100% (shrink), we letterbox the media inside a dark
 		       backdrop and the pan sliders reposition the shrunken media
-		       within the visible frame.
+		       within the visible frame (50 = centered).
 		     - The outer div always clips so nothing leaks into other layers. -->
 		{#if backgroundVideo}
 			<div style="position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #0a0a0a;">
@@ -1566,6 +1567,7 @@
 					{scale}
 					{interactive}
 					onOverlaysChange={onOverlaysChange}
+					{resolveSrc}
 				/>
 			{/if}
 		{/each}

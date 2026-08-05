@@ -9,6 +9,7 @@
 		interactive?: boolean;
 		overlays: Overlay[];
 		onOverlaysChange?: (next: Overlay[]) => void;
+		resolveSrc?: (src: string) => string;
 	}
 
 	let {
@@ -18,7 +19,16 @@
 		interactive = true,
 		overlays,
 		onOverlaysChange,
+		resolveSrc,
 	}: Props = $props();
 </script>
 
-<ImageStickerOverlayLayer {w} {h} {scale} {interactive} overlays={overlays ?? []} {onOverlaysChange} />
+<ImageStickerOverlayLayer
+	{w}
+	{h}
+	{scale}
+	{interactive}
+	overlays={overlays ?? []}
+	{onOverlaysChange}
+	{resolveSrc}
+/>

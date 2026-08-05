@@ -577,7 +577,12 @@
 				<ul class="assets-list">
 					{#each filtered as asset (asset.id)}
 						<li class="asset-card">
-							<div class="asset-thumb">
+							<button
+								type="button"
+								class="asset-thumb asset-thumb-btn"
+								title="Use as background"
+								onclick={() => void onUseAsBackground?.(r2Ref(asset))}
+							>
 								{#if asset.thumbUrl}
 									<img src={asset.thumbUrl} alt="" />
 								{:else}
@@ -586,7 +591,7 @@
 								{#if deletingId === asset.id}
 									<div class="asset-busy"><Loader size={14} class="animate-spin" /></div>
 								{/if}
-							</div>
+							</button>
 
 							<div class="asset-meta">
 								{#if editingId === asset.id}
@@ -1127,6 +1132,16 @@
 		overflow: hidden;
 		background: #f0f0f0;
 		flex-shrink: 0;
+	}
+	button.asset-thumb-btn {
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		transition: box-shadow 0.12s ease, transform 0.12s ease;
+	}
+	button.asset-thumb-btn:hover {
+		box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent, #e8ff48) 70%, transparent);
+		transform: scale(1.02);
 	}
 	.asset-thumb img {
 		width: 100%;

@@ -68,3 +68,17 @@ export async function prepareImageForUpload(
 		mime: 'image/webp',
 	};
 }
+
+/** Resize/compress then return a data URL (for brand kit / localStorage). */
+export async function prepareImageAsDataUrl(
+	file: File,
+	opts?: { maxDim?: number; maxBytes?: number; quality?: number },
+): Promise<string> {
+	const prepared = await prepareImageForUpload(file, opts);
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result ?? ''));
+		reader.onerror = () => reject(new Error('Could not read optimized image'));
+		reader.readAsDataURL(prepared.blob);
+	});
+}

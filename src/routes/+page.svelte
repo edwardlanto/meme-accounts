@@ -189,6 +189,7 @@
 			<a href="/pricing" class="btn btn-ghost">Pricing</a>
 			<a href="/fake-tweet-maker" class="btn btn-ghost">Tweet Maker</a>
 			<a href="/instagram-carousel-maker" class="btn btn-ghost">Instagram Carousel</a>
+			<a href="/instagram-grid-maker" class="btn btn-ghost">Instagram Grid</a>
 			<a href="/linkedin-carousel-maker" class="btn btn-ghost">LinkedIn Carousel</a>
 			<a href="/signup" class="btn btn-dark">Get Meme Accounts</a>
 		</div>

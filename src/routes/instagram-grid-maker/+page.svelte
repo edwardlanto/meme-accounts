@@ -1,40 +1,54 @@
 <script lang="ts">
-	import { ArrowRight, Check, Layers, Sparkles, Ratio, Newspaper } from 'lucide-svelte';
+	import { ArrowRight, Check, Grid3x3, Image, Ratio, Sparkles } from 'lucide-svelte';
 
 	let { data } = $props();
 	const signedIn = $derived(Boolean(data.user));
 
 	const studioHref = $derived(
-		signedIn ? '/dashboard/studio?template=news' : `/signup?next=${encodeURIComponent('/dashboard/studio?template=news')}`,
+		signedIn
+			? '/dashboard/grid'
+			: `/signup?next=${encodeURIComponent('/dashboard/grid')}`,
 	);
+
+	const previewTiles = [
+		'/templates/news/demo-bg.jpg',
+		'/images/templates/topic-bg.jpeg',
+		'/templates/image-quote/demo-bg.png',
+		'/placeholders/marquee/slide-4.png',
+		'/templates/news/demo-bg.jpg',
+		'/images/templates/topic-bg.jpeg',
+		'/templates/image-quote/demo-bg.png',
+		'/placeholders/marquee/slide-4.png',
+		'/templates/news/demo-bg.jpg',
+	];
 
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'WebApplication',
-		name: 'Carousel Studio — Instagram Carousel Maker',
+		name: 'Carousel Studio — Instagram Grid Maker',
 		applicationCategory: 'DesignApplication',
 		operatingSystem: 'Web',
 		description:
-			'Free Instagram carousel maker. Build multi-slide Feed posts from news, templates, and AI — export PNG or schedule to Instagram.',
+			'Free Instagram grid maker. Plan a cohesive feed, design square and Feed posts, and export a polished profile grid from Carousel Studio.',
 		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 	};
 </script>
 
 <svelte:head>
-	<title>Instagram Carousel Maker — Free Multi-Slide Post Generator | Carousel Studio</title>
+	<title>Instagram Grid Maker — Free Feed Grid Planner &amp; Post Designer | Carousel Studio</title>
 	<meta
 		name="description"
-		content="Make Instagram carousels fast. News-to-post, Hook → slides → Follow decks, Feed 4:5 / Reels 9:16, AI backgrounds. Sign in for a free trial export."
+		content="Make a cohesive Instagram feed grid. Design square and 4:5 posts, align a 3×3 profile look, export PNGs, and schedule. Free trial — then unlimited on Pro."
 	/>
 	<meta
 		name="keywords"
-		content="instagram carousel maker, carousel post generator, multi slide instagram post, news carousel, carousel studio"
+		content="instagram grid maker, instagram feed planner, profile grid maker, 3x3 instagram grid, feed aesthetic maker, carousel studio"
 	/>
-	<link rel="canonical" href="https://carouselstudio.app/instagram-carousel-maker" />
-	<meta property="og:title" content="Instagram Carousel Maker — Carousel Studio" />
+	<link rel="canonical" href="https://carouselstudio.app/instagram-grid-maker" />
+	<meta property="og:title" content="Instagram Grid Maker — Carousel Studio" />
 	<meta
 		property="og:description"
-		content="Design multi-slide Instagram carousels with news, templates, and AI. Free trial — then unlimited on Pro."
+		content="Plan and design a cohesive Instagram profile grid. Square &amp; Feed sizes, templates, AI backgrounds — free trial."
 	/>
 	<meta property="og:image" content="https://carouselstudio.app/images/seo/carousel-maker-studio.png" />
 	<meta property="og:type" content="website" />
@@ -52,32 +66,32 @@
 		<div class="nav-links">
 			<a href="/pricing">Pricing</a>
 			<a href="/fake-tweet-maker">Tweet Maker</a>
-			<a href="/instagram-carousel-maker" aria-current="page">Instagram</a>
-			<a href="/instagram-grid-maker">Grid</a>
+			<a href="/instagram-carousel-maker">Carousel</a>
+			<a href="/instagram-grid-maker" aria-current="page">Grid</a>
 			<a href="/linkedin-carousel-maker">LinkedIn</a>
 		</div>
 		<div class="nav-actions">
 			{#if signedIn}
 				<a href="/dashboard" class="nav-ghost">Dashboard</a>
 			{:else}
-				<a href="/login?next=/instagram-carousel-maker" class="nav-ghost">Sign in</a>
+				<a href="/login?next=/instagram-grid-maker" class="nav-ghost">Sign in</a>
 				<a href={studioHref} class="btn-nav">Start free</a>
 			{/if}
 		</div>
 	</nav>
 
 	<header class="hero container">
-		<span class="eyebrow"><Layers size={12} /> Carousel Maker</span>
+		<span class="eyebrow"><Grid3x3 size={12} /> Instagram Grid Maker</span>
 		<h1>
-			Instagram carousel maker for <span class="accent">Feed &amp; Reels</span>
+			Design a feed that looks <span class="accent">intentional</span>
 		</h1>
 		<p class="lead">
-			Build Hook → slides → Follow decks in minutes. Pull news, swap templates, pick Feed 4:5 or
-			Vertical 9:16 — then export or schedule. Public page; sign in to use the studio (1 free trial export).
+			Build posts that tile into a clean profile grid — square or Feed 4:5, shared templates and
+			palette, then export or schedule. Public page; sign in to open Grid Studio (1 free trial export).
 		</p>
 		<div class="cta-row">
 			<a href={studioHref} class="cta-primary">
-				{signedIn ? 'Open carousel studio' : 'Try free — sign up'}
+				{signedIn ? 'Open grid studio' : 'Try free — sign up'}
 				<ArrowRight size={18} />
 			</a>
 			<a href="/pricing" class="cta-ghost">See plans</a>
@@ -85,26 +99,24 @@
 	</header>
 
 	<section class="shot container">
-		<figure class="shot-frame">
-			<img
-				src="/images/seo/carousel-maker-studio.png"
-				alt="Carousel Studio editor with News template, Feed 4:5 format, and multi-slide filmstrip"
-				width="1200"
-				height="720"
-				loading="eager"
-			/>
+		<figure class="shot-frame grid-preview" aria-label="Example Instagram profile grid">
+			{#each previewTiles as src, i (i)}
+				<div class="grid-cell">
+					<img src={src} alt="" loading={i < 3 ? 'eager' : 'lazy'} />
+				</div>
+			{/each}
 		</figure>
-		<p class="shot-caption">Real product UI — dock tools, News template, aspect formats, slide strip.</p>
+		<p class="shot-caption">A 3×3 profile grid — plan tiles in Studio, then publish in order.</p>
 	</section>
 
 	<section class="features container">
-		<h2>Built for carousel pages</h2>
+		<h2>Made for profile grids</h2>
 		<div class="feat-grid">
 			{#each [
-				{ icon: Newspaper, title: 'News → carousel', body: 'Fetch a story, auto-fill Hook + body slides, pull a matching image.' },
-				{ icon: Ratio, title: 'Feed, Reels, Square', body: 'Switch FEED 4:5, VERTICAL 9:16, WIDE, or SQUARE without rebuilding the deck.' },
-				{ icon: Layers, title: 'Hook · Slides · Follow', body: 'Filmstrip for every panel — reorder, duplicate, and add a branded Follow slide.' },
-				{ icon: Sparkles, title: 'AI backgrounds', body: 'Generate or swap slide art from the dock without leaving the canvas.' },
+				{ icon: Grid3x3, title: 'Think in tiles', body: 'Design each post so the profile read as one composition — not nine random squares.' },
+				{ icon: Ratio, title: 'Square & Feed', body: 'Switch 1:1 and 4:5 without rebuilding. Match what Instagram actually crops.' },
+				{ icon: Image, title: 'Shared assets', body: 'Reuse brand photos, stickers, and AI backgrounds across every tile in the set.' },
+				{ icon: Sparkles, title: 'Templates that ship', body: 'News, quote, blank, and more — same dock tools as Carousel Studio.' },
 			] as f}
 				<article class="feat">
 					<f.icon size={18} />
@@ -118,21 +130,21 @@
 	<section class="strip container">
 		<figure class="strip-frame">
 			<img
-				src="/images/seo/carousel-maker-filmstrip.png"
-				alt="Carousel filmstrip showing Hook, Slide 2, Slide 3, Follow, and add slide"
-				width="900"
-				height="200"
+				src="/images/seo/carousel-maker-studio.png"
+				alt="Carousel Studio editor used to design Instagram feed posts"
+				width="1200"
+				height="720"
 				loading="lazy"
 			/>
 		</figure>
 		<div class="strip-copy">
-			<h2>See every slide at once</h2>
+			<h2>One studio for the whole grid</h2>
 			<p>
-				The filmstrip keeps Hook, body slides, Follow, and Add aligned — so you always know what
-				you’re shipping before you export.
+				Grid Studio is Carousel Studio focused for feed posts — filmstrip for multi-slide tiles,
+				library assets, and export ready for a cohesive profile.
 			</p>
 			<ul>
-				{#each ['Drag to reorder', 'Reuse clips across templates', 'Optional music → video publish'] as item}
+				{#each ['Square or Feed aspect in one click', 'Asset library for repeating brand art', 'Export PNG or send to scheduler'] as item}
 					<li><Check size={14} strokeWidth={2.5} />{item}</li>
 				{/each}
 			</ul>
@@ -140,12 +152,12 @@
 	</section>
 
 	<section class="faq container">
-		<h2>Carousel maker FAQ</h2>
+		<h2>Instagram grid maker FAQ</h2>
 		{#each [
-			['Is this free?', 'Yes to try — sign in and get one trial export. Pro unlocks unlimited carousels and AI.'],
-			['Can I schedule to Instagram?', 'Yes. Export or send decks to the post scheduler after connecting Instagram via Zernio.'],
-			['Does it work for LinkedIn carousels?', 'PDF/image carousels export at Feed size; schedule to LinkedIn from the same workflow.'],
-			['How is this different from Canva?', 'Built for news + meme-page velocity: fetch → deck → export, not a general design suite.'],
+			['Is this free?', 'Yes to try — sign in and get one trial export. Pro unlocks unlimited exports and AI.'],
+			['Is this a 3×3 planner?', 'You design posts in Studio sized for Instagram; arrange the live profile grid when you publish in order.'],
+			['Carousel vs grid?', 'Carousels are multi-slide posts. Grid maker is for the profile mosaic — both use the same studio.'],
+			['Can I schedule posts?', 'Yes. Export or send to the post scheduler after connecting Instagram.'],
 		] as [q, a]}
 			<details class="faq-item">
 				<summary>{q}</summary>
@@ -156,10 +168,10 @@
 
 	<section class="cta-band">
 		<div class="container cta-inner">
-			<h2>Ship your next carousel today</h2>
-			<p>Start in News Studio. Upgrade when you need unlimited exports.</p>
+			<h2>Build your next feed grid today</h2>
+			<p>Open Grid Studio. Upgrade when you need unlimited exports.</p>
 			<a href={studioHref} class="cta-lime">
-				{signedIn ? 'Open studio' : 'Create free account'}
+				{signedIn ? 'Open grid studio' : 'Create free account'}
 				<ArrowRight size={18} />
 			</a>
 		</div>
@@ -169,7 +181,7 @@
 		<a href="/privacy">Privacy</a>
 		<a href="/terms">Terms</a>
 		<a href="/refund-policy">Refunds</a>
-		<a href="/linkedin-carousel-maker">LinkedIn Carousel</a>
+		<a href="/instagram-carousel-maker">Instagram Carousel</a>
 		<a href="/fake-tweet-maker">Tweet Maker</a>
 		<span>© Carousel Studio</span>
 	</footer>
@@ -362,10 +374,23 @@
 		box-shadow: 0 28px 70px rgba(0, 0, 0, 0.14);
 		background: #eceae4;
 	}
-	.shot-frame img {
+	.grid-preview {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 4px;
+		padding: 4px;
+		background: #0a0a0a;
+	}
+	.grid-cell {
+		aspect-ratio: 1;
+		overflow: hidden;
+		background: #1a1a1a;
+	}
+	.grid-cell img {
 		display: block;
 		width: 100%;
-		height: auto;
+		height: 100%;
+		object-fit: cover;
 	}
 	.shot-caption {
 		margin: 12px 0 0;
@@ -427,7 +452,6 @@
 		overflow: hidden;
 		border: 1px solid rgba(10, 5, 5, 0.08);
 		background: #fff;
-		padding: 16px;
 	}
 	.strip-frame img {
 		display: block;

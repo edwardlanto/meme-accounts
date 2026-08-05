@@ -39,6 +39,10 @@
 		studioFeedPreviewHeight,
 	} from '$lib/studio/clip-preview-canvas';
 	import {
+		parseReframeAspectFromSettingsKey,
+		studioFormatForReframeAspect,
+	} from '$lib/video-clips/reframe';
+	import {
 		stashStudioClipImport,
 		studioUrlForClipImport,
 		type StudioClipCaptionImport,
@@ -94,6 +98,9 @@
 		const looksYoutube = /youtube\.com\/embed|youtu\.be\//i.test(videoUrl);
 		const caps = shiftCaptionImportTimes(captions ?? null, media.captionTimeOffsetSec);
 		if (videoUrl && !looksYoutube) {
+			const formatId = studioFormatForReframeAspect(
+				parseReframeAspectFromSettingsKey(clip.reframeSettingsKey) ?? '9:16',
+			);
 			stashStudioClipImport({
 				template,
 				videoUrl,
@@ -111,6 +118,8 @@
 				carouselHandle: copy.carouselHandle,
 				carouselBody: copy.carouselBody,
 				captions: caps,
+				formatId,
+				usedReframe: media.usedReframe,
 			});
 		} else {
 			console.warn('[videos] Edit in Studio: no direct video URL to import', {

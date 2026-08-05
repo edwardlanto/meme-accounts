@@ -12,6 +12,7 @@
 		solidBackgroundColor?: string;
 		overlays?: Overlay[];
 		onOverlaysChange?: (overlays: Overlay[]) => void;
+		resolveSrc?: (src: string) => string;
 	}
 
 	let {
@@ -24,6 +25,7 @@
 		solidBackgroundColor = '#ffffff',
 		overlays = [],
 		onOverlaysChange,
+		resolveSrc,
 	}: Props = $props();
 
 	const showVideo = $derived(!!String(backgroundVideo ?? '').trim());
@@ -49,7 +51,7 @@
 			muted
 			loop
 			autoplay
-		/>
+		></video>
 	{:else if showImage}
 		<img
 			class="absolute inset-0 w-full h-full object-cover"
@@ -60,14 +62,17 @@
 	{/if}
 
 	{#each overlays ?? [] as o (o.id)}
-		<ImageStickerOverlayBox
-			overlay={o}
-			interactive={interactive}
-			w={w}
-			h={h}
-			onChange={(next) => onOverlaysChange?.(overlays.map((x) => (x.id === o.id ? next : x)))}
-			onRemove={() => onOverlaysChange?.(overlays.filter((x) => x.id !== o.id))}
-		/>
+		{#if o.kind !== 'grid'}
+			<ImageStickerOverlayBox
+				overlay={o}
+				{overlays}
+				w={w}
+				h={h}
+				{scale}
+				{interactive}
+				{onOverlaysChange}
+				{resolveSrc}
+			/>
+		{/if}
 	{/each}
 </div>
-

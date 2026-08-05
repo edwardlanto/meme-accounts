@@ -40,6 +40,13 @@
 		takeClipImportResult,
 		type BulkClipImportResult,
 	} from '$lib/studio/bulk-video-clips';
+	import {
+		loadBulkWorkspace,
+		saveBulkWorkspace,
+		clearBulkWorkspace,
+		showsHaveContent,
+	} from '$lib/studio/bulk-workspace';
+	import type { PageData } from './$types';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import {
 		templateUsesStockMedia,
@@ -50,6 +57,7 @@
 	import { STUDIO_TEMPLATES, coerceTemplateId, type TemplateId } from '$lib/studio/template-ids';
 	import { GOOGLE_FONTS } from '$lib/fonts';
 	import { CAPTION_TEMPLATES } from '$lib/video-clips/caption-templates';
+	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
 	import BulkSlidePreview from '$lib/components/bulk/BulkSlidePreview.svelte';
 	import BulkSlideCarousel from '$lib/components/bulk/BulkSlideCarousel.svelte';
 	import BulkPopover from '$lib/components/bulk/BulkPopover.svelte';
@@ -85,13 +93,30 @@
 		Download,
 		BarChart3,
 		Info,
+		History,
+		FolderOpen,
+		Clock,
+		Eraser,
 	} from 'lucide-svelte';
 
 	type SlidePopoverKind = 'intel' | 'reframe' | 'captions';
 
+	type CloudWorkspaceListItem = {
+		id: string;
+		title: string;
+		topic: string;
+		thumbnailUrl: string | null;
+		showCount: number;
+		titles: string[];
+		updatedAt: string;
+		url: string;
+	};
+
 	/** Main preview width — filmstrip scrolls when thumbs exceed this. */
 	const BULK_CAROUSEL_WIDTH = 252;
 	const BULK_FILMSTRIP_THUMB = 64;
+
+	let { data }: { data: PageData } = $props();
 
 	let userId = $state('');
 	let brandKit = $state<BrandKitSettings>({ ...DEFAULT_BRAND_KIT, cta: { ...DEFAULT_BRAND_KIT.cta } });
@@ -107,16 +132,22 @@
 	let ideaCount = $state(5);
 	/** Slides inside each slideshow */
 	let slidesPerShow = $state(5);
-	let appendMode = $state(false);
 	let autoStock = $state(true);
 	let stockFilling = $state(false);
 	let stockNote = $state('');
 	let generating = $state(false);
 	let generateError = $state('');
-	let shows = $state<BulkShow[]>([createBlankShow('news', undefined, 3)]);
+	/** Empty until hydrate so we never flash a blank starter show. */
+	let shows = $state<BulkShow[]>([]);
 	let selectedShowId = $state<string | null>(null);
 	let pasteOpen = $state(false);
 	let pasteText = $state('');
+	let libraryOpen = $state(false);
+	let libraryEntries = $state<CloudWorkspaceListItem[]>([]);
+	let libraryBusy = $state(false);
+	let libraryNote = $state('');
+	/** Cloud row currently open at /dashboard/bulk/[id] */
+	let cloudWorkspaceId = $state<string | null>(null);
 	let clipHandoff = $state<BulkClipHandoff | null>(null);
 	let clipImportOpen = $state(false);
 	let slidePopover = $state<{ showId: string; slideId: string; kind: SlidePopoverKind } | null>(null);
@@ -130,6 +161,13 @@
 	let clipProjectMeta = $state({ summary: '', demo: false, model: '' });
 	let clipProjectSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let clipProjectSaving = $state(false);
+	let workspaceSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	let workspaceSaving = $state(false);
+	let workspaceHydrated = $state(false);
+	/** Brief hold so restore doesn't pop in before paint settles. */
+	let workspaceRevealReady = $state(false);
+
+	const stackLoading = $derived(!workspaceHydrated || !workspaceRevealReady || generating);
 
 	const currentReframeKey = $derived(
 		reframeSettingsKey({
@@ -192,6 +230,171 @@
 		};
 	}
 
+	function leanShowsForCloud(source: BulkShow[]): BulkShow[] {
+		return source.map((show) => ({
+			...show,
+			slides: (show.slides ?? []).map((sl) => {
+				const { mediaLoading: _m, reframeBusy: _r, ...rest } = sl;
+				const mediaUrl = String(rest.mediaUrl ?? '');
+				if (mediaUrl.startsWith('data:') && mediaUrl.length > 180_000) {
+					return { ...rest, mediaUrl: rest.mediaThumb || '', mediaThumb: rest.mediaThumb };
+				}
+				return rest;
+			}),
+		}));
+	}
+
+	async function refreshLibrary() {
+		if (!userId) {
+			libraryEntries = [];
+			return;
+		}
+		try {
+			const res = await fetch('/api/bulk/workspaces');
+			if (!res.ok) return;
+			const json = (await res.json()) as { workspaces?: CloudWorkspaceListItem[] };
+			libraryEntries = Array.isArray(json.workspaces) ? json.workspaces : [];
+		} catch {
+			/* ignore */
+		}
+	}
+
+	async function finishWorkspaceHydrate(opts?: { skeletonCount?: number }) {
+		workspaceHydrated = true;
+		void refreshLibrary();
+		const holdMs = opts?.skeletonCount != null && opts.skeletonCount > 0 ? 280 : 160;
+		await new Promise((r) => setTimeout(r, holdMs));
+		workspaceRevealReady = true;
+	}
+
+	async function saveShowsToCloud(
+		source: BulkShow[],
+		opts?: { updateId?: string | null; topicOverride?: string },
+	): Promise<string | null> {
+		if (!userId || !showsHaveContent(source)) return null;
+		const payload = {
+			topic: opts?.topicOverride ?? topic,
+			shows: leanShowsForCloud(source),
+			selectedShowId,
+			clipProjectId,
+		};
+		const updateId = opts?.updateId || undefined;
+		const res = await fetch(updateId ? `/api/bulk/workspaces/${updateId}` : '/api/bulk/workspaces', {
+			method: updateId ? 'PATCH' : 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		});
+		if (!res.ok) {
+			const err = await res.json().catch(() => ({}));
+			throw new Error((err as { error?: string }).error || 'Could not save slideshow');
+		}
+		const json = (await res.json()) as { id?: string };
+		return json.id ?? updateId ?? null;
+	}
+
+	async function archiveCurrentToCloud() {
+		if (!userId || !showsHaveContent(shows)) return null;
+		const id = await saveShowsToCloud(shows);
+		void refreshLibrary();
+		return id;
+	}
+
+	async function saveCurrentToLibrary() {
+		if (!userId || libraryBusy) return;
+		if (!showsHaveContent(shows)) {
+			libraryNote = 'Nothing to save yet — generate or edit a carousel first.';
+			setTimeout(() => (libraryNote = ''), 2800);
+			return;
+		}
+		libraryBusy = true;
+		try {
+			const id = await saveShowsToCloud(shows, { updateId: cloudWorkspaceId });
+			if (!id) throw new Error('Save failed');
+			cloudWorkspaceId = id;
+			await refreshLibrary();
+			libraryNote = 'Saved — only you can open this link';
+			setTimeout(() => (libraryNote = ''), 2400);
+			if ($page.params.id !== id) {
+				await goto(`/dashboard/bulk/${id}`, { replaceState: true, noScroll: true });
+			}
+		} catch (e) {
+			libraryNote = e instanceof Error ? e.message : 'Save failed';
+			setTimeout(() => (libraryNote = ''), 3200);
+		} finally {
+			libraryBusy = false;
+		}
+	}
+
+	async function clearAndStartFresh() {
+		if (libraryBusy) return;
+		libraryBusy = true;
+		try {
+			if (showsHaveContent(shows)) {
+				const id = await saveShowsToCloud(shows, { updateId: cloudWorkspaceId });
+				if (id) cloudWorkspaceId = id;
+				await refreshLibrary();
+			}
+			if (userId) clearBulkWorkspace(userId);
+			const caps = captionDefaultsFromKit(brandKit);
+			const blank = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, 3);
+			workspaceRevealReady = false;
+			shows = [blank];
+			selectedShowId = blank.id;
+			topic = '';
+			cloudWorkspaceId = null;
+			clipProjectId = null;
+			libraryOpen = false;
+			libraryNote = 'Saved previous work to library — starting fresh';
+			setTimeout(() => (libraryNote = ''), 2800);
+			await persistBulkWorkspace();
+			await goto('/dashboard/bulk', { replaceState: true, noScroll: true });
+			await new Promise((r) => setTimeout(r, 180));
+			workspaceRevealReady = true;
+		} catch (e) {
+			libraryNote = e instanceof Error ? e.message : 'Could not clear workspace';
+			setTimeout(() => (libraryNote = ''), 3200);
+		} finally {
+			libraryBusy = false;
+		}
+	}
+
+	async function deleteLibraryEntry(entryId: string) {
+		if (!userId || libraryBusy) return;
+		try {
+			const res = await fetch(`/api/bulk/workspaces/${entryId}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error('Delete failed');
+			libraryEntries = libraryEntries.filter((e) => e.id !== entryId);
+			if (cloudWorkspaceId === entryId) {
+				cloudWorkspaceId = null;
+				if (userId) clearBulkWorkspace(userId);
+				const caps = captionDefaultsFromKit(brandKit);
+				const blank = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, 3);
+				shows = [blank];
+				selectedShowId = blank.id;
+				topic = '';
+				await goto('/dashboard/bulk', { replaceState: true, noScroll: true });
+			}
+		} catch (e) {
+			libraryNote = e instanceof Error ? e.message : 'Delete failed';
+			setTimeout(() => (libraryNote = ''), 2800);
+		}
+	}
+
+	function formatHistoryWhen(isoOrTs: string | number): string {
+		try {
+			const ts = typeof isoOrTs === 'number' ? isoOrTs : Date.parse(isoOrTs);
+			if (!Number.isFinite(ts)) return '';
+			const now = Date.now();
+			const diff = now - ts;
+			if (diff < 60_000) return 'Just now';
+			if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+			if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+			return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+		} catch {
+			return '';
+		}
+	}
+
 	onMount(async () => {
 		const {
 			data: { user },
@@ -216,15 +419,35 @@
 			/* ignore */
 		}
 
+		const cloud = data.cloudWorkspace;
+		if (cloud?.shows?.length) {
+			cloudWorkspaceId = cloud.id;
+			shows = cloud.shows.map((s) => ({
+				...s,
+				slides: (s.slides ?? []).map((sl) => ({ ...sl })),
+			}));
+			selectedShowId =
+				cloud.selectedShowId && shows.some((s) => s.id === cloud.selectedShowId)
+					? cloud.selectedShowId
+					: shows[0]?.id ?? null;
+			if (cloud.topic?.trim()) topic = cloud.topic;
+			if (cloud.clipProjectId) clipProjectId = cloud.clipProjectId;
+			void persistBulkWorkspace();
+			await finishWorkspaceHydrate({ skeletonCount: shows.length });
+			return;
+		}
+
 		const pendingImport = takeClipImportResult();
 		if (pendingImport) {
 			onClipImportComplete(pendingImport);
+			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2 });
 			return;
 		}
 
 		const projectParam = $page.url.searchParams.get('project');
 		if (projectParam) {
 			await loadClipProject(projectParam);
+			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2 });
 			return;
 		}
 
@@ -249,15 +472,76 @@
 			});
 			shows = newShows;
 			selectedShowId = newShows[0]?.id ?? null;
+			void persistBulkWorkspace();
+			await finishWorkspaceHydrate({ skeletonCount: newShows.length });
+			return;
+		}
+
+		const saved = loadBulkWorkspace(user.id);
+		if (saved?.shows?.length) {
+			shows = saved.shows;
+			selectedShowId =
+				saved.selectedShowId && saved.shows.some((s) => s.id === saved.selectedShowId)
+					? saved.selectedShowId
+					: saved.shows[0]?.id ?? null;
+			if (saved.topic?.trim()) topic = saved.topic;
+			if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
+			await finishWorkspaceHydrate({ skeletonCount: saved.shows.length });
 			return;
 		}
 
 		const show = createBlankShow(defaultTpl, caps, 3);
 		shows = [show];
 		selectedShowId = show.id;
+		await finishWorkspaceHydrate({ skeletonCount: 1 });
 
 		const importParam = $page.url.searchParams.get('import');
 		if (importParam === 'clips') clipImportOpen = true;
+	});
+
+	function scheduleBulkWorkspaceSave() {
+		if (!userId || !workspaceHydrated) return;
+		if (workspaceSaveTimer) clearTimeout(workspaceSaveTimer);
+		workspaceSaveTimer = setTimeout(() => {
+			void persistBulkWorkspace();
+		}, 700);
+	}
+
+	async function persistBulkWorkspace() {
+		if (!userId || workspaceSaving) return;
+		workspaceSaving = true;
+		try {
+			await saveBulkWorkspace(userId, {
+				shows,
+				selectedShowId,
+				topic,
+				clipProjectId,
+			});
+			// Keep the open cloud row in sync while editing /dashboard/bulk/[id]
+			if (cloudWorkspaceId && showsHaveContent(shows)) {
+				await fetch(`/api/bulk/workspaces/${cloudWorkspaceId}`, {
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						topic,
+						shows: leanShowsForCloud(shows),
+						selectedShowId,
+						clipProjectId,
+					}),
+				}).catch(() => {});
+			}
+		} finally {
+			workspaceSaving = false;
+		}
+	}
+
+	$effect(() => {
+		// Track workspace mutations for autosave
+		void shows;
+		void selectedShowId;
+		void topic;
+		if (!workspaceHydrated || !userId) return;
+		scheduleBulkWorkspaceSave();
 	});
 
 	function selectShow(id: string) {
@@ -449,22 +733,25 @@
 		opts?: { skipContext?: boolean },
 	) {
 		if (!opts?.skipContext) setClipProjectContext(result);
-		if (result.bulkShows?.length) {
-			shows = appendMode ? [...shows, ...result.bulkShows] : result.bulkShows;
-			selectedShowId = result.bulkShows[0]?.id ?? null;
-		} else {
-			const newShows = buildBulkShowsFromVideoClips(result.source, result.clips, {
-				template: coerceTemplateId(brandKit.defaultTemplateId),
-				captionDefaults: captionDefaultsFromKit(brandKit),
-				summary: result.summary,
-				demo: result.demo,
-				model: result.model,
-			});
-			shows = appendMode ? [...shows, ...newShows] : newShows;
-			selectedShowId = newShows[0]?.id ?? null;
+		const incoming = result.bulkShows?.length
+			? result.bulkShows
+			: buildBulkShowsFromVideoClips(result.source, result.clips, {
+					template: coerceTemplateId(brandKit.defaultTemplateId),
+					captionDefaults: captionDefaultsFromKit(brandKit),
+					summary: result.summary,
+					demo: result.demo,
+					model: result.model,
+				});
+		if (workspaceRevealReady && userId && showsHaveContent(shows)) {
+			const prevShows = shows;
+			void saveShowsToCloud(prevShows).then(() => refreshLibrary()).catch(() => {});
 		}
+		shows = incoming;
+		selectedShowId = incoming[0]?.id ?? null;
 		clipHandoff = null;
 		if (clipProjectId) scheduleClipProjectSave();
+		workspaceHydrated = true;
+		void persistBulkWorkspace();
 	}
 
 	function openSlidePopover(showId: string, slideId: string, kind: SlidePopoverKind) {
@@ -662,7 +949,7 @@
 		});
 	}
 
-	function applyPasteLines() {
+	async function applyPasteLines() {
 		const lines = pasteText
 			.split(/\n/)
 			.map((l) => stripEmDashes(l))
@@ -676,7 +963,8 @@
 			if (show.slides[0]) show.slides[0].headline = title;
 			return show;
 		});
-		shows = appendMode ? [...shows, ...newShows] : newShows;
+		await archiveCurrentToCloud().catch(() => {});
+		shows = newShows;
 		selectedShowId = shows[0]?.id ?? null;
 		pasteOpen = false;
 		pasteText = '';
@@ -720,38 +1008,21 @@
 					slide.body,
 					[topicHint, showTitle].filter(Boolean).join(' '),
 				);
-				return {
-					showId,
-					slideId,
-					ok: !!pick?.url,
-					patch: {
-						mediaLoading: false,
-						mediaUrl: pick?.url ?? slide.mediaUrl ?? '',
-						mediaKind: pick?.kind ?? slide.mediaKind ?? null,
-						mediaThumb: pick?.thumb ?? slide.mediaThumb ?? '',
-					} satisfies Partial<BulkSlide>,
-					error: pick?.url ? '' : 'no match',
-				};
+				updateSlide(showId, slideId, {
+					mediaLoading: false,
+					mediaUrl: pick?.url ?? slide.mediaUrl ?? '',
+					mediaKind: pick?.kind ?? slide.mediaKind ?? null,
+					mediaThumb: pick?.thumb ?? slide.mediaThumb ?? '',
+				});
+				return { ok: !!pick?.url, error: pick?.url ? '' : 'no match' };
 			} catch (e: unknown) {
+				updateSlide(showId, slideId, { mediaLoading: false });
 				return {
-					showId,
-					slideId,
 					ok: false,
-					patch: { mediaLoading: false } satisfies Partial<BulkSlide>,
 					error: e instanceof Error ? e.message : 'stock failed',
 				};
 			}
 		});
-
-		// Apply all patches in one write to avoid concurrent update races
-		const byKey = new Map(results.map((r) => [`${r.showId}:${r.slideId}`, r.patch]));
-		shows = shows.map((s) => ({
-			...s,
-			slides: s.slides.map((sl) => {
-				const patch = byKey.get(`${s.id}:${sl.id}`);
-				return patch ? { ...sl, ...patch } : sl;
-			}),
-		}));
 
 		stockFilling = false;
 		const filled = results.filter((r) => r.ok).length;
@@ -767,6 +1038,7 @@
 			stockNote = `Stock filled ${filled} slide${filled === 1 ? '' : 's'}`;
 		}
 		setTimeout(() => (stockNote = ''), 4000);
+		void persistBulkWorkspace();
 	}
 
 	async function fillStockForSlide(showId: string, slideId: string) {
@@ -846,13 +1118,28 @@
 				};
 			});
 
-			shows = appendMode ? [...shows, ...newShows] : newShows;
+			await archiveCurrentToCloud().catch(() => {});
+			shows = newShows;
 			selectedShowId = shows[0]?.id ?? null;
+			cloudWorkspaceId = null;
+			// Reveal decks immediately so filmstrip/main show loaders while stock fills
+			generating = false;
 			if (autoStock) {
 				await fillStockForShows(
 					newShows.map((s) => s.id),
 					{ force: true },
 				);
+			}
+			await persistBulkWorkspace();
+			try {
+				const id = await saveShowsToCloud(newShows);
+				if (id) {
+					cloudWorkspaceId = id;
+					void refreshLibrary();
+					await goto(`/dashboard/bulk/${id}`, { replaceState: true, noScroll: true });
+				}
+			} catch {
+				/* local stack still usable */
 			}
 		} catch (e: any) {
 			generateError = e?.message || 'Failed to generate ideas';
@@ -883,6 +1170,54 @@
 		setTimeout(() => (brandSavedNote = ''), 2000);
 	}
 
+	let brandLogoBusy = $state(false);
+
+	async function onBrandLogoFile(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		brandLogoBusy = true;
+		try {
+			const dataUrl = await prepareImageAsDataUrl(file, {
+				maxDim: 512,
+				maxBytes: 400_000,
+				quality: 0.82,
+			});
+			brandKit = { ...brandKit, logoUrl: dataUrl };
+			brandSavedNote = 'Logo optimized — click Save brand';
+			setTimeout(() => (brandSavedNote = ''), 2500);
+		} catch (err: unknown) {
+			brandSavedNote = err instanceof Error ? err.message : 'Logo upload failed';
+			setTimeout(() => (brandSavedNote = ''), 3000);
+		} finally {
+			brandLogoBusy = false;
+		}
+	}
+
+	async function onBrandCtaImageFile(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		brandLogoBusy = true;
+		try {
+			const dataUrl = await prepareImageAsDataUrl(file, {
+				maxDim: 1080,
+				maxBytes: 900_000,
+				quality: 0.84,
+			});
+			brandKit = { ...brandKit, cta: { ...brandKit.cta, image: dataUrl } };
+			brandSavedNote = 'CTA image optimized — click Save brand';
+			setTimeout(() => (brandSavedNote = ''), 2500);
+		} catch (err: unknown) {
+			brandSavedNote = err instanceof Error ? err.message : 'CTA image failed';
+			setTimeout(() => (brandSavedNote = ''), 3000);
+		} finally {
+			brandLogoBusy = false;
+		}
+	}
+
 	function saveCaptionAsBrand(slide: BulkSlide) {
 		if (!userId) return;
 		brandKit = mergeCaptionDefaultsIntoKit(
@@ -899,17 +1234,18 @@
 		setTimeout(() => (brandSavedNote = ''), 2000);
 	}
 
-	function openShowInStudio(show: BulkShow) {
+	async function openShowInStudio(show: BulkShow) {
 		const state = buildDraftStateFromShow(show, {
 			brandCtaEnabled: !!(brandKit.cta.headline || brandKit.cta.image),
 		});
 		stashBulkImport(state);
+		await persistBulkWorkspace();
 		goto('/dashboard/studio?from=bulk');
 	}
 
 	function openInStudio() {
 		if (!selectedShow) return;
-		openShowInStudio(selectedShow);
+		void openShowInStudio(selectedShow);
 	}
 </script>
 
@@ -950,6 +1286,37 @@
 				<label class="field">
 					<span>Logo URL</span>
 					<input bind:value={brandKit.logoUrl} placeholder="https://…" />
+				</label>
+				<label class="field">
+					<span>Upload logo</span>
+					<input
+						type="file"
+						accept="image/*"
+						disabled={brandLogoBusy}
+						onchange={(e) => void onBrandLogoFile(e)}
+					/>
+				</label>
+				<label class="field">
+					<span>CTA image URL</span>
+					<input
+						value={brandKit.cta.image}
+						placeholder="https://…"
+						oninput={(e) => {
+							brandKit = {
+								...brandKit,
+								cta: { ...brandKit.cta, image: (e.currentTarget as HTMLInputElement).value },
+							};
+						}}
+					/>
+				</label>
+				<label class="field">
+					<span>Upload CTA image</span>
+					<input
+						type="file"
+						accept="image/*"
+						disabled={brandLogoBusy}
+						onchange={(e) => void onBrandCtaImageFile(e)}
+					/>
 				</label>
 				<label class="field">
 					<span>Primary</span>
@@ -1040,10 +1407,6 @@
 			<span>Slides/show ({slidesPerShow})</span>
 			<input type="range" min="3" max="8" bind:value={slidesPerShow} />
 		</label>
-		<label class="append-toggle">
-			<input type="checkbox" bind:checked={appendMode} />
-			Append
-		</label>
 		<label class="append-toggle" title="Only image & video templates">
 			<input type="checkbox" bind:checked={autoStock} />
 			Auto stock
@@ -1071,13 +1434,58 @@
 	{#if stockNote}
 		<p class="stock-note" role="status">{stockNote}</p>
 	{/if}
+	{#if libraryNote && !libraryOpen}
+		<p class="stock-note" role="status">{libraryNote}</p>
+	{/if}
 
 	<BulkClipImportDialog bind:open={clipImportOpen} userId={userId} oncomplete={onClipImportComplete} />
 
 	<section class="stack-wrap" aria-label="Slideshow stack">
 		<div class="rows-toolbar">
-			<span class="rows-count"><Layers size={14} /> {shows.length} slideshows</span>
+			<span class="rows-count"
+				><Layers size={14} />
+				{#if stackLoading && !generating}
+					Loading…
+				{:else}
+					{shows.length} slideshows
+				{/if}
+				{#if cloudWorkspaceId}
+					<span class="workspace-url-chip" title="Private link — only you can open it"
+						>/bulk/{cloudWorkspaceId.slice(0, 8)}…</span
+					>
+				{/if}
+			</span>
 			<div class="rows-toolbar-actions">
+				<button
+					type="button"
+					class="btn-ghost sm"
+					class:btn-ghost-on={libraryOpen}
+					onclick={() => {
+						libraryOpen = !libraryOpen;
+						if (libraryOpen) void refreshLibrary();
+					}}
+					title="Your saved carousel stacks"
+				>
+					<History size={13} />
+					Library
+					{#if libraryEntries.length}
+						<span class="history-badge">{libraryEntries.length}</span>
+					{/if}
+				</button>
+				<button
+					type="button"
+					class="btn-ghost sm"
+					onclick={() => void clearAndStartFresh()}
+					disabled={libraryBusy || stackLoading}
+					title="Save current work to Library and start a blank stack"
+				>
+					{#if libraryBusy}
+						<Loader2 size={13} class="spin" />
+					{:else}
+						<Eraser size={13} />
+					{/if}
+					Clear &amp; fresh
+				</button>
 				<button type="button" class="btn-ghost sm" onclick={() => (clipImportOpen = true)}>
 					<Video size={13} />
 					Import clips
@@ -1086,7 +1494,7 @@
 					type="button"
 					class="btn-ghost sm"
 					onclick={() => void fillStockForShows(undefined, { force: true })}
-					disabled={stockFilling}
+					disabled={stockFilling || stackLoading}
 				>
 					{#if stockFilling}
 						<Loader2 size={13} class="spin" />
@@ -1095,25 +1503,102 @@
 					{/if}
 					Fill stock
 				</button>
-				<button type="button" class="btn-ghost sm" onclick={() => (pasteOpen = !pasteOpen)}>
+				<button type="button" class="btn-ghost sm" onclick={() => (pasteOpen = !pasteOpen)} disabled={stackLoading}>
 					<Type size={13} /> Paste ideas
 				</button>
-				<button type="button" class="btn-ghost sm" onclick={addShow}>
+				<button type="button" class="btn-ghost sm" onclick={addShow} disabled={stackLoading}>
 					<Plus size={13} /> Add slideshow
 				</button>
 			</div>
 		</div>
 
-		{#if pasteOpen}
-			<div class="paste-box">
-				<textarea bind:value={pasteText} rows="3" placeholder="One idea title per line…"></textarea>
-				<button type="button" class="btn-primary sm" onclick={applyPasteLines}>Apply lines</button>
+		{#if libraryOpen}
+			<div class="history-panel" transition:fly={{ y: -8, duration: 220 }}>
+				<div class="history-panel-head">
+					<div class="history-panel-title">
+						<FolderOpen size={15} />
+						<span>Your library</span>
+					</div>
+					<div class="history-panel-actions">
+						<button
+							type="button"
+							class="btn-ghost sm"
+							onclick={() => void saveCurrentToLibrary()}
+							disabled={libraryBusy || !showsHaveContent(shows)}
+						>
+							{#if libraryBusy}
+								<Loader2 size={13} class="spin" />
+							{:else}
+								<Save size={13} />
+							{/if}
+							Save current
+						</button>
+						<button type="button" class="icon-btn" aria-label="Close" onclick={() => (libraryOpen = false)}>
+							<X size={14} />
+						</button>
+					</div>
+				</div>
+				{#if libraryNote}
+					<p class="history-note" role="status">{libraryNote}</p>
+				{/if}
+				{#if !libraryEntries.length}
+					<p class="history-empty">
+						Saved stacks appear here. Use Save current, Clear &amp; fresh, or Generate again — each gets a private
+						URL only you can open.
+					</p>
+				{:else}
+					<ul class="history-list">
+						{#each libraryEntries as entry (entry.id)}
+							<li class="history-item">
+								<a
+									class="history-card"
+									class:history-card-on={entry.id === cloudWorkspaceId}
+									href={entry.url}
+									onclick={() => (libraryOpen = false)}
+								>
+									<div class="history-thumb-wrap">
+										{#if entry.thumbnailUrl}
+											<img class="history-thumb" src={entry.thumbnailUrl} alt="" loading="lazy" />
+										{:else}
+											<span class="history-thumb history-thumb-empty"><Layers size={18} /></span>
+										{/if}
+									</div>
+									<div class="history-meta">
+										<span class="history-topic">{entry.topic || entry.title || entry.titles[0] || 'Untitled'}</span>
+										<span class="history-sub">
+											<Clock size={11} />
+											{formatHistoryWhen(entry.updatedAt)}
+											· {entry.showCount} slideshow{entry.showCount === 1 ? '' : 's'}
+										</span>
+										<span class="history-titles">{entry.url}</span>
+									</div>
+								</a>
+								<button
+									type="button"
+									class="icon-btn danger history-delete"
+									title="Delete from library"
+									aria-label="Delete from library"
+									onclick={() => void deleteLibraryEntry(entry.id)}
+								>
+									<Trash2 size={13} />
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 			</div>
 		{/if}
 
-		<ul class="show-stack">
-			{#if generating}
-				{#each Array(Math.max(1, ideaCount)) as _, gi (gi)}
+		{#if pasteOpen}
+			<div class="paste-box">
+				<textarea bind:value={pasteText} rows="3" placeholder="One idea title per line…"></textarea>
+				<button type="button" class="btn-primary sm" onclick={() => void applyPasteLines()}>Apply lines</button>
+			</div>
+		{/if}
+
+		<ul class="show-stack" class:show-stack-loading={stackLoading}>
+			{#if stackLoading}
+				{#each Array(Math.max(1, generating ? ideaCount : Math.max(shows.length, 2))) as _, gi (gi)}
 					<li class="show-row show-skeleton" aria-hidden="true">
 						<div class="show-body">
 							<div class="show-preview-col">
@@ -1180,11 +1665,12 @@
 											title={`Slide ${si + 1}${sl.headline ? `: ${sl.headline}` : ''}`}
 											onclick={() => selectSlide(show.id, sl.id)}
 										>
-											{#if sl.mediaLoading}
-												<span class="skeleton-block skeleton-thumb-inline"></span>
-											{:else}
-												<BulkSlidePreview slide={sl} width={BULK_FILMSTRIP_THUMB} />
-											{/if}
+											<BulkSlidePreview
+												slide={sl}
+												width={BULK_FILMSTRIP_THUMB}
+												preferThumb={true}
+												mediaFetching={!!sl.mediaLoading}
+											/>
 											<span class="filmstrip-num">{si + 1}</span>
 											{#if sl.clipMeta && !sl.mediaLoading}
 												<span class="filmstrip-score score-{viralityScoreTone(sl.clipMeta.viralityScore)}">
@@ -1535,24 +2021,59 @@
 						Enable captions on this slide
 					</label>
 					{#if popSlide.captions.enabled}
+						<div class="cap-style-section">
+							<span class="cap-style-label">Style</span>
+							<div class="cap-style-grid" role="listbox" aria-label="Caption style">
+								{#each CAPTION_TEMPLATES as template (template.id)}
+									<button
+										type="button"
+										class="cap-style-card"
+										class:cap-style-card-on={popSlide.captions.templateId === template.id}
+										role="option"
+										aria-selected={popSlide.captions.templateId === template.id}
+										title={template.name}
+										onclick={() =>
+											updateSlide(popShow.id, popSlide.id, {
+												captions: {
+													...popSlide.captions,
+													templateId: template.id,
+												},
+											})}
+									>
+										<span class="cap-style-preview-frame">
+											<span
+												class="cap-style-preview"
+												style="
+													font-family: {template.fontFamily};
+													font-weight: {template.fontWeight};
+													color: {template.textColor};
+													background: {template.backgroundColor === 'transparent'
+														? 'transparent'
+														: template.backgroundColor};
+													text-transform: {template.textTransform};
+													letter-spacing: 0;
+													border-radius: {template.borderRadius};
+													{template.textStroke
+														? `-webkit-text-stroke: 0.6px ${template.strokeColor}; paint-order: stroke fill;`
+														: ''}
+													{template.textShadow && template.textShadow !== 'none'
+														? 'text-shadow: 1px 1px 0 rgba(0,0,0,0.55);'
+														: ''}
+												"
+											>
+												{#if template.id === 'cyan-punch' && template.highlightColor}
+													<span>A</span><span style="color: {template.highlightColor};">a</span>
+												{:else}
+													Aa
+												{/if}
+											</span>
+										</span>
+										<span class="cap-style-name">{template.name}</span>
+									</button>
+								{/each}
+							</div>
+						</div>
 						<div class="cap-grid">
-							<label class="field">
-								<span>Style</span>
-								<select
-									value={popSlide.captions.templateId}
-									onchange={(e) =>
-										updateSlide(popShow.id, popSlide.id, {
-											captions: {
-												...popSlide.captions,
-												templateId: (e.currentTarget as HTMLSelectElement).value,
-											},
-										})}
-								>
-									{#each CAPTION_TEMPLATES as t}
-										<option value={t.id}>{t.name}</option>
-									{/each}
-								</select>
-							</label>
 							<label class="field">
 								<span>Size</span>
 								<input
@@ -1898,9 +2419,91 @@
 	}
 	.captions-pop .cap-grid {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 0.55rem;
 		margin-bottom: 0.65rem;
+	}
+	.cap-style-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+	.cap-style-label {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--app-text-3);
+	}
+	.cap-style-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.55rem 0.5rem;
+		max-height: 260px;
+		overflow-x: hidden;
+		overflow-y: auto;
+		padding: 0.2rem 0.1rem 0.35rem;
+	}
+	.cap-style-card {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.35rem;
+		min-width: 0;
+		margin: 0;
+		padding: 0.4rem 0.35rem 0.45rem;
+		border: 1.5px solid var(--bulk-border);
+		border-radius: 8px;
+		background: var(--app-surface);
+		cursor: pointer;
+		overflow: hidden;
+		isolation: isolate;
+		transition:
+			border-color 0.15s ease,
+			box-shadow 0.15s ease;
+	}
+	.cap-style-card:hover {
+		border-color: color-mix(in oklab, var(--app-text) 28%, transparent);
+	}
+	.cap-style-card-on {
+		border-color: var(--app-accent, #e8ff48);
+		box-shadow: 0 0 0 1px var(--app-accent, #e8ff48);
+	}
+	.cap-style-preview-frame {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 2.5rem;
+		padding: 0.2rem;
+		overflow: hidden;
+		border-radius: 5px;
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+	}
+	.cap-style-preview {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		max-width: 100%;
+		padding: 0.2rem 0.45rem;
+		font-size: 0.8rem;
+		line-height: 1;
+		text-align: center;
+		white-space: nowrap;
+		overflow: hidden;
+		border-radius: 3px;
+		paint-order: stroke fill;
+	}
+	.cap-style-name {
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: var(--app-text-3);
+		text-align: center;
+		line-height: 1.25;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		padding: 0 0.1rem;
 	}
 	.brand-panel {
 		border: 1px solid var(--bulk-border);
@@ -2039,6 +2642,165 @@
 		display: flex;
 		gap: 0.35rem;
 		flex-wrap: wrap;
+	}
+	.btn-ghost-on {
+		border-color: color-mix(in oklab, var(--app-text) 28%, var(--bulk-border));
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+		color: var(--app-text);
+	}
+	.history-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.1rem;
+		height: 1.1rem;
+		padding: 0 0.28rem;
+		margin-left: 0.15rem;
+		border-radius: 999px;
+		font-size: 0.625rem;
+		font-weight: 700;
+		background: color-mix(in oklab, var(--app-text) 12%, transparent);
+		color: var(--app-text);
+	}
+	.history-panel {
+		margin-bottom: 0.75rem;
+		padding: 0.75rem 0.85rem;
+		border-radius: 12px;
+		border: 1px solid var(--bulk-border);
+		background: var(--app-surface-2, #f7f7f8);
+	}
+	.history-panel-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-bottom: 0.65rem;
+	}
+	.history-panel-title {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.8125rem;
+		font-weight: 650;
+		color: var(--app-text);
+	}
+	.history-panel-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.history-note {
+		margin: 0 0 0.55rem;
+		font-size: 0.75rem;
+		color: var(--app-text-2);
+	}
+	.history-empty {
+		margin: 0;
+		font-size: 0.78rem;
+		line-height: 1.45;
+		color: var(--app-text-3);
+	}
+	.history-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		max-height: 280px;
+		overflow-y: auto;
+	}
+	.history-item {
+		display: flex;
+		align-items: stretch;
+		gap: 0.35rem;
+	}
+	.history-card {
+		flex: 1 1 0;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+		margin: 0;
+		padding: 0.5rem 0.6rem;
+		border: 1px solid var(--bulk-border);
+		border-radius: 10px;
+		background: #fff;
+		text-align: left;
+		text-decoration: none;
+		color: inherit;
+		cursor: pointer;
+		transition:
+			border-color 0.15s ease,
+			box-shadow 0.15s ease;
+	}
+	.history-card:hover:not(:disabled) {
+		border-color: color-mix(in oklab, var(--app-text) 22%, var(--bulk-border));
+		box-shadow: 0 2px 10px color-mix(in oklab, var(--app-text) 6%, transparent);
+	}
+	.history-card-on {
+		border-color: color-mix(in oklab, var(--app-text) 35%, var(--bulk-border));
+		box-shadow: 0 0 0 1px color-mix(in oklab, var(--app-text) 18%, transparent);
+	}
+	.workspace-url-chip {
+		margin-left: 0.45rem;
+		font-size: 0.625rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		color: var(--app-text-3);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	}
+	.history-card:disabled {
+		opacity: 0.6;
+		cursor: wait;
+	}
+	.history-thumb-wrap {
+		flex: 0 0 auto;
+	}
+	.history-thumb {
+		display: block;
+		width: 2.75rem;
+		height: 3.45rem;
+		object-fit: cover;
+		border-radius: 6px;
+		background: #ebebeb;
+	}
+	.history-thumb-empty {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--app-text-3);
+	}
+	.history-meta {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		min-width: 0;
+	}
+	.history-topic {
+		font-size: 0.8125rem;
+		font-weight: 650;
+		color: var(--app-text);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.history-sub {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.28rem;
+		font-size: 0.6875rem;
+		color: var(--app-text-3);
+	}
+	.history-titles {
+		font-size: 0.6875rem;
+		color: var(--app-text-2);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.history-delete {
+		align-self: center;
 	}
 	.paste-box {
 		display: flex;
