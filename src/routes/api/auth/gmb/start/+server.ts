@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
+import { requireOAuthUserId } from '$lib/server/oauth-start';
 
 function randomState() {
 	return crypto.randomUUID().replace(/-/g, '');
@@ -15,18 +16,16 @@ const cookieOpts = {
 	maxAge: 60 * 10,
 };
 
-export const GET: RequestHandler = async ({ url, cookies }) => {
-	const userId = url.searchParams.get('userId') ?? '';
+export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	const next = url.searchParams.get('next') ?? '/dashboard/post-scheduler';
+	const loginNext = `${url.pathname}${url.search}`;
+	const userId = await requireOAuthUserId(locals, loginNext);
 
 	const clientId = env.GMB_CLIENT_ID ?? '';
 	const redirectUri = env.GMB_REDIRECT_URI ?? '';
 
 	if (!clientId || !env.GMB_CLIENT_SECRET || !redirectUri) {
 		throw redirect(303, `/dashboard/settings?integrations=1&error=missing_gmb_env#gmb`);
-	}
-	if (!userId) {
-		throw redirect(303, `/dashboard/settings?integrations=1&error=missing_user#gmb`);
 	}
 
 	const state = randomState();

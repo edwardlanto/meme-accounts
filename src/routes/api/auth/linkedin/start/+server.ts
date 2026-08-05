@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
+import { requireOAuthUserId } from '$lib/server/oauth-start';
 
 function randomState() {
 	return crypto.randomUUID().replace(/-/g, '');
@@ -32,9 +33,10 @@ function scopesForMode(mode: Mode) {
 	return defaultBoth.join(' ');
 }
 
-export const GET: RequestHandler = async ({ url, cookies }) => {
-	const userId = url.searchParams.get('userId') ?? '';
+export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	const next = url.searchParams.get('next') ?? '/dashboard/post-scheduler';
+	const loginNext = `${url.pathname}${url.search}`;
+	const userId = await requireOAuthUserId(locals, loginNext);
 	const mode = ((url.searchParams.get('mode') ?? 'both') as Mode) || 'both';
 
 	const clientId = env.LINKEDIN_CLIENT_ID ?? '';
@@ -42,9 +44,6 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	if (!clientId || !env.LINKEDIN_CLIENT_SECRET || !redirectUri) {
 		throw redirect(303, `/dashboard/settings?integrations=1&error=missing_linkedin_env#linkedin`);
-	}
-	if (!userId) {
-		throw redirect(303, `/dashboard/settings?integrations=1&error=missing_user#linkedin`);
 	}
 
 	const state = randomState();

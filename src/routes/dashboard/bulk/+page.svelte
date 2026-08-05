@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase';
@@ -28,8 +30,17 @@
 		audiencePromptText,
 		type BulkEmotionId,
 		type BulkClipHandoff,
+		type BulkClipHandoffItem,
 		defaultRowCaptions,
 	} from '$lib/studio/bulk-to-studio';
+	import {
+		buildBulkShowsFromVideoClips,
+		viralityScoreLabel,
+		viralityScoreTone,
+		takeClipImportResult,
+		type BulkClipImportResult,
+	} from '$lib/studio/bulk-video-clips';
+	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 	import {
 		templateUsesStockMedia,
 		templateUsesStockVideo,
@@ -40,6 +51,19 @@
 	import { GOOGLE_FONTS } from '$lib/fonts';
 	import { CAPTION_TEMPLATES } from '$lib/video-clips/caption-templates';
 	import BulkSlidePreview from '$lib/components/bulk/BulkSlidePreview.svelte';
+	import BulkSlideCarousel from '$lib/components/bulk/BulkSlideCarousel.svelte';
+	import BulkPopover from '$lib/components/bulk/BulkPopover.svelte';
+	import BulkClipImportDialog from '$lib/components/bulk/BulkClipImportDialog.svelte';
+	import { r2SignRead } from '$lib/r2Client';
+	import { formatTimestamp } from '$lib/video-clips/export-clip';
+	import {
+		DEFAULT_AUTO_REFRAME,
+		REFRAME_ASPECTS,
+		REFRAME_METHODS,
+		REFRAME_PADDING,
+		reframeSettingsKey,
+		type AutoReframeOptions,
+	} from '$lib/video-clips/reframe';
 	import {
 		Sparkles,
 		Plus,
@@ -47,8 +71,6 @@
 		Copy,
 		ChevronUp,
 		ChevronDown,
-		ChevronRight,
-		ChevronLeft,
 		Loader2,
 		Layers,
 		Palette,
@@ -58,7 +80,18 @@
 		Captions,
 		Image,
 		X,
+		Crop,
+		Video,
+		Download,
+		BarChart3,
+		Info,
 	} from 'lucide-svelte';
+
+	type SlidePopoverKind = 'intel' | 'reframe' | 'captions';
+
+	/** Main preview width — filmstrip scrolls when thumbs exceed this. */
+	const BULK_CAROUSEL_WIDTH = 252;
+	const BULK_FILMSTRIP_THUMB = 64;
 
 	let userId = $state('');
 	let brandKit = $state<BrandKitSettings>({ ...DEFAULT_BRAND_KIT, cta: { ...DEFAULT_BRAND_KIT.cta } });
@@ -82,10 +115,31 @@
 	let generateError = $state('');
 	let shows = $state<BulkShow[]>([createBlankShow('news', undefined, 3)]);
 	let selectedShowId = $state<string | null>(null);
-	let captionsMenuShowId = $state<string | null>(null);
 	let pasteOpen = $state(false);
 	let pasteText = $state('');
 	let clipHandoff = $state<BulkClipHandoff | null>(null);
+	let clipImportOpen = $state(false);
+	let slidePopover = $state<{ showId: string; slideId: string; kind: SlidePopoverKind } | null>(null);
+	let autoReframe = $state<AutoReframeOptions>({ ...DEFAULT_AUTO_REFRAME, enabled: true });
+	let pyautoflipReady = $state(false);
+	let ffmpegReady = $state(false);
+	let exportBusySlideId = $state<string | null>(null);
+	let clipProjectId = $state<string | null>(null);
+	let clipProjectSource = $state<VideoImportMeta | null>(null);
+	let clipProjectClips = $state<VideoClip[]>([]);
+	let clipProjectMeta = $state({ summary: '', demo: false, model: '' });
+	let clipProjectSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	let clipProjectSaving = $state(false);
+
+	const currentReframeKey = $derived(
+		reframeSettingsKey({
+			aspectRatio: autoReframe.aspectRatio,
+			method: autoReframe.method,
+			motionThreshold: autoReframe.motionThreshold,
+			paddingMethod: autoReframe.paddingMethod,
+			debug: autoReframe.debug,
+		}),
+	);
 
 	const selectedShow = $derived(shows.find((s) => s.id === selectedShowId) ?? shows[0] ?? null);
 	const activeSlide = $derived(selectedShow ? activeSlideOf(selectedShow) : null);
@@ -100,6 +154,44 @@
 		});
 	}
 
+	function slideFromClipHandoffItem(
+		item: BulkClipHandoffItem,
+		template: TemplateId,
+		caps: ReturnType<typeof captionDefaultsFromKit>,
+	): BulkSlide {
+		const c = item.captions;
+		const usedReframe = !!String(item.reframedPlaybackUrl ?? '').trim();
+		const sourceStart = item.clipStart;
+		const sourceEnd = item.clipEnd;
+		const duration = Math.max(0.5, sourceEnd - sourceStart);
+		const playbackUrl = item.reframedPlaybackUrl || item.videoUrl;
+		return {
+			...createBlankSlide(template, caps),
+			headline: item.headline || '',
+			body: item.body || '',
+			mediaUrl: playbackUrl,
+			mediaKind: 'video',
+			mediaThumb: item.thumbnailUrl || '',
+			sourceClipStart: sourceStart,
+			sourceClipEnd: sourceEnd,
+			clipStart: usedReframe ? 0 : sourceStart,
+			clipEnd: usedReframe ? duration : sourceEnd,
+			sourceR2Key: item.sourceR2Key,
+			reframedR2Key: item.reframedR2Key,
+			reframedPlaybackUrl: item.reframedPlaybackUrl,
+			reframeSettingsKey: item.reframeSettingsKey,
+			captions: c
+				? defaultRowCaptions({
+						enabled: c.enabled !== false,
+						templateId: c.templateId || brandKit.captionTemplateId,
+						fontSize: c.fontSize || brandKit.captionFontSize,
+						position: c.position || brandKit.captionPosition,
+						color: c.customColor || brandKit.captionColor,
+					})
+				: caps,
+		};
+	}
+
 	onMount(async () => {
 		const {
 			data: { user },
@@ -111,33 +203,61 @@
 		userId = user.id;
 		brandKit = loadBrandKit(user.id);
 		const caps = captionDefaultsFromKit(brandKit);
-		const show = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, 3);
+		const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
+
+		try {
+			const res = await fetch('/api/videos/tools');
+			if (res.ok) {
+				const t = (await res.json()) as { pyautoflip?: boolean; ffmpeg?: boolean };
+				pyautoflipReady = !!t.pyautoflip;
+				ffmpegReady = !!t.ffmpeg;
+			}
+		} catch {
+			/* ignore */
+		}
+
+		const pendingImport = takeClipImportResult();
+		if (pendingImport) {
+			onClipImportComplete(pendingImport);
+			return;
+		}
+
+		const projectParam = $page.url.searchParams.get('project');
+		if (projectParam) {
+			await loadClipProject(projectParam);
+			return;
+		}
+
+		const from = $page.url.searchParams.get('from');
+		const handoff = from === 'clip' ? takeBulkClipHandoff() ?? peekBulkClipHandoff() : null;
+
+		if (handoff?.clips?.length) {
+			const newShows: BulkShow[] = handoff.clips.map((item, index) => {
+				const slide = {
+					...slideFromClipHandoffItem(item, defaultTpl, caps),
+					sourceR2Key: item.sourceR2Key || handoff.sourceR2Key,
+					mediaThumb: item.thumbnailUrl || handoff.thumbnailUrl || '',
+				};
+				return {
+					id: crypto.randomUUID(),
+					title: slide.headline || handoff.sourceTitle || `Clip ${index + 1}`,
+					slides: [slide],
+					activeSlideId: slide.id,
+					fromVideoClips: true,
+					clipSummary: index === 0 ? '' : '',
+				};
+			});
+			shows = newShows;
+			selectedShowId = newShows[0]?.id ?? null;
+			return;
+		}
+
+		const show = createBlankShow(defaultTpl, caps, 3);
 		shows = [show];
 		selectedShowId = show.id;
 
-		const from = $page.url.searchParams.get('from');
-		if (from === 'clip') {
-			const handoff = takeBulkClipHandoff() ?? peekBulkClipHandoff();
-			if (handoff) {
-				clipHandoff = handoff;
-				const slide = activeSlideOf(show);
-				const c = handoff.captions;
-				updateSlide(show.id, slide.id, {
-					mediaUrl: handoff.videoUrl,
-					mediaKind: 'video',
-					mediaThumb: handoff.thumbnailUrl ?? '',
-					captions: c
-						? defaultRowCaptions({
-								enabled: c.enabled !== false,
-								templateId: c.templateId || brandKit.captionTemplateId,
-								fontSize: c.fontSize || brandKit.captionFontSize,
-								position: c.position || brandKit.captionPosition,
-								color: c.customColor || brandKit.captionColor,
-							})
-						: slide.captions,
-				});
-			}
-		}
+		const importParam = $page.url.searchParams.get('import');
+		if (importParam === 'clips') clipImportOpen = true;
 	});
 
 	function selectShow(id: string) {
@@ -149,8 +269,26 @@
 		selectedShowId = showId;
 	}
 
+	function filmstripScrollAction(node: HTMLElement, activeSlideId: string) {
+		function scrollActive() {
+			requestAnimationFrame(() => {
+				const active = node.querySelector('.filmstrip-on');
+				if (active) {
+					active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+				}
+			});
+		}
+		scrollActive();
+		return {
+			update(id: string) {
+				if (id) scrollActive();
+			},
+		};
+	}
+
 	function updateShow(id: string, patch: Partial<BulkShow>) {
 		shows = shows.map((s) => (s.id === id ? { ...s, ...patch } : s));
+		scheduleClipProjectSave();
 	}
 
 	function updateSlide(showId: string, slideId: string, patch: Partial<BulkSlide>) {
@@ -161,6 +299,258 @@
 				slides: s.slides.map((sl) => (sl.id === slideId ? { ...sl, ...patch } : sl)),
 			};
 		});
+		scheduleClipProjectSave();
+	}
+
+	function setClipProjectContext(result: BulkClipImportResult) {
+		clipProjectSource = result.source;
+		clipProjectClips = result.clips;
+		clipProjectMeta = {
+			summary: result.summary,
+			demo: result.demo,
+			model: result.model,
+		};
+		if (result.projectId) clipProjectId = result.projectId;
+	}
+
+	function scheduleClipProjectSave() {
+		if (!clipProjectId || !clipProjectSource) return;
+		if (clipProjectSaveTimer) clearTimeout(clipProjectSaveTimer);
+		clipProjectSaveTimer = setTimeout(() => {
+			void persistClipProject();
+		}, 1400);
+	}
+
+	async function persistClipProject() {
+		if (!clipProjectId || !clipProjectSource || clipProjectSaving) return;
+		clipProjectSaving = true;
+		try {
+			await fetch('/api/videos/clip-projects', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					id: clipProjectId,
+					title: clipProjectSource.title,
+					thumbnailUrl: clipProjectSource.thumbnailUrl,
+					source: clipProjectSource,
+					clips: clipProjectClips,
+					summary: clipProjectMeta.summary,
+					demo: clipProjectMeta.demo,
+					model: clipProjectMeta.model,
+					bulkShows: shows,
+				}),
+			});
+		} catch {
+			/* ignore — local edits still work */
+		} finally {
+			clipProjectSaving = false;
+		}
+	}
+
+	async function loadClipProject(id: string) {
+		try {
+			const res = await fetch(`/api/videos/clip-projects/${id}`);
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error ?? 'Could not load project');
+			const project = data.project as {
+				id: string;
+				source: VideoImportMeta;
+				clips: VideoClip[];
+				summary: string;
+				demo: boolean;
+				model: string;
+				bulkShows: BulkShow[] | null;
+			};
+			const importResult: BulkClipImportResult = {
+				source: project.source,
+				clips: project.clips,
+				summary: project.summary,
+				demo: project.demo,
+				model: project.model,
+				projectId: project.id,
+				bulkShows: project.bulkShows ?? undefined,
+			};
+			setClipProjectContext(importResult);
+			if (project.bulkShows?.length) {
+				shows = project.bulkShows;
+				selectedShowId = project.bulkShows[0]?.id ?? null;
+			} else {
+				onClipImportComplete(importResult, { skipContext: true });
+			}
+		} catch (e: unknown) {
+			generateError = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	async function reframeBulkSlide(showId: string, slideId: string) {
+		const show = shows.find((s) => s.id === showId);
+		const slide = show?.slides.find((sl) => sl.id === slideId);
+		if (!slide?.sourceR2Key) return;
+		if (!pyautoflipReady) {
+			alert('Auto-reframe needs pyautoflip. Run: npm run pyautoflip:install');
+			return;
+		}
+		const startSec = Number(slide.sourceClipStart ?? slide.clipStart) || 0;
+		const endSec = Math.max(startSec + 0.5, Number(slide.sourceClipEnd ?? slide.clipEnd) || 0);
+		updateSlide(showId, slideId, { reframeBusy: true });
+		try {
+			const res = await fetch('/api/videos/reframe-clip', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					r2Key: slide.sourceR2Key,
+					startSec,
+					endSec,
+					reframe: {
+						aspectRatio: autoReframe.aspectRatio,
+						method: autoReframe.method,
+						motionThreshold: autoReframe.motionThreshold,
+						paddingMethod: autoReframe.paddingMethod,
+						debug: autoReframe.debug,
+					},
+				}),
+			});
+			const data = (await res.json()) as {
+				error?: string;
+				r2Key?: string;
+				playbackUrl?: string;
+				settingsKey?: string;
+			};
+			if (!res.ok) throw new Error(data.error || 'Reframe failed');
+			const duration = Math.max(0.5, endSec - startSec);
+			updateSlide(showId, slideId, {
+				reframedR2Key: String(data.r2Key ?? ''),
+				reframedPlaybackUrl: String(data.playbackUrl ?? ''),
+				reframeSettingsKey: String(data.settingsKey ?? currentReframeKey),
+				mediaUrl: String(data.playbackUrl ?? slide.mediaUrl),
+				clipStart: 0,
+				clipEnd: duration,
+				reframeBusy: false,
+			});
+		} catch (e) {
+			console.warn('[bulk] reframe failed', e);
+			alert(e instanceof Error ? e.message : 'Reframe failed');
+			updateSlide(showId, slideId, { reframeBusy: false });
+		}
+	}
+
+	async function reframeAllBulkSlides(showId: string) {
+		const show = shows.find((s) => s.id === showId);
+		if (!show) return;
+		for (const slide of show.slides) {
+			if (!slide.sourceR2Key || slide.mediaKind !== 'video') continue;
+			if (slide.reframedPlaybackUrl && slide.reframeSettingsKey === currentReframeKey) continue;
+			await reframeBulkSlide(showId, slide.id);
+		}
+	}
+
+	function onClipImportComplete(
+		result: BulkClipImportResult,
+		opts?: { skipContext?: boolean },
+	) {
+		if (!opts?.skipContext) setClipProjectContext(result);
+		if (result.bulkShows?.length) {
+			shows = appendMode ? [...shows, ...result.bulkShows] : result.bulkShows;
+			selectedShowId = result.bulkShows[0]?.id ?? null;
+		} else {
+			const newShows = buildBulkShowsFromVideoClips(result.source, result.clips, {
+				template: coerceTemplateId(brandKit.defaultTemplateId),
+				captionDefaults: captionDefaultsFromKit(brandKit),
+				summary: result.summary,
+				demo: result.demo,
+				model: result.model,
+			});
+			shows = appendMode ? [...shows, ...newShows] : newShows;
+			selectedShowId = newShows[0]?.id ?? null;
+		}
+		clipHandoff = null;
+		if (clipProjectId) scheduleClipProjectSave();
+	}
+
+	function openSlidePopover(showId: string, slideId: string, kind: SlidePopoverKind) {
+		selectSlide(showId, slideId);
+		slidePopover = { showId, slideId, kind };
+	}
+
+	function closeSlidePopover() {
+		slidePopover = null;
+	}
+
+	const popoverSlide = $derived.by(() => {
+		if (!slidePopover) return null;
+		const show = shows.find((s) => s.id === slidePopover!.showId);
+		const slide = show?.slides.find((sl) => sl.id === slidePopover!.slideId);
+		if (!show || !slide) return null;
+		return { show, slide, kind: slidePopover!.kind };
+	});
+
+	async function downloadBulkSlide(showId: string, slideId: string) {
+		const show = shows.find((s) => s.id === showId);
+		const slide = show?.slides.find((sl) => sl.id === slideId);
+		if (!slide?.sourceR2Key) {
+			alert('Full MP4 export needs a stored source video (re-import with yt-dlp).');
+			return;
+		}
+		if (!ffmpegReady) {
+			alert('ffmpeg is required. Run: brew install ffmpeg');
+			return;
+		}
+		const startSec = Number(slide.sourceClipStart ?? slide.clipStart) || 0;
+		const endSec = Math.max(startSec + 0.5, Number(slide.sourceClipEnd ?? slide.clipEnd) || 0);
+		exportBusySlideId = slideId;
+		try {
+			if (
+				slide.reframedR2Key &&
+				slide.reframeSettingsKey === currentReframeKey &&
+				slide.reframedPlaybackUrl
+			) {
+				const { url } = await r2SignRead({ key: slide.reframedR2Key });
+				const res = await fetch(url);
+				if (!res.ok) throw new Error('Could not download reframed clip');
+				const blob = await res.blob();
+				const filename = `${slide.headline.replace(/[^\w.-]+/g, '_').slice(0, 80) || 'clip'}.mp4`;
+				const objectUrl = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = objectUrl;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				URL.revokeObjectURL(objectUrl);
+				return;
+			}
+			const res = await fetch('/api/videos/export-clip', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					r2Key: slide.sourceR2Key,
+					startSec,
+					endSec,
+					filename: slide.headline,
+				}),
+			});
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error((data as { error?: string }).error ?? 'Export failed');
+			}
+			const blob = await res.blob();
+			const filename =
+				res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] ??
+				`${slide.headline.replace(/[^\w.-]+/g, '_').slice(0, 80) || 'clip'}.mp4`;
+			const objectUrl = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = objectUrl;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(objectUrl);
+		} catch (e) {
+			console.warn('[bulk] export failed', e);
+			alert(e instanceof Error ? e.message : 'Export failed');
+		} finally {
+			exportBusySlideId = null;
+		}
 	}
 
 	function updateActiveCaptions(showId: string, patch: Partial<BulkSlide['captions']>) {
@@ -232,13 +622,11 @@
 			);
 			shows = [show];
 			selectedShowId = show.id;
-			captionsMenuShowId = null;
 			return;
 		}
 		const idx = shows.findIndex((s) => s.id === id);
 		shows = shows.filter((s) => s.id !== id);
 		selectedShowId = shows[Math.max(0, idx - 1)]?.id ?? shows[0]?.id ?? null;
-		if (captionsMenuShowId === id) captionsMenuShowId = null;
 	}
 
 	function moveShow(id: string, dir: -1 | 1) {
@@ -460,7 +848,6 @@
 
 			shows = appendMode ? [...shows, ...newShows] : newShows;
 			selectedShowId = shows[0]?.id ?? null;
-			captionsMenuShowId = null;
 			if (autoStock) {
 				await fillStockForShows(
 					newShows.map((s) => s.id),
@@ -524,19 +911,10 @@
 		if (!selectedShow) return;
 		openShowInStudio(selectedShow);
 	}
-
-	function templateLabel(id: TemplateId): string {
-		return STUDIO_TEMPLATES.find((t) => t.id === id)?.label ?? id;
-	}
-
-	function toggleCaptionsMenu(showId: string) {
-		selectShow(showId);
-		captionsMenuShowId = captionsMenuShowId === showId ? null : showId;
-	}
 </script>
 
 <svelte:head>
-	<title>Bulk - Social Poster</title>
+	<title>Bulk editor - Social Poster</title>
 </svelte:head>
 
 <svelte:window onkeydown={onGenerateKeydown} />
@@ -545,9 +923,12 @@
 	<header class="bulk-header">
 		<div class="bulk-header-text">
 			<h1>Bulk editor</h1>
-			<p>Each row is one idea = one full slideshow. Generate many decks, preview every slide, open one in Studio.</p>
 		</div>
 		<div class="bulk-header-actions">
+			<button type="button" class="btn-ghost" onclick={() => (clipImportOpen = true)}>
+				<Video size={15} />
+				Import clips
+			</button>
 			<button type="button" class="btn-ghost" onclick={() => (showBrandPanel = !showBrandPanel)}>
 				<Palette size={15} />
 				Brand
@@ -667,15 +1048,22 @@
 			<input type="checkbox" bind:checked={autoStock} />
 			Auto stock
 		</label>
-		<button type="button" class="btn-primary" onclick={() => void generateIdeas()} disabled={generating || !topic.trim()}>
-			{#if generating}
-				<Loader2 size={15} class="spin" />
-				Generating…
-			{:else}
-				<Sparkles size={15} />
-				Generate
-			{/if}
-		</button>
+		<div class="generate-bar-tail">
+			<button
+				type="button"
+				class="btn-primary generate-btn"
+				onclick={() => void generateIdeas()}
+				disabled={generating || !topic.trim()}
+			>
+				{#if generating}
+					<Loader2 size={15} class="spin" />
+					Generating…
+				{:else}
+					<Sparkles size={15} />
+					Generate
+				{/if}
+			</button>
+		</div>
 	</section>
 	{#if generateError}
 		<p class="err" role="alert">{generateError}</p>
@@ -683,14 +1071,17 @@
 	{#if stockNote}
 		<p class="stock-note" role="status">{stockNote}</p>
 	{/if}
-	{#if clipHandoff}
-		<p class="clip-banner" role="status">Clip from Videos attached to the first slide of the selected show.</p>
-	{/if}
+
+	<BulkClipImportDialog bind:open={clipImportOpen} userId={userId} oncomplete={onClipImportComplete} />
 
 	<section class="stack-wrap" aria-label="Slideshow stack">
 		<div class="rows-toolbar">
 			<span class="rows-count"><Layers size={14} /> {shows.length} slideshows</span>
 			<div class="rows-toolbar-actions">
+				<button type="button" class="btn-ghost sm" onclick={() => (clipImportOpen = true)}>
+					<Video size={13} />
+					Import clips
+				</button>
 				<button
 					type="button"
 					class="btn-ghost sm"
@@ -721,124 +1112,146 @@
 		{/if}
 
 		<ul class="show-stack">
+			{#if generating}
+				{#each Array(Math.max(1, ideaCount)) as _, gi (gi)}
+					<li class="show-row show-skeleton" aria-hidden="true">
+						<div class="show-body">
+							<div class="show-preview-col">
+								<div class="skeleton-block skeleton-preview"></div>
+								<div class="skeleton-dots">
+									{#each Array(3) as _}
+										<span class="skeleton-dot"></span>
+									{/each}
+								</div>
+								<div class="skeleton-filmstrip">
+									{#each Array(3) as _}
+										<span class="skeleton-thumb"></span>
+									{/each}
+								</div>
+							</div>
+							<div class="show-side">
+								<div class="skeleton-line skeleton-title-row"></div>
+								<div class="slide-editor skeleton-editor">
+									<div class="skeleton-line skeleton-headline"></div>
+									<div class="skeleton-line skeleton-body"></div>
+									<div class="skeleton-line skeleton-body short"></div>
+									<div class="skeleton-chips">
+										<span></span><span></span>
+									</div>
+								</div>
+							</div>
+						</div>
+					</li>
+				{/each}
+			{:else}
 			{#each shows as show, i (show.id)}
 				{@const slide = activeSlideOf(show)}
-				{@const activeIdx = Math.max(
-					0,
-					show.slides.findIndex((s) => s.id === show.activeSlideId),
-				)}
-				{@const activeSl = show.slides[activeIdx] ?? show.slides[0]}
-				<li class="show-row" class:show-on={show.id === selectedShow?.id}>
-					<div class="show-head">
-						<button type="button" class="show-index" onclick={() => selectShow(show.id)}>{i + 1}</button>
-						<input
-							class="show-title"
-							value={show.title}
-							oninput={(e) => updateShow(show.id, { title: (e.currentTarget as HTMLInputElement).value })}
-							onfocus={() => selectShow(show.id)}
-							placeholder="Slideshow idea title"
-						/>
-						<span class="show-meta">{show.slides.length} slides</span>
-						<div class="show-actions">
-							<button type="button" class="icon-btn" title="Move up" onclick={() => moveShow(show.id, -1)} disabled={i === 0}>
-								<ChevronUp size={14} />
-							</button>
-							<button
-								type="button"
-								class="icon-btn"
-								title="Move down"
-								onclick={() => moveShow(show.id, 1)}
-								disabled={i === shows.length - 1}
-							>
-								<ChevronDown size={14} />
-							</button>
-							<button type="button" class="icon-btn" title="Duplicate" onclick={() => duplicateShow(show.id)}>
-								<Copy size={14} />
-							</button>
-							<button type="button" class="icon-btn danger" title="Delete" onclick={() => deleteShow(show.id)}>
-								<Trash2 size={14} />
-							</button>
-						</div>
-					</div>
-
+				<li
+					class="show-row"
+					class:show-on={show.id === selectedShow?.id}
+					animate:flip={{ duration: 380 }}
+					in:fly={{ y: 22, duration: 460, delay: Math.min(i * 48, 280) }}
+				>
 					<div class="show-body">
-						<!-- Carousel: left-aligned preview + dots -->
-						<div class="slide-carousel" aria-label="Slide carousel">
-							{#if activeSl}
-								<div class="carousel-stage">
-									<button
-										type="button"
-										class="carousel-nav prev"
-										title="Previous slide"
-										aria-label="Previous slide"
-										disabled={show.slides.length < 2}
-										onclick={() => {
-											const next =
-												show.slides[(activeIdx - 1 + show.slides.length) % show.slides.length];
-											if (next) selectSlide(show.id, next.id);
-										}}
-									>
-										<ChevronLeft size={18} />
-									</button>
-									<div class="carousel-frame">
-										<span class="film-num">{activeIdx + 1}</span>
-										<BulkSlidePreview slide={activeSl} width={200} />
-									</div>
-									<button
-										type="button"
-										class="carousel-nav next"
-										title="Next slide"
-										aria-label="Next slide"
-										disabled={show.slides.length < 2}
-										onclick={() => {
-											const next = show.slides[(activeIdx + 1) % show.slides.length];
-											if (next) selectSlide(show.id, next.id);
-										}}
-									>
-										<ChevronRight size={18} />
-									</button>
-								</div>
+						<div class="show-preview-col" aria-label="Slide carousel">
+							{#if show.slides.length}
+								<BulkSlideCarousel
+									slides={show.slides}
+									activeSlideId={show.activeSlideId}
+									width={BULK_CAROUSEL_WIDTH}
+									loadingSlideIds={show.slides.filter((s) => s.mediaLoading).map((s) => s.id)}
+									onselect={(slideId) => selectSlide(show.id, slideId)}
+								/>
 							{/if}
-							<div class="carousel-dots" role="tablist" aria-label="Slides">
-								{#each show.slides as sl, si (sl.id)}
-									{#if sl}
+
+							{#if show.slides.length > 1}
+							<div class="filmstrip-wrap">
+								<div
+									class="clip-filmstrip"
+									aria-label="All slides"
+									use:filmstripScrollAction={show.activeSlideId}
+								>
+									{#each show.slides as sl, si (sl.id)}
 										<button
 											type="button"
-											class="dot"
-											class:dot-on={sl.id === show.activeSlideId}
-											role="tab"
-											aria-selected={sl.id === show.activeSlideId}
-											aria-label={`Slide ${si + 1}`}
-											title={`Slide ${si + 1}`}
+											class="filmstrip-item"
+											class:filmstrip-on={sl.id === show.activeSlideId}
+											style="width:{BULK_FILMSTRIP_THUMB}px"
+											title={`Slide ${si + 1}${sl.headline ? `: ${sl.headline}` : ''}`}
 											onclick={() => selectSlide(show.id, sl.id)}
-										></button>
-									{/if}
-								{/each}
+										>
+											{#if sl.mediaLoading}
+												<span class="skeleton-block skeleton-thumb-inline"></span>
+											{:else}
+												<BulkSlidePreview slide={sl} width={BULK_FILMSTRIP_THUMB} />
+											{/if}
+											<span class="filmstrip-num">{si + 1}</span>
+											{#if sl.clipMeta && !sl.mediaLoading}
+												<span class="filmstrip-score score-{viralityScoreTone(sl.clipMeta.viralityScore)}">
+													{viralityScoreLabel(sl.clipMeta.viralityScore)}
+												</span>
+											{/if}
+										</button>
+									{/each}
+								</div>
 								<button
 									type="button"
-									class="dot-add"
+									class="filmstrip-add-fab"
 									title="Add slide"
 									aria-label="Add slide"
 									onclick={() => addSlideToShow(show.id)}
 								>
-									<Plus size={12} />
+									<Plus size={16} strokeWidth={2.5} />
 								</button>
 							</div>
+							{/if}
 						</div>
 
-						<!-- Editor fills unused space -->
-						<div class="slide-editor">
+						<div class="show-side">
+							<div class="show-head">
+								<button type="button" class="show-index" onclick={() => selectShow(show.id)}>{i + 1}</button>
+								<input
+									class="show-title"
+									value={show.title}
+									oninput={(e) => updateShow(show.id, { title: (e.currentTarget as HTMLInputElement).value })}
+									onfocus={() => selectShow(show.id)}
+									placeholder="Slideshow idea title"
+								/>
+								{#if show.fromVideoClips && show.clipSummary}
+									<button
+										type="button"
+										class="show-summary-btn"
+										title="AI summary"
+										onclick={() => openSlidePopover(show.id, show.slides[0]!.id, 'intel')}
+									>
+										<Info size={13} />
+									</button>
+								{/if}
+								<div class="show-actions">
+									<button type="button" class="icon-btn" title="Move up" onclick={() => moveShow(show.id, -1)} disabled={i === 0}>
+										<ChevronUp size={14} />
+									</button>
+									<button
+										type="button"
+										class="icon-btn"
+										title="Move down"
+										onclick={() => moveShow(show.id, 1)}
+										disabled={i === shows.length - 1}
+									>
+										<ChevronDown size={14} />
+									</button>
+									<button type="button" class="icon-btn" title="Duplicate" onclick={() => duplicateShow(show.id)}>
+										<Copy size={14} />
+									</button>
+									<button type="button" class="icon-btn danger" title="Delete" onclick={() => deleteShow(show.id)}>
+										<Trash2 size={14} />
+									</button>
+								</div>
+							</div>
+
+							{#key slide.id}
+							<div class="slide-editor">
 							<div class="slide-main">
-								<select
-									class="tpl-select"
-									value={slide.template}
-									onchange={(e) =>
-										setSlideTemplate(show.id, slide.id, (e.currentTarget as HTMLSelectElement).value as TemplateId)}
-								>
-									{#each STUDIO_TEMPLATES as t}
-										<option value={t.id}>{t.label}</option>
-									{/each}
-								</select>
 								<input
 									class="slide-headline"
 									value={slide.headline}
@@ -875,18 +1288,23 @@
 							{/if}
 
 							<div class="slide-menu">
+								{#if slide.clipMeta}
+									<button
+										type="button"
+										class="menu-item score-chip score-{viralityScoreTone(slide.clipMeta.viralityScore)}"
+										onclick={() => openSlidePopover(show.id, slide.id, 'intel')}
+									>
+										<BarChart3 size={14} />
+										{viralityScoreLabel(slide.clipMeta.viralityScore)} viral
+									</button>
+								{/if}
 								<button
 									type="button"
 									class="menu-item"
-									class:menu-item-on={captionsMenuShowId === show.id}
+									class:menu-item-on={slidePopover?.showId === show.id && slidePopover?.slideId === slide.id && slidePopover?.kind === 'captions'}
 									class:menu-item-active={slide.captions.enabled}
-									onclick={() => toggleCaptionsMenu(show.id)}
+									onclick={() => openSlidePopover(show.id, slide.id, 'captions')}
 								>
-									{#if captionsMenuShowId === show.id}
-										<ChevronDown size={14} />
-									{:else}
-										<ChevronRight size={14} />
-									{/if}
 									<Captions size={14} />
 									Captions
 									{#if slide.captions.enabled}
@@ -913,113 +1331,298 @@
 										{/if}
 									</button>
 								{/if}
-								<span class="tpl-hint">{templateLabel(slide.template)}</span>
+								{#if slide.sourceR2Key && slide.mediaKind === 'video'}
+									<button
+										type="button"
+										class="menu-item"
+										class:menu-item-on={slidePopover?.showId === show.id && slidePopover?.slideId === slide.id && slidePopover?.kind === 'reframe'}
+										onclick={() => openSlidePopover(show.id, slide.id, 'reframe')}
+									>
+										<Crop size={14} />
+										Reframe
+										{#if slide.reframedPlaybackUrl && slide.reframeSettingsKey === currentReframeKey}
+											<span class="menu-pill">done</span>
+										{/if}
+									</button>
+									<button
+										type="button"
+										class="menu-item"
+										disabled={exportBusySlideId === slide.id}
+										onclick={() => void downloadBulkSlide(show.id, slide.id)}
+									>
+										{#if exportBusySlideId === slide.id}
+											<Loader2 size={14} class="spin" />
+										{:else}
+											<Download size={14} />
+										{/if}
+										MP4
+									</button>
+								{/if}
 							</div>
 
-							{#if captionsMenuShowId === show.id}
-								<div class="captions-drawer">
-									<label class="cap-enable">
-										<input
-											type="checkbox"
-											checked={slide.captions.enabled}
-											onchange={(e) =>
-												updateActiveCaptions(show.id, {
-													enabled: (e.currentTarget as HTMLInputElement).checked,
-												})}
-										/>
-										Enable captions on this slide
-									</label>
-									{#if slide.captions.enabled}
-										<div class="cap-grid">
-											<label class="field">
-												<span>Style</span>
-												<select
-													value={slide.captions.templateId}
-													onchange={(e) =>
-														updateActiveCaptions(show.id, {
-															templateId: (e.currentTarget as HTMLSelectElement).value,
-														})}
-												>
-													{#each CAPTION_TEMPLATES as t}
-														<option value={t.id}>{t.name}</option>
-													{/each}
-												</select>
-											</label>
-											<label class="field">
-												<span>Size</span>
-												<input
-													type="number"
-													min="16"
-													max="64"
-													value={slide.captions.fontSize}
-													oninput={(e) =>
-														updateActiveCaptions(show.id, {
-															fontSize: Number((e.currentTarget as HTMLInputElement).value) || 28,
-														})}
-												/>
-											</label>
-											<label class="field">
-												<span>Position</span>
-												<select
-													value={slide.captions.position}
-													onchange={(e) =>
-														updateActiveCaptions(show.id, {
-															position: (e.currentTarget as HTMLSelectElement).value as
-																| 'top'
-																| 'center'
-																| 'bottom',
-														})}
-												>
-													<option value="top">Top</option>
-													<option value="center">Center</option>
-													<option value="bottom">Bottom</option>
-												</select>
-											</label>
-											<label class="field">
-												<span>Color</span>
-												<input
-													type="color"
-													value={slide.captions.color}
-													oninput={(e) =>
-														updateActiveCaptions(show.id, {
-															color: (e.currentTarget as HTMLInputElement).value,
-														})}
-												/>
-											</label>
-										</div>
-										<button type="button" class="btn-ghost sm" onclick={() => saveCaptionAsBrand(slide)}>
-											Save as brand defaults
-										</button>
-									{/if}
-								</div>
-							{/if}
+							<div class="slide-template-row">
+								<label class="slide-template-label">
+									<span>Template</span>
+									<select
+										class="tpl-select"
+										value={slide.template}
+										onchange={(e) =>
+											setSlideTemplate(show.id, slide.id, (e.currentTarget as HTMLSelectElement).value as TemplateId)}
+									>
+										{#each STUDIO_TEMPLATES as t}
+											<option value={t.id}>{t.label}</option>
+										{/each}
+									</select>
+								</label>
+							</div>
+							</div>
+							{/key}
+
+							<button
+								type="button"
+								class="studio-fab"
+								onclick={() => openShowInStudio(show)}
+								title="Edit this slideshow in Studio"
+							>
+								Edit in Studio
+								<ArrowRight size={15} />
+							</button>
 						</div>
 					</div>
-
-					<button
-						type="button"
-						class="studio-fab"
-						onclick={() => openShowInStudio(show)}
-						title="Edit this slideshow in Studio"
-					>
-						Edit in Studio
-						<ArrowRight size={15} />
-					</button>
 				</li>
 			{/each}
+			{/if}
 		</ul>
 	</section>
+
+	{#if popoverSlide}
+		{@const { show: popShow, slide: popSlide, kind } = popoverSlide}
+		<BulkPopover
+			open={true}
+			onclose={closeSlidePopover}
+			wide={kind !== 'intel'}
+			title={kind === 'intel' ? 'Clip intel' : kind === 'reframe' ? 'Auto-reframe' : 'Captions'}
+			subtitle={popSlide.headline || 'Slide'}
+		>
+			{#if kind === 'intel'}
+				<div class="intel-panel">
+					{#if popShow.clipSummary}
+						<p class="intel-summary">{popShow.clipSummary}</p>
+					{/if}
+					{#if popSlide.clipMeta}
+						<div class="intel-score score-{viralityScoreTone(popSlide.clipMeta.viralityScore)}">
+							<span class="intel-score-num">{viralityScoreLabel(popSlide.clipMeta.viralityScore)}</span>
+							<span class="intel-score-label">virality / 10</span>
+						</div>
+						{#if popSlide.clipMeta.hook}
+							<p class="intel-hook"><strong>Hook</strong> {popSlide.clipMeta.hook}</p>
+						{/if}
+						<p class="intel-reason">
+							<strong>Why viral</strong>
+							{popSlide.clipMeta.reason || popSlide.body || 'Ranked for pacing, hook strength, and engagement potential.'}
+						</p>
+						{#if popSlide.sourceClipStart != null && popSlide.sourceClipEnd != null}
+							<p class="intel-time">
+								Segment {formatTimestamp(popSlide.sourceClipStart)} → {formatTimestamp(popSlide.sourceClipEnd)}
+							</p>
+						{/if}
+						{#if popSlide.clipMeta.transcript}
+							<div class="intel-transcript">
+								<strong>Transcript</strong>
+								<p>{popSlide.clipMeta.transcript}</p>
+							</div>
+						{/if}
+					{:else}
+						<p class="intel-reason">{popSlide.body || 'No clip metadata on this slide.'}</p>
+					{/if}
+				</div>
+			{:else if kind === 'reframe'}
+				<div class="reframe-pop">
+					<div class="bulk-reframe-grid">
+						<label class="bulk-reframe-field">
+							<span>Target ratio</span>
+							<select
+								value={autoReframe.aspectRatio}
+								onchange={(e) => {
+									const v = (e.currentTarget as HTMLSelectElement).value;
+									if (v === '9:16' || v === '4:5' || v === '1:1' || v === '16:9') {
+										autoReframe = { ...autoReframe, aspectRatio: v };
+									}
+								}}
+							>
+								{#each REFRAME_ASPECTS as a}
+									<option value={a.id}>{a.label} — {a.hint}</option>
+								{/each}
+							</select>
+						</label>
+						<label class="bulk-reframe-field">
+							<span>Reframe type</span>
+							<select
+								value={autoReframe.method}
+								onchange={(e) => {
+									const v = (e.currentTarget as HTMLSelectElement).value;
+									if (v === 'detection' || v === 'saliency') {
+										autoReframe = { ...autoReframe, method: v };
+									}
+								}}
+							>
+								{#each REFRAME_METHODS as m}
+									<option value={m.id}>{m.label}</option>
+								{/each}
+							</select>
+						</label>
+						<label class="bulk-reframe-field">
+							<span>Edge fill</span>
+							<select
+								value={autoReframe.paddingMethod}
+								onchange={(e) => {
+									const v = (e.currentTarget as HTMLSelectElement).value;
+									if (v === 'blur' || v === 'solid_color') {
+										autoReframe = { ...autoReframe, paddingMethod: v };
+									}
+								}}
+							>
+								{#each REFRAME_PADDING as p}
+									<option value={p.id}>{p.label}</option>
+								{/each}
+							</select>
+						</label>
+					</div>
+					{#if !pyautoflipReady}
+						<p class="bulk-reframe-warn">Install pyautoflip: <code>npm run pyautoflip:install</code></p>
+					{/if}
+					<div class="reframe-pop-actions">
+						<button
+							type="button"
+							class="btn-primary sm"
+							disabled={popSlide.reframeBusy || !pyautoflipReady}
+							onclick={() => void reframeBulkSlide(popShow.id, popSlide.id)}
+						>
+							{#if popSlide.reframeBusy}
+								<Loader2 size={14} class="spin" />
+								Reframing…
+							{:else}
+								<Crop size={14} />
+								Apply to this clip
+							{/if}
+						</button>
+						{#if popShow.fromVideoClips}
+							<button
+								type="button"
+								class="btn-ghost sm"
+								disabled={!pyautoflipReady}
+								onclick={() => void reframeAllBulkSlides(popShow.id)}
+							>
+								Reframe all clips
+							</button>
+						{/if}
+					</div>
+				</div>
+			{:else}
+				<div class="captions-pop">
+					<label class="cap-enable">
+						<input
+							type="checkbox"
+							checked={popSlide.captions.enabled}
+							onchange={(e) =>
+								updateSlide(popShow.id, popSlide.id, {
+									captions: {
+										...popSlide.captions,
+										enabled: (e.currentTarget as HTMLInputElement).checked,
+									},
+								})}
+						/>
+						Enable captions on this slide
+					</label>
+					{#if popSlide.captions.enabled}
+						<div class="cap-grid">
+							<label class="field">
+								<span>Style</span>
+								<select
+									value={popSlide.captions.templateId}
+									onchange={(e) =>
+										updateSlide(popShow.id, popSlide.id, {
+											captions: {
+												...popSlide.captions,
+												templateId: (e.currentTarget as HTMLSelectElement).value,
+											},
+										})}
+								>
+									{#each CAPTION_TEMPLATES as t}
+										<option value={t.id}>{t.name}</option>
+									{/each}
+								</select>
+							</label>
+							<label class="field">
+								<span>Size</span>
+								<input
+									type="number"
+									min="16"
+									max="64"
+									value={popSlide.captions.fontSize}
+									oninput={(e) =>
+										updateSlide(popShow.id, popSlide.id, {
+											captions: {
+												...popSlide.captions,
+												fontSize: Number((e.currentTarget as HTMLInputElement).value) || 28,
+											},
+										})}
+								/>
+							</label>
+							<label class="field">
+								<span>Position</span>
+								<select
+									value={popSlide.captions.position}
+									onchange={(e) =>
+										updateSlide(popShow.id, popSlide.id, {
+											captions: {
+												...popSlide.captions,
+												position: (e.currentTarget as HTMLSelectElement).value as
+													| 'top'
+													| 'center'
+													| 'bottom',
+											},
+										})}
+								>
+									<option value="top">Top</option>
+									<option value="center">Center</option>
+									<option value="bottom">Bottom</option>
+								</select>
+							</label>
+							<label class="field">
+								<span>Color</span>
+								<input
+									type="color"
+									value={popSlide.captions.color}
+									oninput={(e) =>
+										updateSlide(popShow.id, popSlide.id, {
+											captions: {
+												...popSlide.captions,
+												color: (e.currentTarget as HTMLInputElement).value,
+											},
+										})}
+								/>
+							</label>
+						</div>
+						<button type="button" class="btn-ghost sm" onclick={() => saveCaptionAsBrand(popSlide)}>
+							Save as brand defaults
+						</button>
+					{/if}
+				</div>
+			{/if}
+		</BulkPopover>
+	{/if}
 </div>
 
 <style>
 	.bulk {
-		--bulk-border: color-mix(in oklab, var(--app-border) 80%, transparent);
-		--stack-bar: var(--app-surface-3);
-		--stack-bar-on: color-mix(in oklab, var(--app-text) 8%, var(--app-surface-3));
+		--bulk-border: color-mix(in oklab, var(--app-border) 65%, transparent);
+		--bulk-preview-width: 252px;
 		padding: 1.25rem 1.5rem 2.5rem;
 		max-width: 1200px;
 		margin: 0 auto;
 		color: var(--app-text);
+		background: #fff;
 	}
 	.bulk-header {
 		display: flex;
@@ -1041,7 +1644,6 @@
 		line-height: 1.45;
 	}
 	.bulk-header-actions {
-		display: flex;
 		gap: 0.5rem;
 	}
 	.saved-toast,
@@ -1050,6 +1652,255 @@
 		font-size: 0.75rem;
 		color: var(--app-text-2);
 		margin: 0 0 0.65rem;
+	}
+	.clip-banner-wrap {
+		margin-bottom: 0.75rem;
+	}
+	.clip-banner-wrap .clip-banner {
+		margin-bottom: 0.45rem;
+	}
+	.bulk-reframe-panel {
+		padding: 0.65rem 0.75rem;
+		border: 1px solid var(--bulk-border);
+		border-radius: 10px;
+		background: var(--app-surface-2);
+	}
+	.bulk-reframe-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 0.55rem;
+	}
+	.bulk-reframe-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.65rem;
+		font-weight: 650;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--app-text-3);
+	}
+	.bulk-reframe-field select {
+		font: inherit;
+		text-transform: none;
+		letter-spacing: normal;
+		font-weight: 550;
+		font-size: 0.78rem;
+		color: var(--app-text);
+		border: 1px solid var(--bulk-border);
+		border-radius: 8px;
+		padding: 0.35rem 0.45rem;
+		background: var(--app-surface);
+	}
+	.bulk-reframe-warn {
+		margin: 0.45rem 0 0;
+		font-size: 0.72rem;
+		color: var(--app-text-2);
+	}
+	.filmstrip-wrap {
+		position: relative;
+		width: var(--bulk-preview-width);
+		max-width: var(--bulk-preview-width);
+		padding-right: 1.1rem;
+	}
+	.clip-filmstrip {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: 0.35rem;
+		width: 100%;
+		overflow-x: auto;
+		overflow-y: hidden;
+		padding: 0.2rem 0.15rem 0.35rem;
+		scroll-behavior: smooth;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: thin;
+		scrollbar-color: color-mix(in oklab, var(--app-text) 22%, transparent) transparent;
+		mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 18px), transparent 100%);
+	}
+	.clip-filmstrip::-webkit-scrollbar {
+		height: 4px;
+	}
+	.clip-filmstrip::-webkit-scrollbar-thumb {
+		background: color-mix(in oklab, var(--app-text) 22%, transparent);
+		border-radius: 999px;
+	}
+	.filmstrip-item {
+		position: relative;
+		flex: 0 0 auto;
+		padding: 0;
+		border: 2px solid transparent;
+		border-radius: 10px;
+		background: none;
+		cursor: pointer;
+		line-height: 0;
+		transition:
+			border-color 0.2s ease,
+			box-shadow 0.2s ease,
+			transform 0.2s ease;
+	}
+	.skeleton-thumb-inline {
+		display: block;
+		width: 100%;
+		aspect-ratio: 4 / 5;
+		border-radius: 8px;
+	}
+	.filmstrip-add-fab {
+		position: absolute;
+		right: -0.15rem;
+		top: 50%;
+		z-index: 5;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.15rem;
+		height: 2.15rem;
+		margin: 0;
+		padding: 0;
+		border: none;
+		border-radius: 999px;
+		background: var(--app-text);
+		color: #fff;
+		cursor: pointer;
+		box-shadow:
+			0 6px 18px color-mix(in oklab, var(--app-text) 35%, transparent),
+			0 2px 6px rgba(0, 0, 0, 0.12);
+		transform: translateY(-50%) translateY(-2px);
+		transition:
+			transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+			box-shadow 0.22s ease;
+	}
+	.filmstrip-add-fab:hover {
+		transform: translateY(-50%) translateY(-5px) scale(1.06);
+		box-shadow:
+			0 10px 24px color-mix(in oklab, var(--app-text) 40%, transparent),
+			0 4px 10px rgba(0, 0, 0, 0.16);
+	}
+	.filmstrip-add-fab:active {
+		transform: translateY(-50%) translateY(-1px) scale(0.98);
+	}
+	.filmstrip-item.filmstrip-on {
+		border-color: var(--app-accent, #e8ff48);
+		box-shadow: 0 0 0 1px var(--app-accent, #e8ff48);
+		transform: scale(1.04);
+	}
+	.filmstrip-num {
+		position: absolute;
+		top: 4px;
+		left: 4px;
+		z-index: 2;
+		font-size: 0.55rem;
+		font-weight: 700;
+		color: #fff;
+		background: rgba(0, 0, 0, 0.6);
+		border-radius: 3px;
+		padding: 0.05rem 0.25rem;
+		line-height: 1.2;
+	}
+	.filmstrip-score {
+		position: absolute;
+		bottom: 4px;
+		right: 4px;
+		z-index: 2;
+		font-size: 0.55rem;
+		font-weight: 800;
+		padding: 0.08rem 0.28rem;
+		border-radius: 4px;
+		line-height: 1.2;
+	}
+	.score-hot {
+		background: #e8ff48;
+		color: #080808;
+	}
+	.score-mid {
+		background: #fbbf24;
+		color: #080808;
+	}
+	.score-cool {
+		background: rgba(255, 255, 255, 0.85);
+		color: #334155;
+	}
+	.show-summary-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 1.85rem;
+		height: 1.85rem;
+		padding: 0;
+		border: 1px solid var(--bulk-border);
+		border-radius: 7px;
+		background: #fff;
+		color: var(--app-text-2);
+		cursor: pointer;
+	}
+	.menu-item.score-chip {
+		font-weight: 800;
+	}
+	.intel-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.65rem;
+		font-size: 0.82rem;
+		line-height: 1.45;
+		color: var(--app-text);
+	}
+	.intel-summary {
+		margin: 0;
+		padding: 0.55rem 0.65rem;
+		border-radius: 8px;
+		background: var(--app-surface-2);
+		color: var(--app-text-2);
+	}
+	.intel-score {
+		display: flex;
+		align-items: baseline;
+		gap: 0.35rem;
+		padding: 0.45rem 0.65rem;
+		border-radius: 8px;
+	}
+	.intel-score-num {
+		font-size: 1.35rem;
+		font-weight: 800;
+		line-height: 1;
+	}
+	.intel-score-label {
+		font-size: 0.72rem;
+		font-weight: 650;
+		opacity: 0.85;
+	}
+	.intel-hook,
+	.intel-reason,
+	.intel-time {
+		margin: 0;
+	}
+	.intel-transcript {
+		margin: 0;
+	}
+	.intel-transcript p {
+		margin: 0.35rem 0 0;
+		font-size: 0.78rem;
+		color: var(--app-text-2);
+		max-height: 8rem;
+		overflow: auto;
+	}
+	.reframe-pop-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+	}
+	.captions-pop .cap-enable {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		font-size: 0.82rem;
+		margin-bottom: 0.65rem;
+	}
+	.captions-pop .cap-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.55rem;
+		margin-bottom: 0.65rem;
 	}
 	.brand-panel {
 		border: 1px solid var(--bulk-border);
@@ -1068,14 +1919,36 @@
 	}
 	.generate-bar {
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		gap: 0.55rem;
 		align-items: flex-end;
 		margin-bottom: 0.75rem;
 		padding: 0.75rem;
 		border: 1px solid var(--bulk-border);
 		border-radius: 10px;
-		background: var(--app-surface-2);
+		background: #fff;
+		overflow-x: auto;
+		scrollbar-width: thin;
+	}
+	.generate-bar-tail {
+		display: flex;
+		align-items: flex-end;
+		flex-shrink: 0;
+	}
+	.generate-bar .generate-btn {
+		flex-shrink: 0;
+		min-width: 7.35rem;
+		white-space: nowrap;
+	}
+	.generate-bar .append-toggle {
+		flex-shrink: 0;
+	}
+	.generate-bar .field {
+		flex-shrink: 0;
+	}
+	.generate-bar .field.grow {
+		flex: 1 1 8rem;
+		min-width: 7rem;
 	}
 	.field {
 		display: flex;
@@ -1146,7 +2019,7 @@
 	.stack-wrap {
 		border: 1px solid var(--bulk-border);
 		border-radius: 12px;
-		background: var(--app-surface-2);
+		background: #fff;
 		padding: 0.75rem;
 	}
 	.rows-toolbar {
@@ -1183,206 +2056,125 @@
 	}
 	.show-row {
 		position: relative;
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		padding: 0.85rem 0.75rem 1rem;
-		min-height: 220px;
+		padding: 0.85rem;
+		min-height: 0;
 		border-radius: 12px;
-		background: var(--stack-bar);
+		background: #fff;
 		border: 1px solid var(--bulk-border);
 	}
 	.show-row.show-on {
-		background: var(--stack-bar-on);
-		border-color: color-mix(in oklab, var(--app-text) 22%, var(--bulk-border));
+		background: #fff;
+		border-color: color-mix(in oklab, var(--app-text) 18%, var(--bulk-border));
+		box-shadow: 0 2px 12px color-mix(in oklab, var(--app-text) 6%, transparent);
+	}
+	.show-row.show-skeleton {
+		pointer-events: none;
+	}
+	.show-body {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.85rem;
+		min-width: 0;
+	}
+	.show-preview-col {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.45rem;
+		flex: 0 0 auto;
+		width: var(--bulk-preview-width);
+		min-width: 0;
+	}
+	.show-side {
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
+		flex: 1 1 0;
+		min-width: 0;
 	}
 	.show-head {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.45rem;
-		padding-right: 0.25rem;
+		gap: 0.4rem;
+		min-width: 0;
 	}
 	.show-index {
-		width: 2.1rem;
-		height: 2.1rem;
+		width: 1.85rem;
+		height: 1.85rem;
+		flex-shrink: 0;
 		border-radius: 7px;
-		border: none;
-		background: color-mix(in oklab, var(--app-text) 12%, transparent);
+		border: 1px solid var(--bulk-border);
+		background: #fff;
 		color: var(--app-text);
 		font-weight: 700;
+		font-size: 0.75rem;
 		cursor: pointer;
 	}
 	.show-title {
-		flex: 1 1 200px;
+		flex: 1 1 0;
+		min-width: 0;
 		font-weight: 650;
-		background: var(--app-surface);
+		font-size: 0.8125rem;
+		background: #fff;
+		border: 1px solid var(--bulk-border);
+		border-radius: 8px;
+		padding: 0.35rem 0.5rem;
 	}
 	.show-meta {
-		font-size: 0.7rem;
+		font-size: 0.68rem;
 		color: var(--app-text-3);
 	}
 	.show-actions {
 		display: flex;
 		gap: 0.1rem;
-		margin-left: auto;
-	}
-	.show-body {
-		display: flex;
-		align-items: stretch;
-		gap: 1rem;
-		min-width: 0;
-	}
-	.slide-carousel {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.55rem;
-		flex: 0 0 auto;
-		padding: 0.1rem 0;
-	}
-	.carousel-stage {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-	}
-	.carousel-frame {
-		position: relative;
-		line-height: 0;
-		border-radius: 12px;
-		overflow: hidden;
-		box-shadow: 0 2px 10px color-mix(in oklab, var(--app-text) 12%, transparent);
-	}
-	.film-num {
-		position: absolute;
-		top: 6px;
-		left: 6px;
-		z-index: 2;
-		font-size: 0.625rem;
-		font-weight: 700;
-		color: #fff;
-		background: rgba(0, 0, 0, 0.55);
-		border-radius: 4px;
-		padding: 0.1rem 0.3rem;
-		line-height: 1.2;
-	}
-	.carousel-nav {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.85rem;
-		height: 1.85rem;
-		border-radius: 999px;
-		border: 1px solid var(--bulk-border);
-		background: var(--app-surface);
-		color: var(--app-text-2);
-		cursor: pointer;
 		flex-shrink: 0;
-	}
-	.carousel-nav:hover:not(:disabled) {
-		color: var(--app-text);
-		background: color-mix(in oklab, var(--app-text) 6%, var(--app-surface));
-	}
-	.carousel-nav:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
-	.carousel-dots {
-		display: flex;
-		align-items: center;
-		justify-content: flex-start;
-		gap: 0.4rem;
-		flex-wrap: wrap;
-		padding-left: 2.25rem;
-	}
-	.dot {
-		width: 0.55rem;
-		height: 0.55rem;
-		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: color-mix(in oklab, var(--app-text) 22%, transparent);
-		cursor: pointer;
-		transition: width 0.15s ease, background 0.15s ease;
-	}
-	.dot:hover {
-		background: color-mix(in oklab, var(--app-text) 40%, transparent);
-	}
-	.dot.dot-on {
-		width: 1.15rem;
-		background: var(--app-text);
-	}
-	.dot-add {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.25rem;
-		height: 1.25rem;
-		border-radius: 999px;
-		border: 1px dashed color-mix(in oklab, var(--app-text) 30%, transparent);
-		background: transparent;
-		color: var(--app-text-3);
-		cursor: pointer;
-		padding: 0;
-	}
-	.dot-add:hover {
-		color: var(--app-text);
-		border-color: color-mix(in oklab, var(--app-text) 50%, transparent);
 	}
 	.slide-editor {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.7rem 0.75rem 0.85rem;
+		gap: 0.45rem;
+		padding: 0.65rem 0.7rem 0.75rem;
 		border-radius: 10px;
-		background: color-mix(in oklab, var(--app-text) 5%, var(--app-surface));
+		background: #fff;
 		border: 1px solid var(--bulk-border);
-		flex: 1 1 0;
+		flex: 1 1 auto;
 		min-width: 0;
-		padding-bottom: 3.1rem;
 	}
 	.studio-fab {
-		position: absolute;
-		right: 1rem;
-		bottom: 1rem;
-		z-index: 3;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 0.4rem;
-		padding: 0.65rem 1rem;
+		align-self: flex-start;
+		padding: 0.5rem 0.85rem;
 		border: none;
 		border-radius: 999px;
 		background: var(--app-text);
 		color: var(--app-surface);
-		font-size: 0.8125rem;
+		font-size: 0.75rem;
 		font-weight: 650;
 		cursor: pointer;
-		box-shadow: 0 8px 24px color-mix(in oklab, var(--app-text) 28%, transparent);
+		box-shadow: 0 4px 14px color-mix(in oklab, var(--app-text) 22%, transparent);
 	}
 	.studio-fab:hover {
 		transform: translateY(-1px);
-		box-shadow: 0 10px 28px color-mix(in oklab, var(--app-text) 34%, transparent);
+		box-shadow: 0 6px 18px color-mix(in oklab, var(--app-text) 28%, transparent);
 	}
 	@media (max-width: 820px) {
 		.show-body {
 			flex-direction: column;
 		}
-		.slide-carousel {
-			align-items: center;
+		.show-preview-col {
+			align-items: stretch;
 			width: 100%;
+			max-width: var(--bulk-preview-width);
 		}
-		.carousel-dots {
-			justify-content: center;
-			padding-left: 0;
-		}
-		.slide-editor {
-			padding-bottom: 0.85rem;
+		.filmstrip-wrap {
+			width: 100%;
+			max-width: var(--bulk-preview-width);
 		}
 		.studio-fab {
-			position: static;
-			width: 100%;
-			margin-top: 0.15rem;
+			align-self: stretch;
 			border-radius: 10px;
 		}
 	}
@@ -1391,6 +2183,26 @@
 		flex-wrap: wrap;
 		gap: 0.35rem;
 		align-items: center;
+	}
+	.slide-template-row {
+		display: flex;
+		align-items: flex-end;
+		margin-top: 0.15rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid color-mix(in oklab, var(--bulk-border) 70%, transparent);
+	}
+	.slide-template-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: var(--app-text-3);
+		min-width: 0;
+		flex: 1 1 140px;
+	}
+	.slide-template-label .tpl-select {
+		width: 100%;
 	}
 	.tpl-select {
 		background: var(--app-surface);
@@ -1543,5 +2355,86 @@
 		to {
 			transform: rotate(360deg);
 		}
+	}
+	@keyframes bulk-shimmer {
+		0% {
+			background-position: 100% 0;
+		}
+		100% {
+			background-position: -100% 0;
+		}
+	}
+	.skeleton-block {
+		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
+		background-size: 200% 100%;
+		animation: bulk-shimmer 1.4s ease-in-out infinite;
+	}
+	.skeleton-preview {
+		width: 100%;
+		aspect-ratio: 4 / 5;
+		border-radius: 12px;
+	}
+	.skeleton-dots {
+		display: flex;
+		justify-content: center;
+		gap: 0.38rem;
+	}
+	.skeleton-dot {
+		width: 0.42rem;
+		height: 0.42rem;
+		border-radius: 999px;
+		background: #e8e8e8;
+	}
+	.skeleton-filmstrip {
+		display: flex;
+		gap: 0.35rem;
+		width: 100%;
+	}
+	.skeleton-thumb {
+		flex: 1 1 0;
+		aspect-ratio: 4 / 5;
+		border-radius: 8px;
+		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
+		background-size: 200% 100%;
+		animation: bulk-shimmer 1.4s ease-in-out infinite;
+	}
+	.skeleton-line {
+		height: 0.72rem;
+		border-radius: 6px;
+		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
+		background-size: 200% 100%;
+		animation: bulk-shimmer 1.4s ease-in-out infinite;
+	}
+	.skeleton-title-row {
+		height: 1.85rem;
+		border-radius: 8px;
+		margin-bottom: 0.45rem;
+	}
+	.skeleton-headline {
+		height: 1.1rem;
+		margin-bottom: 0.5rem;
+	}
+	.skeleton-body {
+		height: 0.65rem;
+		margin-bottom: 0.35rem;
+	}
+	.skeleton-body.short {
+		width: 72%;
+	}
+	.skeleton-editor {
+		background: #fff;
+	}
+	.skeleton-chips {
+		display: flex;
+		gap: 0.35rem;
+		margin-top: 0.25rem;
+	}
+	.skeleton-chips span {
+		width: 4.5rem;
+		height: 1.5rem;
+		border-radius: 999px;
+		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
+		background-size: 200% 100%;
+		animation: bulk-shimmer 1.4s ease-in-out infinite;
 	}
 </style>

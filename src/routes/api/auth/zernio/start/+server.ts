@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import { adminClient } from '$lib/server/auth';
+import { requireOAuthUserId } from '$lib/server/oauth-start';
 import { isZernioConnectPlatform } from '$lib/integrations/zernio-platforms';
 import { ensureUserZernioProfile, startZernioConnect } from '$lib/server/zernio-auth';
 
@@ -18,18 +19,16 @@ const cookieOpts = {
 	maxAge: 60 * 15,
 };
 
-export const GET: RequestHandler = async ({ url, cookies }) => {
-	const userId = url.searchParams.get('userId') ?? '';
+export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	const next = url.searchParams.get('next') ?? '/dashboard/integrations';
+	const loginNext = `${url.pathname}${url.search}`;
+	const userId = await requireOAuthUserId(locals, loginNext);
 	const platform = String(url.searchParams.get('platform') ?? '').toLowerCase();
 
 	const apiKey = env.ZERNIO_API_KEY ?? '';
 	const appUrl = env.PUBLIC_APP_URL ?? '';
 	if (!apiKey || !appUrl) {
 		throw redirect(303, `${next}?zernio_error=${encodeURIComponent('missing_env')}&desc=${encodeURIComponent('Set ZERNIO_API_KEY and PUBLIC_APP_URL')}`);
-	}
-	if (!userId) {
-		throw redirect(303, `${next}?zernio_error=${encodeURIComponent('missing_user')}`);
 	}
 	if (!isZernioConnectPlatform(platform)) {
 		throw redirect(303, `${next}?zernio_error=${encodeURIComponent('bad_platform')}`);

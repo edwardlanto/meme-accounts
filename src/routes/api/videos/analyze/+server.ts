@@ -23,6 +23,8 @@ import {
 	snapRangeToTranscriptCues,
 	transcriptCueStartsSec,
 } from '$lib/video-clips/transcript-segments';
+import { saveVideoClipProject } from '$lib/server/video-clip-projects';
+import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 
 const analyzeSchema = z.object({
 	source: z.enum(['youtube', 'upload']),
@@ -49,6 +51,26 @@ function clipAnalyzeOpts(data: z.infer<typeof analyzeSchema>) {
 }
 
 const MAX_MULTIMODAL_BYTES = 18 * 1024 * 1024;
+
+async function persistClipProject(
+	userId: string,
+	source: VideoImportMeta,
+	clips: VideoClip[],
+	summary: string,
+	demo: boolean,
+	model: string,
+): Promise<string | undefined> {
+	const id = await saveVideoClipProject(userId, {
+		title: source.title || 'Video clips',
+		thumbnailUrl: source.thumbnailUrl,
+		source,
+		clips,
+		summary,
+		demo,
+		model,
+	});
+	return id ?? undefined;
+}
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
@@ -171,24 +193,34 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					: normalized;
 
 				const clips = enrichClipTitles(snapped, ytTranscript, ytTitle);
+				const sourceMeta: VideoImportMeta = {
+					kind: 'youtube',
+					title: ytTitle,
+					durationSec: ytDuration,
+					playbackUrl,
+					r2Key: storageKey || undefined,
+					youtubeId: videoId,
+					thumbnailUrl: ytThumb,
+					transcript: ytTranscript,
+					description: ytDescription || undefined,
+					channel: ytChannel || undefined,
+				};
+				const projectId = await persistClipProject(
+					user.id,
+					sourceMeta,
+					clips,
+					analyzed.summary,
+					analyzed.demo,
+					analyzed.model,
+				);
 
 				return json({
-					source: {
-						kind: 'youtube',
-						title: ytTitle,
-						durationSec: ytDuration,
-						playbackUrl,
-						r2Key: storageKey || undefined,
-						youtubeId: videoId,
-						thumbnailUrl: ytThumb,
-						transcript: ytTranscript,
-						description: ytDescription || undefined,
-						channel: ytChannel || undefined,
-					},
+					source: sourceMeta,
 					clips,
 					summary: analyzed.summary,
 					demo: analyzed.demo,
 					model: analyzed.model,
+					projectId,
 					...(downloadWarning ? { warning: downloadWarning } : {}),
 				});
 			}
@@ -228,22 +260,32 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				: normalized;
 
 			const clips = enrichClipTitles(snapped, yt.transcript, yt.title);
+			const sourceMeta: VideoImportMeta = {
+				kind: 'youtube',
+				title: yt.title,
+				durationSec: yt.durationSec,
+				playbackUrl: yt.playbackUrl,
+				youtubeId: yt.videoId,
+				thumbnailUrl: yt.thumbnailUrl,
+				transcript: yt.transcript,
+				description: yt.description || undefined,
+				channel: yt.channel || undefined,
+			};
+			const projectId = await persistClipProject(
+				user.id,
+				sourceMeta,
+				clips,
+				analyzed.summary,
+				analyzed.demo,
+				analyzed.model,
+			);
 			return json({
-				source: {
-					kind: 'youtube',
-					title: yt.title,
-					durationSec: yt.durationSec,
-					playbackUrl: yt.playbackUrl,
-					youtubeId: yt.videoId,
-					thumbnailUrl: yt.thumbnailUrl,
-					transcript: yt.transcript,
-					description: yt.description || undefined,
-					channel: yt.channel || undefined,
-				},
+				source: sourceMeta,
 				clips,
 				summary: analyzed.summary,
 				demo: analyzed.demo,
 				model: analyzed.model,
+				projectId,
 				warning:
 					'Install yt-dlp for full video download and MP4 export (brew install yt-dlp).',
 			});
@@ -304,19 +346,30 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			uploadTitle,
 		);
 
+		const sourceMeta: VideoImportMeta = {
+			kind: 'upload',
+			title: title?.trim() || 'Uploaded video',
+			durationSec: effectiveDuration,
+			playbackUrl,
+			r2Key: key,
+			transcript: uploadTranscript,
+		};
+		const projectId = await persistClipProject(
+			user.id,
+			sourceMeta,
+			clips,
+			analyzed.summary,
+			analyzed.demo,
+			analyzed.model,
+		);
+
 		return json({
-			source: {
-				kind: 'upload',
-				title: title?.trim() || 'Uploaded video',
-				durationSec: effectiveDuration,
-				playbackUrl,
-				r2Key: key,
-				transcript: uploadTranscript,
-			},
+			source: sourceMeta,
 			clips,
 			summary: analyzed.summary,
 			demo: analyzed.demo,
 			model: analyzed.model,
+			projectId,
 		});
 	} catch (e: unknown) {
 		const message = e instanceof Error ? e.message : String(e);

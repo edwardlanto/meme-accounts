@@ -8,9 +8,15 @@
 	} from '$lib/studio/template-ids';
 	import {
 		STUDIO_FEED_CANVAS,
-		studioFeedPreviewHeight,
-		studioFeedPreviewScale,
+		STUDIO_VERTICAL_CANVAS,
+		studioPreviewHeight,
+		studioPreviewScale,
 	} from '$lib/studio/clip-preview-canvas';
+	import {
+		canvasSizeForStudioFormat,
+		parseReframeAspectFromSettingsKey,
+		studioFormatForReframeAspect,
+	} from '$lib/video-clips/reframe';
 	import {
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
@@ -63,9 +69,26 @@
 
 	const template = $derived(coerceTemplateId(slide.template));
 	const headline = $derived(String(slide.headline ?? '').trim() || ' ');
+	const newsTemplateText = $derived.by(() => {
+		const raw = slide.clipMeta?.newsHeadline?.trim();
+		if (raw) return raw;
+		if (headline !== ' ') return headline;
+		return 'YOUR HEADLINE';
+	});
 	const body = $derived(String(slide.body ?? '').trim());
 	const mediaUrl = $derived(String(slide.mediaUrl ?? '').trim());
 	const mediaKind = $derived(slide.mediaKind ?? null);
+	const playbackUrl = $derived(String(slide.reframedPlaybackUrl ?? '').trim() || mediaUrl);
+	const trimStart = $derived(
+		slide.reframedPlaybackUrl ? 0 : Math.max(0, Number(slide.clipStart) || 0),
+	);
+	const trimEnd = $derived.by(() => {
+		if (slide.reframedPlaybackUrl) {
+			const dur = Math.max(0.5, (Number(slide.sourceClipEnd) || Number(slide.clipEnd) || 0) - (Number(slide.sourceClipStart) || Number(slide.clipStart) || 0));
+			return dur;
+		}
+		return Math.max(trimStart + 0.5, Number(slide.clipEnd) || 0);
+	});
 
 	const imageSrc = $derived(
 		mediaKind !== 'video' && mediaUrl
@@ -82,7 +105,7 @@
 	);
 
 	const videoSrc = $derived(
-		mediaKind === 'video' && mediaUrl ? mediaUrl : VIDEO_STORY_DEFAULTS.videoUrl,
+		mediaKind === 'video' && playbackUrl ? playbackUrl : VIDEO_STORY_DEFAULTS.videoUrl,
 	);
 	const videoPoster = $derived(String(slide.mediaThumb ?? '').trim());
 
@@ -179,6 +202,8 @@
 			videoSrc={videoSrc}
 			videoPoster={videoPoster}
 			videoMuted={true}
+			videoTrimStartSec={trimStart}
+			videoTrimEndSec={trimEnd}
 			headlineStyle={
 				template === 'videoFeature'
 					? { ...VIDEO_FEATURE_HEADLINE_STYLE }
@@ -235,12 +260,14 @@
 		/>
 	{:else if template === 'news'}
 		<NewsTemplate
-			text={headline === ' ' ? 'YOUR HEADLINE' : headline}
+			text={newsTemplateText}
 			subtext={body}
 			source={NEWS_DEFAULT_SOURCE}
 			backgroundImage={mediaKind !== 'video' ? mediaUrl : ''}
-			backgroundVideo={mediaKind === 'video' ? mediaUrl : ''}
+			backgroundVideo={mediaKind === 'video' ? playbackUrl : ''}
 			videoMuted={true}
+			videoTrimStartSec={mediaKind === 'video' ? trimStart : 0}
+			videoTrimEndSec={mediaKind === 'video' ? trimEnd : 0}
 			highlightColor="#F5A623"
 			textColor="#FFFFFF"
 			templateTheme="dark"

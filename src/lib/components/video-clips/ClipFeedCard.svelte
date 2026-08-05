@@ -700,18 +700,15 @@
 		grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
 		gap: 1.35rem 1.75rem;
 		padding: 1.35rem 1.4rem;
-		border-radius: 1.1rem;
-		border: 1px solid #e2e8f0;
-		background: #fff;
-		box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+		border-radius: 1rem;
+		border: 1px solid var(--app-border);
+		background: var(--app-surface-2);
 		isolation: isolate;
 	}
 
 	.feed-card-on {
-		border-color: #c4b5fd;
-		box-shadow:
-			0 0 0 1px rgba(124, 58, 237, 0.2),
-			0 10px 32px rgba(124, 58, 237, 0.08);
+		border-color: color-mix(in oklab, #e8ff48 45%, var(--app-border));
+		box-shadow: 0 0 0 1px color-mix(in oklab, #e8ff48 20%, transparent);
 	}
 
 	.feed-card-media {
@@ -749,15 +746,15 @@
 	}
 
 	.btn-reframe-done {
-		border-color: #c4b5fd;
-		background: #f5f3ff;
-		color: #6d28d9;
+		border-color: color-mix(in oklab, #e8ff48 40%, var(--app-border));
+		background: color-mix(in oklab, #e8ff48 8%, transparent);
+		color: #e8ff48;
 	}
 
 	.btn-reframe-busy {
-		border-color: #c4b5fd;
-		background: #faf5ff;
-		color: #7c3aed;
+		border-color: color-mix(in oklab, #e8ff48 35%, var(--app-border));
+		background: color-mix(in oklab, #e8ff48 6%, transparent);
+		color: #e8ff48;
 	}
 
 	.phone-frame {
@@ -1217,7 +1214,7 @@
 
 	.progress-fill {
 		height: 100%;
-		background: #a78bfa;
+		background: #e8ff48;
 		transition: width 0.1s linear;
 	}
 
@@ -1293,7 +1290,7 @@
 	.meta-index {
 		font-size: 0.95rem;
 		font-weight: 800;
-		color: #64748b;
+		color: var(--app-text-3);
 		flex-shrink: 0;
 	}
 
@@ -1302,7 +1299,7 @@
 		font-weight: 800;
 		letter-spacing: -0.025em;
 		line-height: 1.25;
-		color: #0f172a;
+		color: var(--app-text);
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		line-clamp: 2;
@@ -1348,16 +1345,16 @@
 		padding: 0.45rem 1.05rem;
 		border-radius: 0.45rem;
 		border: 0;
-		background: #7c3aed;
-		color: #fff;
+		background: #e8ff48;
+		color: #080808;
 		font-size: 0.8rem;
 		font-weight: 700;
 		cursor: pointer;
-		transition: background 0.12s;
+		transition: filter 0.12s;
 	}
 
 	.btn-publish:hover {
-		background: #6d28d9;
+		filter: brightness(1.05);
 	}
 
 	.btn-dl {
@@ -1366,20 +1363,18 @@
 		gap: 0.35rem;
 		padding: 0.42rem 0.85rem;
 		border-radius: 0.45rem;
-		border: 1px solid #e2e8f0;
-		background: #fff;
+		border: 1px solid var(--app-border);
+		background: var(--app-surface-3);
 		font-size: 0.8rem;
 		font-weight: 650;
-		color: #334155;
+		color: var(--app-text-2);
 		cursor: pointer;
-		transition:
-			border-color 0.12s,
-			background 0.12s;
+		transition: border-color 0.12s, background 0.12s;
 	}
 
 	.btn-dl:hover:not(:disabled) {
-		border-color: #cbd5e1;
-		background: #f8fafc;
+		border-color: var(--app-border-hover);
+		background: color-mix(in oklab, var(--app-text) 5%, transparent);
 	}
 
 	.btn-dl:disabled {
@@ -1416,9 +1411,9 @@
 
 	.btn-carousel:hover,
 	.btn-carousel-on {
-		border-color: #c4b5fd;
-		background: #f5f3ff;
-		color: #6d28d9;
+		border-color: color-mix(in oklab, #e8ff48 40%, var(--app-border));
+		background: color-mix(in oklab, #e8ff48 10%, transparent);
+		color: #e8ff48;
 	}
 
 	.carousel-builder {
@@ -1460,9 +1455,9 @@
 	}
 
 	.carousel-chip-on {
-		border-color: #a78bfa;
-		background: #ede9fe;
-		color: #5b21b6;
+		border-color: color-mix(in oklab, #e8ff48 45%, var(--app-border));
+		background: color-mix(in oklab, #e8ff48 10%, transparent);
+		color: #c8e838;
 	}
 
 	.carousel-ord {
@@ -1471,8 +1466,8 @@
 		width: 1rem;
 		height: 1rem;
 		border-radius: 999px;
-		background: #7c3aed;
-		color: #fff;
+		background: #e8ff48;
+		color: #080808;
 		font-size: 0.58rem;
 		font-weight: 800;
 	}
@@ -1480,7 +1475,7 @@
 	.carousel-order {
 		margin: 0;
 		font-size: 0.7rem;
-		color: #64748b;
+		color: var(--app-text-3);
 	}
 
 	.btn-open-carousel {
@@ -1488,8 +1483,8 @@
 		padding: 0.4rem 0.85rem;
 		border-radius: 0.45rem;
 		border: 0;
-		background: #7c3aed;
-		color: #fff;
+		background: #e8ff48;
+		color: #080808;
 		font-size: 0.78rem;
 		font-weight: 700;
 		cursor: pointer;
@@ -1501,8 +1496,8 @@
 	}
 
 	.reason-box {
-		border: 1px solid #eef2f7;
-		background: #f8fafc;
+		border: 1px solid var(--app-border);
+		background: var(--app-surface-3);
 		border-radius: 0.65rem;
 		padding: 0.7rem 0.85rem;
 	}
@@ -1512,7 +1507,7 @@
 		font-weight: 800;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
-		color: #64748b;
+		color: var(--app-text-3);
 		margin-bottom: 0.3rem;
 	}
 

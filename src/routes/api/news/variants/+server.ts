@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { newsVariantsBodySchema, parseJsonBody } from '$lib/server/request-security';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'anthropic/claude-sonnet-4.5';
@@ -20,8 +21,14 @@ function clampStepCount(raw: unknown, slideCount: number): number {
 	return Math.max(1, Math.min(8, Math.max(1, slideCount - 2)));
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	const body = await request.json();
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const parsed = await parseJsonBody(request, newsVariantsBodySchema);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const body = parsed.data;
 	const {
 		count = 3,
 		title = '',

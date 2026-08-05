@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { fillDataImgSlotsWithFal } from '$lib/server/brand-carousel-fal-slots';
+import { brandGenerateBodySchema, parseJsonBody } from '$lib/server/request-security';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const ANTHROPIC_MESSAGES_API = 'https://api.anthropic.com/v1/messages';
@@ -79,24 +80,29 @@ type ReferenceImage = { data: string; mediaType?: string };
 
 const MAX_REFERENCE_IMAGES = 4;
 
-export const POST: RequestHandler = async ({ request }) => {
-	const body = await request.json();
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const parsed = await parseJsonBody(request, brandGenerateBodySchema);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const body = parsed.data;
 	const { style, brandName, handle, primaryColor, content, slideCount, referenceImages, generateSlotImages } = body;
 	const refs: ReferenceImage[] = Array.isArray(referenceImages)
 		? referenceImages
-				.filter((r: unknown) => r && typeof r === 'object' && 'data' in (r as ReferenceImage))
-				.slice(0, MAX_REFERENCE_IMAGES)
+				.filter((r) => r && typeof r.data === 'string')
+				.map((r) => ({ data: r.data, mediaType: r.mediaType }))
 		: [];
 
-	if (!content) return json({ error: 'Content is required' }, { status: 400 });
-	const slideCountNum = Math.min(10, Math.max(3, Number.isFinite(+slideCount) ? Math.round(+slideCount) : 7));
+	const slideCountNum = slideCount;
 
-	const styleBlock = typeof style === 'object' && style !== null
-		? JSON.stringify(style, null, 2)
-		: String(style ?? '{}');
+	const styleObj =
+		typeof style === 'object' && style !== null ? (style as Record<string, unknown>) : null;
+	const styleBlock = styleObj ? JSON.stringify(styleObj, null, 2) : String(style ?? '{}');
 
 	const h = (handle || 'mybrand').replace(/^@/, '');
-	const color = primaryColor || (typeof style === 'object' && style?.primaryColor) || '#FF0000';
+	const color = primaryColor || String(styleObj?.primaryColor ?? '') || '#FF0000';
 
 	const systemPrompt = loadCarouselSystemPrompt();
 	if (!systemPrompt.trim()) {
@@ -167,7 +173,7 @@ Output the **complete** HTML document now. First line must be \`<!DOCTYPE html>\
 		(typeof env.FAL_BRAND_CAROUSEL_MODEL === 'string' && env.FAL_BRAND_CAROUSEL_MODEL.trim()) || undefined;
 
 	if (!claudeKey && !openRouterKey) {
-		return json({ html: getDemoHtml(brandName, h, color, slideCountNum, style), demo: true });
+		return json({ html: getDemoHtml(brandName, h, color, slideCountNum, styleObj), demo: true });
 	}
 
 	const openRouterUserContent: OpenRouterContentPart[] | string =

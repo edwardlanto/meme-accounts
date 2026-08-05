@@ -1,6 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/private';
 
+export class HttpError extends Error {
+	status: number;
+	constructor(status: number, message: string) {
+		super(message);
+		this.status = status;
+	}
+}
+
+/**
+ * Require a validated cookie session (dashboard / browser APIs).
+ */
+export async function requireSessionUser(locals: App.Locals): Promise<string> {
+	const { user } = await locals.safeGetSession();
+	if (!user) throw new HttpError(401, 'Unauthorized');
+	return user.id;
+}
+
 /**
  * Validate the Supabase access token sent by the browser in `Authorization: Bearer <jwt>`
  * and return the authenticated user's id. Throws on any failure.

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { brandExtractBodySchema, parseJsonBody } from '$lib/server/request-security';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -29,11 +30,14 @@ function extractJson(text: string): Record<string, any> | null {
 	return null;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	const { images } = await request.json();
-	// images: Array<{ data: string (base64), mediaType: string }>
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-	if (!images?.length) return json({ error: 'No images provided' }, { status: 400 });
+	const parsed = await parseJsonBody(request, brandExtractBodySchema);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const { images } = parsed.data;
 
 	if (!env.OPENROUTER_API_KEY) {
 		// Demo fallback

@@ -6,6 +6,7 @@ import {
 	joinTextCarouselParagraphs,
 	randomParagraphCount,
 } from '$lib/studio/text-carousel-body';
+import { newsTextCarouselBodySchema, parseJsonBody } from '$lib/server/request-security';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'anthropic/claude-sonnet-4.5';
@@ -30,8 +31,14 @@ function demoBody(paragraphCount: number, title: string, text: string): string {
 	return fitTextCarouselBodyToCanvas(joinTextCarouselParagraphs(paras));
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	const body = (await request.json()) as Body;
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user: authUser } = await locals.safeGetSession();
+	if (!authUser) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const parsed = await parseJsonBody(request, newsTextCarouselBodySchema);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const body = parsed.data;
 	const title = String(body.title ?? '').trim();
 	const text = String(body.text ?? '').trim();
 	const angle = String(body.angle ?? '').trim();
@@ -74,7 +81,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		`Rules: normal sentence case; 2–4 sentences per paragraph; blank line between paragraphs is represented as separate array items; ` +
 		`no hashtags, emojis, markdown, or [[highlight]] markup; stay faithful to the source; each paragraph advances a distinct angle.`;
 
-	const user =
+	const userPrompt =
 		`${regen}` +
 		(title ? `Title: ${title}\n` : '') +
 		(sourceUrl ? `Source: ${sourceUrl}\n` : '') +
@@ -94,7 +101,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				model: MODEL,
 				messages: [
 					{ role: 'system', content: system },
-					{ role: 'user', content: user },
+					{ role: 'user', content: userPrompt },
 				],
 				temperature: 0.88,
 				max_tokens: 900,

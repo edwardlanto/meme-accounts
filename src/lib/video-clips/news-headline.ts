@@ -8,9 +8,19 @@ const FILLER_RE =
 const LAME_TEMPLATE_RE =
 	/\b(STOPS THE SCROLL|SKIP THE SCROLL|DON'?T SKIP|IMPOSSIBLE TO IGNORE|THE CLIP THAT MAKES|MOMENT THAT STOPS)\b/i;
 
-/** Strip [[highlight]] markers for comparison / word counts. */
+/** Strip [[highlight]] markers for comparison / word counts / editor fields. */
 export function stripNewsHighlightMarkers(text: string): string {
-	return text.replace(/\[\[([^\]]*)\]\]/g, '$1').replace(/\s+/g, ' ').trim();
+	let t = String(text ?? '').replace(/\[\[([^\]]*)\]\]/g, '$1');
+	t = t.replace(/\[\[/g, '').replace(/\]\]/g, '');
+	return t.replace(/\s+/g, ' ').trim();
+}
+
+/** Plain headline for bulk editor inputs — no markers, light possessive fix. */
+export function newsHeadlineForEditor(headline: string | undefined | null): string {
+	let t = stripNewsHighlightMarkers(headline);
+	// e.g. "KOHLBERGER S REVERSAL" → "KOHLBERGER'S REVERSAL" after marker strip
+	t = t.replace(/\b([A-Za-z]{3,})\s+S\s+([A-Z])/g, "$1'S $2");
+	return t.trim();
 }
 
 function wordCount(text: string): number {

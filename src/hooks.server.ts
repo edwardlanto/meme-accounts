@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import type { Handle } from '@sveltejs/kit';
 import { env as publicEnv } from '$env/dynamic/public';
+import { apiRateLimitKey, checkRateLimit, RATE_LIMITS } from '$lib/server/rate-limit';
 
 /**
  * Attach a per-request Supabase server client + a cached `safeGetSession`
@@ -53,6 +54,24 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 		return { session: { ...session, user }, user };
 	};
+
+	if (event.url.pathname.startsWith('/api/')) {
+		const kind = apiRateLimitKey(event.url.pathname);
+		const { max, windowMs } = RATE_LIMITS[kind];
+		const ip = event.getClientAddress();
+		const { user } = await event.locals.safeGetSession();
+		const rlKey = user ? `user:${user.id}:${kind}` : `ip:${ip}:${kind}`;
+		const rl = checkRateLimit(rlKey, max, windowMs);
+		if (!rl.ok) {
+			return new Response(JSON.stringify({ error: 'Too many requests' }), {
+				status: 429,
+				headers: {
+					'Content-Type': 'application/json',
+					'Retry-After': String(rl.retryAfterSec),
+				},
+			});
+		}
+	}
 
 	const response = await resolve(event, {
 		// Let SvelteKit forward any `set-cookie` headers Supabase wrote during

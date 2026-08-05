@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
+import { requireOAuthUserId } from '$lib/server/oauth-start';
 
 function randomState() {
 	return crypto.randomUUID().replace(/-/g, '');
@@ -15,18 +16,16 @@ const cookieOpts = {
 	maxAge: 60 * 10,
 };
 
-export const GET: RequestHandler = async ({ url, cookies }) => {
-	const userId = url.searchParams.get('userId') ?? '';
+export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	const next = url.searchParams.get('next') ?? '/dashboard/post-scheduler';
+	const loginNext = `${url.pathname}${url.search}`;
+	const userId = await requireOAuthUserId(locals, loginNext);
 
 	const clientId = env.REDDIT_CLIENT_ID ?? '';
 	const redirectUri = env.REDDIT_REDIRECT_URI ?? '';
 
 	if (!clientId || !env.REDDIT_CLIENT_SECRET || !redirectUri) {
 		throw redirect(303, `${next}?reddit_error=missing_reddit_env`);
-	}
-	if (!userId) {
-		throw redirect(303, `${next}?reddit_error=missing_user`);
 	}
 
 	const scope = (env.REDDIT_SCOPES?.trim() || 'identity submit').replace(/\s+/g, ' ');

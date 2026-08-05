@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
 import { adminClient, requireUserId } from '$lib/server/auth';
 
@@ -47,6 +48,8 @@ async function safeGet(path: string, token: string): Promise<any> {
 }
 
 export const GET: RequestHandler = async ({ request }) => {
+	if (!dev) return json({ ok: false, error: 'Not found' }, { status: 404 });
+
 	let userId: string;
 	try {
 		userId = await requireUserId(request);

@@ -14,6 +14,7 @@ import {
 	WHITE_THREAD_DEFAULTS,
 } from './slide-content-defaults';
 import type { StudioClipCaptionImport } from './clip-import';
+import type { CaptionSegment } from '$lib/video-clips/caption-sync';
 import { DEFAULT_BRAND_KIT } from './brand-kit';
 
 export const STUDIO_BULK_IMPORT_KEY = 'studio_bulk_import_v1';
@@ -34,10 +35,66 @@ export type BulkSlide = {
 	headline: string;
 	body: string;
 	captions: BulkRowCaptions;
+	/** Timed cues for export / Studio (when captions enabled). */
+	captionSegments?: CaptionSegment[];
+	studioCaptionImport?: StudioClipCaptionImport | null;
 	mediaUrl?: string;
 	mediaKind?: 'image' | 'video' | null;
 	mediaThumb?: string;
 	mediaLoading?: boolean;
+	/** Trim window on `mediaUrl` (seconds). 0…duration when reframed standalone MP4. */
+	clipStart?: number;
+	clipEnd?: number;
+	/** Original trim on the full source — used for reframe API. */
+	sourceClipStart?: number;
+	sourceClipEnd?: number;
+	/** Source object key for reframe API (from Videos import). */
+	sourceR2Key?: string;
+	reframedR2Key?: string;
+	reframedPlaybackUrl?: string;
+	reframeSettingsKey?: string;
+	reframeBusy?: boolean;
+	/** AI clip finder metadata when slide came from a long-video clip. */
+	clipMeta?: BulkClipSlideMeta;
+};
+
+/** Virality / hook metadata from the clip finder. */
+export type BulkClipSlideMeta = {
+	clipId: string;
+	viralityScore: number;
+	hook: string;
+	reason: string;
+	transcript?: string;
+	newsHeadline?: string;
+	videoHook?: string;
+};
+
+/** One clip segment handed off from Videos → Bulk. */
+export type BulkClipHandoffItem = {
+	videoUrl: string;
+	clipStart: number;
+	clipEnd: number;
+	headline?: string;
+	body?: string;
+	thumbnailUrl?: string;
+	sourceR2Key?: string;
+	reframedR2Key?: string;
+	reframedPlaybackUrl?: string;
+	reframeSettingsKey?: string;
+	captions?: StudioClipCaptionImport | null;
+};
+
+export type BulkClipHandoff = {
+	sourceTitle?: string;
+	sourceR2Key?: string;
+	thumbnailUrl?: string;
+	clips?: BulkClipHandoffItem[];
+	/** @deprecated legacy single-clip payload */
+	videoUrl?: string;
+	clipStart?: number;
+	clipEnd?: number;
+	title?: string;
+	captions?: StudioClipCaptionImport | null;
 };
 
 /** One idea = one full slideshow (multiple slides). */
@@ -48,19 +105,44 @@ export type BulkShow = {
 	slides: BulkSlide[];
 	/** Which slide is selected for editing in this show */
 	activeSlideId: string;
+	/** Slideshow built from long-video clip finder */
+	fromVideoClips?: boolean;
+	clipSummary?: string;
+	videoDemo?: boolean;
+	videoModel?: string;
 };
 
 /** @deprecated use BulkShow — kept as alias for gradual renames */
 export type BulkRow = BulkShow;
 
-export type BulkClipHandoff = {
-	videoUrl: string;
-	clipStart: number;
-	clipEnd: number;
-	thumbnailUrl?: string;
-	title?: string;
-	captions?: StudioClipCaptionImport | null;
-};
+export function normalizeBulkClipHandoff(raw: BulkClipHandoff | null | undefined): BulkClipHandoff | null {
+	if (!raw) return null;
+	if (Array.isArray(raw.clips) && raw.clips.length) {
+		return {
+			sourceTitle: raw.sourceTitle ?? raw.title,
+			sourceR2Key: raw.sourceR2Key,
+			thumbnailUrl: raw.thumbnailUrl,
+			clips: raw.clips.filter((c) => String(c?.videoUrl ?? '').trim()),
+		};
+	}
+	const url = String(raw.videoUrl ?? '').trim();
+	if (!url) return null;
+	return {
+		sourceTitle: raw.title ?? raw.sourceTitle,
+		sourceR2Key: raw.sourceR2Key,
+		thumbnailUrl: raw.thumbnailUrl,
+		clips: [
+			{
+				videoUrl: url,
+				clipStart: Number(raw.clipStart) || 0,
+				clipEnd: Number(raw.clipEnd) || 0,
+				headline: raw.title,
+				thumbnailUrl: raw.thumbnailUrl,
+				captions: raw.captions ?? null,
+			},
+		],
+	};
+}
 
 export const BULK_EMOTIONS = [
 	{ id: '', label: 'Any' },
@@ -215,7 +297,12 @@ export function buildDraftStateFromShow(
 	const list = show.slides.length ? show.slides : [createBlankSlide()];
 	const n = list.length;
 	const slideTemplates = list.map((r) => coerceTemplateId(r.template));
-	const slides = list.map((r) => r.headline.trim() || ' ');
+	const slides = list.map((r) => {
+		if (r.template === 'news' && r.clipMeta?.newsHeadline?.trim()) {
+			return r.clipMeta.newsHeadline.trim();
+		}
+		return r.headline.trim() || ' ';
+	});
 	const slideIds = list.map((r) => r.id);
 
 	const videoStoryHeadlineBySlide = list.map((r) =>
@@ -400,8 +487,10 @@ export function peekBulkImport(): Record<string, unknown> | null {
 
 export function stashBulkClipHandoff(payload: BulkClipHandoff): void {
 	if (typeof window === 'undefined') return;
+	const normalized = normalizeBulkClipHandoff(payload);
+	if (!normalized) return;
 	try {
-		sessionStorage.setItem(BULK_CLIP_HANDOFF_KEY, JSON.stringify(payload));
+		sessionStorage.setItem(BULK_CLIP_HANDOFF_KEY, JSON.stringify(normalized));
 	} catch {
 		/* ignore */
 	}
@@ -417,9 +506,7 @@ export function takeBulkClipHandoff(): BulkClipHandoff | null {
 	}
 	if (!raw) return null;
 	try {
-		const parsed = JSON.parse(raw) as BulkClipHandoff;
-		if (!parsed?.videoUrl) return null;
-		return parsed;
+		return normalizeBulkClipHandoff(JSON.parse(raw) as BulkClipHandoff);
 	} catch {
 		return null;
 	}
@@ -430,7 +517,7 @@ export function peekBulkClipHandoff(): BulkClipHandoff | null {
 	const raw = sessionStorage.getItem(BULK_CLIP_HANDOFF_KEY);
 	if (!raw) return null;
 	try {
-		return JSON.parse(raw) as BulkClipHandoff;
+		return normalizeBulkClipHandoff(JSON.parse(raw) as BulkClipHandoff);
 	} catch {
 		return null;
 	}

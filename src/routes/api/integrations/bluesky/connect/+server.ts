@@ -1,26 +1,18 @@
 import { json } from '@sveltejs/kit';
-import { createClient } from '@supabase/supabase-js';
 import { BskyAgent } from '@atproto/api';
-import { env } from '$env/dynamic/private';
+import { adminClient } from '$lib/server/auth';
+import { blueskyConnectBodySchema, parseJsonBody } from '$lib/server/request-security';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = async ({ request }) => {
-	if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
-		return json({ ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_KEY' }, { status: 500 });
-	}
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
-	let body: any;
-	try {
-		body = await request.json();
-	} catch {
-		return json({ ok: false, error: 'Invalid JSON body' }, { status: 400 });
-	}
+	const parsed = await parseJsonBody(request, blueskyConnectBodySchema);
+	if (!parsed.ok) return json({ ok: false, error: parsed.error }, { status: parsed.status });
 
-	const userId = String(body?.userId ?? '').trim();
-	const identifier = String(body?.handle ?? body?.identifier ?? '').trim();
-	const appPassword = String(body?.appPassword ?? body?.password ?? '').trim();
-
-	if (!userId) return json({ ok: false, error: 'Missing userId' }, { status: 400 });
+	const identifier = String(parsed.data.handle ?? parsed.data.identifier ?? '').trim();
+	const appPassword = String(parsed.data.appPassword ?? parsed.data.password ?? '').trim();
 	if (!identifier) return json({ ok: false, error: 'Missing handle' }, { status: 400 });
 	if (!appPassword) return json({ ok: false, error: 'Missing app password' }, { status: 400 });
 
@@ -30,13 +22,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const did = String(session?.data?.did ?? agent?.did ?? '').trim();
 		const handle = String(session?.data?.handle ?? '').trim() || identifier;
-
 		if (!did) return json({ ok: false, error: 'Bluesky login failed (no DID returned)' }, { status: 400 });
 
-		const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+		const supabase = adminClient();
 		await supabase.from('social_connections').upsert(
 			{
-				user_id: userId,
+				user_id: user.id,
 				provider: 'bluesky',
 				provider_account_id: did,
 				provider_account_label: `Bluesky — @${handle}`,
@@ -51,13 +42,12 @@ export const POST: RequestHandler = async ({ request }) => {
 					service: agent.service?.toString?.() ?? 'https://bsky.social',
 				},
 			},
-			{ onConflict: 'user_id,provider,provider_account_id' }
+			{ onConflict: 'user_id,provider,provider_account_id' },
 		);
 
 		return json({ ok: true, did, handle });
-	} catch (e: any) {
-		const msg = typeof e?.message === 'string' ? e.message : 'Bluesky connect failed';
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : 'Bluesky connect failed';
 		return json({ ok: false, error: msg }, { status: 400 });
 	}
 };
-

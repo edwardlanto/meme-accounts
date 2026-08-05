@@ -196,7 +196,7 @@
 		circle2X   = $bindable(80),
 		circle2Y   = $bindable(80),
 		circle2Size = $bindable(220),
-		bgOffsetX  = $bindable(0),
+		bgOffsetX  = $bindable(50),
 		bgOffsetY  = $bindable(50),
 		bgZoom     = $bindable(100),
 		bgFitMode = $bindable<'cover' | 'contain'>('cover'),
@@ -457,28 +457,17 @@
 	// Whether there's any background media (image or video)
 	const hasBg = $derived(!!(backgroundVideo || backgroundImage));
 
-	// Clamped zoom % (30–300). At ≥100, cover mode draws the layer at bgZoomPct% with
-	// object-fit: cover. Minimum overscan to 105% at low zoom avoids gaps that
-	// show as black lines on the sides when rasterizing (e.g. html-to-image export).
+	// Clamped zoom % (30–300). Cover mode uses inset:0 + object-fit:cover so the
+	// media always full-bleeds; zoom>100 scales up; object-position pans the crop.
 	const bgZoomPct = $derived(Math.max(30, Math.min(300, Number(bgZoom) || 100)));
-	/** Minimum cover scale (% of frame). Must stay ≥ `100 +` usable pan range or pan math exposes gutters. */
-	const BG_COVER_MIN_BLEED = 115;
 	/** Extra scale on cover media so raster export (html-to-image) doesn’t leave 1px side gutters */
 	const BG_COVER_RASTER_PAD = 1.03;
-	const bgRenderSize = $derived(
-		bgFitMode === 'contain' ? bgZoomPct : Math.max(bgZoomPct, BG_COVER_MIN_BLEED),
-	);
-	const bgRenderOverflowPct = $derived(Math.max(0.01, bgRenderSize - 100)); // strict cover overscan
-	/** Pan travel (0–100 offsets) is limited to actual overscan so the layer always covers the clip. */
-	const bgPanRangePct = $derived(bgRenderOverflowPct);
-	// Natural panning: slide an oversized layer inside the frame.
-	//  - bgOffsetX/Y = 0  → show left/top edge
-	//  - bgOffsetX/Y = 100→ show right/bottom edge
-	const bgPanLeftPct = $derived(-(bgPanRangePct * (bgOffsetX / 100)));
-	const bgPanTopPct  = $derived(-(bgPanRangePct * (bgOffsetY / 100)));
-	// When shrinking below 100%, the image no longer covers the frame. In that
-	// case we center it and the X/Y sliders instead pan the shrunk image within
-	// the frame (so 0→100% shifts the image from one edge to the other).
+	/** Cover paint scale: zoom-in (≥1) × raster pad. Never below full-bleed. */
+	const bgCoverScale = $derived(Math.max(bgZoomPct / 100, 1) * BG_COVER_RASTER_PAD);
+	/** Pan travel for drag math when zoomed (object-position still works at 100%). */
+	const bgPanRangePct = $derived(Math.max(15, bgZoomPct - 100 + 15));
+	// When shrinking below 100%, letterbox the media; X/Y pan within the frame
+	// (50 = centered). Offset 0 was left-aligning and leaving a right gutter.
 	const bgIsShrunk = $derived(bgZoomPct < 100);
 	const bgShrunkLeftPct = $derived(bgIsShrunk ? bgOffsetX * (100 - bgZoomPct) / 100 : 0);
 	const bgShrunkTopPct = $derived(bgIsShrunk ? bgOffsetY * (100 - bgZoomPct) / 100 : 0);
@@ -1441,12 +1430,13 @@
 						ontimeupdate={onBgVideoTimeUpdate}
 						style="
 							position: absolute;
-							top: {bgPanTopPct}%; left: {bgPanLeftPct}%;
-							width: {bgRenderSize}%; height: {bgRenderSize}%;
+							inset: 0;
+							width: 100%;
+							height: 100%;
 							object-fit: cover;
-							object-position: center;
-							transform: translate3d(0,0,0) scale({BG_COVER_RASTER_PAD});
-							transform-origin: center center;
+							object-position: {bgOffsetX}% {bgOffsetY}%;
+							transform: translate3d(0,0,0) scale({bgCoverScale});
+							transform-origin: {bgOffsetX}% {bgOffsetY}%;
 						"
 					></video>
 				{/if}
@@ -1500,12 +1490,13 @@
 						alt=""
 						style="
 							position: absolute;
-							top: {bgPanTopPct}%; left: {bgPanLeftPct}%;
-							width: {bgRenderSize}%; height: {bgRenderSize}%;
+							inset: 0;
+							width: 100%;
+							height: 100%;
 							object-fit: cover;
-							object-position: center;
-							transform: translate3d(0,0,0) scale({BG_COVER_RASTER_PAD});
-							transform-origin: center center;
+							object-position: {bgOffsetX}% {bgOffsetY}%;
+							transform: translate3d(0,0,0) scale({bgCoverScale});
+							transform-origin: {bgOffsetX}% {bgOffsetY}%;
 						"
 					/>
 				{/if}
@@ -2137,12 +2128,13 @@
 						alt=""
 						style="
 							position: absolute;
-							top: {bgPanTopPct}%; left: {bgPanLeftPct}%;
-							width: {bgRenderSize}%; height: {bgRenderSize}%;
+							inset: 0;
+							width: 100%;
+							height: 100%;
 							object-fit: cover;
-							object-position: center;
-							transform: translate3d(0,0,0) scale({BG_COVER_RASTER_PAD});
-							transform-origin: center center;
+							object-position: {bgOffsetX}% {bgOffsetY}%;
+							transform: translate3d(0,0,0) scale({bgCoverScale});
+							transform-origin: {bgOffsetX}% {bgOffsetY}%;
 						"
 					/>
 				{/if}

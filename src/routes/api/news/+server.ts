@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
+import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
 /** Prefer /all when searching — category + keyword work more reliably than top-only. */
@@ -505,8 +506,14 @@ Rules for "context":
 	};
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	const body = await request.json();
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const parsed = await parseJsonBody(request, newsBodySchema);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const body = parsed.data;
 	const {
 		search,
 		categories = 'business,tech',
@@ -517,16 +524,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		autoHighlight = true,
 	} = body;
 
-	const mode: ContentMode =
-		body.mode === 'fact' ||
-		body.mode === 'story' ||
-		body.mode === 'quote' ||
-		body.mode === 'steps'
-			? body.mode
-			: 'news';
+	const mode: ContentMode = body.mode ?? 'news';
 	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
-	const syntheticHint =
-		typeof body.syntheticHint === 'string' ? String(body.syntheticHint).trim().slice(0, 600) : '';
+	const syntheticHint = String(body.syntheticHint ?? '').trim();
 	const stepCount = clampStepCount(body.stepCount);
 
 	if (mode === 'fact' || mode === 'story' || mode === 'quote' || mode === 'steps') {

@@ -2,8 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { scheduledPostsQueue } from '$lib/server/queue';
 import { adminClient, requireUserId } from '$lib/server/auth';
-
-type Body = { postId: string };
+import { parseJsonBody, schedulerCancelBodySchema } from '$lib/server/request-security';
 
 export const POST: RequestHandler = async ({ request }) => {
 	let userId: string;
@@ -13,9 +12,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ ok: false, error: e?.message ?? 'Unauthorized' }, { status: e?.status ?? 401 });
 	}
 
-	const body = (await request.json()) as Body;
-	const postId = body.postId ?? '';
-	if (!postId) return json({ ok: false, error: 'Missing postId' }, { status: 400 });
+	const parsed = await parseJsonBody(request, schedulerCancelBodySchema);
+	if (!parsed.ok) return json({ ok: false, error: parsed.error }, { status: parsed.status });
+
+	const postId = parsed.data.postId;
 
 	const supabase = adminClient();
 

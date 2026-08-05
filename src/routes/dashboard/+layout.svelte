@@ -5,7 +5,8 @@
 	import {
 		Layers, LayoutDashboard, ImagePlus, Settings,
 		// Search, FlaskConical, BarChart3, CalendarDays, Plug,
-		PenSquare, Video, Rows3,
+		Rows3,
+		Video,
 	} from 'lucide-svelte';
 	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
 
@@ -18,7 +19,6 @@
 				{ href: '/dashboard',              label: 'Overview',     icon: LayoutDashboard },
 				{ href: '/dashboard/carousels',    label: 'Carousels',    icon: ImagePlus },
 				{ href: '/dashboard/bulk',         label: 'Bulk',         icon: Rows3 },
-				{ href: '/dashboard/composer',     label: 'Composer',     icon: PenSquare },
 				{ href: '/dashboard/videos',       label: 'Videos',       icon: Video },
 			]
 		},

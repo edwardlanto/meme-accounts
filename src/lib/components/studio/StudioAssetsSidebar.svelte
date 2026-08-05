@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { supabase } from '$lib/supabase';
-	import { r2UploadBlob, r2SignRead, r2DeleteObject } from '$lib/r2Client';
+	import { prepareImageForUpload } from '$lib/client/image-upload-prep';
 	import { ImagePlus, Loader, Pencil, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
 
 	type StudioAsset = {
@@ -91,34 +90,15 @@
 		return assets.filter((a) => a.name.toLowerCase().includes(q));
 	});
 
-	async function hydrateThumbs(rows: StudioAsset[]) {
-		await Promise.all(
-			rows.map(async (row) => {
-				if (row.thumbUrl) return;
-				try {
-					const { url } = await r2SignRead({ key: row.r2_key });
-					row.thumbUrl = url;
-				} catch {
-					/* ignore */
-				}
-			}),
-		);
-		assets = [...assets];
-	}
-
 	async function loadAssets() {
 		if (!userId) return;
 		loading = true;
 		error = '';
 		try {
-			const { data, error: err } = await (supabase as any)
-				.from('studio_assets')
-				.select('id, name, r2_key, created_at, updated_at')
-				.eq('user_id', userId)
-				.order('updated_at', { ascending: false });
-			if (err) throw err;
-			assets = (data ?? []) as StudioAsset[];
-			await hydrateThumbs(assets);
+			const res = await fetch('/api/studio/assets');
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(data?.error ?? 'Failed to load assets');
+			assets = (data.assets ?? []) as StudioAsset[];
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Failed to load assets';
 		} finally {
@@ -129,14 +109,6 @@
 	$effect(() => {
 		if (userId) void loadAssets();
 	});
-
-	function extFromFile(file: File): string {
-		const t = (file.type || '').toLowerCase();
-		if (t.includes('png')) return 'png';
-		if (t.includes('webp')) return 'webp';
-		if (t.includes('gif')) return 'gif';
-		return 'jpg';
-	}
 
 	function defaultNameFromFile(file: File): string {
 		const base = file.name.replace(/\.[^.]+$/, '').trim() || 'Untitled asset';
@@ -150,31 +122,22 @@
 		}
 		const list = Array.from(files).filter((f) => f.type.startsWith('image/'));
 		if (!list.length) {
-			error = 'Choose an image file (PNG, JPEG, WebP)';
+			error = 'Choose an image file (PNG, JPEG, WebP, or GIF)';
 			return;
 		}
 		uploading = true;
 		error = '';
 		try {
 			for (const file of list) {
-				const id = crypto.randomUUID();
-				const key = `${userId}/studio-assets/${id}.${extFromFile(file)}`;
-				await r2UploadBlob({ key, blob: file, filename: file.name });
-				const name = defaultNameFromFile(file);
-				const { data, error: err } = await (supabase as any)
-					.from('studio_assets')
-					.insert({ id, user_id: userId, name, r2_key: key })
-					.select('id, name, r2_key, created_at, updated_at')
-					.single();
-				if (err) throw err;
-				const row = data as StudioAsset;
-				try {
-					const { url } = await r2SignRead({ key });
-					row.thumbUrl = url;
-				} catch {
-					/* ignore */
-				}
-				assets = [row, ...assets];
+				const prepared = await prepareImageForUpload(file);
+				const fd = new FormData();
+				fd.set('file', prepared.blob, prepared.filename);
+				fd.set('name', defaultNameFromFile(file));
+				const res = await fetch('/api/studio/assets', { method: 'POST', body: fd });
+				const data = await res.json().catch(() => ({}));
+				if (!res.ok) throw new Error(data?.error ?? 'Upload failed');
+				const row = data.asset as StudioAsset;
+				if (row) assets = [row, ...assets];
 			}
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Upload failed';
@@ -214,12 +177,13 @@
 		renaming = true;
 		error = '';
 		try {
-			const { error: err } = await (supabase as any)
-				.from('studio_assets')
-				.update({ name: next })
-				.eq('id', asset.id)
-				.eq('user_id', userId);
-			if (err) throw err;
+			const res = await fetch('/api/studio/assets', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: asset.id, name: next }),
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(data?.error ?? 'Rename failed');
 			assets = assets.map((a) => (a.id === asset.id ? { ...a, name: next } : a));
 			cancelRename();
 		} catch (e: unknown) {
@@ -234,13 +198,13 @@
 		deletingId = asset.id;
 		error = '';
 		try {
-			await r2DeleteObject({ key: asset.r2_key });
-			const { error: err } = await (supabase as any)
-				.from('studio_assets')
-				.delete()
-				.eq('id', asset.id)
-				.eq('user_id', userId);
-			if (err) throw err;
+			const res = await fetch('/api/studio/assets', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: asset.id }),
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(data?.error ?? 'Delete failed');
 			assets = assets.filter((a) => a.id !== asset.id);
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Delete failed';
@@ -582,6 +546,9 @@
 	/>
 
 	{#if tab === 'library'}
+		{#if error}
+			<p class="assets-error assets-error-top">{error}</p>
+		{/if}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="assets-drop"
@@ -693,9 +660,6 @@
 				</ul>
 			{/if}
 		</div>
-		{#if error}
-			<p class="assets-error">{error}</p>
-		{/if}
 	{:else if tab === 'unsplash'}
 		<div class="assets-drop">
 			{#if unsplashLoading}
@@ -1436,6 +1400,9 @@
 		line-height: 1.35;
 		color: #dc2626;
 		flex-shrink: 0;
+	}
+	.assets-error-top {
+		padding: 8px 12px 0;
 	}
 
 	:global([data-theme='dark']) .assets-sidebar {

@@ -544,7 +544,7 @@ import JSZip from 'jszip';
 			textCarouselTextBySlide = textCarouselTextBySlide.map((s, i) => (i === idx ? text : s));
 		} else if (to === 'article' && !String(articleTextBySlide[idx] ?? '').trim()) {
 			articleTextBySlide = articleTextBySlide.map((s, i) => (i === idx ? text : s));
-		} else if (to === 'videoStory' && !String(videoStoryHeadlineBySlide[idx] ?? '').trim()) {
+		} else if (to === 'brandStack' && !String(videoStoryHeadlineBySlide[idx] ?? '').trim()) {
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((s, i) => (i === idx ? text : s));
 		} else if (to === 'imageQuote' && !String(imageQuoteTextBySlide[idx] ?? '').trim()) {
 			imageQuoteTextBySlide = imageQuoteTextBySlide.map((s, i) => (i === idx ? text : s));
@@ -855,6 +855,20 @@ import JSZip from 'jszip';
 						i,
 					);
 				}
+			} else if (isBrandStackFamily(template)) {
+				videoStoryHeadlineBySlide = setAt(
+					videoStoryHeadlineBySlide,
+					payload.storyHeadline || hook || BRAND_STACK_DEFAULTS.headline,
+					n,
+					i,
+				);
+				videoStoryWatermarkBySlide = setAt(
+					videoStoryWatermarkBySlide,
+					payload.storyWatermark || BRAND_STACK_DEFAULTS.watermark,
+					n,
+					i,
+				);
+				brandStackBrandBySlide = setAt(brandStackBrandBySlide, BRAND_STACK_DEFAULTS.brand, n, i);
 			} else if (template === 'tweet') {
 				tweetTopTextBySlide = setAt(tweetTopTextBySlide, payload.tweetTop || hook, n, i);
 				tweetBottomTextBySlide = setAt(tweetBottomTextBySlide, payload.tweetBottom, n, i);
@@ -1662,6 +1676,25 @@ import JSZip from 'jszip';
 					),
 				};
 			}
+		} else if (isBrandStackFamily(t)) {
+			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, idx) =>
+				idx === i ? BRAND_STACK_DEFAULTS.headline : x,
+			);
+			videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, idx) =>
+				idx === i ? BRAND_STACK_DEFAULTS.watermark : x,
+			);
+			brandStackBrandBySlide = brandStackBrandBySlide.map((x, idx) =>
+				idx === i ? BRAND_STACK_DEFAULTS.brand : x,
+			);
+			brandStackBottomMediaBySlide = brandStackBottomMediaBySlide.map((x, idx) =>
+				idx === i ? BRAND_STACK_DEFAULTS.bottomMediaUrl : x,
+			);
+			bgVideosByTemplate = {
+				...bgVideosByTemplate,
+				brandStack: (bgVideosByTemplate.brandStack ?? []).map((x, idx) =>
+					idx === i ? BRAND_STACK_DEFAULTS.topVideoUrl : x,
+				),
+			};
 		} else if (isVideoStoryFamily(t)) {
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, idx) =>
 				idx === i ? VIDEO_STORY_DEFAULTS.headline : x,
@@ -1682,7 +1715,6 @@ import JSZip from 'jszip';
 				videoSource: patchVideo(bgVideosByTemplate.videoSource),
 				videoFeature: patchVideo(bgVideosByTemplate.videoFeature),
 				videoPost: patchVideo(bgVideosByTemplate.videoPost),
-				brandStack: patchVideo(bgVideosByTemplate.brandStack),
 			};
 		} else if (t === 'blackText' || t === 'photoTopic' || t === 'photoCaption') {
 			const defaultHeadline =
@@ -7631,14 +7663,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	let previewHostH = $state(600);
 	/** False until the host is measured — the canvas stays behind the skeleton so the first resize isn't visible. */
 	let previewMeasured = $state(false);
-	/**
-	 * True until the first post-boot filmstrip pass finishes (or is skipped).
-	 * Keeps one continuous skeleton so we never flash content then cover it again for thumbs.
-	 */
-	let studioInitialRevealPending = $state(true);
+	/** True until the first post-boot filmstrip pass finishes (or is skipped) — only affects filmstrip debounce. */
+	let filmstripInitialPassPending = $state(true);
+	/** Size transitions stay off until one frame after the boot overlay clears (avoids a width/height tween on reveal). */
+	let studioSizeTransitions = $state(false);
+	/** Locked shell size during boot — draft restore can change format without reflowing the dock/filmstrip. */
+	let bootShellW = $state<number | null>(null);
+	let bootShellH = $state<number | null>(null);
 
 	$effect(() => {
 		const el = studioPreviewHostEl;
+		const booting = studioBooting;
 		if (typeof ResizeObserver === 'undefined') {
 			if (typeof window !== 'undefined') {
 				previewHostW = Math.max(240, window.innerWidth - 280);
@@ -7651,8 +7686,19 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		const padX = 40;
 		const padY = 56;
 		const measure = () => {
-			previewHostW = Math.max(200, el.clientWidth - padX);
-			previewHostH = Math.max(200, el.clientHeight - padY);
+			const w = Math.max(200, el.clientWidth - padX);
+			const h = Math.max(200, el.clientHeight - padY);
+			// During boot, lock to the first measure so draft restore / format changes don't resize the shell.
+			if (booting) {
+				if (!previewMeasured) {
+					previewHostW = w;
+					previewHostH = h;
+					previewMeasured = true;
+				}
+				return;
+			}
+			previewHostW = w;
+			previewHostH = h;
 			previewMeasured = true;
 		};
 		const ro = new ResizeObserver(measure);
@@ -7661,16 +7707,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		return () => ro.disconnect();
 	});
 
-	/** Canvas is only shown once measured, draft restored, and the first filmstrip pass has settled. */
-	const studioCanvasReady = $derived(
-		previewMeasured && !studioBooting && !studioInitialRevealPending,
+	/** Canvas shows once measured and draft/auth boot finished — filmstrip thumbs load independently. */
+	const studioCanvasReady = $derived(previewMeasured && !studioBooting);
+
+	const previewScaleComfort = $derived(
+		Math.min(PREVIEW_COMFORT_MAX_W / CANVAS_W, PREVIEW_COMFORT_MAX_H / CANVAS_H),
 	);
-
-	function finishStudioInitialReveal() {
-		if (studioInitialRevealPending) studioInitialRevealPending = false;
-	}
-
-	const previewScale = $derived(
+	const previewScaleFit = $derived(
 		Math.min(
 			PREVIEW_COMFORT_MAX_W / CANVAS_W,
 			PREVIEW_COMFORT_MAX_H / CANVAS_H,
@@ -7678,8 +7721,43 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			previewHostH / CANVAS_H,
 		),
 	);
-	const previewDisplayW = $derived(CANVAS_W * previewScale);
-	const previewDisplayH = $derived(CANVAS_H * previewScale);
+	/** Stable comfort cap while booting; snap to fit once boot completes (before size transitions enable). */
+	const previewScale = $derived(
+		studioBooting || !previewMeasured ? previewScaleComfort : previewScaleFit,
+	);
+	const previewDisplayW = $derived(bootShellW ?? CANVAS_W * previewScale);
+	const previewDisplayH = $derived(bootShellH ?? CANVAS_H * previewScale);
+
+	$effect(() => {
+		if (!studioCanvasReady) {
+			studioSizeTransitions = false;
+			return;
+		}
+		const id = requestAnimationFrame(() => {
+			studioSizeTransitions = true;
+		});
+		return () => cancelAnimationFrame(id);
+	});
+
+	$effect(() => {
+		if (!studioCanvasReady) return;
+		bootShellW = null;
+		bootShellH = null;
+	});
+
+	$effect(() => {
+		if (!studioBooting || !previewMeasured) return;
+		const w = CANVAS_W * previewScaleFit;
+		const h = CANVAS_H * previewScaleFit;
+		if (bootShellW === null) {
+			bootShellW = w;
+			bootShellH = h;
+		}
+	});
+
+	function finishFilmstripInitialPass() {
+		if (filmstripInitialPassPending) filmstripInitialPassPending = false;
+	}
 
 	/** Raster snapshots for filmstrip (same pipeline as ZIP export, low pixel ratio). */
 	let filmstripPreviewUrls = $state<string[]>([]);
@@ -8029,12 +8107,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		const n = slides.length;
 		const nextSigs = n > 0 ? Array.from({ length: n }, (_, i) => slideThumbSignature(i)) : [];
-		const isInitialReveal = studioInitialRevealPending;
+		const isInitialReveal = filmstripInitialPassPending;
 
 		if (n === 0) {
 			prevFilmstripSigs = [];
 			filmstripPreviewUrls = [];
-			finishStudioInitialReveal();
+			finishFilmstripInitialPass();
 			return;
 		}
 
@@ -8048,7 +8126,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 
 		if (!changed.length) {
-			finishStudioInitialReveal();
+			finishFilmstripInitialPass();
 			return;
 		}
 
@@ -8086,7 +8164,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				: refreshFilmstripPreviewSlices(changed);
 			void Promise.resolve(run).finally(() => {
 				if (passId !== filmstripPassId) return;
-				if (isInitialReveal) finishStudioInitialReveal();
+				if (isInitialReveal) finishFilmstripInitialPass();
 			});
 		}
 
@@ -8175,20 +8253,19 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<div
 				style="width: {previewDisplayW}px;"
 				class="studio-canvas-shell relative z-10 max-w-full shrink-0"
-				class:is-measured={studioCanvasReady}
+				class:is-measured={studioSizeTransitions}
 			>
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div
 					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
 					class="studio-canvas-frame relative rounded-2xl {previewCanvasOverflowClass}"
-					class:is-measured={studioCanvasReady}
+					class:is-measured={studioSizeTransitions}
 				>
 
-		{#if !studioCanvasReady || studioCanvasBusyLoading || (filmstripBulkCapturing && slides.length >= 1)}
-			<!-- One overlay for boot + first filmstrip + later busy states (avoids fade-out then fade-in jiggle). -->
+		{#if !studioCanvasReady || studioCanvasBusyLoading}
 			<div
 				class="absolute inset-0 z-[22] overflow-hidden rounded-2xl"
-				transition:fade={{ duration: 180 }}
+				transition:fade={{ duration: studioCanvasReady && studioCanvasBusyLoading ? 180 : 0 }}
 				aria-live="polite"
 				aria-busy="true"
 			>
@@ -9265,7 +9342,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					/>
 				</div>
 			{/if}
-			{@const filmstripLoading = !studioCanvasReady || filmstripBulkCapturing}
+			{@const filmstripLoading = studioBooting || filmstripBulkCapturing}
 			{@const orderIds = filmstripIds.length ? filmstripIds : slideIds}
 			{@const idToIndex = new Map(slideIds.map((id, i) => [id, i]))}
 			{@const dndItems = orderIds.map((id) => {
@@ -10934,9 +11011,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		background: var(--app-surface);
 	}
 
-	/* Size changes only animate after the first measure, so boot never plays a resize. */
 	.studio-dock-row {
 		min-height: 56px;
+		box-sizing: border-box;
+	}
+
+	.filmstrip-row {
+		min-height: calc(5rem + 0.25rem + 14px + 0.25rem);
+		flex-shrink: 0;
 		box-sizing: border-box;
 	}
 

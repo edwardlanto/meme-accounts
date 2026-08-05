@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import { Buffer } from 'node:buffer';
 import { fal } from '@fal-ai/client';
 import type { RequestHandler } from './$types';
+import { assertPublicHttpsUrl, parseJsonBody, vertexBodySchema } from '$lib/server/request-security';
 
 /** Cheap text-to-image — Nano Banana 2 Lite */
 const T2I_ENDPOINT = 'google/nano-banana-2-lite';
@@ -66,6 +67,18 @@ function normalizeImageUrls(body: Record<string, unknown>): string[] {
 	return [...new Set(urls)].slice(0, 14);
 }
 
+function safeRemoteImageUrls(urls: string[]): string[] {
+	const out: string[] = [];
+	for (const raw of urls) {
+		if (raw.startsWith('data:')) {
+			out.push(raw);
+			continue;
+		}
+		out.push(assertPublicHttpsUrl(raw).toString());
+	}
+	return out;
+}
+
 async function urlToDataUrl(url: string): Promise<string> {
 	if (url.startsWith('data:')) return url;
 	const res = await fetch(url);
@@ -80,21 +93,17 @@ function isRetryableFalError(err: unknown): boolean {
 	return /429|503|502|rate|quota|timeout|ECONNRESET|fetch failed/i.test(msg);
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	const body = await request.json();
-	const {
-		prompt,
-		aspect = '3:4',
-		context,
-		skipCache,
-	} = body as {
-		prompt?: string;
-		aspect?: string;
-		context?: string;
-		skipCache?: boolean;
-	};
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const { user } = await locals.safeGetSession();
+	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-	if (!prompt || !String(prompt).trim()) {
+	const parsed = await parseJsonBody(request, vertexBodySchema);
+	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
+
+	const body = parsed.data;
+	const { prompt, aspect = '3:4', context, skipCache } = body;
+
+	if (!prompt.trim()) {
 		return json({ error: 'Missing prompt' }, { status: 400 });
 	}
 
@@ -108,7 +117,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const aspectRatio = normalizeAspect(aspect);
-	const imageUrls = normalizeImageUrls(body);
+	let imageUrls: string[];
+	try {
+		imageUrls = safeRemoteImageUrls(normalizeImageUrls(body as Record<string, unknown>));
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : 'Invalid image URL';
+		return json({ error: msg }, { status: 400 });
+	}
 	const isEdit = imageUrls.length > 0;
 
 	const cacheKey = `${isEdit ? 'edit' : 't2i'}:${prompt}:${aspectRatio}:${imageUrls.join('|')}`;

@@ -267,6 +267,114 @@ export const schedulerScheduleBodySchema = z.object({
 	content: CONTENT_FOR_SCHEDULE_SCHEMA,
 });
 
+export const schedulerCancelBodySchema = z.object({
+	postId: uuidSchema,
+});
+
+const CONTENT_MODES = ['news', 'fact', 'story', 'quote', 'steps'] as const;
+
+export const vertexBodySchema = z.object({
+	prompt: z.string().min(1).max(4_000),
+	aspect: z.string().max(20).optional(),
+	context: z.string().max(2_000).optional(),
+	skipCache: z.boolean().optional(),
+	imageUrl: z.string().url().max(2048).optional(),
+	image_url: z.string().url().max(2048).optional(),
+	imageUrls: z.array(z.string().url().max(2048)).max(14).optional(),
+	image_urls: z.array(z.string().url().max(2048)).max(14).optional(),
+});
+
+export const brandExtractBodySchema = z.object({
+	images: z
+		.array(
+			z.object({
+				data: z.string().min(1).max(6_000_000),
+				mediaType: z.string().max(80).optional(),
+			}),
+		)
+		.min(1)
+		.max(4),
+});
+
+export const brandGenerateBodySchema = z.object({
+	style: z.unknown().optional(),
+	brandName: z.string().max(MAX_BRAND_NAME_LEN).optional(),
+	handle: z.string().max(80).optional(),
+	primaryColor: z.string().max(32).optional(),
+	content: z.string().min(1).max(50_000),
+	slideCount: z.preprocess(
+		(val) => (val === undefined || val === null ? 7 : Number(val)),
+		z.number().finite().int().min(3).max(10),
+	),
+	referenceImages: z
+		.array(
+			z.object({
+				data: z.string().min(1).max(6_000_000),
+				mediaType: z.string().max(80).optional(),
+			}),
+		)
+		.max(4)
+		.optional(),
+	generateSlotImages: z.boolean().optional(),
+});
+
+export const newsBodySchema = z.object({
+	search: z.string().max(500).optional(),
+	categories: z.string().max(200).optional(),
+	locale: z.string().max(16).optional(),
+	language: z.string().max(16).optional(),
+	limit: z.preprocess(
+		(val) => (val === undefined || val === null ? 3 : Number(val)),
+		z.number().finite().int().min(1).max(50),
+	),
+	pick: z.enum(['first', 'random']).optional(),
+	autoHighlight: z.boolean().optional(),
+	mode: z.enum(CONTENT_MODES).optional(),
+	storyCategory: z.string().max(80).optional(),
+	syntheticHint: z.string().max(600).optional(),
+	stepCount: z.preprocess(
+		(val) => (val === undefined || val === null ? 5 : Number(val)),
+		z.number().finite().int().min(3).max(8),
+	),
+	studioRegenAt: z.number().finite().optional(),
+});
+
+export const newsVariantsBodySchema = z.object({
+	count: z.preprocess(
+		(val) => (val === undefined || val === null ? 3 : Number(val)),
+		z.number().finite().int().min(1).max(10),
+	),
+	title: z.string().max(500).optional(),
+	text: z.string().min(1).max(50_000),
+	sourceUrl: z.string().url().max(2048).optional().or(z.literal('')),
+	autoHighlight: z.boolean().optional(),
+	contentMode: z.enum(CONTENT_MODES).optional(),
+	stepCount: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(1).max(8).optional(),
+	),
+	includeReplies: z.boolean().optional(),
+});
+
+export const newsTextCarouselBodySchema = z.object({
+	title: z.string().max(500).optional(),
+	text: z.string().max(50_000).optional(),
+	sourceUrl: z.string().url().max(2048).optional().or(z.literal('')),
+	angle: z.string().max(2_000).optional(),
+	paragraphCount: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(1).max(3).optional(),
+	),
+	studioRegenAt: z.number().finite().optional(),
+});
+
+export const blueskyConnectBodySchema = z.object({
+	handle: z.string().min(1).max(200).optional(),
+	identifier: z.string().min(1).max(200).optional(),
+	appPassword: z.string().min(1).max(200).optional(),
+	password: z.string().min(1).max(200).optional(),
+});
+
 const IMAGE_SIZE_PRESETS = ['ig_4_5', 'square', 'landscape', ''] as const;
 
 /**
