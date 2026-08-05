@@ -563,7 +563,28 @@
 	}
 
 	function selectSlide(showId: string, slideId: string) {
-		shows = shows.map((s) => (s.id === showId ? { ...s, activeSlideId: slideId } : s));
+		shows = shows.map((s) => {
+			if (s.id !== showId) {
+				// Keep other slideshows fully muted so only one preview can make sound.
+				return {
+					...s,
+					slides: s.slides.map((sl) =>
+						sl.mediaKind === 'video' && sl.videoMuted === false ? { ...sl, videoMuted: true } : sl,
+					),
+				};
+			}
+			return {
+				...s,
+				activeSlideId: slideId,
+				slides: s.slides.map((sl) => {
+					if (sl.id === slideId) return sl;
+					if (sl.mediaKind === 'video' && sl.videoMuted === false) {
+						return { ...sl, videoMuted: true };
+					}
+					return sl;
+				}),
+			};
+		});
 		selectedShowId = showId;
 	}
 
@@ -1795,7 +1816,7 @@
 											onclick={() => selectSlide(show.id, sl.id)}
 										>
 											<BulkSlidePreview
-												slide={sl}
+												slide={{ ...sl, videoMuted: true }}
 												width={BULK_FILMSTRIP_THUMB}
 												preferThumb={true}
 												mediaFetching={!!sl.mediaLoading}
@@ -1935,10 +1956,24 @@
 										class="menu-item"
 										class:menu-item-active={slide.videoMuted === false}
 										title={slide.videoMuted === false ? 'Mute preview' : 'Unmute preview'}
-										onclick={() =>
-											updateSlide(show.id, slide.id, {
-												videoMuted: slide.videoMuted === false,
-											})}
+										onclick={() => {
+											const enabling = slide.videoMuted !== false;
+											shows = shows.map((s) => ({
+												...s,
+												slides: s.slides.map((sl) => {
+													if (enabling) {
+														// Only this slide in this slideshow may play audio.
+														const isTarget = s.id === show.id && sl.id === slide.id;
+														return { ...sl, videoMuted: !isTarget };
+													}
+													if (s.id === show.id && sl.id === slide.id) {
+														return { ...sl, videoMuted: true };
+													}
+													return sl;
+												}),
+											}));
+											selectSlide(show.id, slide.id);
+										}}
 									>
 										{#if slide.videoMuted === false}
 											<Volume2 size={14} />

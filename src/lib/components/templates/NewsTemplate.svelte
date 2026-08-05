@@ -128,6 +128,8 @@
 		/** Which text element is currently selected (shows dashed outline). */
 		selectedText?: TextElementKind | null;
 		onTextChange?: (t: string) => void;
+		/** Supporting paragraph under the headline. */
+		onSubtextChange?: (t: string) => void;
 		onCircleMove?: (x: number, y: number) => void;
 		onCircleImageChange?: (src: string) => void;
 		/** When set, trash removes the whole badge (parent hides circle). Otherwise only clears the image. */
@@ -218,6 +220,7 @@
 		sourceStyle = {},
 		selectedText = null,
 		onTextChange,
+		onSubtextChange,
 		onCircleMove,
 		onCircleImageChange,
 		onCircleRemove,
@@ -525,6 +528,81 @@
 	let editableEl = $state<HTMLElement | null>(null);
 	let hoveringText = $state(false);
 
+	let editingSubtext = $state(false);
+	let subtextDraft = $state('');
+	let subtextEl = $state<HTMLElement | null>(null);
+	let subtextEditableEl = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		if (!editingSubtext && subtext !== subtextDraft) subtextDraft = subtext;
+	});
+
+	function startSubtextEdit(e: MouseEvent) {
+		if (!interactive) return;
+		e.stopPropagation();
+		subtextDraft = String(subtext ?? '');
+		editingSubtext = true;
+		void tick().then(() => {
+			const ce = subtextEditableEl;
+			if (!ce) return;
+			try {
+				ce.innerText = subtextDraft;
+				ce.focus();
+				const range = document.createRange();
+				range.selectNodeContents(ce);
+				range.collapse(false);
+				const sel = window.getSelection();
+				sel?.removeAllRanges();
+				sel?.addRange(range);
+			} catch {
+				/* ignore */
+			}
+			onTextSelect?.('headline', ce);
+		});
+	}
+
+	function commitSubtext() {
+		if (!editingSubtext) return;
+		const next = subtextDraft.replace(/\u00a0/g, ' ');
+		if (next !== String(subtext ?? '')) onSubtextChange?.(next);
+		editingSubtext = false;
+	}
+
+	function finishSubtextEdit(e?: FocusEvent) {
+		if (!editingSubtext) return;
+		const rt = e?.relatedTarget;
+		if (rt instanceof Element && rt.closest('[data-floating-toolbar], [data-slot="popover-content"]')) {
+			return;
+		}
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!editingSubtext) return;
+				const ae = document.activeElement;
+				if (ae instanceof Element && ae.closest('[data-floating-toolbar], [data-slot="popover-content"]')) {
+					return;
+				}
+				commitSubtext();
+			});
+		});
+	}
+
+	function onSubtextKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			subtextDraft = String(subtext ?? '');
+			editingSubtext = false;
+			return;
+		}
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			commitSubtext();
+		}
+	}
+
+	function onSubtextInput(e: Event) {
+		subtextDraft = (e.currentTarget as HTMLElement).innerText ?? '';
+	}
+
 	function commitHeadlineToParent() {
 		if (onHeadlineLive) {
 			onTextChange?.(headlineDraft);
@@ -615,7 +693,7 @@
 
 	function textPointerDown(e: PointerEvent) {
 		if (!interactive) return;
-		if (editing) return;
+		if (editing || editingSubtext) return;
 		const target = e.target as HTMLElement;
 		const startedOnSelectable = !!target.closest('[data-text-selectable]');
 		textGestureBeganOnSelectable = startedOnSelectable;
@@ -2358,16 +2436,66 @@
 				{/if}
 			</div>
 
-			{#if String(subtext ?? '').trim()}
-				<p
-					style="
-						margin: 18px 0 0;
-						padding: 0;
-						{subtextCss}
-						word-break: break-word;
-						white-space: pre-line;
-					"
-				>{subtext}</p>
+			{#if interactive || String(subtext ?? '').trim()}
+				<div style="position: relative; margin-top: 18px;">
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<p
+						bind:this={subtextEl}
+						data-text-selectable="subtext"
+						aria-hidden={interactive && editingSubtext ? true : undefined}
+						ondblclick={startSubtextEdit}
+						onclick={(e) => {
+							if (!interactive || textMoved) return;
+							e.stopPropagation();
+							if (subtextEl) onTextSelect?.('headline', subtextEl);
+						}}
+						style="
+							margin: 0;
+							padding: 0;
+							min-height: {interactive ? '1.2em' : '0'};
+							{subtextCss}
+							word-break: break-word;
+							white-space: pre-line;
+							visibility: {interactive && editingSubtext ? 'hidden' : 'visible'};
+							pointer-events: {interactive && editingSubtext ? 'none' : 'auto'};
+							{selectedText === 'headline' && !editingSubtext && String(subtext ?? '').trim()
+								? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.35); border-radius: 4px;'
+								: ''}
+							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
+							{interactive && !String(subtext ?? '').trim() ? 'opacity: 0.35;' : ''}
+						"
+					>{String(subtext ?? '').trim() || (interactive ? 'Add paragraph…' : '')}</p>
+					{#if editingSubtext && interactive}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							bind:this={subtextEditableEl}
+							data-text-selectable="subtext"
+							contenteditable="true"
+							role="textbox"
+							tabindex="0"
+							aria-label="Paragraph editor"
+							oninput={onSubtextInput}
+							onkeydown={onSubtextKeydown}
+							onblur={finishSubtextEdit}
+							onclick={(e) => e.stopPropagation()}
+							onmousedown={(e) => e.stopPropagation()}
+							style="
+								position: absolute;
+								inset: 0;
+								margin: 0;
+								padding: 0;
+								{subtextCss}
+								opacity: 1;
+								word-break: break-word;
+								white-space: pre-wrap;
+								box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+								border-radius: 4px;
+								cursor: text;
+								outline: none;
+							"
+						></div>
+					{/if}
+				</div>
 			{/if}
 			</div>
 		</div>

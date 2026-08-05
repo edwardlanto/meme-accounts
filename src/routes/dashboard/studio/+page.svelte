@@ -8447,6 +8447,11 @@ showSubjectCutout={canvasShowCutout}
 						newsHeadlineLive = null;
 					}}
 					onTextChange={(t) => { if (!canvasInteractive) return; setActiveSlideText(t); }}
+					onSubtextChange={(t) => {
+						if (!canvasInteractive) return;
+						pushUndo('news', paintSlide);
+						newsSubtextBySlide = newsSubtextBySlide.map((x, i) => (i === paintSlide ? t : x));
+					}}
 					onCircleMove={(x, y) => { if (!canvasInteractive) return; circleX = x; circleY = y; }}
 					onCircleImageChange={(src) => {
 						if (!canvasInteractive) return;
