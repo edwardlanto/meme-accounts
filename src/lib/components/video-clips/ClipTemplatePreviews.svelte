@@ -86,7 +86,7 @@
 
 	const copy = $derived(buildClipTemplateCopy(clip, source, { watermark, topicHint }));
 	const directVideo = $derived(clipDirectVideoUrl(source));
-	const thumb = $derived(source.thumbnailUrl ?? '');
+	const thumb = $derived(clip.thumbnailUrl?.trim() || source.thumbnailUrl || '');
 	const hasVideo = $derived(!!directVideo);
 	const splitComposited = $derived(
 		String(clip.reframeSettingsKey ?? '').includes('|saliency|'),

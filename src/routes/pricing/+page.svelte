@@ -13,7 +13,7 @@
 	async function startCheckout(plan: 'pro' | 'agency') {
 		checkoutError = null;
 		if (!user) {
-			window.location.href = `/signup?next=${encodeURIComponent(`/checkout?plan=${plan}&interval=${interval}`)}`;
+			window.location.href = `/?auth=signup&next=${encodeURIComponent(`/checkout?plan=${plan}&interval=${interval}`)}`;
 			return;
 		}
 		checkoutBusy = plan;
@@ -73,8 +73,8 @@
 			{#if user}
 				<a href="/dashboard" class="nav-signin">Dashboard</a>
 			{:else}
-				<a href="/login" class="nav-signin">Sign in</a>
-				<a href="/signup" class="btn-cta-nav">Start free →</a>
+				<a href="/?auth=login" class="nav-signin">Sign in</a>
+				<a href="/?auth=signup" class="btn-cta-nav">Start free →</a>
 			{/if}
 		</div>
 	</nav>
@@ -153,7 +153,7 @@
 							<li><Check size={15} strokeWidth={2.5} class="check" />{item}</li>
 						{/each}
 					</ul>
-					<a href={user ? '/dashboard' : '/signup'} class="btn-outline">
+					<a href={user ? '/dashboard' : '/?auth=signup'} class="btn-outline">
 						{user ? 'Open studio' : 'Get started'}
 					</a>
 				</article>
@@ -285,7 +285,7 @@
 		<div class="container cta-inner">
 			<h2 class="cta-h">Ready when you are.</h2>
 			<p class="cta-p">Start free in minutes. Upgrade the moment your pipeline needs it.</p>
-			<a href={user ? '/dashboard' : '/signup'} class="btn-lime-xl">
+			<a href={user ? '/dashboard' : '/?auth=signup'} class="btn-lime-xl">
 				{user ? 'Back to studio' : 'Get started free — no card needed'}
 				<ArrowRight size={20} />
 			</a>

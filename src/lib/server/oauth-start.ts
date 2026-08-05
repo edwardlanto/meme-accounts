@@ -9,7 +9,7 @@ export async function requireOAuthUserId(
 ): Promise<string> {
 	const { user } = await locals.safeGetSession();
 	if (!user) {
-		throw redirect(303, `/login?next=${encodeURIComponent(loginNext)}`);
+		throw redirect(303, `/?auth=login&next=${encodeURIComponent(loginNext)}`);
 	}
 	return user.id;
 }

@@ -2,6 +2,7 @@ import { env } from '$env/dynamic/private';
 import type { VideoClip } from '$lib/video-clips/types';
 import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
 import {
+	clampNewsHeadline,
 	demoNewsHeadlineFromClip,
 	headlineEchoesVideoTitle,
 	looksLikeRawSpeechHeadline,
@@ -15,6 +16,7 @@ export {
 	needsNewsHeadlineRewrite,
 	headlineEchoesVideoTitle,
 	newsHeadlineDedupeKey,
+	clampNewsHeadline,
 } from '$lib/video-clips/news-headline';
 
 export type NewsHeadlineContext = {
@@ -66,8 +68,10 @@ Your job is to INVENT a specific news title for THIS clip — not fill a templat
 
 Rules:
 - ALL CAPS
-- 12–28 words, ONE complete thought (never cut mid-sentence)
-- Third-person news voice — never first-person transcript ("I'M NOT GOING TO…")
+- 12–28 words, ONE complete thought that could stand alone as a news chyron
+- NEVER cut mid-sentence. The LAST word must be a content word (noun, proper name, verb, or adjective).
+- NEVER end on: THE, A, AN, TO, OF, AND, OR, BUT, IN, FOR, MY, IS, ARE, WAS, WHICH, THAT, WITH, FROM, ABOUT, INTO, BEFORE, AFTER, HIS, HER, THEIR, THIS, THESE, HAVE, WILL, CAN, I, I'M, WE, OKAY
+- Third-person news voice — never first-person transcript ("I'M NOT GOING TO…", "OKAY BEFORE I…", "BUT NOW THANKS TO…")
 - Ground ONLY in facts from title + description + channel + this clip's speech — do not invent names, numbers, or events
 - Prefer naming people/roles from the title or description when present
 - The headline MUST reflect what is SAID in this clip's transcript — a viewer should tell clips apart by title alone
@@ -76,13 +80,28 @@ Rules:
 - No hashtags, no emojis, no quotes around the whole line
 - FORBIDDEN phrases (never use): "STOPS THE SCROLL", "SKIP THE SCROLL", "DON'T SKIP", "IMPOSSIBLE TO IGNORE", "THE MOMENT THAT STOPS", "INSIDE [[…]] — THE MOMENT"
 - Do NOT copy or lightly rephrase the video title for every clip
+- Do NOT paste or lightly edit the transcript — invent a title ABOUT the moment
+- NEVER return a word-truncated slice of the transcript (bad: "TO ALULOSE WHICH IS A TRUE" / "OKAY BEFORE I GET INTO MY")
 - Each headline must be unique to this clip's facts — no generic hype slogans
 - Return ONLY the headline line`;
+
+function acceptsHeadline(
+	cleaned: string,
+	speech: string,
+	videoTitle: string,
+	avoid: string[],
+): boolean {
+	if (looksLikeRawSpeechHeadline(cleaned, speech)) return false;
+	if (headlineEchoesVideoTitle(cleaned, videoTitle) && speech.length >= 24) return false;
+	const key = newsHeadlineDedupeKey(cleaned);
+	if (avoid.some((h) => newsHeadlineDedupeKey(h) === key)) return false;
+	return true;
+}
 
 export async function rewriteNewsHeadlineForClip(
 	clip: VideoClip,
 	ctx: NewsHeadlineContext = {},
-	opts?: { avoidHeadlines?: string[] },
+	opts?: { avoidHeadlines?: string[]; extraInstruction?: string },
 ): Promise<string | null> {
 	const speech = cleanClipSpeechText(
 		clip.transcript?.trim() || clip.hook?.trim() || clip.title?.trim() || '',
@@ -102,6 +121,9 @@ export async function rewriteNewsHeadlineForClip(
 					.map((h, i) => `${i + 1}. ${h}`)
 					.join('\n')}\n`
 			: '';
+	const extra = opts?.extraInstruction?.trim()
+		? `\n\nIMPORTANT RETRY: ${opts.extraInstruction.trim()}`
+		: '';
 
 	const prompt = `${REWRITE_PROMPT}
 
@@ -124,9 +146,9 @@ Style examples (cadence only — invent nothing from these; write a NEW title fo
 - [[PATRICK MAHOMES]] BREAKS DOWN THE PLAY THAT [[ALMOST COST]] THE CHIEFS THE SEASON
 - THIS FOUNDER WON'T [[CONFIRM OR DENY]] THE ACCUSATIONS — BUT ADMITS THERE WAS [[PRE-MEDITATION]]
 - [[YC STARTUP SCHOOL]]: A BUILDER WAS TALKING TO AN [[AI VERSION]] OF A PARTNER. THEN THE REAL ONE WALKED BY
-- [[3 MEN]] FOUND DEAD AFTER A [[PRIVATE FLIGHT]] — INVESTIGATORS ARE NOW ASKING ABOUT THE PILOT`;
+- [[3 MEN]] FOUND DEAD AFTER A [[PRIVATE FLIGHT]] — INVESTIGATORS ARE NOW ASKING ABOUT THE PILOT${extra}`;
 
-	for (const temperature of [0.85, 0.95, 1.05]) {
+	for (const temperature of [0.75, 0.9, 1.05]) {
 		const out = await openRouterComplete([{ role: 'user', content: prompt }], temperature, 160);
 		if (!out) continue;
 		const line = out
@@ -137,17 +159,15 @@ Style examples (cadence only — invent nothing from these; write a NEW title fo
 			.map((l) => l.trim())
 			.find((l) => l.length >= 16);
 		if (!line) continue;
-		const cleaned = line.slice(0, 320);
-		if (looksLikeRawSpeechHeadline(cleaned, speech)) continue;
-		if (headlineEchoesVideoTitle(cleaned, videoTitle) && speech.length >= 24) continue;
-		const key = newsHeadlineDedupeKey(cleaned);
-		if (avoid.some((h) => newsHeadlineDedupeKey(h) === key)) continue;
+		const cleaned = clampNewsHeadline(line, 320);
+		if (!acceptsHeadline(cleaned, speech, videoTitle, avoid)) continue;
 		return cleaned;
 	}
 	return null;
 }
 
-/** Ensure every clip has a unique AI news title grounded in that moment. */
+/** Ensure every clip has a unique AI news title grounded in that moment.
+ * Always invent via rewrite — never trust Gemini/`titleFromExcerpt` speech slices. */
 export async function ensureNewsHeadlinesForClips(
 	clips: VideoClip[],
 	ctx: NewsHeadlineContext | string = {},
@@ -160,25 +180,47 @@ export async function ensureNewsHeadlinesForClips(
 
 	for (const clip of clips) {
 		const speech = clip.transcript || clip.hook;
-		const needs = needsNewsHeadlineRewrite(clip.newsHeadline, {
-			transcript: speech,
-			videoTitle: context.videoTitle,
-			usedKeys,
-		});
 
-		if (!needs && clip.newsHeadline?.trim()) {
+		// Keep an existing headline only if it already passes every guard (incl. transcript-slice)
+		const keepExisting =
+			!!clip.newsHeadline?.trim() &&
+			!needsNewsHeadlineRewrite(clip.newsHeadline, {
+				transcript: speech,
+				videoTitle: context.videoTitle,
+				usedKeys,
+			});
+
+		if (keepExisting) {
 			const key = newsHeadlineDedupeKey(clip.newsHeadline);
 			usedKeys.add(key);
-			usedPlain.push(clip.newsHeadline);
+			usedPlain.push(clip.newsHeadline!);
 			out.push(clip);
 			continue;
 		}
 
-		const rewritten = await rewriteNewsHeadlineForClip(clip, context, {
-			avoidHeadlines: usedPlain,
-		});
-		let nextHeadline = rewritten ?? '';
+		let nextHeadline =
+			(await rewriteNewsHeadlineForClip(clip, context, {
+				avoidHeadlines: usedPlain,
+			})) ?? '';
 
+		// Post-check failed → force a second rewrite with an explicit completeness nudge
+		if (
+			!nextHeadline ||
+			needsNewsHeadlineRewrite(nextHeadline, {
+				transcript: speech,
+				videoTitle: context.videoTitle,
+				usedKeys,
+			})
+		) {
+			nextHeadline =
+				(await rewriteNewsHeadlineForClip(clip, context, {
+					avoidHeadlines: usedPlain,
+					extraInstruction:
+						'Previous draft was a transcript fragment or incomplete. Invent a finished third-person news chyron (12–28 words). Do NOT paste spoken words. Never start with TO/AND/BUT/WHICH. Never end mid-phrase (MY, IS, TRUE, THE, TO…).',
+				})) ?? '';
+		}
+
+		// Last resort: complete invented fallback — never word-truncated transcript
 		if (
 			!nextHeadline ||
 			needsNewsHeadlineRewrite(nextHeadline, {
@@ -188,22 +230,6 @@ export async function ensureNewsHeadlinesForClips(
 			})
 		) {
 			nextHeadline = demoNewsHeadlineFromClip(clip, context.videoTitle);
-			// If demo still collides with video title / siblings, force speech-only topic
-			if (
-				needsNewsHeadlineRewrite(nextHeadline, {
-					transcript: speech,
-					videoTitle: context.videoTitle,
-					usedKeys,
-				})
-			) {
-				nextHeadline = demoNewsHeadlineFromClip(
-					{
-						...clip,
-						title: cleanClipSpeechText(clip.transcript || clip.hook || clip.title).slice(0, 80),
-					},
-					'',
-				);
-			}
 		}
 
 		const key = newsHeadlineDedupeKey(nextHeadline);

@@ -449,7 +449,7 @@
 			</form>
 
 			<div class="login-footer">
-				<a href="/signup?next=/dashboard/settings" class="inline-link">Create account</a>
+				<a href="/?auth=signup&next=/dashboard/settings" class="inline-link">Create account</a>
 				<button type="button" class="link-btn" disabled={resetBusy} onclick={sendPasswordReset}>
 					{resetBusy ? 'Sending…' : 'Forgot password?'}
 				</button>

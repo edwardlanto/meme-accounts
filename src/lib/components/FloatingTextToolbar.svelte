@@ -1,7 +1,11 @@
 <script lang="ts">
 	import type { TextStyle } from '$lib/types';
 	import type { HighlightSpec } from '$lib/highlight';
-	import { AVAILABLE_PATTERNS } from '$lib/highlight';
+	import {
+		AVAILABLE_PATTERNS,
+		HIGHLIGHT_SOLID_PRESETS,
+		HIGHLIGHT_GRADIENT_PRESETS,
+	} from '$lib/highlight';
 	import {
 		GOOGLE_FONTS,
 		CATEGORY_LABELS,
@@ -85,16 +89,8 @@
 	const toolbarWidth = $derived(deleteOnly ? TOOLBAR_W_DELETE : TOOLBAR_W_FULL);
 
 	/** App default highlight / `[[WORD]]` parse color is #F5A623 — not first in grid so it isn’t mistaken for “primary”. */
-	const HIGHLIGHT_PRESETS = [
-		'#08EBFF', '#FF3B5C', '#F5A623', '#A855F7',
-		'#10B981', '#FFD700', '#FF6B6B', '#4ECDC4',
-	];
-	const GRADIENT_PRESETS: [string, string][] = [
-		['#FFFFFF', '#F5A623'],
-		['#F5A623', '#FFB347'],
-		['#08EBFF', '#A855F7'],
-		['#10B981', '#08EBFF'],
-	];
+	const HIGHLIGHT_PRESETS = HIGHLIGHT_SOLID_PRESETS;
+	const GRADIENT_PRESETS = HIGHLIGHT_GRADIENT_PRESETS;
 
 	function applyHighlight(spec: HighlightSpec) {
 		onHighlight?.(spec);

@@ -14,7 +14,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 			return { session: null, user: null };
 		}
 		const next = encodeURIComponent(url.pathname + url.search);
-		throw redirect(303, `/login?next=${next}`);
+		throw redirect(303, `/?auth=login&next=${next}`);
 	}
 
 	return { session, user };

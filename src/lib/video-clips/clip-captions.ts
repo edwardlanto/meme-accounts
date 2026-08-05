@@ -12,6 +12,7 @@ import {
 import { dedupeAdjacentSegments } from '$lib/video-clips/caption-chunking';
 import type { StudioClipCaptionImport } from '$lib/studio/clip-import';
 import type { BulkRowCaptions } from '$lib/studio/bulk-to-studio';
+import { shiftCaptionImportTimes } from '$lib/video-clips/clip-template-copy';
 
 /** Build timed caption cues for a clip segment from the source transcript. */
 export function buildCaptionSegmentsForClip(
@@ -45,7 +46,7 @@ export function studioCaptionImportForClip(
 ): StudioClipCaptionImport | null {
 	if (!segments.length) return null;
 	return {
-		enabled: true,
+		enabled: caps.enabled !== false,
 		segments,
 		templateId: caps.templateId,
 		fontSize: caps.fontSize,
@@ -60,6 +61,37 @@ export function studioCaptionImportForClip(
 		customX: null,
 		customY: null,
 	};
+}
+
+/** Merge latest Bulk caption styles onto a stored import (or rebuild from segments). */
+export function resolveStudioCaptionImportForSlide(slide: {
+	captions: BulkRowCaptions;
+	captionSegments?: CaptionSegment[] | null;
+	studioCaptionImport?: StudioClipCaptionImport | null;
+	reframedPlaybackUrl?: string | null;
+	sourceClipStart?: number | null;
+}): StudioClipCaptionImport | null {
+	if (!slide.captions?.enabled) return null;
+	let base =
+		slide.studioCaptionImport && slide.studioCaptionImport.segments?.length
+			? slide.studioCaptionImport
+			: slide.captionSegments?.length
+				? studioCaptionImportForClip(slide.captionSegments, slide.captions)
+				: null;
+	if (!base?.segments?.length) return null;
+	const merged: StudioClipCaptionImport = {
+		...base,
+		enabled: true,
+		templateId: slide.captions.templateId || base.templateId,
+		fontSize: slide.captions.fontSize ?? base.fontSize,
+		position: slide.captions.position || base.position,
+		customColor: slide.captions.color || base.customColor,
+	};
+	const offset =
+		String(slide.reframedPlaybackUrl ?? '').trim()
+			? Math.max(0, Number(slide.sourceClipStart) || 0)
+			: 0;
+	return shiftCaptionImportTimes(merged, offset);
 }
 
 /** One-line caption preview for the editor body field. */

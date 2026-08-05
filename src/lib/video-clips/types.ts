@@ -24,6 +24,15 @@ export type VideoClip = {
 	reframedPlaybackUrl?: string;
 	/** Fingerprint of reframe settings used to produce the preview. */
 	reframeSettingsKey?: string;
+	/**
+	 * Absolute timestamp (seconds on source timeline) of the best visual frame
+	 * for a scene still — chosen by Gemini when available.
+	 */
+	bestFrameSec?: number;
+	/** R2 key for a JPEG still of the best frame in this clip. */
+	thumbnailR2Key?: string;
+	/** Signed URL for `thumbnailR2Key` (or equivalent). */
+	thumbnailUrl?: string;
 };
 
 export type VideoSourceKind = 'upload' | 'youtube';

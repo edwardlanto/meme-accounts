@@ -67,10 +67,15 @@ import JSZip from 'jszip';
 	import {
 		applyHighlight,
 		type HighlightSpec,
+		type StudioHighlightStyleKind,
+		type HighlightDefaults,
 		plainRangeFromSelection,
 		plainRangeHasMixedForegroundPaint,
 		rangeForegroundSwatchColor,
 		stripMarkup,
+		AVAILABLE_PATTERNS,
+		HIGHLIGHT_SOLID_PRESETS,
+		HIGHLIGHT_GRADIENT_PRESETS,
 	} from '$lib/highlight';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
@@ -182,6 +187,28 @@ import JSZip from 'jszip';
 	let studioCaptionRaf: number | null = null;
 	let studioCaptionLastPhraseKey = '';
 	let studioCaptionLastWordIdx = -1;
+	/** Per-slide captions from Bulk → Studio handoff. */
+	let bulkCaptionsBySlide = $state<(StudioClipCaptionImport | null)[]>([]);
+
+	function applyStudioCaptionsPayload(caps: StudioClipCaptionImport | null | undefined) {
+		if (caps?.enabled && Array.isArray(caps.segments) && caps.segments.length) {
+			studioClipCaptions = caps;
+			const tpl = getCaptionTemplate(caps.templateId);
+			const chunk = caps.wordsPerChunk ?? tpl.wordsPerChunk;
+			const phrases = segmentsToPhrases(caps.segments, chunk);
+			studioCaptionPhrases = phrases;
+			studioCaptionPhrasesRef = phrases;
+			studioCaptionPhrase = null;
+			studioCaptionWordIndex = -1;
+			studioCaptionTime = 0;
+		} else {
+			studioClipCaptions = null;
+			studioCaptionPhrases = [];
+			studioCaptionPhrasesRef = [];
+			studioCaptionPhrase = null;
+			studioCaptionWordIndex = -1;
+		}
+	}
 
 	// News controls
 	let search = $state('');
@@ -961,24 +988,7 @@ import JSZip from 'jszip';
 		}
 
 		// Transfer CapCut captions from Videos page onto this canvas
-		const caps = payload.captions;
-		if (caps?.enabled && Array.isArray(caps.segments) && caps.segments.length) {
-			studioClipCaptions = caps;
-			const tpl = getCaptionTemplate(caps.templateId);
-			const chunk = caps.wordsPerChunk ?? tpl.wordsPerChunk;
-			const phrases = segmentsToPhrases(caps.segments, chunk);
-			studioCaptionPhrases = phrases;
-			studioCaptionPhrasesRef = phrases;
-			studioCaptionPhrase = null;
-			studioCaptionWordIndex = -1;
-			studioCaptionTime = clipStart;
-		} else {
-			studioClipCaptions = null;
-			studioCaptionPhrases = [];
-			studioCaptionPhrasesRef = [];
-			studioCaptionPhrase = null;
-			studioCaptionWordIndex = -1;
-		}
+		applyStudioCaptionsPayload(payload.captions);
 
 		forcedTemplateFromQuery = primary;
 		pendingClipImport = null;
@@ -1047,6 +1057,13 @@ import JSZip from 'jszip';
 			if (studioCaptionRaf != null) cancelAnimationFrame(studioCaptionRaf);
 			studioCaptionRaf = null;
 		};
+	});
+
+	/** When Bulk brings per-slide captions, swap them as the user changes slides. */
+	$effect(() => {
+		const idx = activeSlide;
+		if (!bulkCaptionsBySlide.length) return;
+		applyStudioCaptionsPayload(bulkCaptionsBySlide[idx] ?? null);
 	});
 
 	const studioCaptionTemplate = $derived(
@@ -2297,8 +2314,27 @@ import JSZip from 'jszip';
 
 	// Style
 	let highlightColor = $state('#F5A623');
+	/** Default look for bare `[[phrase]]` from AI / Load & Fill. */
+	let highlightStyleKind = $state<StudioHighlightStyleKind>('solid');
+	let highlightGradientFrom = $state('#FFFFFF');
+	let highlightGradientTo = $state('#F5A623');
+	let highlightPattern = $state<string>(AVAILABLE_PATTERNS[0]?.name ?? 'light-blue');
 	/** Sidebar + fetch: when false, no `[[…]]` markup from AI and no highlight swatches on the floating text toolbar. */
 	let studioTextHighlightsEnabled = $state(true);
+
+	const studioHighlightDefaults = $derived.by((): HighlightDefaults => {
+		if (highlightStyleKind === 'gradient') {
+			return {
+				color: highlightColor,
+				gradientFrom: highlightGradientFrom,
+				gradientTo: highlightGradientTo,
+			};
+		}
+		if (highlightStyleKind === 'pattern') {
+			return { color: highlightColor, pattern: highlightPattern };
+		}
+		return { color: highlightColor };
+	});
 	// Default to light-mode friendly; updated onMount to match global theme.
 	let textColor = $state('#0a0a0a');
 	let textColorTouched = $state(false);
@@ -4270,6 +4306,18 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (typeof s.shadowHeight === 'number') shadowHeight = s.shadowHeight;
 		if (typeof s.shadowStrength === 'number') shadowStrength = s.shadowStrength;
 		if (typeof s.highlightColor === 'string') highlightColor = s.highlightColor;
+		if (s.highlightStyleKind === 'solid' || s.highlightStyleKind === 'gradient' || s.highlightStyleKind === 'pattern') {
+			highlightStyleKind = s.highlightStyleKind;
+		}
+		if (typeof s.highlightGradientFrom === 'string' && s.highlightGradientFrom.trim()) {
+			highlightGradientFrom = s.highlightGradientFrom.trim();
+		}
+		if (typeof s.highlightGradientTo === 'string' && s.highlightGradientTo.trim()) {
+			highlightGradientTo = s.highlightGradientTo.trim();
+		}
+		if (typeof s.highlightPattern === 'string' && s.highlightPattern.trim()) {
+			highlightPattern = s.highlightPattern.trim().toLowerCase().replace(/\s+/g, '-');
+		}
 		if (typeof s.studioTextHighlightsEnabled === 'boolean') studioTextHighlightsEnabled = s.studioTextHighlightsEnabled;
 		if (typeof s.textColor === 'string') textColor = s.textColor;
 		// Intentionally do NOT restore `exportedSlides` (huge data URLs) from drafts.
@@ -5094,6 +5142,10 @@ tweetTopImagePanYBySlide,
 			shadowHeight,
 			shadowStrength,
 			highlightColor,
+			highlightStyleKind,
+			highlightGradientFrom,
+			highlightGradientTo,
+			highlightPattern,
 			studioTextHighlightsEnabled,
 			textColor,
 			draftPreviewUrl,
@@ -5315,6 +5367,11 @@ tweetTopImagePanYBySlide,
 							applyDraftState(bulkState);
 							slideCount = Math.max(1, slides.length);
 							if (bulkState.brandCtaEnabled) brandCtaEnabled = true;
+							const capsList = Array.isArray(bulkState._studioCaptionsBySlide)
+								? (bulkState._studioCaptionsBySlide as (StudioClipCaptionImport | null)[])
+								: [];
+							bulkCaptionsBySlide = capsList;
+							applyStudioCaptionsPayload(capsList[activeSlide] ?? capsList[0] ?? null);
 							// applyBlankCanvas() zeroes the News shadow; restore it for News decks.
 							if (slideTemplates.some((t) => coerceTemplateId(t) === 'news')) {
 								if (shadowHeight === 0 || shadowStrength === 0) {
@@ -7560,8 +7617,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	}
 
 	// Preview scale — fit the live viewport and cap so tall formats (9:16) never swamp the docks
-	const PREVIEW_COMFORT_MAX_W = 580;
-	const PREVIEW_COMFORT_MAX_H = 640;
+	const PREVIEW_COMFORT_MAX_W = 720;
+	const PREVIEW_COMFORT_MAX_H = 900;
 	let studioPreviewHostEl = $state<HTMLElement | null>(null);
 	let previewHostW = $state(720);
 	let previewHostH = $state(600);
@@ -8366,6 +8423,7 @@ showSubjectCutout={canvasShowCutout}
 					sourceLabelMode={sourceLabelMode}
 					sourceLogoWidth={sourceLogoWidth}
 					highlightColor={highlightColor}
+					highlightDefaults={studioHighlightDefaults}
 					textColor={canvasHeadlineInk}
 					w={CANVAS_W}
 					h={CANVAS_H}
@@ -9249,9 +9307,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			{/if}
 			{#if studioClipCaptions?.enabled && studioCaptionPhrases.length && canvasBackgroundVideo}
 				<div
-					class="pointer-events-none absolute left-0 top-0 z-[14] origin-top-left"
-					style="width: {CANVAS_W}px; height: {CANVAS_H}px; transform: scale({previewScale});"
-					aria-hidden="true"
+					class="absolute left-0 top-0 z-[14] origin-top-left"
+					style="width: {CANVAS_W}px; height: {CANVAS_H}px; transform: scale({previewScale}); pointer-events: none;"
 				>
 					<VideoCaptionOverlay
 						phrase={studioCaptionPhrase}
@@ -9266,9 +9323,18 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						customHighlightColor={studioClipCaptions.customHighlightColor}
 						animationOverride={studioClipCaptions.animationOverride}
 						strokeEnabled={studioClipCaptions.strokeEnabled}
-						draggable={false}
-						customX={null}
-						customY={null}
+						draggable={canvasInteractive}
+						customX={studioClipCaptions.customX}
+						customY={studioClipCaptions.customY}
+						oncustomposition={(x, y) => {
+							if (!studioClipCaptions) return;
+							studioClipCaptions = { ...studioClipCaptions, customX: x, customY: y };
+							if (bulkCaptionsBySlide.length) {
+								const next = [...bulkCaptionsBySlide];
+								next[activeSlide] = studioClipCaptions;
+								bulkCaptionsBySlide = next;
+							}
+						}}
 					/>
 				</div>
 			{/if}
@@ -9285,37 +9351,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 		<!-- Slide filmstrip: drag to reorder (show for single-slide decks so Hook + Add stay visible) -->
 		{#if slides.length >= 1}
-			{#if activeSlideHasClip && !editingBrandCta}
-				<div class="mx-auto mb-2 flex max-w-3xl flex-wrap items-center justify-center gap-2 px-2">
-					<span class="text-[10px] text-white/40">Reuse this clip as</span>
-					{#each TEMPLATES.filter((t) =>
-						['news', 'blank', 'videoFit', 'videoSplit', 'tweet'].includes(t.id),
-					) as t (t.id)}
-						<button
-							type="button"
-							class="rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-white/80 hover:border-violet-400/50 hover:bg-violet-500/15 hover:text-white transition-colors"
-							onclick={() => addSlideWithClipAs(t.id)}
-						>
-							{t.label}
-						</button>
-					{/each}
-					<button
-						type="button"
-						data-add-slide-menu
-						class="rounded-full border border-dashed border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/45 hover:text-white/70 transition-colors"
-						onclick={(e) => {
-							const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-							addSlideMenuPos = {
-								bottom: Math.max(8, window.innerHeight - r.top + 8),
-								right: Math.max(8, window.innerWidth - r.right),
-							};
-							addSlideMenuOpen = true;
-						}}
-					>
-						More…
-					</button>
-				</div>
-			{/if}
 			{#if editingBrandCta}
 				<div
 					class="brand-cta-panel mx-auto mb-2 max-w-3xl rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5"
@@ -10422,12 +10457,115 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										{/if}
 									</div>
 									<!-- Word highlights -->
-									<div class="flex items-center justify-between gap-3 rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5">
-										<div class="min-w-0">
-											<Label for="settings-highlights-toggle" class="text-xs font-semibold text-[#333] block">Word highlights</Label>
-											<p class="text-[10px] text-[#aaa] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
+									<div class="space-y-3 rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5">
+										<div class="flex items-center justify-between gap-3">
+											<div class="min-w-0">
+												<Label for="settings-highlights-toggle" class="text-xs font-semibold text-[#333] block">Word highlights</Label>
+												<p class="text-[10px] text-[#aaa] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
+											</div>
+											<Switch id="settings-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
 										</div>
-										<Switch id="settings-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
+										{#if studioTextHighlightsEnabled}
+											<div class="space-y-2.5 border-t border-[#ebebeb] pt-2.5">
+												<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Default style</p>
+												<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-white p-0.5">
+													{#each (['solid', 'gradient', 'pattern'] as const) as kind}
+														<button
+															type="button"
+															onclick={() => (highlightStyleKind = kind)}
+															class="flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize transition-colors
+																{highlightStyleKind === kind
+																	? 'bg-[#1a1a1a] text-white'
+																	: 'text-[#666] hover:bg-[#f5f5f5]'}"
+														>
+															{kind}
+														</button>
+													{/each}
+												</div>
+												{#if highlightStyleKind === 'solid'}
+													<div class="grid grid-cols-4 gap-1.5">
+														{#each HIGHLIGHT_SOLID_PRESETS as c}
+															<button
+																type="button"
+																onclick={() => (highlightColor = c)}
+																class="h-7 rounded-lg border-2 transition-transform hover:scale-105
+																	{highlightColor.toLowerCase() === c.toLowerCase()
+																		? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
+																		: 'border-transparent'}"
+																style="background: {c};"
+																aria-label="Default highlight {c}"
+																aria-pressed={highlightColor.toLowerCase() === c.toLowerCase()}
+															></button>
+														{/each}
+													</div>
+													<label class="flex items-center gap-2 pt-0.5">
+														<span class="text-[10px] text-[#aaa]">Custom</span>
+														<input
+															type="color"
+															value={highlightColor}
+															oninput={(e) => {
+																highlightColor = (e.currentTarget as HTMLInputElement).value;
+															}}
+															class="h-7 w-10 cursor-pointer rounded border border-[#ebebeb] bg-white p-0.5"
+														/>
+													</label>
+												{:else if highlightStyleKind === 'gradient'}
+													<div class="grid grid-cols-2 gap-1.5">
+														{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to]}
+															<button
+																type="button"
+																onclick={() => {
+																	highlightGradientFrom = from;
+																	highlightGradientTo = to;
+																	highlightColor = from;
+																}}
+																class="h-8 rounded-lg border-2 transition-transform hover:scale-[1.02]
+																	{highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
+																	highlightGradientTo.toLowerCase() === to.toLowerCase()
+																		? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
+																		: 'border-transparent'}"
+																style="background: linear-gradient(90deg, {from}, {to});"
+																aria-label="Gradient {from} to {to}"
+																aria-pressed={highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
+																	highlightGradientTo.toLowerCase() === to.toLowerCase()}
+															></button>
+														{/each}
+													</div>
+												{:else}
+													<div class="grid grid-cols-1 gap-1.5">
+														{#each AVAILABLE_PATTERNS as pat}
+															<button
+																type="button"
+																onclick={() => (highlightPattern = pat.name)}
+																class="relative h-11 overflow-hidden rounded-lg border-2 transition-all
+																	{highlightPattern === pat.name
+																		? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
+																		: 'border-[#ebebeb] hover:border-[#ccc]'}"
+																title={pat.label}
+																aria-pressed={highlightPattern === pat.name}
+															>
+																<img src={pat.url} alt="" class="absolute inset-0 h-full w-full object-cover" />
+																<span
+																	class="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wider"
+																	style="
+																		background-image: url('{pat.url}');
+																		background-size: cover;
+																		background-position: center;
+																		-webkit-background-clip: text;
+																		-webkit-text-fill-color: transparent;
+																		background-clip: text;
+																		filter: contrast(1.35) brightness(1.15);
+																	"
+																>{pat.label.toUpperCase()}</span>
+															</button>
+														{/each}
+													</div>
+												{/if}
+												<p class="text-[10px] leading-snug text-[#aaa]">
+													Applies to AI highlights and bare [[words]]. Toolbar picks still override per phrase.
+												</p>
+											</div>
+										{/if}
 									</div>
 								{/if}
 

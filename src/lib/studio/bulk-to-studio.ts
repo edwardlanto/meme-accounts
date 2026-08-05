@@ -19,13 +19,14 @@ import {
 		WHITE_MEDIA_DEFAULTS,
 		WHITE_THREAD_DEFAULTS,
 	} from './slide-content-defaults';
-	import type { StudioClipCaptionImport } from './clip-import';
-	import type { CaptionSegment } from '$lib/video-clips/caption-sync';
-	import { DEFAULT_BRAND_KIT } from './brand-kit';
-	import {
-		parseReframeAspectFromSettingsKey,
-		studioFormatForReframeAspect,
-	} from '$lib/video-clips/reframe';
+import type { StudioClipCaptionImport } from './clip-import';
+import type { CaptionSegment } from '$lib/video-clips/caption-sync';
+import { DEFAULT_BRAND_KIT } from './brand-kit';
+import {
+	parseReframeAspectFromSettingsKey,
+	studioFormatForReframeAspect,
+} from '$lib/video-clips/reframe';
+import { resolveStudioCaptionImportForSlide } from '$lib/video-clips/clip-captions';
 
 export const STUDIO_BULK_IMPORT_KEY = 'studio_bulk_import_v1';
 export const BULK_CLIP_HANDOFF_KEY = 'bulk_clip_handoff_v1';
@@ -52,6 +53,8 @@ export type BulkSlide = {
 	mediaKind?: 'image' | 'video' | null;
 	mediaThumb?: string;
 	mediaLoading?: boolean;
+	/** Preview audio — default muted for autoplay. */
+	videoMuted?: boolean;
 	/** Trim window on `mediaUrl` (seconds). 0…duration when reframed standalone MP4. */
 	clipStart?: number;
 	clipEnd?: number;
@@ -77,6 +80,10 @@ export type BulkClipSlideMeta = {
 	transcript?: string;
 	newsHeadline?: string;
 	videoHook?: string;
+	/** Absolute source timestamp for the best scene still. */
+	bestFrameSec?: number;
+	/** R2 key for the clip-specific scene still (not the shared video poster). */
+	thumbnailR2Key?: string;
 };
 
 /** One clip segment handed off from Videos → Bulk. */
@@ -87,6 +94,8 @@ export type BulkClipHandoffItem = {
 	headline?: string;
 	body?: string;
 	thumbnailUrl?: string;
+	bestFrameSec?: number;
+	thumbnailR2Key?: string;
 	sourceR2Key?: string;
 	reframedR2Key?: string;
 	reframedPlaybackUrl?: string;
@@ -446,6 +455,8 @@ export function buildDraftStateFromShow(
 		_fromBulk: true,
 		_bulkTitle: show.title,
 		_bulkCaptions: list.map((r) => ({ ...r.captions })),
+		/** Timed CapCut captions per slide for Studio overlay + drag. */
+		_studioCaptionsBySlide: list.map((r) => resolveStudioCaptionImportForSlide(r)),
 	};
 }
 

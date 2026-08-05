@@ -8,7 +8,6 @@ import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 import {
 	demoNewsHeadlineFromClip,
 	ensureNewsHeadlinesForClips,
-	needsNewsHeadlineRewrite,
 } from '$lib/server/news-headline-from-clip';
 import { ensureVideoHooksForClips } from '$lib/server/video-hook-from-clip';
 import {
@@ -23,6 +22,7 @@ const CLIPS_SCHEMA = `{
       "title": "3-6 word topic headline (not meta like 'peak insight')",
       "startSec": 12.5,
       "endSec": 52.0,
+      "bestFrameSec": 28.2,
       "viralityScore": 85,
       "hook": "Optional short label — prefer putting spoken words in transcript",
       "reason": "Internal note for editors only (not shown on posts)",
@@ -51,26 +51,25 @@ function parseClipsJson(raw: string): { clips: VideoClip[]; summary: string } {
 		const startSec = Number(o.startSec);
 		const endSec = Number(o.endSec);
 		if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) continue;
-		const newsRaw = o.newsHeadline != null ? String(o.newsHeadline).trim() : '';
 		const hookRaw = o.videoHook != null ? String(o.videoHook).trim() : '';
 		const speechForCheck = o.transcript != null ? String(o.transcript) : '';
+		const bestRaw = Number(o.bestFrameSec);
+		const bestFrameSec =
+			Number.isFinite(bestRaw) && bestRaw >= startSec && bestRaw <= endSec
+				? bestRaw
+				: startSec + (endSec - startSec) * 0.35;
 		clips.push({
 			id: String(o.id ?? clips.length + 1),
 			title: String(o.title ?? 'Clip').slice(0, 120),
 			startSec: Math.max(0, startSec),
 			endSec: endSec,
+			bestFrameSec,
 			viralityScore: Math.max(0, Math.min(100, Number(o.viralityScore) || 70)),
 			hook: String(o.hook ?? '').slice(0, 280),
 			reason: String(o.reason ?? '').slice(0, 500),
 			transcript: o.transcript != null ? String(o.transcript).slice(0, 800) : undefined,
-			newsHeadline:
-				newsRaw &&
-				!needsNewsHeadlineRewrite(newsRaw, {
-					transcript: speechForCheck,
-					videoTitle: undefined,
-				})
-					? newsRaw.slice(0, 320)
-					: undefined,
+			// Always invented in ensureNewsHeadlinesForClips — never trust Gemini speech slices
+			newsHeadline: undefined,
 			videoHook:
 				hookRaw && !looksLikeRawVideoHook(hookRaw, speechForCheck)
 					? hookRaw.slice(0, 140)
@@ -270,17 +269,20 @@ Rules:
 - Do NOT write meta slogans like "the clearest explanation", "stops the scroll", "don't skip", or "impossible to ignore" — only real dialogue/narration in transcript; newsHeadline must be a specific invented title for THIS clip.
 - title is a short topic headline (3-6 words), not a label about virality.
 - Each clip MUST have a unique title and transcript based on what is actually said in that time range — never repeat the full video title for every clip.
+- bestFrameSec is the single best visual moment INSIDE [startSec, endSec] for a thumbnail / still photo (face visible, peak gesture, clearest slide/graphic — avoid black frames and transitions).
 - reason is for editors only (optional); transcript is what appears on social posts.
 - newsHeadline is a separate News-template overlay hook. NEVER paste or lightly edit the transcript — invent a Slash / FutureTech viral-news TITLE for this moment:
   - ALL CAPS, third-person news voice (not first-person speech)
-  - 12–28 words, one complete thought (never cut mid-sentence)
+  - 12–28 words, one complete thought that could stand alone as a news chyron (never cut mid-sentence)
+  - LAST word must be a content word (noun / name / verb / adjective) — NEVER end on THE, A, AN, TO, OF, AND, OR, BUT, MY, IS, WHICH, THAT, WITH, FROM, ABOUT, INTO, BEFORE, I, I'M, WE, OKAY
+  - NEVER start with first-person speech openers (I, I'M, OKAY BEFORE, BUT NOW, SO…)
   - MUST cover WHO (person/role from video title, channel, or description), WHAT the clip is about, and a HYPE / stakes angle
   - Ground ONLY in facts/claims in the video title + description + channel + this segment — do not invent names, numbers, or events
   - Prefer conflict, confession, money, career stakes, contrast, or a twist when present
   - Wrap 1–3 impact phrases in [[...]] for highlight (plain phrases only — never grad(, marker(, pattern(, or #hex: inside brackets)
   - No hashtags, no emojis, no quotation marks around the whole line
   - FORBIDDEN: "STOPS THE SCROLL", "SKIP THE SCROLL", "DON'T SKIP", "IMPOSSIBLE TO IGNORE", "INSIDE [[x]] — THE MOMENT THAT…"
-  - Invent a unique title per clip — never reuse a slogan template
+  - Invent a unique title per clip — never reuse a slogan template, never paste or lightly edit the transcript
   - Examples of the STYLE (do not copy these facts — invent nothing; mirror the cadence from THIS clip):
     - [[PATRICK MAHOMES]] BREAKS DOWN THE PLAY THAT [[ALMOST COST]] THE CHIEFS THE SEASON
     - THIS FOUNDER WON'T [[CONFIRM OR DENY]] THE ACCUSATIONS — BUT ADMITS THERE WAS [[PRE-MEDITATION]]

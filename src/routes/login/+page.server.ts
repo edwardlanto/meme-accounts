@@ -1,15 +1,12 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-
-/** Only allow same-origin relative paths (open-redirect safe). */
-function safeNext(raw: string | null): string {
-	if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/dashboard';
-	return raw;
-}
+import { authModalHref, safeAuthNext } from '$lib/auth-modal';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	const next = safeNext(url.searchParams.get('next'));
+	const next = safeAuthNext(url.searchParams.get('next'));
 	const { session } = await locals.safeGetSession();
 	if (session) throw redirect(303, next);
-	return { next };
+	const err = url.searchParams.get('error');
+	const href = authModalHref('login', next);
+	throw redirect(303, err ? `${href}&error=${encodeURIComponent(err)}` : href);
 };

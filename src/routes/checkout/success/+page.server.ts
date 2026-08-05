@@ -5,7 +5,7 @@ import { getStripe, planFromPriceId, PLAN_CATALOG } from '$lib/server/stripe';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const { user } = await locals.safeGetSession();
-	if (!user) throw redirect(303, '/login');
+	if (!user) throw redirect(303, '/?auth=login&next=/checkout/success');
 
 	const sessionId = url.searchParams.get('session_id');
 	if (!sessionId || !sessionId.startsWith('cs_')) {

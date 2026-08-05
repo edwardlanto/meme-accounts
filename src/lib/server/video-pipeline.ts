@@ -754,6 +754,43 @@ export async function extractClipWithFfmpeg(params: {
 	);
 }
 
+/** Grab a single JPEG still at `atSec` (input-seek for speed). */
+export async function extractFrameWithFfmpeg(params: {
+	inputPath: string;
+	outputPath: string;
+	atSec: number;
+	/** Max width — height scales to preserve aspect. Default 1280. */
+	maxWidth?: number;
+	signal?: AbortSignal;
+}): Promise<void> {
+	const tools = await checkVideoTools();
+	if (!tools.ffmpeg) {
+		throw new Error('ffmpeg is not installed. Install with: brew install ffmpeg (or set FFMPEG_PATH)');
+	}
+	await mkdir(dirname(params.outputPath), { recursive: true });
+	const at = Math.max(0, Number(params.atSec) || 0);
+	const maxW = Math.max(320, Math.min(1920, params.maxWidth ?? 1280));
+	await runProcess(
+		tools.ffmpegPath,
+		[
+			'-nostdin',
+			'-y',
+			'-ss',
+			String(at),
+			'-i',
+			params.inputPath,
+			'-frames:v',
+			'1',
+			'-q:v',
+			'2',
+			'-vf',
+			`scale='min(${maxW},iw)':-2`,
+			params.outputPath,
+		],
+		{ timeoutMs: 120_000, signal: params.signal },
+	);
+}
+
 export async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 	const dir = join(tmpdir(), `vsp-video-${randomUUID()}`);
 	await mkdir(dir, { recursive: true });

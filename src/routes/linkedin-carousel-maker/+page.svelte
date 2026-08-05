@@ -7,7 +7,7 @@
 	const studioHref = $derived(
 		signedIn
 			? '/dashboard/studio?template=news'
-			: `/signup?next=${encodeURIComponent('/dashboard/studio?template=news')}`,
+			: `/?auth=signup&next=${encodeURIComponent('/dashboard/studio?template=news')}`,
 	);
 
 	const jsonLd = {
@@ -62,7 +62,7 @@
 			{#if signedIn}
 				<a href="/dashboard" class="nav-ghost">Dashboard</a>
 			{:else}
-				<a href="/login?next=/linkedin-carousel-maker" class="nav-ghost">Sign in</a>
+				<a href="/?auth=login&next=/linkedin-carousel-maker" class="nav-ghost">Sign in</a>
 				<a href={studioHref} class="btn-nav">Start free</a>
 			{/if}
 		</div>

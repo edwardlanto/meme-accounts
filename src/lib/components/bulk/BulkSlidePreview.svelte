@@ -55,6 +55,16 @@
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
+	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
+	import { resolveStudioCaptionImportForSlide } from '$lib/video-clips/clip-captions';
+	import { getCaptionTemplate } from '$lib/video-clips/caption-templates';
+	import {
+		segmentsToPhrases,
+		getActivePhrase,
+		getActiveWordIndex,
+		type CaptionPhrase,
+	} from '$lib/video-clips/caption-chunking';
+	import { onDestroy } from 'svelte';
 
 	type Props = {
 		slide?: BulkSlide | null;
@@ -74,6 +84,7 @@
 	}: Props = $props();
 
 	const slide = $derived(slideProp ?? createBlankSlide('news'));
+	const previewMuted = $derived(slide.videoMuted !== false);
 
 	/** Video / reframed clips preview in the matching Studio format (usually 9:16). */
 	const previewFormat = $derived.by(() => {
@@ -193,11 +204,62 @@
 	});
 
 	const showSpinner = $derived(mediaFetching || (needsMediaWait && !imageReady));
+
+	const captionImport = $derived(resolveStudioCaptionImportForSlide(slide));
+	const captionTemplate = $derived(
+		captionImport ? getCaptionTemplate(captionImport.templateId) : getCaptionTemplate('capcut-pop'),
+	);
+	const captionPhrases = $derived.by(() => {
+		if (!captionImport?.enabled || !captionImport.segments?.length) return [] as CaptionPhrase[];
+		const chunk = captionImport.wordsPerChunk ?? captionTemplate.wordsPerChunk;
+		return segmentsToPhrases(captionImport.segments, chunk);
+	});
+	const showCaptions = $derived(
+		!!captionImport?.enabled && captionPhrases.length > 0 && mediaKind === 'video' && !preferThumb,
+	);
+
+	let previewRootEl = $state<HTMLElement | null>(null);
+	let captionTime = $state(0);
+	let captionPhrase = $state<CaptionPhrase | null>(null);
+	let captionWordIndex = $state(-1);
+	let captionRaf: number | null = null;
+
+	$effect(() => {
+		if (!showCaptions) {
+			if (captionRaf != null) cancelAnimationFrame(captionRaf);
+			captionRaf = null;
+			captionPhrase = null;
+			captionWordIndex = -1;
+			return;
+		}
+		const phrases = captionPhrases;
+		const tick = () => {
+			const v = previewRootEl?.querySelector?.('video') as HTMLVideoElement | null | undefined;
+			if (v && phrases.length) {
+				const t = v.currentTime;
+				const phrase = getActivePhrase(phrases, t);
+				captionTime = t;
+				captionPhrase = phrase;
+				captionWordIndex = phrase ? getActiveWordIndex(phrase, t) : -1;
+			}
+			captionRaf = requestAnimationFrame(tick);
+		};
+		captionRaf = requestAnimationFrame(tick);
+		return () => {
+			if (captionRaf != null) cancelAnimationFrame(captionRaf);
+			captionRaf = null;
+		};
+	});
+
+	onDestroy(() => {
+		if (captionRaf != null) cancelAnimationFrame(captionRaf);
+	});
 </script>
 
 <div
 	class="bulk-preview"
 	class:bulk-preview-loading={showSpinner}
+	bind:this={previewRootEl}
 	style="width:{width}px;height:{previewH}px"
 	aria-hidden="true"
 >
@@ -296,7 +358,7 @@
 				}
 				{videoSrc}
 				{videoPoster}
-				videoMuted={true}
+				videoMuted={previewMuted}
 				videoTrimStartSec={trimStart}
 				videoTrimEndSec={trimEnd}
 				headlineStyle={
@@ -360,7 +422,7 @@
 				source={NEWS_DEFAULT_SOURCE}
 				backgroundImage={mediaKind !== 'video' ? imageSrc : ''}
 				backgroundVideo={mediaKind === 'video' ? playbackUrl : ''}
-				videoMuted={true}
+				videoMuted={previewMuted}
 				videoTrimStartSec={mediaKind === 'video' ? trimStart : 0}
 				videoTrimEndSec={mediaKind === 'video' ? trimEnd : 0}
 				highlightColor="#F5A623"
@@ -393,6 +455,32 @@
 		{/if}
 	{/if}
 
+	{#if showCaptions}
+		<div
+			class="bulk-caption-layer"
+			style="width:{CANVAS_W}px;height:{CANVAS_H}px;transform:scale({scale});transform-origin:top left;"
+			aria-hidden="true"
+		>
+			<VideoCaptionOverlay
+				phrase={captionPhrase}
+				currentTime={captionTime}
+				activeWordIndex={captionWordIndex}
+				template={captionTemplate}
+				enabled={true}
+				position={captionImport?.position ?? 'bottom'}
+				customColor={captionImport?.customColor}
+				customBgColor={captionImport?.customBgColor}
+				customFontSize={captionImport?.fontSize}
+				customHighlightColor={captionImport?.customHighlightColor}
+				animationOverride={captionImport?.animationOverride}
+				strokeEnabled={captionImport?.strokeEnabled ?? true}
+				draggable={false}
+				customX={captionImport?.customX ?? null}
+				customY={captionImport?.customY ?? null}
+			/>
+		</div>
+	{/if}
+
 	{#if showSpinner}
 		<div class="bulk-preview-spinner" aria-hidden="true">
 			<Loader2 size={width < 80 ? 14 : 22} class="spin" />
@@ -410,6 +498,13 @@
 		flex-shrink: 0;
 		pointer-events: none;
 		user-select: none;
+	}
+	.bulk-caption-layer {
+		position: absolute;
+		left: 0;
+		top: 0;
+		z-index: 5;
+		pointer-events: none;
 	}
 	.bulk-preview-loading {
 		background: #e8e8ea;

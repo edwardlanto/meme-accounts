@@ -15,7 +15,9 @@
 		applyHighlight,
 		AVAILABLE_PATTERNS,
 		restorePlainSelection,
+		normalizeHighlightDefaults,
 		type HighlightSpec,
+		type HighlightDefaults,
 	} from '$lib/highlight';
 	import { tick } from 'svelte';
 	import type { TypographySnapshot } from '$lib/types';
@@ -25,6 +27,8 @@
 		placeholder?: string;
 		/** Default highlight color used by parseHighlightMarkup (for [[WORD]] without explicit color). */
 		defaultColor?: string;
+		/** When set, bare `[[phrase]]` uses this solid / gradient / pattern default. */
+		defaultStyle?: HighlightDefaults;
 		rows?: number;
 		/** Override min-height CSS (e.g. '0px' to remove extra gap). */
 		minHeight?: string;
@@ -50,6 +54,7 @@
 		value,
 		placeholder = '',
 		defaultColor = '#F59E0B',
+		defaultStyle,
 		rows = 4,
 		minHeight,
 		fontFamily,
@@ -84,6 +89,9 @@
 		['#08EBFF', '#A855F7'],
 		['#10B981', '#08EBFF'],
 	];
+	const parseDefaults = $derived(
+		normalizeHighlightDefaults(defaultStyle ?? defaultColor, defaultColor),
+	);
 	let patternOpen = $state(false);
 	let gradientOpen = $state(false);
 
@@ -102,7 +110,7 @@
 	// Render raw markup → DOM spans inside `editorEl`.
 	function renderMarkupToDom(raw: string) {
 		if (!editorEl) return;
-		const parsed = parseHighlightMarkup(raw, defaultColor);
+		const parsed = parseHighlightMarkup(raw, parseDefaults);
 		const segs = segmentText(parsed);
 		editorEl.innerHTML = '';
 
@@ -282,6 +290,7 @@
 	// so typing doesn't reset the caret.
 	$effect(() => {
 		if (!editorEl) return;
+		void parseDefaults;
 		// Never replace innerHTML while the user is typing — avoids flicker on Enter when
 		// `value`/other deps churn before props catch up (or round-trip markup differs).
 		if (editorContainsFocus()) {
@@ -295,7 +304,7 @@
 			}
 			return;
 		}
-		if (value === lastSyncedValue) return;
+		// Re-paint when value OR default highlight style changes (settings).
 		renderMarkupToDom(value);
 		lastSyncedValue = value;
 	});

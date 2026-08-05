@@ -52,9 +52,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			throw redirect(303, next);
 		}
 		// Fall through to auth-error redirect with message
-		throw redirect(303, `/login?error=${encodeURIComponent(error.message)}`);
+		throw redirect(303, `/?auth=login&error=${encodeURIComponent(error.message)}`);
 	}
 
 	// Old flows that landed here without a code — just send them to login.
-	throw redirect(303, '/login?error=missing_code');
+	throw redirect(303, '/?auth=login&error=missing_code');
 };

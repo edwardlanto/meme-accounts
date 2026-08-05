@@ -16,6 +16,62 @@ export const AVAILABLE_PATTERNS = Object.entries(PATTERN_IMAGES).map(([name, url
 	url,
 }));
 
+/** Solid swatches shared by Studio settings + floating highlight toolbar. */
+export const HIGHLIGHT_SOLID_PRESETS = [
+	'#08EBFF',
+	'#FF3B5C',
+	'#F5A623',
+	'#A855F7',
+	'#10B981',
+	'#FFD700',
+	'#FF6B6B',
+	'#4ECDC4',
+] as const;
+
+/** Gradient pairs shared by Studio settings + floating highlight toolbar. */
+export const HIGHLIGHT_GRADIENT_PRESETS: readonly [string, string][] = [
+	['#FFFFFF', '#F5A623'],
+	['#F5A623', '#FFB347'],
+	['#08EBFF', '#A855F7'],
+	['#10B981', '#08EBFF'],
+];
+
+/**
+ * Default look for bare `[[phrase]]` markers (AI / plain markup).
+ * Explicit `[[#hex:…]]` / `[[grad(…):…]]` / `[[pattern(…):…]]` always win.
+ */
+export type HighlightDefaults = {
+	color: string;
+	gradientFrom?: string;
+	gradientTo?: string;
+	pattern?: string;
+};
+
+export type StudioHighlightStyleKind = 'solid' | 'gradient' | 'pattern';
+
+export function normalizeHighlightDefaults(
+	input: string | HighlightDefaults | undefined,
+	fallbackColor = '#F59E0B',
+): HighlightDefaults {
+	if (!input) return { color: fallbackColor };
+	if (typeof input === 'string') {
+		const color = input.trim() || fallbackColor;
+		return { color };
+	}
+	const color = String(input.color ?? '').trim() || fallbackColor;
+	const gradientFrom = String(input.gradientFrom ?? '').trim() || undefined;
+	const gradientTo = String(input.gradientTo ?? '').trim() || undefined;
+	const pattern = String(input.pattern ?? '')
+		.trim()
+		.toLowerCase()
+		.replace(/\s+/g, '-') || undefined;
+	return {
+		color,
+		...(gradientFrom && gradientTo ? { gradientFrom, gradientTo } : {}),
+		...(pattern ? { pattern } : {}),
+	};
+}
+
 /** `[[grad(#a,#b): phrase]]` — flexible hex (models vary in digit count). */
 const HIGHLIGHT_GRAD_INNER_RE =
 	/^\s*grad\(\s*(#[0-9a-fA-F]{3,8})\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s?(.*)$/is;
@@ -58,7 +114,12 @@ export interface TextSegment {
  *   [[pattern(waves,#00CED1): WORD]] → pattern fill
  *   [[marker(#hex): WORD]]          → background chip behind phrase
  */
-export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): ParsedText {
+export function parseHighlightMarkup(
+	raw: string,
+	defaultColorOrStyle: string | HighlightDefaults = '#F59E0B',
+): ParsedText {
+	const defaults = normalizeHighlightDefaults(defaultColorOrStyle);
+	const defaultColor = defaults.color;
 	const ranges: HighlightRange[] = [];
 	let plain = '';
 	let i = 0;
@@ -81,6 +142,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		let pattern: string | undefined;
 		let patternImage: string | undefined;
 		let markerBg: string | undefined;
+		let styledExplicitly = false;
 
 		// pattern(name): phrase  — any name, optional ,#hex suffix ignored (image-based)
 		const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s?(.*)$/is;
@@ -89,6 +151,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 			pattern = pm[1].toLowerCase();
 			phrase = pm[2];
 			patternImage = getPatternImage(pattern);
+			styledExplicitly = true;
 		}
 
 		// grad(#from, #to): phrase
@@ -98,6 +161,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 			gradientTo = gm[2];
 			color = gm[1];
 			phrase = gm[3];
+			styledExplicitly = true;
 		}
 
 		// marker(#hex): phrase — background chip (toolbar BG)
@@ -107,6 +171,7 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 			markerBg = mm[1];
 			phrase = mm[2];
 			color = defaultColor;
+			styledExplicitly = true;
 		}
 
 		// #hex: phrase — phrase capture keeps leading/trailing spaces (boundary chars between splits).
@@ -114,6 +179,19 @@ export function parseHighlightMarkup(raw: string, defaultColor = '#F59E0B'): Par
 		if (cm) {
 			color = cm[1];
 			phrase = cm[2];
+			styledExplicitly = true;
+		}
+
+		// Bare `[[phrase]]` — apply Studio default gradient / pattern when set.
+		if (!styledExplicitly) {
+			if (defaults.pattern) {
+				pattern = defaults.pattern;
+				patternImage = getPatternImage(pattern);
+			} else if (defaults.gradientFrom && defaults.gradientTo) {
+				gradientFrom = defaults.gradientFrom;
+				gradientTo = defaults.gradientTo;
+				color = defaults.gradientFrom;
+			}
 		}
 
 		const start = plain.length;

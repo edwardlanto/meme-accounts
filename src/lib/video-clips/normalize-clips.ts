@@ -33,10 +33,16 @@ export function normalizeVideoClips(
 
 		if (end - start < 1 || start >= dur) continue;
 
+		let bestFrameSec = Number(c.bestFrameSec);
+		if (!Number.isFinite(bestFrameSec) || bestFrameSec < start || bestFrameSec > end) {
+			bestFrameSec = start + (end - start) * 0.35;
+		}
+
 		out.push({
 			...c,
 			startSec: Math.round(start * 10) / 10,
 			endSec: Math.round(end * 10) / 10,
+			bestFrameSec: Math.round(bestFrameSec * 10) / 10,
 		});
 	}
 

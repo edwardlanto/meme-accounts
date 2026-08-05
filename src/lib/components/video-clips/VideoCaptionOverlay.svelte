@@ -128,8 +128,9 @@
 		dragOriginX = e.clientX - x;
 		dragOriginY = e.clientY - y;
 		isDragging = true;
+		const target = e.currentTarget as HTMLElement | null;
 		try {
-			captionElement.setPointerCapture(e.pointerId);
+			(target ?? captionElement).setPointerCapture(e.pointerId);
 		} catch {
 			/* ignore */
 		}
@@ -181,13 +182,23 @@
 		style="{hasCustomPos
 			? `left: ${posX}px; top: ${posY}px; transform: none;`
 			: positionStyles[position]}"
-		onpointerdown={handlePointerDown}
-		onpointermove={handlePointerMove}
-		onpointerup={handlePointerUp}
-		onpointercancel={handlePointerUp}
 		role="presentation"
-		title={draggable ? 'Drag to reposition' : undefined}
 	>
+		{#if draggable}
+			<!-- Only the handle captures clicks so captions don't block canvas text edits. -->
+			<button
+				type="button"
+				class="caption-drag-handle"
+				title="Drag to reposition captions"
+				aria-label="Drag to reposition captions"
+				onpointerdown={handlePointerDown}
+				onpointermove={handlePointerMove}
+				onpointerup={handlePointerUp}
+				onpointercancel={handlePointerUp}
+			>
+				<span class="caption-drag-grip" aria-hidden="true"></span>
+			</button>
+		{/if}
 		{#key phraseKey}
 			<div
 				class="caption-text anim-{animation}"
@@ -249,15 +260,15 @@
 		pointer-events: none;
 		width: 90%;
 		display: flex;
+		flex-direction: column;
 		justify-content: center;
 		align-items: center;
+		gap: 6px;
 		touch-action: none;
 		box-sizing: border-box;
 	}
 
 	.caption-overlay.draggable {
-		pointer-events: auto;
-		cursor: grab;
 		width: auto;
 		max-width: 90%;
 		outline: 1px dashed rgba(255, 255, 255, 0.35);
@@ -266,8 +277,38 @@
 	}
 
 	.caption-overlay.dragging {
-		cursor: grabbing;
 		outline-color: rgba(167, 139, 250, 0.85);
+	}
+
+	.caption-drag-handle {
+		pointer-events: auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: 999px;
+		background: rgba(15, 15, 18, 0.72);
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+		cursor: grab;
+		touch-action: none;
+	}
+
+	.caption-overlay.dragging .caption-drag-handle {
+		cursor: grabbing;
+		background: rgba(88, 70, 180, 0.9);
+	}
+
+	.caption-drag-grip {
+		width: 14px;
+		height: 6px;
+		border-radius: 2px;
+		background:
+			radial-gradient(circle, #fff 1.1px, transparent 1.2px) 0 0 / 5px 5px,
+			radial-gradient(circle, #fff 1.1px, transparent 1.2px) 0 3px / 5px 5px;
+		opacity: 0.9;
 	}
 
 	.caption-text {

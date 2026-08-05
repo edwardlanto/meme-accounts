@@ -15,7 +15,7 @@ import {
 	studioImportMediaForClip,
 } from '$lib/video-clips/clip-template-copy';
 import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
-import { stripNewsHighlightMarkers, newsHeadlineForEditor } from '$lib/video-clips/news-headline';
+import { newsHeadlineForEditor, demoNewsHeadlineFromClip } from '$lib/video-clips/news-headline';
 import type { CaptionSegment } from '$lib/video-clips/caption-sync';
 import {
 	buildCaptionSegmentsForClip,
@@ -80,6 +80,8 @@ export function clipMetaFromVideoClip(clip: VideoClip): BulkClipSlideMeta {
 		transcript: clip.transcript,
 		newsHeadline: clip.newsHeadline,
 		videoHook: clip.videoHook,
+		bestFrameSec: Number.isFinite(Number(clip.bestFrameSec)) ? Number(clip.bestFrameSec) : undefined,
+		thumbnailR2Key: clip.thumbnailR2Key,
 	};
 }
 
@@ -109,28 +111,33 @@ export function bulkSlideFromVideoClip(
 	const sourceEnd = Math.max(sourceStart + 0.5, Number(clip.endSec) || 0);
 	const duration = Math.max(0.5, sourceEnd - sourceStart);
 	const templateHeadline = copy.newsHeadline || clip.newsHeadline || '';
-	const displayHeadline =
+	// Prefer AI news chyron — never fall back to titleFromExcerpt speech slices
+	const safeDisplay =
 		newsHeadlineForEditor(templateHeadline) ||
-		cleanClipSpeechText(clip.title) ||
-		cleanClipSpeechText(clip.hook || '') ||
-		'Clip';
+		newsHeadlineForEditor(
+			demoNewsHeadlineFromClip(clip, source.title || source.description?.slice(0, 80)),
+		) ||
+		'Clip highlight';
 	const captionSegments = buildCaptionSegmentsForClip(clip, source);
 	const captionBody = captionPreviewText(captionSegments);
-	const studioCaptions = studioCaptionImportForClip(captionSegments, caps);
+	const capsForImport = { ...caps, enabled: caps.enabled !== false && captionSegments.length > 0 };
+	// Store absolute segment times — resolveStudioCaptionImportForSlide shifts for reframed MP4s
+	const studioCaptions = studioCaptionImportForClip(captionSegments, capsForImport);
 
 	return {
 		...createBlankSlide(template, caps),
-		headline: displayHeadline,
+		headline: safeDisplay,
 		body: captionBody || clip.reason || copy.carouselBody || '',
 		captions: {
 			...caps,
-			enabled: captionSegments.length > 0,
+			enabled: captionSegments.length > 0 && caps.enabled !== false,
 		},
 		captionSegments: captionSegments.length ? captionSegments : undefined,
 		studioCaptionImport: studioCaptions,
 		mediaUrl: media.videoUrl || source.playbackUrl,
 		mediaKind: 'video',
-		mediaThumb: source.thumbnailUrl || '',
+		// Clip-specific Gemini still only — shared source poster is not a per-scene photo.
+		mediaThumb: clip.thumbnailUrl || '',
 		sourceClipStart: sourceStart,
 		sourceClipEnd: sourceEnd,
 		clipStart: usedReframe ? 0 : media.clipStart,
@@ -146,6 +153,12 @@ export function bulkSlideFromVideoClip(
 	};
 }
 
+function coerceFollowTemplate(index: number): TemplateId {
+	if (index % 3 === 0) return 'news';
+	if (index % 3 === 1) return 'textCarousel';
+	return 'blackText';
+}
+
 export function buildBulkShowsFromVideoClips(
 	source: VideoImportMeta,
 	clips: VideoClip[],
@@ -156,9 +169,12 @@ export function buildBulkShowsFromVideoClips(
 		summary?: string;
 		demo?: boolean;
 		model?: string;
+		/** Total slides per clip show (hook video + follow-ons). Default 1. */
+		slideCount?: number;
 	},
 ): BulkShow[] {
 	const caps = defaultRowCaptions(opts.captionDefaults);
+	const slideCount = Math.max(1, Math.min(12, Math.floor(Number(opts.slideCount)) || 1));
 	return clips.map((clip, index) => {
 		const slide = bulkSlideFromVideoClip(clip, source, opts.template, caps, {
 			topicHint: opts.topicHint,
@@ -168,11 +184,26 @@ export function buildBulkShowsFromVideoClips(
 			cleanClipSpeechText(clip.title) ||
 			source.title ||
 			`Clip ${index + 1}`;
+		const slides = [slide];
+		while (slides.length < slideCount) {
+			const extra = createBlankSlide(
+				slides.length === 1 ? 'textCarousel' : coerceFollowTemplate(slides.length),
+				caps,
+			);
+			if (slides.length === 1 && (clip.hook || clip.reason)) {
+				extra.headline = cleanClipSpeechText(clip.hook || clip.title).slice(0, 72);
+				extra.body = cleanClipSpeechText(clip.reason || '').slice(0, 180);
+			} else if (slides.length === 2 && clip.transcript) {
+				extra.headline = 'Key takeaway';
+				extra.body = cleanClipSpeechText(clip.transcript).slice(0, 180);
+			}
+			slides.push(extra);
+		}
 		return {
 			id: newId(),
 			title,
-			slides: [slide],
-			activeSlideId: slide.id,
+			slides,
+			activeSlideId: slides[0]!.id,
 			fromVideoClips: true,
 			clipSummary: index === 0 ? opts.summary ?? '' : '',
 			videoDemo: opts.demo ?? false,

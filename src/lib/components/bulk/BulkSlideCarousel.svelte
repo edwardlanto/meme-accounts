@@ -265,12 +265,22 @@
 						{/if}
 						{#if loadingSet.has(sl.id)}
 							<BulkSlidePreview
-								slide={sl}
+								slide={{
+									...sl,
+									/* Only the active slide may unmute — avoids stacked audio. */
+									videoMuted: si !== activeIdx || sl.videoMuted !== false,
+								}}
 								width={previewWidth}
 								mediaFetching={true}
 							/>
 						{:else}
-							<BulkSlidePreview slide={sl} width={previewWidth} />
+							<BulkSlidePreview
+								slide={{
+									...sl,
+									videoMuted: si !== activeIdx || sl.videoMuted !== false,
+								}}
+								width={previewWidth}
+							/>
 						{/if}
 					</div>
 				</div>

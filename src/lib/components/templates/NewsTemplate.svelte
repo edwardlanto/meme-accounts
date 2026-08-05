@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
-	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection } from '$lib/highlight';
+	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection, type HighlightDefaults } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
@@ -89,6 +89,8 @@
 		/** Max width in px for the source logo (aspect ratio preserved). Default 260. */
 		sourceLogoWidth?: number;
 		highlightColor?: string;
+		/** Default look for bare `[[phrase]]` (solid / gradient / pattern). Falls back to `highlightColor`. */
+		highlightDefaults?: HighlightDefaults;
 		textColor?: string;
 		scale?: number;
 		exportRef?: HTMLElement | null;
@@ -187,6 +189,7 @@
 		sourceLabelMode = 'text',
 		sourceLogoWidth = 260,
 		highlightColor = '#F5A623',
+		highlightDefaults,
 		textColor = templateTheme === 'light' ? '#0a0a0a' : '#FFFFFF',
 		scale = 1,
 		exportRef = $bindable(null),
@@ -502,7 +505,10 @@
 	const containTranslateX = $derived((bgOffsetX - 50) / 100 * W);
 	const containTranslateY = $derived((bgOffsetY - 50) / 100 * H);
 
-	let parsed   = $derived(parseHighlightMarkup(text, highlightColor));
+	const highlightParseDefaults = $derived(
+		highlightDefaults ?? { color: highlightColor },
+	);
+	let parsed   = $derived(parseHighlightMarkup(text, highlightParseDefaults));
 	let segments = $derived(segmentText(parsed));
 
 	let fontSize = $derived(
@@ -1644,6 +1650,7 @@
 							rows={3}
 							showToolbar={false}
 							defaultColor={highlightColor}
+							defaultStyle={highlightParseDefaults}
 							ariaLabel="Text overlay editor"
 							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
 							onBlur={() => finishTextOverlayEdit(t.id)}
@@ -1672,7 +1679,7 @@
 							user-select: none;
 						"
 					>
-						{@html segmentText(parseHighlightMarkup(t.text, highlightColor)).map((seg) => {
+						{@html segmentText(parseHighlightMarkup(t.text, highlightParseDefaults)).map((seg) => {
 							if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 							if (seg.patternImage) {
 								const s = patternStyle(seg.patternImage).replace(/\n/g,' ');
@@ -2338,6 +2345,7 @@
 							rows={4}
 							showToolbar={false}
 							defaultColor={highlightColor}
+							defaultStyle={highlightParseDefaults}
 							onChange={pushHeadlineChange}
 							onBlur={finishHeadlineEdit}
 							onSelectionChange={(has, r) => {

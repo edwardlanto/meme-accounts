@@ -24,6 +24,7 @@ import {
 	transcriptCueStartsSec,
 } from '$lib/video-clips/transcript-segments';
 import { saveVideoClipProject } from '$lib/server/video-clip-projects';
+import { attachClipSceneStills } from '$lib/server/clip-stills';
 import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 
 const analyzeSchema = z.object({
@@ -192,7 +193,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						}))
 					: normalized;
 
-				const clips = enrichClipTitles(snapped, ytTranscript, ytTitle);
+				const clips = await attachClipSceneStills(
+					user.id,
+					enrichClipTitles(snapped, ytTranscript, ytTitle),
+					{ sourceR2Key: storageKey },
+				);
 				const sourceMeta: VideoImportMeta = {
 					kind: 'youtube',
 					title: ytTitle,
@@ -335,15 +340,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			videoMime: videoBytes ? 'video/mp4' : undefined,
 		});
 
-		const clips = enrichClipTitles(
-			normalizeVideoClips(
-				analyzed.clips,
-				effectiveDuration,
-				clipOpts.clipMinSec,
-				clipOpts.clipMaxSec,
+		const clips = await attachClipSceneStills(
+			user.id,
+			enrichClipTitles(
+				normalizeVideoClips(
+					analyzed.clips,
+					effectiveDuration,
+					clipOpts.clipMinSec,
+					clipOpts.clipMaxSec,
+				),
+				uploadTranscript,
+				uploadTitle,
 			),
-			uploadTranscript,
-			uploadTitle,
+			{ sourceR2Key: key },
 		);
 
 		const sourceMeta: VideoImportMeta = {

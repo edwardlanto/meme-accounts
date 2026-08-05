@@ -2,6 +2,7 @@ import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
 import { cleanClipSpeechText } from '$lib/video-clips/transcript-segments';
 import { clipNarrative } from '$lib/video-clips/clip-speech';
 import {
+	clampNewsHeadline,
 	demoNewsHeadlineFromClip,
 	needsNewsHeadlineRewrite,
 } from '$lib/video-clips/news-headline';
@@ -141,7 +142,7 @@ export function buildClipTemplateCopy(
 	// News: Slash/FutureTech hook only — never dump the transcript onto the template
 	const speech = clip.transcript || clip.hook || narrative.hook;
 	const aiNews = clip.newsHeadline?.trim() ?? '';
-	const newsHeadline = clampText(
+	const newsHeadline = clampNewsHeadline(
 		!needsNewsHeadlineRewrite(aiNews, {
 			transcript: speech,
 			videoTitle: source.title,

@@ -191,7 +191,7 @@
 			<a href="/instagram-carousel-maker" class="btn btn-ghost">Instagram Carousel</a>
 			<a href="/instagram-grid-maker" class="btn btn-ghost">Instagram Grid</a>
 			<a href="/linkedin-carousel-maker" class="btn btn-ghost">LinkedIn Carousel</a>
-			<a href="/signup" class="btn btn-dark">Get Meme Accounts</a>
+			<a href="/?auth=signup" class="btn btn-dark">Get Meme Accounts</a>
 		</div>
 	</nav>
 
@@ -214,7 +214,7 @@
 			<h1 class="hero-title">Post memes on autopilot</h1>
 			<p class="hero-sub">Pick a template. Connect your account. Schedule and ship daily.</p>
 			<div class="hero-ctas">
-				<a href="/signup" class="btn btn-dark btn-cta">
+				<a href="/?auth=signup" class="btn btn-dark btn-cta">
 					Explore Templates
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="5" y1="12" x2="19" y2="12"/>
@@ -390,7 +390,7 @@
 				<h2 class="cta-h">Ready to put posting on autopilot?</h2>
 				<p class="cta-p">Free to start. No credit card. Cancel anytime.</p>
 			</div>
-			<a href="/signup" class="btn btn-dark btn-lg">Get Meme Accounts</a>
+			<a href="/?auth=signup" class="btn btn-dark btn-lg">Get Meme Accounts</a>
 		</div>
 	</section>
 

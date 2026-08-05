@@ -50,7 +50,7 @@
 
 	async function exportPng() {
 		if (!signedIn) {
-			window.location.href = `/signup?next=${encodeURIComponent('/fake-tweet-maker')}`;
+			window.location.href = `/?auth=signup&next=${encodeURIComponent('/fake-tweet-maker')}`;
 			return;
 		}
 		if (!exportRef) return;
@@ -134,8 +134,8 @@
 			{#if signedIn}
 				<a href="/dashboard" class="nav-ghost">Dashboard</a>
 			{:else}
-				<a href="/login?next=/fake-tweet-maker" class="nav-ghost">Sign in</a>
-				<a href="/signup?next=/fake-tweet-maker" class="btn-nav">Start free</a>
+				<a href="/?auth=login&next=/fake-tweet-maker" class="nav-ghost">Sign in</a>
+				<a href="/?auth=signup&next=/fake-tweet-maker" class="btn-nav">Start free</a>
 			{/if}
 		</div>
 	</nav>
@@ -158,7 +158,7 @@
 				<div class="lock-banner">
 					<Lock size={16} />
 					<span>Sign in to customize this tweet</span>
-					<a href="/signup?next=/fake-tweet-maker" class="lock-cta">Create free account</a>
+					<a href="/?auth=signup&next=/fake-tweet-maker" class="lock-cta">Create free account</a>
 				</div>
 			{/if}
 

@@ -6,7 +6,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) {
 		const next = `/checkout?${url.searchParams.toString()}`;
-		throw redirect(303, `/login?next=${encodeURIComponent(next)}`);
+		throw redirect(303, `/?auth=login&next=${encodeURIComponent(next)}`);
 	}
 
 	const planParam = url.searchParams.get('plan') ?? 'pro';

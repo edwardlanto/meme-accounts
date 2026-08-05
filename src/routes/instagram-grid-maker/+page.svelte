@@ -7,7 +7,7 @@
 	const studioHref = $derived(
 		signedIn
 			? '/dashboard/grid'
-			: `/signup?next=${encodeURIComponent('/dashboard/grid')}`,
+			: `/?auth=signup&next=${encodeURIComponent('/dashboard/grid')}`,
 	);
 
 	const previewTiles = [
@@ -74,7 +74,7 @@
 			{#if signedIn}
 				<a href="/dashboard" class="nav-ghost">Dashboard</a>
 			{:else}
-				<a href="/login?next=/instagram-grid-maker" class="nav-ghost">Sign in</a>
+				<a href="/?auth=login&next=/instagram-grid-maker" class="nav-ghost">Sign in</a>
 				<a href={studioHref} class="btn-nav">Start free</a>
 			{/if}
 		</div>

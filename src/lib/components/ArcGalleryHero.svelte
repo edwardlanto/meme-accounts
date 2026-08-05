@@ -107,7 +107,7 @@
 			</p>
 			<div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
 				<a
-					href="/signup"
+					href="/?auth=signup"
 					class="w-full sm:w-auto px-6 py-3 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
 				>
 					Explore Your Past

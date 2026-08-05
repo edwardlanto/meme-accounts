@@ -98,6 +98,8 @@
 		FolderOpen,
 		Clock,
 		Eraser,
+		Volume2,
+		VolumeX,
 	} from 'lucide-svelte';
 
 	type SlidePopoverKind = 'intel' | 'reframe' | 'captions';
@@ -132,7 +134,7 @@
 	/** Number of separate slideshows / ideas */
 	let ideaCount = $state(5);
 	/** Slides inside each slideshow */
-	let slidesPerShow = $state(5);
+	let slidesPerShow = $state(3);
 	let autoStock = $state(true);
 	let stockFilling = $state(false);
 	let stockNote = $state('');
@@ -219,6 +221,16 @@
 			reframedR2Key: item.reframedR2Key,
 			reframedPlaybackUrl: item.reframedPlaybackUrl,
 			reframeSettingsKey: item.reframeSettingsKey,
+			clipMeta: item.bestFrameSec || item.thumbnailR2Key
+				? {
+						clipId: '',
+						viralityScore: 0,
+						hook: '',
+						reason: '',
+						bestFrameSec: item.bestFrameSec,
+						thumbnailR2Key: item.thumbnailR2Key,
+					}
+				: undefined,
 			captions: c
 				? defaultRowCaptions({
 						enabled: c.enabled !== false,
@@ -460,7 +472,8 @@
 				const slide = {
 					...slideFromClipHandoffItem(item, defaultTpl, caps),
 					sourceR2Key: item.sourceR2Key || handoff.sourceR2Key,
-					mediaThumb: item.thumbnailUrl || handoff.thumbnailUrl || '',
+					// Never fall back to the shared video poster — that made every scene photo identical.
+					mediaThumb: item.thumbnailUrl || '',
 				};
 				return {
 					id: crypto.randomUUID(),
@@ -742,6 +755,7 @@
 					summary: result.summary,
 					demo: result.demo,
 					model: result.model,
+					slideCount: slidesPerShow,
 				});
 		if (workspaceRevealReady && userId && showsHaveContent(shows)) {
 			const prevShows = shows;
@@ -753,6 +767,92 @@
 		if (clipProjectId) scheduleClipProjectSave();
 		workspaceHydrated = true;
 		void persistBulkWorkspace();
+	}
+
+	async function applyScenePhoto(showId: string, slideId: string) {
+		const show = shows.find((s) => s.id === showId);
+		const slide = show?.slides.find((sl) => sl.id === slideId);
+		if (!slide) return;
+
+		const existingStill = String(slide.mediaThumb ?? '').trim();
+		// Only reuse a thumb when we know it's a clip-specific still (not the shared video poster).
+		const hasDedicatedStill = !!(slide.clipMeta?.thumbnailR2Key && existingStill);
+		if (hasDedicatedStill) {
+			updateSlide(showId, slideId, {
+				mediaUrl: existingStill,
+				mediaKind: 'image',
+				mediaThumb: existingStill,
+			});
+			stockNote = 'Scene photo applied';
+			setTimeout(() => (stockNote = ''), 2500);
+			return;
+		}
+
+		const r2Key = String(slide.sourceR2Key ?? '').trim();
+		if (!r2Key) {
+			if (existingStill) {
+				updateSlide(showId, slideId, {
+					mediaUrl: existingStill,
+					mediaKind: 'image',
+				});
+				stockNote = 'Scene photo applied';
+				setTimeout(() => (stockNote = ''), 2500);
+				return;
+			}
+			stockNote = 'Scene photo needs the source video (re-import clips)';
+			setTimeout(() => (stockNote = ''), 3500);
+			return;
+		}
+
+		updateSlide(showId, slideId, { mediaLoading: true });
+		stockNote = 'Grabbing best scene frame…';
+		try {
+			const startSec = Number(slide.sourceClipStart ?? slide.clipStart) || 0;
+			const endSec = Math.max(
+				startSec + 0.5,
+				Number(slide.sourceClipEnd ?? slide.clipEnd) || startSec + 1,
+			);
+			const res = await fetch('/api/videos/scene-still', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					r2Key,
+					startSec,
+					endSec,
+					bestFrameSec: slide.clipMeta?.bestFrameSec,
+				}),
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(String(data?.error || `Scene still failed (${res.status})`));
+			const url = String(data.url ?? '').trim();
+			if (!url) throw new Error('No still returned');
+			updateSlide(showId, slideId, {
+				mediaLoading: false,
+				mediaUrl: url,
+				mediaKind: 'image',
+				mediaThumb: url,
+				clipMeta: slide.clipMeta
+					? {
+							...slide.clipMeta,
+							bestFrameSec: Number(data.bestFrameSec) || slide.clipMeta.bestFrameSec,
+							thumbnailR2Key: String(data.r2Key ?? '') || slide.clipMeta.thumbnailR2Key,
+						}
+					: {
+							clipId: '',
+							viralityScore: 0,
+							hook: '',
+							reason: '',
+							bestFrameSec: Number(data.bestFrameSec) || undefined,
+							thumbnailR2Key: String(data.r2Key ?? '') || undefined,
+						},
+			});
+			stockNote = 'Scene photo applied';
+			setTimeout(() => (stockNote = ''), 2500);
+		} catch (e: unknown) {
+			updateSlide(showId, slideId, { mediaLoading: false });
+			stockNote = e instanceof Error ? e.message : 'Scene photo failed';
+			setTimeout(() => (stockNote = ''), 4000);
+		}
 	}
 
 	function openSlidePopover(showId: string, slideId: string, kind: SlidePopoverKind) {
@@ -845,7 +945,21 @@
 		const show = shows.find((s) => s.id === showId);
 		if (!show) return;
 		const slide = activeSlideOf(show);
-		updateSlide(showId, slide.id, { captions: { ...slide.captions, ...patch } });
+		const nextCaptions = { ...slide.captions, ...patch };
+		const nextImport = slide.studioCaptionImport
+			? {
+					...slide.studioCaptionImport,
+					enabled: nextCaptions.enabled,
+					templateId: nextCaptions.templateId,
+					fontSize: nextCaptions.fontSize,
+					position: nextCaptions.position,
+					customColor: nextCaptions.color,
+				}
+			: slide.studioCaptionImport;
+		updateSlide(showId, slide.id, {
+			captions: nextCaptions,
+			studioCaptionImport: nextImport,
+		});
 	}
 
 	function setSlideTemplate(showId: string, slideId: string, template: TemplateId) {
@@ -1108,13 +1222,22 @@
 
 			const newShows: BulkShow[] = decks.map((d: any) => {
 				const slidesRaw = Array.isArray(d.slides) ? d.slides : [];
-				const slides: BulkSlide[] = slidesRaw.map((s: any) => ({
+				let slides: BulkSlide[] = slidesRaw.map((s: any) => ({
 					id: crypto.randomUUID(),
 					template: templateForSlideType(s.type),
 					headline: stripEmDashes(String(s.headline ?? '')),
 					body: stripEmDashes(String(s.body ?? s.subheadline ?? '')),
 					captions: { ...caps },
 				}));
+				while (slides.length < slidesPerShow) {
+					slides.push(
+						createBlankSlide(
+							slides.length === 0 ? 'news' : 'textCarousel',
+							caps,
+						),
+					);
+				}
+				slides = slides.slice(0, slidesPerShow);
 				if (!slides.length) slides.push(createBlankSlide('news', caps));
 				return {
 					id: crypto.randomUUID(),
@@ -1655,7 +1778,7 @@
 								/>
 							{/if}
 
-							{#if show.slides.length > 1}
+							{#if show.slides.length}
 							<div class="filmstrip-wrap">
 								<div
 									class="clip-filmstrip"
@@ -1744,15 +1867,16 @@
 							{#key slide.id}
 							<div class="slide-editor">
 							<div class="slide-main">
-								<input
+								<textarea
 									class="slide-headline"
+									rows="2"
 									value={slide.headline}
 									oninput={(e) =>
 										updateSlide(show.id, slide.id, {
-											headline: (e.currentTarget as HTMLInputElement).value,
+											headline: (e.currentTarget as HTMLTextAreaElement).value,
 										})}
 									placeholder="Slide headline / hook"
-								/>
+								></textarea>
 								{#if show.slides.length > 1}
 									<button
 										type="button"
@@ -1805,6 +1929,28 @@
 										<span class="menu-pill muted">off</span>
 									{/if}
 								</button>
+								{#if slide.mediaKind === 'video'}
+									<button
+										type="button"
+										class="menu-item"
+										class:menu-item-active={slide.videoMuted === false}
+										title={slide.videoMuted === false ? 'Mute preview' : 'Unmute preview'}
+										onclick={() =>
+											updateSlide(show.id, slide.id, {
+												videoMuted: slide.videoMuted === false,
+											})}
+									>
+										{#if slide.videoMuted === false}
+											<Volume2 size={14} />
+											Sound
+											<span class="menu-pill">on</span>
+										{:else}
+											<VolumeX size={14} />
+											Sound
+											<span class="menu-pill muted">off</span>
+										{/if}
+									</button>
+								{/if}
 								{#if templateUsesStockMedia(slide.template)}
 									<button
 										type="button"
@@ -1821,6 +1967,22 @@
 										{#if slide.mediaUrl}
 											<span class="menu-pill">set</span>
 										{/if}
+									</button>
+								{/if}
+								{#if String(slide.mediaThumb ?? '').trim() || slide.sourceR2Key}
+									<button
+										type="button"
+										class="menu-item"
+										disabled={slide.mediaLoading}
+										title="Use the best frame from this clip as the slide image"
+										onclick={() => void applyScenePhoto(show.id, slide.id)}
+									>
+										{#if slide.mediaLoading}
+											<Loader2 size={14} class="spin" />
+										{:else}
+											<Image size={14} />
+										{/if}
+										Scene photo
 									</button>
 								{/if}
 								{#if slide.sourceR2Key && slide.mediaKind === 'video'}
@@ -2948,9 +3110,9 @@
 	}
 	.slide-main {
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		gap: 0.35rem;
-		align-items: center;
+		align-items: flex-start;
 	}
 	.slide-template-row {
 		display: flex;
@@ -2977,8 +3139,15 @@
 	}
 	.slide-headline {
 		flex: 1 1 180px;
+		width: 100%;
+		min-width: 0;
+		min-height: 2.75rem;
+		line-height: 1.35;
+		resize: vertical;
+		overflow: auto;
 		background: var(--app-surface);
 		font-weight: 550;
+		field-sizing: content;
 	}
 	.slide-body-text {
 		width: 100%;
