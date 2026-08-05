@@ -230,6 +230,16 @@ export const generateSlidesBodySchema = z.object({
 		z.number().finite().int().min(0).max(50),
 	),
 	audience: z.string().max(2000).optional().transform((s) => (s ?? '').trim()),
+	emotion: z
+		.string()
+		.max(40)
+		.optional()
+		.transform((s) => (s ?? '').trim().toLowerCase()),
+	/** Number of separate slideshows / ideas to generate (each with slideCount slides). */
+	deckCount: z.preprocess(
+		(val) => (val === undefined || val === null ? 1 : Number(val)),
+		z.number().finite().int().min(1).max(10),
+	),
 });
 
 export const hooksBodySchema = z.object({

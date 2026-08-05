@@ -40,13 +40,17 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		const data = await res.json().catch(() => ({}));
 		if (!res.ok) {
 			const msg = data?.error ?? `Pexels error ${res.status}`;
-			return json({ error: msg }, { status: res.status === 403 ? 403 : 502 });
+			const friendly =
+				res.status === 401 || res.status === 403
+					? 'Pexels API key invalid — update PEXELS_API_KEY in .env'
+					: msg;
+			return json({ error: friendly }, { status: res.status === 403 || res.status === 401 ? res.status : 502 });
 		}
 
 		const results = Array.isArray(data?.photos) ? data.photos : [];
 		console.log(`[Pexels API] Response: ${results.length} photos, total=${data?.total_results}, page=${page}`);
 		
-		// Strip to minimal fields — only return what the UI needs
+		// Strip to minimal fields — only return what the UI needs (+ score signals)
 		const photos = results
 			.map((p: any) => ({
 				id: Number(p?.id ?? 0),
@@ -56,6 +60,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 				alt: String(p?.alt ?? 'Photo').slice(0, 100),
 				photographer: String(p?.photographer ?? 'Unknown').slice(0, 60),
 				photographerUrl: String(p?.photographer_url ?? ''),
+				likes: Number(p?.liked ?? 0) || 0,
+				width: Number(p?.width ?? 0) || 0,
+				height: Number(p?.height ?? 0) || 0,
 			}))
 			.filter((p: { id: number; small: string; regular: string }) => p.id && p.small && p.regular)
 			.slice(0, 15); // Guarantee max 15

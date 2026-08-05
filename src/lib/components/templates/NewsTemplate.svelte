@@ -79,6 +79,8 @@
 		circle2Y?: number;
 		circle2Size?: number;
 		text: string;
+		/** Optional supporting paragraph rendered under the headline. */
+		subtext?: string;
 		source?: string;
 		/** Optional logo image for the source label (data URL or https URL). */
 		sourceLogoSrc?: string;
@@ -178,6 +180,7 @@
 		circle2BorderColor = $bindable('#FFFFFF'),
 		circle2BorderWidth = $bindable(8),
 		text,
+		subtext = '',
 		source = 'Markets',
 		sourceLogoSrc = '',
 		sourceLabelMode = 'text',
@@ -384,6 +387,21 @@
 		lines.push(`text-align: ${s.align ?? 'left'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
 		lines.push(`line-height: ${s.lineHeight ?? 1.06};`);
+		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
+		return lines.join(' ');
+	});
+
+	const subtextCss = $derived.by(() => {
+		const s = headlineStyle;
+		const lines: string[] = [];
+		lines.push(`font-family: var(--font-sans), system-ui, -apple-system, sans-serif;`);
+		lines.push(`font-size: ${Math.round((s.fontSize ?? fontSize) * 0.3)}px;`);
+		lines.push('font-weight: 500;');
+		lines.push(`color: ${s.color ?? textColor};`);
+		lines.push(`text-align: ${s.align ?? 'left'};`);
+		lines.push('letter-spacing: 0;');
+		lines.push('line-height: 1.4;');
+		lines.push('opacity: 0.86;');
 		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
 		return lines.join(' ');
 	});
@@ -2337,6 +2355,18 @@
 					</div>
 				{/if}
 			</div>
+
+			{#if String(subtext ?? '').trim()}
+				<p
+					style="
+						margin: 18px 0 0;
+						padding: 0;
+						{subtextCss}
+						word-break: break-word;
+						white-space: pre-line;
+					"
+				>{subtext}</p>
+			{/if}
 			</div>
 		</div>
 	</div>

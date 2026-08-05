@@ -39,7 +39,7 @@
 	let {
 		enabled = $bindable(false),
 		selectedTemplateId = $bindable('capcut-pop'),
-		fontSize = $bindable(40),
+		fontSize = $bindable(28),
 		position = $bindable('bottom'),
 		customColor = $bindable('#ffffff'),
 		customBgColor = $bindable('transparent'),

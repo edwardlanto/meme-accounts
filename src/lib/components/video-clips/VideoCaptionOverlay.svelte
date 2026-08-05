@@ -50,10 +50,11 @@
 	let liveY = $state<number | null>(null);
 	let captionElement: HTMLDivElement | null = $state(null);
 
+	/** Preset positions — always horizontally centered unless customX/Y (drag) is set. */
 	const positionStyles = {
-		top: 'top: 10%;',
-		center: 'top: 50%; transform: translate(-50%, -50%);',
-		bottom: 'bottom: 15%;',
+		top: 'left: 50%; top: 10%; transform: translateX(-50%);',
+		center: 'left: 50%; top: 50%; transform: translate(-50%, -50%);',
+		bottom: 'left: 50%; bottom: 15%; transform: translateX(-50%);',
 	};
 
 	const textColor = $derived(customColor || template.textColor);
@@ -199,7 +200,7 @@
 					text-transform: {template.textTransform};
 					letter-spacing: {template.letterSpacing};
 					line-height: {template.lineHeight};
-					text-align: {template.textAlign};
+					text-align: center;
 					background: {bgColor};
 					padding: {hasPhraseBox ? template.padding : '0'};
 					border-radius: {hasPhraseBox ? template.borderRadius : '0'};
@@ -249,13 +250,16 @@
 		width: 90%;
 		display: flex;
 		justify-content: center;
+		align-items: center;
 		touch-action: none;
+		box-sizing: border-box;
 	}
 
 	.caption-overlay.draggable {
 		pointer-events: auto;
 		cursor: grab;
 		width: auto;
+		max-width: 90%;
 		outline: 1px dashed rgba(255, 255, 255, 0.35);
 		outline-offset: 6px;
 		border-radius: 4px;
@@ -267,9 +271,11 @@
 	}
 
 	.caption-text {
-		display: inline-block;
+		display: block;
+		width: 100%;
 		word-wrap: break-word;
 		white-space: pre-wrap;
+		text-align: center;
 		max-width: 95%;
 		user-select: none;
 	}

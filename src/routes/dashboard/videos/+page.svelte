@@ -9,8 +9,6 @@
 	import { normalizeVideoClips } from '$lib/video-clips/normalize-clips';
 	import ClipTemplatePreviews from '$lib/components/video-clips/ClipTemplatePreviews.svelte';
 	import ClipFeedCard from '$lib/components/video-clips/ClipFeedCard.svelte';
-	import VideoCaptionControls from '$lib/components/video-clips/VideoCaptionControls.svelte';
-	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
 	import { getCaptionTemplate, type CaptionAnimation } from '$lib/video-clips/caption-templates';
 	import {
 		parseTimedTranscriptToSegments,
@@ -29,7 +27,10 @@
 		studioUrlForClipImport,
 		type StudioClipCaptionImport,
 	} from '$lib/studio/clip-import';
+	import { stashBulkClipHandoff } from '$lib/studio/bulk-to-studio';
 	import { coerceTemplateId } from '$lib/studio/template-ids';
+	import { loadBrandKit } from '$lib/studio/brand-kit';
+	import { goto } from '$app/navigation';
 	import { r2SignRead } from '$lib/r2Client';
 	import {
 		saveVideoSession,
@@ -100,7 +101,7 @@
 
 	const WORKFLOW_STEPS: { id: VideoWorkflowStep; label: string; hint: string }[] = [
 		{ id: 'source', label: 'Video', hint: 'Import' },
-		{ id: 'captions', label: 'Captions', hint: 'Style & edit' },
+		{ id: 'captions', label: 'Captions', hint: 'Style in Bulk' },
 		{ id: 'clips', label: 'Clips', hint: 'Review & export' },
 	];
 
@@ -448,6 +449,76 @@
 		persistSession();
 		markVideoSessionForResume();
 		window.location.href = studioUrlForClipImport(template);
+	}
+
+	async function openCaptionsInBulk(clip?: VideoClip | null) {
+		const target = clip ?? selectedClip;
+		if (!source || !target) return;
+		let reframedOverride = '';
+		const reframedKey = String((target as any).reframedR2Key ?? '').trim();
+		if (reframedKey) {
+			try {
+				const { url } = await r2SignRead({ key: reframedKey });
+				if (url?.trim()) reframedOverride = url.trim();
+			} catch {
+				/* ignore */
+			}
+		}
+		const media = studioImportMediaForClip(target, source, {
+			reframedUrlOverride: reframedOverride || undefined,
+		});
+		const captions = shiftCaptionImportTimes(
+			buildCaptionImportForClip(target),
+			media.captionTimeOffsetSec,
+		);
+		// Seed from brand kit when captions weren't enabled yet
+		if (userId && (!captions || !captions.enabled)) {
+			const kit = loadBrandKit(userId);
+			stashBulkClipHandoff({
+				videoUrl: media.videoUrl || source.playbackUrl,
+				clipStart: media.clipStart,
+				clipEnd: media.clipEnd,
+				thumbnailUrl: source.thumbnailUrl || undefined,
+				title: source.title,
+				captions: captions
+					? {
+							...captions,
+							enabled: true,
+							templateId: captions.templateId || kit.captionTemplateId,
+							fontSize: captions.fontSize || kit.captionFontSize,
+							position: captions.position || kit.captionPosition,
+							customColor: captions.customColor || kit.captionColor,
+						}
+					: {
+							enabled: true,
+							segments: buildCaptionSegmentsForClip(target),
+							templateId: kit.captionTemplateId,
+							fontSize: kit.captionFontSize,
+							position: kit.captionPosition,
+							customColor: kit.captionColor,
+							customBgColor: 'transparent',
+							customHighlightColor: '#ffeb3b',
+							selectedFont: 'Inter',
+							strokeEnabled: true,
+							animationOverride: null,
+							wordsPerChunk: null,
+							customX: null,
+							customY: null,
+						},
+			});
+		} else {
+			stashBulkClipHandoff({
+				videoUrl: media.videoUrl || source.playbackUrl,
+				clipStart: media.clipStart,
+				clipEnd: media.clipEnd,
+				thumbnailUrl: source.thumbnailUrl || undefined,
+				title: source.title,
+				captions,
+			});
+		}
+		persistSession();
+		markVideoSessionForResume();
+		await goto('/dashboard/bulk?from=clip');
 	}
 
 	function handleCaptionPositionChange(x: number, y: number) {
@@ -1723,9 +1794,9 @@
 	</header>
 	{/if}
 
-	<!-- ── CAPTIONS (step 2) ── -->
+	<!-- ── CAPTIONS (step 2) — handoff to Bulk ── -->
 	{#if workflowStep === 'captions' && source}
-		<section class="captions-step" aria-label="Caption settings">
+		<section class="captions-step captions-handoff" aria-label="Caption settings">
 			{#if error}
 				<div class="videos-error results-error" role="alert">
 					<AlertCircle size={14} />
@@ -1735,175 +1806,60 @@
 
 			<div class="captions-head">
 				<div class="captions-head-info">
-					<h2 class="results-title">Style your captions</h2>
+					<h2 class="results-title">Style captions in Bulk</h2>
 					<p class="captions-sub">
-						Tune subtitles for <strong>{source.title}</strong>
-						{#if clips.length}
-							· {clips.length} clip{clips.length === 1 ? '' : 's'} ready
-						{/if}
+						Caption templates, colors, and brand defaults live in the Bulk editor — next to
+						multi-idea generation and per-row templates.
 					</p>
 				</div>
 				<div class="captions-head-actions">
 					<button type="button" class="btn-ghost" onclick={chooseAnotherVideo}>
 						<ArrowLeft size={13} /> Different video
 					</button>
-					<button type="button" class="btn-primary captions-continue" onclick={goToClipsStep}>
-						Continue to clips
+					<button type="button" class="btn-ghost" onclick={goToClipsStep}>
+						Skip to clips
 						<ArrowRight size={15} />
 					</button>
 				</div>
 			</div>
 
-			<div class="captions-layout">
-				<div class="captions-preview-col">
-					{#if clips.length > 1}
-						<div class="captions-clip-picker" role="listbox" aria-label="Preview clip">
-							{#each clips as clip, i (clip.id)}
-								<button
-									type="button"
-									class="captions-clip-chip"
-									class:captions-clip-chip-on={selectedClipId === clip.id}
-									onclick={() => selectClip(clip, { play: false })}
-								>
-									Clip {i + 1}
-								</button>
-							{/each}
-						</div>
-					{/if}
-
-					<div class="captions-phone" style="aspect-ratio: {aspectMeta.css}">
-						{#if hasStoredVideo && selectedClip}
-							<!-- svelte-ignore a11y_media_has_caption -->
-							<video
-								class="captions-preview-video"
-								src={source.playbackUrl}
-								preload="metadata"
-								playsinline
-								muted={videoMuted}
-								bind:this={captionsPreviewVideo}
-								onloadedmetadata={(e) => onCaptionsPreviewReady(e.currentTarget)}
-								ontimeupdate={onCaptionsPreviewTimeUpdate}
-								onclick={playCaptionsPreview}
-							></video>
-							<VideoCaptionOverlay
-								phrase={activeCaptionPhrase ?? captionPhrases[0] ?? null}
-								currentTime={videoCurrentTime}
-								activeWordIndex={activeCaptionWordIndex}
-								template={captionTemplate}
-								enabled={captionEnabled}
-								position={captionPosition}
-								customColor={captionCustomColor}
-								customBgColor={captionCustomBgColor}
-								customFontSize={captionFontSize}
-								customHighlightColor={captionCustomHighlightColor}
-								animationOverride={captionAnimationOverride}
-								strokeEnabled={captionStrokeEnabled}
-								draggable={captionDraggable}
-								customX={captionCustomX}
-								customY={captionCustomY}
-								oncustomposition={handleCaptionPositionChange}
-							/>
+			<div class="captions-handoff-card">
+				{#if clips.length > 1}
+					<div class="captions-clip-picker" role="listbox" aria-label="Clip for Bulk">
+						{#each clips as clip, i (clip.id)}
 							<button
 								type="button"
-								class="captions-play-fab"
-								onclick={playCaptionsPreview}
-								aria-label="Play preview"
+								class="captions-clip-chip"
+								class:captions-clip-chip-on={selectedClipId === clip.id}
+								onclick={() => selectClip(clip, { play: false })}
 							>
-								Play preview
+								Clip {i + 1}
 							</button>
-						{:else}
-							<div class="captions-preview-empty">
-								<Film size={28} />
-								<p>
-									{#if !hasStoredVideo && source.youtubeId}
-										Caption styling applies after yt-dlp stores the video. You can still edit
-										text options, then continue to clips.
-									{:else}
-										No clip preview available yet — continue to review clips.
-									{/if}
-								</p>
-							</div>
-						{/if}
+						{/each}
 					</div>
-
-					<div class="captions-preview-tools">
-						<button
-							type="button"
-							class="mute-chip"
-							class:mute-chip-on={videoMuted}
-							onclick={toggleVideoMuted}
-							aria-label={videoMuted ? 'Unmute' : 'Mute'}
-						>
-							{#if videoMuted}
-								<VolumeX size={14} /> Muted
-							{:else}
-								<Volume2 size={14} /> Sound
-							{/if}
-						</button>
+				{/if}
+				<p class="captions-handoff-copy">
+					{#if hasTranscriptForCaptions}
+						Transcript ready for <strong>{source.title}</strong>
 						{#if selectedClip}
-							<span class="captions-range">
-								{formatTimestamp(selectedClip.startSec)} – {formatTimestamp(selectedClip.endSec)}
-							</span>
+							· {formatTimestamp(selectedClip.startSec)}–{formatTimestamp(selectedClip.endSec)}
 						{/if}
-					</div>
-				</div>
-
-				<div class="captions-controls-col">
-					<div class="enhance-grid" role="group" aria-label="Caption options">
-						<label class="enhance-opt">
-							<input type="checkbox" bind:checked={captionEnhance.addEmojis} />
-							<span class="enhance-box" aria-hidden="true"></span>
-							Add emojis
-						</label>
-						<label class="enhance-opt">
-							<input type="checkbox" bind:checked={captionEnhance.highlightKeywords} />
-							<span class="enhance-box" aria-hidden="true"></span>
-							Highlight keywords
-						</label>
-						<label class="enhance-opt">
-							<input type="checkbox" bind:checked={captionEnhance.removeSilences} />
-							<span class="enhance-box" aria-hidden="true"></span>
-							Remove silences
-						</label>
-						<label class="enhance-opt">
-							<input type="checkbox" bind:checked={captionEnhance.autoCensor} />
-							<span class="enhance-box" aria-hidden="true"></span>
-							Auto-censor
-						</label>
-					</div>
-
-					{#if hasTranscriptForCaptions && selectedClip}
-						<VideoCaptionControls
-							bind:enabled={captionEnabled}
-							bind:selectedTemplateId={captionTemplateId}
-							bind:fontSize={captionFontSize}
-							bind:position={captionPosition}
-							bind:customColor={captionCustomColor}
-							bind:customBgColor={captionCustomBgColor}
-							bind:customHighlightColor={captionCustomHighlightColor}
-							bind:draggable={captionDraggable}
-							bind:selectedFont={captionSelectedFont}
-							bind:strokeEnabled={captionStrokeEnabled}
-							bind:animationOverride={captionAnimationOverride}
-							bind:wordsPerChunkOverride={captionChunkOverride}
-							bind:segments={captionSegments}
-							onseek={seekCaptionTo}
-							onreset={resetCaptionEdits}
-							onpositionpreset={clearCaptionCustomPosition}
-						/>
 					{:else}
-						<div class="captions-empty-note" role="status">
-							<AlertCircle size={14} />
-							<span>
-								No transcript was found for this video. You can skip ahead and still review clips —
-								or re-analyze with Whisper / YouTube captions enabled.
-							</span>
-						</div>
+						No transcript yet — you can still open Bulk to set caption brand defaults, or continue to clips.
 					{/if}
-
-					<button type="button" class="btn-primary captions-continue-mobile" onclick={goToClipsStep}>
-						Continue to clips
+				</p>
+				<div class="captions-handoff-actions">
+					<button
+						type="button"
+						class="btn-primary"
+						onclick={() => void openCaptionsInBulk()}
+						disabled={!selectedClip}
+					>
+						Open Bulk captions
 						<ArrowRight size={15} />
+					</button>
+					<button type="button" class="btn-ghost" onclick={goToClipsStep}>
+						Continue to clips
 					</button>
 				</div>
 			</div>
@@ -1933,6 +1889,9 @@
 				</div>
 				<div class="results-head-actions">
 					{#if hasStoredVideo}
+						<button type="button" class="btn-ghost" onclick={() => void openCaptionsInBulk()}>
+							Style captions in Bulk
+						</button>
 						<button type="button" class="btn-ghost" onclick={goToCaptionsStep}>
 							<ArrowLeft size={13} /> Captions
 						</button>
@@ -2354,6 +2313,30 @@
 		font-size: 0.9rem;
 		line-height: 1.45;
 		max-width: 36rem;
+	}
+
+	.captions-handoff-card {
+		max-width: 32rem;
+		padding: 1.25rem;
+		border-radius: 12px;
+		border: 1px solid color-mix(in oklab, var(--app-border, #e2e8f0) 90%, transparent);
+		background: var(--app-surface-2, #f8fafc);
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+
+	.captions-handoff-copy {
+		margin: 0;
+		font-size: 0.875rem;
+		line-height: 1.45;
+		color: var(--app-text-2, #475569);
+	}
+
+	.captions-handoff-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 	}
 
 	.captions-head-actions,

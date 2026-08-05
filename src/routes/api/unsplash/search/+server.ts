@@ -43,13 +43,17 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 				typeof data?.errors?.[0] === 'string'
 					? data.errors[0]
 					: `Unsplash error ${res.status}`;
-			return json({ error: msg }, { status: res.status === 403 ? 403 : 502 });
+			const friendly =
+				res.status === 401 || res.status === 403
+					? 'Unsplash API key invalid — update UNSPLASH_ACCESS_KEY in .env'
+					: msg;
+			return json({ error: friendly }, { status: res.status === 403 || res.status === 401 ? res.status : 502 });
 		}
 
 		const results = Array.isArray(data?.results) ? data.results : [];
 		console.log(`[Unsplash API] Response: ${results.length} photos, total=${data?.total}, total_pages=${data?.total_pages}, page=${page}`);
 		
-		// Strip to minimal fields — only return what the UI needs
+		// Strip to minimal fields — only return what the UI needs (+ score signals)
 		const photos = results
 			.map((p: any) => ({
 				id: String(p?.id ?? ''),
@@ -58,6 +62,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 				alt: String(p?.alt_description ?? p?.description ?? 'Photo').slice(0, 100),
 				photographer: String(p?.user?.name ?? 'Unknown').slice(0, 60),
 				downloadLocation: String(p?.links?.download_location ?? ''),
+				likes: Number(p?.likes ?? 0) || 0,
+				downloads: Number(p?.downloads ?? 0) || 0,
 			}))
 			.filter((p: { id: string; small: string; regular: string }) => p.id && p.small && p.regular)
 			.slice(0, 15); // Guarantee max 15

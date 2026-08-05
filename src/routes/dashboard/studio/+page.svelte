@@ -126,6 +126,8 @@ import JSZip from 'jszip';
 		type StudioClipImport,
 		type StudioClipCaptionImport,
 	} from '$lib/studio/clip-import';
+	import { takeBulkImport, peekBulkImport } from '$lib/studio/bulk-to-studio';
+	import { loadBrandKit, saveBrandKit } from '$lib/studio/brand-kit';
 	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
 	import { getCaptionTemplate } from '$lib/video-clips/caption-templates';
 	import {
@@ -1624,6 +1626,12 @@ import JSZip from 'jszip';
 		const hasDraft = !!(draftQ && /^[0-9a-f-]{36}$/i.test(draftQ));
 		const blankRaw = params.get('blank');
 		const fromClip = params.get('from') === 'clip' || !!peekStudioClipImport();
+		const fromBulk = params.get('from') === 'bulk' || !!peekBulkImport();
+
+		if (fromBulk && !hasSaved && !hasDraft) {
+			skipLatestWorkspaceDraftRestore = true;
+			return;
+		}
 
 		if (fromClip && !hasSaved && !hasDraft) {
 			const payload = peekStudioClipImport();
@@ -2497,6 +2505,7 @@ import JSZip from 'jszip';
 		tweetBottomAvatarInnerBgBySlide = [...tweetBottomAvatarInnerBgBySlide, tweetBottomAvatarInnerBgBySlide[tweetBottomAvatarInnerBgBySlide.length - 1] ?? ''];
 		tweetBottomAvatarLabelBySlide = [...tweetBottomAvatarLabelBySlide, tweetBottomAvatarLabelBySlide[tweetBottomAvatarLabelBySlide.length - 1] ?? ''];
 		articleTextBySlide = [...articleTextBySlide, articleTextBySlide[articleTextBySlide.length - 1] ?? ''];
+		newsSubtextBySlide = [...newsSubtextBySlide, ''];
 		textCarouselTextBySlide = [...textCarouselTextBySlide, textCarouselTextBySlide[textCarouselTextBySlide.length - 1] ?? ''];
 		imageQuoteTextBySlide = [...imageQuoteTextBySlide, imageQuoteTextBySlide[imageQuoteTextBySlide.length - 1] ?? ''];
 		textCarouselNameBySlide = [...textCarouselNameBySlide, textCarouselNameBySlide[textCarouselNameBySlide.length - 1] ?? 'Captains of industry'];
@@ -2645,6 +2654,7 @@ import JSZip from 'jszip';
 				"Here's the trillion-dollar problem everyone avoids.\n\nTo break it down:\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate.",
 		),
 	);
+	let newsSubtextBySlide = $state<string[]>(emptySlides(() => ''));
 	let textCarouselTextBySlide = $state<string[]>(
 		emptySlides(() => TEXT_CAROUSEL_DEFAULTS.body),
 	);
@@ -2773,6 +2783,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		tweetBottomAvatarInnerBgBySlide = pickOr(tweetBottomAvatarInnerBgBySlide, '');
 		tweetBottomAvatarLabelBySlide = pickOr(tweetBottomAvatarLabelBySlide, '');
 		articleTextBySlide = pickOr(articleTextBySlide, '');
+		newsSubtextBySlide = pickOr(newsSubtextBySlide, '');
 		textCarouselTextBySlide = pickOr(textCarouselTextBySlide, '');
 		imageQuoteTextBySlide = pickOr(imageQuoteTextBySlide, '');
 		textCarouselNameBySlide = pickOr(textCarouselNameBySlide, 'Captains of industry');
@@ -3881,6 +3892,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			tweetBottomAvatarLabelBySlide = (s as any).tweetBottomAvatarLabelBySlide.map((x: unknown) => String(x ?? ''));
 		}
 		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
+		if (Array.isArray((s as any).newsSubtextBySlide)) {
+			newsSubtextBySlide = (s as any).newsSubtextBySlide.map((x: unknown) => String(x ?? ''));
+		}
 		if (Array.isArray(s.textCarouselTextBySlide)) {
 			textCarouselTextBySlide = s.textCarouselTextBySlide.map((x: unknown) =>
 				ensureTextCarouselBodyMinLength(String(x ?? '')),
@@ -4006,6 +4020,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	function persistBrandCta() {
 		if (!userId) return;
 		if (saveBrandCta(userId, brandCta)) {
+			try {
+				const kit = loadBrandKit(userId);
+				kit.cta = { ...brandCta };
+				saveBrandKit(userId, kit);
+			} catch {
+				/* ignore */
+			}
 			brandCtaSavedNote = 'Saved to your brand';
 			setTimeout(() => {
 				brandCtaSavedNote = '';
@@ -4202,6 +4223,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		tweetBottomAvatarInnerBgBySlide = [''];
 		tweetBottomAvatarLabelBySlide = [''];
 		articleTextBySlide = [''];
+		newsSubtextBySlide = [''];
 		articleSwipeTextBySlide = [''];
 		articleLogoSrcBySlide = [''];
 		textCarouselTextBySlide = [''];
@@ -4733,6 +4755,7 @@ tweetTopImagePanYBySlide,
 			tweetBottomAvatarInnerBgBySlide,
 			tweetBottomAvatarLabelBySlide,
 			articleTextBySlide,
+			newsSubtextBySlide,
 			textCarouselTextBySlide,
 			videoStoryHeadlineBySlide,
 			videoStoryWatermarkBySlide,
@@ -4963,17 +4986,19 @@ tweetTopImagePanYBySlide,
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
-		brandCta = loadBrandCta(user.id);
+		const kit = loadBrandKit(user.id);
+		brandCta = kit.cta?.headline || kit.cta?.image ? kit.cta : loadBrandCta(user.id);
 		draftRestoring = true;
 		const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 		const savedParam = sp?.get('saved') ?? null;
 		const draftParam = sp?.get('draft') ?? null;
+		const fromBulkParam = sp?.get('from') === 'bulk' || !!peekBulkImport();
 		const loadPromise =
 			savedParam && /^[0-9a-f-]{36}$/i.test(savedParam)
 				? loadSavedStudioTemplate(savedParam)
 				: draftParam && /^[0-9a-f-]{36}$/i.test(draftParam)
 					? loadDraftById(draftParam)
-					: forcedBlankFromQuery
+					: forcedBlankFromQuery || fromBulkParam
 						? Promise.resolve()
 						: skipLatestWorkspaceDraftRestore
 							? Promise.resolve()
@@ -4986,6 +5011,14 @@ tweetTopImagePanYBySlide,
 				void (async () => {
 					await flushStudioLoadingPaint();
 					draftRestoring = false;
+					const bulkState = takeBulkImport();
+					if (bulkState) {
+						applyBlankCanvas();
+						applyDraftState(bulkState);
+						slideCount = Math.max(1, slides.length);
+						if (bulkState.brandCtaEnabled) brandCtaEnabled = true;
+						return;
+					}
 					const clipPending =
 						!!pendingClipImport ||
 						(typeof window !== 'undefined' &&
@@ -6763,6 +6796,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (articleTextBySlide.length !== n) {
 			articleTextBySlide = Array.from({ length: n }, (_, i) => articleTextBySlide[i] ?? '');
 		}
+		if (newsSubtextBySlide.length !== n) {
+			newsSubtextBySlide = Array.from({ length: n }, (_, i) => newsSubtextBySlide[i] ?? '');
+		}
 		if (textCarouselTextBySlide.length !== n) {
 			textCarouselTextBySlide = Array.from({ length: n }, (_, i) => textCarouselTextBySlide[i] ?? '');
 		}
@@ -8028,6 +8064,7 @@ showSubjectCutout={canvasShowCutout}
 					showCircle2={canvasShowCircle2}
 					circle2Image={canvasShowCircle2 ? canvasCircle2Img : ''}
 					text={canvasOverlayText}
+					subtext={previewTemplate === 'news' ? (newsSubtextBySlide[paintSlide] ?? '') : ''}
 					source={source}
 					sourceLogoSrc={sourceLogoSrc}
 					sourceLabelMode={sourceLabelMode}
@@ -8817,6 +8854,12 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						{:else}
 							<span class="text-[10px] text-white/35">Saved to your brand</span>
 						{/if}
+						<a
+							href="/dashboard/bulk"
+							class="ml-auto text-[10px] text-sky-300/90 hover:text-sky-200 underline-offset-2 hover:underline"
+						>
+							Brand kit &amp; Bulk
+						</a>
 					</div>
 					<div class="grid gap-2 sm:grid-cols-[auto_1fr] sm:items-start">
 						<div class="flex items-center gap-2">
