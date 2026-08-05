@@ -19,6 +19,8 @@
 		 * with text selection unless the user moves past the drag threshold or holds.
 		 */
 		holdDragFromText?: boolean;
+		/** Stretch to parent box (needed when wrapping absolutely-positioned media). */
+		fill?: boolean;
 		onChange?: (nextDx: number, nextDy: number) => void;
 		children: Snippet;
 	}
@@ -30,6 +32,7 @@
 		interactive = true,
 		holdMs = 180,
 		holdDragFromText = false,
+		fill = false,
 		onChange,
 		children,
 	}: Props = $props();
@@ -114,6 +117,7 @@
 		transform: translate({dx}px, {dy}px);
 		touch-action: none;
 		cursor: {interactive ? (dragging ? 'grabbing' : 'default') : 'default'};
+		{fill ? 'width:100%;height:100%;' : ''}
 	"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}

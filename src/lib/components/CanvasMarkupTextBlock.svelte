@@ -292,6 +292,18 @@
 		"
 		title={canEdit ? 'Double-click to edit text' : undefined}
 	>
-		{@render display()}
+		{#if fontSize != null && Number.isFinite(fontSize)}
+			<div
+				data-canvas-typography-root
+				data-design-font-px={String(fontSize)}
+				style="font-size: {fontSize}px;"
+			>
+				{@render display()}
+			</div>
+		{:else}
+			<div data-canvas-typography-root>
+				{@render display()}
+			</div>
+		{/if}
 	</div>
 {/if}

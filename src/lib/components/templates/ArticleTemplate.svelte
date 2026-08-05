@@ -213,7 +213,7 @@
 									text={normalizedText}
 									defaultColor={accentColor}
 									style="
-										font-size: 46px;
+										font-size: {articleStyles.articleBody?.fontSize ?? headlineStyle.fontSize ?? 46}px;
 										font-weight: 400;
 										line-height: 1.42;
 										letter-spacing: -0.3px;
@@ -383,7 +383,7 @@
 										padding: 18px 36px;
 										border-radius: 100px;
 										border: 2.5px solid {isLight ? 'rgba(10,10,10,0.75)' : 'rgba(255,255,255,0.85)'};
-										font-size: 28px;
+										font-size: {articleStyles.articleSwipeText?.fontSize ?? 28}px;
 										font-weight: 600;
 										color: {baseText};
 										letter-spacing: -0.2px;

@@ -11,7 +11,14 @@ function truncate(text: string, max = MAX_WORDS): string {
 	return words.length <= max ? text.trim() : words.slice(0, max).join(' ');
 }
 
-type VariantContentMode = 'news' | 'fact' | 'story' | 'quote';
+type VariantContentMode = 'news' | 'fact' | 'story' | 'quote' | 'steps';
+
+function clampStepCount(raw: unknown, slideCount: number): number {
+	const n = Math.floor(Number(raw));
+	if (Number.isFinite(n) && n >= 1) return Math.max(1, Math.min(8, n));
+	// Infer from deck: hook + N steps + CTA
+	return Math.max(1, Math.min(8, Math.max(1, slideCount - 2)));
+}
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
@@ -22,19 +29,26 @@ export const POST: RequestHandler = async ({ request }) => {
 		sourceUrl = '',
 		autoHighlight = true,
 		contentMode: contentModeRaw,
+		stepCount: stepCountRaw,
+		includeReplies: includeRepliesRaw,
 	} = body;
 
 	if (!text.trim()) return json({ error: 'Missing article text' }, { status: 400 });
 
 	const slideCount = Math.max(1, Math.min(10, Math.floor(Number(count))));
 	const contentMode: VariantContentMode =
-		contentModeRaw === 'fact' || contentModeRaw === 'story' || contentModeRaw === 'quote'
+		contentModeRaw === 'fact' ||
+		contentModeRaw === 'story' ||
+		contentModeRaw === 'quote' ||
+		contentModeRaw === 'steps'
 			? contentModeRaw
 			: 'news';
+	const stepCount = clampStepCount(stepCountRaw, slideCount);
+	const includeReplies = includeRepliesRaw === true;
 
 	if (!env.OPENROUTER_API_KEY) {
-		// Return mock variants
-		return json({ variants: getMockVariants(slideCount, title, contentMode) });
+		const variants = getMockVariants(slideCount, title, contentMode, stepCount);
+		return json(includeReplies ? { variants, replies: getMockReplies(slideCount, title) } : { variants });
 	}
 
 	try {
@@ -73,26 +87,59 @@ export const POST: RequestHandler = async ({ request }) => {
 			`Slides 2–N each deepen the same topic: meaning, tension, tradeoff, hope, or accountability — one fresh angle per slide. ` +
 			`No fake celebrity names. No near-duplicates. ALL CAPS. No quotation marks, markdown, emojis, or hashtags.`;
 
+		const middleSteps = Math.max(0, slideCount - 2);
+		const effectiveSteps = slideCount <= 1 ? 0 : slideCount === 2 ? 1 : Math.min(stepCount, middleSteps);
+		const stepsSystem =
+			`You write Instagram carousel overlay copy for a NUMBERED STEPS / listicle carousel. Output ONLY valid JSON. ` +
+			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
+			`Structure is FIXED: ` +
+			(slideCount === 1
+				? `Only slide 1 = the cover hook promising the steps.`
+				: slideCount === 2
+					? `Slide 1 = cover hook. Slide 2 = STEP 1: one concrete action (or a short CTA if the bible has only one move).`
+					: `Slide 1 = cover hook (e.g. "${stepCount} STEPS TO…"). ` +
+						`Slides 2 through ${1 + effectiveSteps} = STEP 1, STEP 2, … STEP ${effectiveSteps} — each line MUST start with "STEP k:" (k = 1..${effectiveSteps}) then one concrete action. ` +
+						(slideCount > effectiveSteps + 1
+							? `Final slide(s) = CTA / invitation to start (no new step number). `
+							: ``) +
+						`Use the numbered bible in the context; do not invent unrelated tips.`) +
+			` ALL CAPS. No quotes, markdown, emojis, or hashtags. No near-duplicates.`;
+
 		const systemPrompt =
-			contentMode === 'story'
+			(contentMode === 'story'
 				? storySystem
 				: contentMode === 'fact'
 					? factSystem
 					: contentMode === 'quote'
 						? quoteSystem
-						: newsSystem;
+						: contentMode === 'steps'
+							? stepsSystem
+							: newsSystem) +
+			(includeReplies
+				? ` ALSO return tweet reply punchlines. Output ONLY a JSON object (no markdown fences) with shape ` +
+					`{"variants":[...${slideCount} strings...],"replies":[...${slideCount} strings...]}. ` +
+					`Each replies[i] is a short witty reply reacting to variants[i] (≤ 16 words, normal sentence case, no hashtags/emojis/quotes). ` +
+					`Replies should feel like a second person dunking, clarifying, or finishing the thought — not a rewrite of the tweet.`
+				: '');
 
 		const userPrompt =
-			contentMode === 'quote'
-				? `Quote topic / title: ${title || 'Untitled'}\n\nContext (meaning and angles to mine):\n${text.slice(0, 12000)}\n\n` +
-					`Write all ${slideCount} slides as ONE quote carousel. Slide 1 = the quote. Later slides unpack it with distinct emotional or practical angles on the same topic.`
-				: contentMode === 'story'
-				? `Title: ${title || 'Untitled'}\n\nStory bible + narrative context (this is fiction or a tight anecdote — not a news article):\n${text.slice(0, 12000)}\n\n` +
-					`Write all ${slideCount} slides as ONE continuous mini-story. Slide 1 = the hook. Each later slide is the next beat: same characters, forward motion, rising stakes or emotional truth. ` +
-					`Do not pivot into tips, statistics, or unrelated angles unless they appear inside the scene.`
-				: `Source: ${sourceUrl}\nTitle: ${title}\n\nArticle text:\n${text.slice(0, 12000)}\n\n` +
-					`Write the carousel overlay copy for all ${slideCount} slides following the structure rules. ` +
-					`Slide 1 = headline hook. Every later slide must add NEW information or a new implication.`;
+			(contentMode === 'steps'
+				? `Cover title / hook topic: ${title || 'Untitled'}\n\nSteps bible (mine numbered steps from this):\n${text.slice(0, 12000)}\n\n` +
+					`Write all ${slideCount} slides as ONE steps carousel. Target about ${stepCount} numbered steps. ` +
+					`Slide 1 = hook. Middle slides = STEP k: …. Last slide = CTA when the deck is long enough.`
+				: contentMode === 'quote'
+					? `Quote topic / title: ${title || 'Untitled'}\n\nContext (meaning and angles to mine):\n${text.slice(0, 12000)}\n\n` +
+						`Write all ${slideCount} slides as ONE quote carousel. Slide 1 = the quote. Later slides unpack it with distinct emotional or practical angles on the same topic.`
+					: contentMode === 'story'
+						? `Title: ${title || 'Untitled'}\n\nStory bible + narrative context (this is fiction or a tight anecdote — not a news article):\n${text.slice(0, 12000)}\n\n` +
+							`Write all ${slideCount} slides as ONE continuous mini-story. Slide 1 = the hook. Each later slide is the next beat: same characters, forward motion, rising stakes or emotional truth. ` +
+							`Do not pivot into tips, statistics, or unrelated angles unless they appear inside the scene.`
+						: `Source: ${sourceUrl}\nTitle: ${title}\n\nArticle text:\n${text.slice(0, 12000)}\n\n` +
+							`Write the carousel overlay copy for all ${slideCount} slides following the structure rules. ` +
+							`Slide 1 = headline hook. Every later slide must add NEW information or a new implication.`) +
+			(includeReplies
+				? `\n\nAlso write ${slideCount} reply tweets (one per variant) for a quote-tweet / thread reply under an image.`
+				: '');
 
 		const res = await fetch(OPENROUTER_API, {
 			method: 'POST',
@@ -109,8 +156,25 @@ export const POST: RequestHandler = async ({ request }) => {
 					{ role: 'user', content: userPrompt },
 				],
 				temperature:
-					contentMode === 'story' ? 0.92 : contentMode === 'quote' ? 0.88 : contentMode === 'fact' ? 0.82 : 0.8,
-				max_tokens: contentMode === 'story' ? 1200 : contentMode === 'quote' ? 1000 : 1000,
+					contentMode === 'story'
+						? 0.92
+						: contentMode === 'quote'
+							? 0.88
+							: contentMode === 'fact'
+								? 0.82
+								: contentMode === 'steps'
+									? 0.78
+									: 0.8,
+				max_tokens:
+					contentMode === 'story'
+						? 1200
+						: contentMode === 'steps'
+							? 1100
+							: includeReplies
+								? 1400
+								: contentMode === 'quote'
+									? 1000
+									: 1000,
 			}),
 		});
 
@@ -122,11 +186,26 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Strip markdown fences
 		content = content.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim();
 
-		let variants: string[];
+		let variants: string[] = [];
+		let replies: string[] = [];
 		try {
 			const parsed = JSON.parse(content);
-			if (!Array.isArray(parsed)) throw new Error('Not an array');
-			variants = parsed.map((x: unknown) => truncate(String(x ?? '').trim())).filter(Boolean);
+			if (Array.isArray(parsed)) {
+				variants = parsed.map((x: unknown) => truncate(String(x ?? '').trim())).filter(Boolean);
+			} else if (parsed && typeof parsed === 'object') {
+				const v = (parsed as { variants?: unknown }).variants;
+				const r = (parsed as { replies?: unknown }).replies;
+				if (Array.isArray(v)) {
+					variants = v.map((x: unknown) => truncate(String(x ?? '').trim())).filter(Boolean);
+				}
+				if (Array.isArray(r)) {
+					replies = r
+						.map((x: unknown) => truncate(String(x ?? '').trim(), 16))
+						.filter(Boolean);
+				}
+			} else {
+				throw new Error('Unexpected JSON shape');
+			}
 		} catch {
 			// Fallback: treat whole response as slide 1
 			variants = [truncate(content)];
@@ -135,14 +214,21 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Ensure we have exactly slideCount items
 		while (variants.length < slideCount) variants.push(variants[variants.length - 1] ?? title);
 		variants = variants.slice(0, slideCount);
+		if (includeReplies) {
+			const mockReplies = getMockReplies(slideCount, title);
+			while (replies.length < slideCount) {
+				replies.push(replies[replies.length - 1] ?? mockReplies[replies.length] ?? mockReplies[0]!);
+			}
+			replies = replies.slice(0, slideCount);
+		}
 
 		// ── Optional second pass: add [[highlights]] to each slide ───────────
 		if (autoHighlight && variants.length > 0) {
 			const highlighted = await addHighlights(variants, title, contentMode);
-			return json({ variants: highlighted });
+			return json(includeReplies ? { variants: highlighted, replies } : { variants: highlighted });
 		}
 
-		return json({ variants });
+		return json(includeReplies ? { variants, replies } : { variants });
 	} catch (err: any) {
 		console.error('[news/variants]', err.message);
 		return json({ error: err.message }, { status: 500 });
@@ -164,14 +250,18 @@ async function addHighlights(
 				? ` For story carousels, highlight turning-point words (revelations, stakes, choices) more than scenery.`
 				: contentMode === 'quote'
 					? ` For quote carousels, highlight the most resonant nouns and verbs (stakes, truth, choice).`
-					: '');
+					: contentMode === 'steps'
+						? ` For steps carousels, highlight the action verb or the key habit noun in each STEP line.`
+						: '');
 
 	const user =
 		(contentMode === 'story'
 			? `Story title: ${title}\n\n`
 			: contentMode === 'quote'
 				? `Quote title: ${title}\n\n`
-				: `Article title: ${title}\n\n`) +
+				: contentMode === 'steps'
+					? `Steps title: ${title}\n\n`
+					: `Article title: ${title}\n\n`) +
 		`Slides:\n${JSON.stringify(slides, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases.`;
 
 	try {
@@ -208,7 +298,12 @@ async function addHighlights(
 	}
 }
 
-function getMockVariants(count: number, title: string, contentMode: VariantContentMode = 'news'): string[] {
+function getMockVariants(
+	count: number,
+	title: string,
+	contentMode: VariantContentMode = 'news',
+	stepCount = 5,
+): string[] {
 	const newsMock = [
 		title || '[[Silicon Valley]] controls startup exits',
 		'[[33%]] of all acquisitions since 2000 came from 5 companies',
@@ -237,6 +332,24 @@ function getMockVariants(count: number, title: string, contentMode: VariantConte
 		'THE TOPIC IS NOT [[MOTIVATION]] — IT IS WHAT YOU REFUSE TO [[NAME]]',
 		'ONE HONEST [[NO]] CAN PROTECT A THOUSAND [[FUTURE YESSES]]',
 	];
+	const n = Math.max(1, Math.min(8, stepCount));
+	const stepsMock = [
+		title || `${n} STEPS TO [[FEEL BETTER]] THIS WEEK`,
+		...Array.from({ length: n }, (_, i) => {
+			const actions = [
+				'[[AUDIT]] WHAT YOU ALREADY DO DAILY',
+				'[[CUT]] ONE HABIT THAT QUIETLY HURTS PROGRESS',
+				'[[ADD]] ONE SMALL MOVE YOU CAN FINISH TODAY',
+				'[[TRACK]] THE CHANGE FOR SEVEN DAYS',
+				'[[PROTECT]] THE WINDOW WHEN YOU ACTUALLY FOLLOW THROUGH',
+				'[[REPEAT]] THE MINIMUM ON HARD DAYS',
+				'[[REFRAME]] SLIPS AS DATA NOT FAILURE',
+				'[[STACK]] THE HABIT ONTO SOMETHING YOU NEVER SKIP',
+			];
+			return `STEP ${i + 1}: ${actions[i % actions.length]}`;
+		}),
+		'START WITH [[STEP 1]] THIS WEEK — THEN TELL SOMEONE YOUR PLAN',
+	];
 	const mock =
 		contentMode === 'story'
 			? storyMock
@@ -244,8 +357,27 @@ function getMockVariants(count: number, title: string, contentMode: VariantConte
 				? factMock
 				: contentMode === 'quote'
 					? quoteMock
-					: newsMock;
+					: contentMode === 'steps'
+						? stepsMock
+						: newsMock;
 	const out = mock.slice(0, count);
 	while (out.length < count) out.push(out[out.length - 1]!);
+	return out;
+}
+
+function getMockReplies(count: number, title = ''): string[] {
+	const topic = String(title || 'that').replace(/\[\[|\]\]/g, '').trim().slice(0, 40) || 'that';
+	const pool = [
+		`3 straight misses chef. These appear to be French fries.`,
+		`Nobody asked but here's the quiet part out loud about ${topic}.`,
+		`Say it louder for the people still coping.`,
+		`This aged like milk in the sun.`,
+		`Bookmarking this for the next group chat meltdown.`,
+		`The ratio writes itself.`,
+		`Brother what is this timeline.`,
+		`Finally someone said it without a TED Talk.`,
+	];
+	const out = pool.slice(0, count);
+	while (out.length < count) out.push(out[out.length - 1] ?? pool[0]!);
 	return out;
 }

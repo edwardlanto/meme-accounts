@@ -59,8 +59,14 @@ function pickNewsArticle(articles: any[], pick: string, wantedCsv: string) {
 	return from[0] ?? articles[0];
 }
 
-type ContentMode = 'news' | 'fact' | 'story' | 'quote';
-type SyntheticMode = 'fact' | 'story' | 'quote';
+type ContentMode = 'news' | 'fact' | 'story' | 'quote' | 'steps';
+type SyntheticMode = 'fact' | 'story' | 'quote' | 'steps';
+
+function clampStepCount(raw: unknown): number {
+	const n = Math.floor(Number(raw));
+	if (!Number.isFinite(n)) return 5;
+	return Math.max(3, Math.min(8, n));
+}
 
 async function openRouterComplete(
 	messages: { role: string; content: string }[],
@@ -156,8 +162,39 @@ function wordsFromHint(hint: string, minCount: number): string[] {
 	return w;
 }
 
-function demoSynthetic(mode: SyntheticMode, storyCategory: string, syntheticHint: string) {
+function demoSynthetic(
+	mode: SyntheticMode,
+	storyCategory: string,
+	syntheticHint: string,
+	stepCount = 5,
+) {
 	const cat = (storyCategory || 'health').toLowerCase();
+	if (mode === 'steps') {
+		const h = syntheticHint.trim() || 'a better gut';
+		const topic = h.replace(/^\d+\s*(?:steps?|ways|tips|habits|rules|things)\s*(?:to|for)?\s*/i, '').trim() || h;
+		const topicUp = wordsFromHint(topic, 3);
+		const hook = `${stepCount} STEPS TO [[${topicUp[0]}]] ${topicUp.slice(1).join(' ')}`.trim();
+		const stepLines = Array.from({ length: stepCount }, (_, i) => {
+			const verbs = ['AUDIT', 'CUT', 'ADD', 'TRACK', 'PROTECT', 'REPEAT', 'REFRAME', 'STACK'];
+			const v = verbs[i % verbs.length]!;
+			return `${i + 1}. ${v} one concrete habit tied to ${topic.slice(0, 60)} — make it small enough to finish today.`;
+		});
+		return {
+			text: hook,
+			imageUrl: null,
+			title: titleFromHook(hook),
+			description:
+				`Listicle bible for "${topic.slice(0, 120)}" (${stepCount} steps).\n` +
+				stepLines.join('\n') +
+				`\nCTA: Invite the reader to start with step 1 this week and share which step they will try first.`,
+			source: 'Steps',
+			url: null,
+			uuid: 'demo-steps',
+			categories: [],
+			demo: true,
+			stepCount,
+		};
+	}
 	if (mode === 'quote') {
 		const h = syntheticHint.trim();
 		if (h) {
@@ -326,11 +363,13 @@ async function syntheticContent(
 	autoHighlight: boolean,
 	syntheticHint: string,
 	regenNonce = '',
+	stepCount = 5,
 ) {
 	const theme = (storyCategory || 'health').trim() || 'health';
 	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
 	const hintSafe = syntheticHint.trim().replace(/"/g, "'").slice(0, 600);
 	const hasHint = hintSafe.length > 0;
+	const stepsN = clampStepCount(stepCount);
 
 	const regenBlock =
 		typeof regenNonce === 'string' && regenNonce.trim().length > 0
@@ -338,7 +377,26 @@ async function syntheticContent(
 			: '';
 
 	const userPrompt =
-		mode === 'quote'
+		mode === 'steps'
+			? `You write a numbered STEPS / listicle bible for an Instagram carousel. Output ONLY valid JSON (no markdown fences) with this shape:
+{"hook":"...","context":"..."}
+
+Rules for "hook":
+- One punchy cover line that promises exactly ${stepsN} steps (or ways/tips) about the topic
+- Max 28 words, ALL CAPS
+- No hashtags, no emojis
+- Prefer forms like "${stepsN} STEPS TO …" or "${stepsN} WAYS TO …"
+- Name the topic clearly
+
+Rules for "context":
+- Normal sentence case
+- Start with one short sentence naming the outcome
+- Then exactly ${stepsN} numbered steps on their own lines: "1. …", "2. …", through "${stepsN}."
+- Each step is one concrete, actionable habit or move (not vague advice)
+- End with 1–2 sentences for a closing CTA angle (what to do first / invite the reader)
+- Do not paste the hook verbatim${hasHint ? `\n\nUser topic (hook + every step MUST be clearly about this):\n"""${hintSafe}"""` : `\n\nPick a useful everyday topic if none is given.`}${regenBlock}`
+
+			: mode === 'quote'
 			? `You write viral Instagram quote carousel copy. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
@@ -391,8 +449,8 @@ Rules for "context":
 
 	const jsonRaw = await openRouterComplete(
 		[{ role: 'user', content: userPrompt }],
-		mode === 'story' ? 0.92 : mode === 'quote' ? 0.9 : 0.88,
-		mode === 'story' ? 720 : mode === 'quote' ? 560 : 500,
+		mode === 'story' ? 0.92 : mode === 'quote' ? 0.9 : mode === 'steps' ? 0.86 : 0.88,
+		mode === 'story' ? 720 : mode === 'steps' ? 700 : mode === 'quote' ? 560 : 500,
 	);
 	let overlayText = '';
 	let description = '';
@@ -401,6 +459,10 @@ Rules for "context":
 	if (parsed) {
 		overlayText = parsed.hook;
 		description = parsed.context;
+	} else if (mode === 'steps') {
+		const demo = demoSynthetic('steps', storyCategory, syntheticHint, stepsN);
+		overlayText = demo.text;
+		description = demo.description;
 	} else {
 		overlayText =
 			mode === 'quote'
@@ -427,11 +489,19 @@ Rules for "context":
 		imageUrl: null,
 		title,
 		description,
-		source: mode === 'quote' ? 'Quotes' : mode === 'fact' ? 'Did you know' : themeLabel,
+		source:
+			mode === 'quote'
+				? 'Quotes'
+				: mode === 'fact'
+					? 'Did you know'
+					: mode === 'steps'
+						? 'Steps'
+						: themeLabel,
 		url: null,
 		uuid: null,
 		categories: [],
 		demo: false,
+		...(mode === 'steps' ? { stepCount: stepsN } : {}),
 	};
 }
 
@@ -448,21 +518,34 @@ export const POST: RequestHandler = async ({ request }) => {
 	} = body;
 
 	const mode: ContentMode =
-		body.mode === 'fact' || body.mode === 'story' || body.mode === 'quote' ? body.mode : 'news';
+		body.mode === 'fact' ||
+		body.mode === 'story' ||
+		body.mode === 'quote' ||
+		body.mode === 'steps'
+			? body.mode
+			: 'news';
 	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
 	const syntheticHint =
 		typeof body.syntheticHint === 'string' ? String(body.syntheticHint).trim().slice(0, 600) : '';
+	const stepCount = clampStepCount(body.stepCount);
 
-	if (mode === 'fact' || mode === 'story' || mode === 'quote') {
+	if (mode === 'fact' || mode === 'story' || mode === 'quote' || mode === 'steps') {
 		if (!env.OPENROUTER_API_KEY) {
-			return json(demoSynthetic(mode, storyCategory, syntheticHint), { status: 200 });
+			return json(demoSynthetic(mode, storyCategory, syntheticHint, stepCount), { status: 200 });
 		}
 		const regenNonce =
 			typeof body.studioRegenAt === 'number' && Number.isFinite(body.studioRegenAt)
 				? String(Math.floor(body.studioRegenAt))
 				: '';
 		return json(
-			await syntheticContent(mode, storyCategory, autoHighlight !== false, syntheticHint, regenNonce),
+			await syntheticContent(
+				mode,
+				storyCategory,
+				autoHighlight !== false,
+				syntheticHint,
+				regenNonce,
+				stepCount,
+			),
 			{ status: 200 },
 		);
 	}

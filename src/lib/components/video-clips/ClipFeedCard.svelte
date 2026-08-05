@@ -795,11 +795,17 @@
 	}
 
 	.layout-hook .clip-video-hook {
-		top: 22%;
-		bottom: 22%;
+		top: auto;
+		bottom: auto;
+		left: 4%;
+		right: 4%;
+		width: 92%;
 		height: auto;
-		inset: 22% 0;
-		object-fit: contain;
+		aspect-ratio: 16 / 9;
+		inset: auto;
+		top: 52%;
+		transform: translateY(-40%);
+		object-fit: cover;
 		background: #000;
 	}
 
@@ -810,14 +816,17 @@
 		right: 0;
 		z-index: 3;
 		margin: 0;
-		padding: 10% 8% 0;
-		text-align: center;
+		padding: 14% 4% 0;
+		text-align: left;
 		color: #fff;
-		font-weight: 700;
-		font-size: clamp(0.85rem, 3.6vw, 1.15rem);
-		line-height: 1.25;
+		font-weight: 400;
+		font-size: clamp(0.9rem, 3.8vw, 1.2rem);
+		line-height: 1.22;
 		letter-spacing: -0.02em;
-		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		overflow: hidden;
 		pointer-events: none;
 	}
 

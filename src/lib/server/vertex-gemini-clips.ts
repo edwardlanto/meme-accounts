@@ -283,7 +283,7 @@ Rules:
     - A 20-YEAR-OLD SPENT [[$20 ON CLAUDE]], BUILT AN AI SPEED RADAR IN 9 DAYS, AND [[SOLD IT FOR $317K]]
 - videoHook is a SEPARATE casual line for Hook / Creator video templates (white text above a letterboxed clip on black):
   - Sentence case — NEVER ALL CAPS
-  - 6–14 words, curiosity / discomfort / irony (sounds like a TikTok comment)
+  - 6–14 words (~2 short lines max), curiosity / discomfort / irony (sounds like a TikTok comment)
   - Do NOT paste the transcript; invent a short hook ABOUT the moment
   - Optional single emoji at the end
   - Optionally wrap ONE impact phrase in [[...]] for bold emphasis (Creator template)

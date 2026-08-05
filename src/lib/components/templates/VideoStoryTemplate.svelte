@@ -100,15 +100,15 @@
 	const headlinePad = $derived(
 		isHookLayout
 			? previewMode
-				? '28px 24px 16px'
-				: '72px 56px 28px'
+				? '0'
+				: '0'
 			: previewMode
 				? '20px 28px 12px'
 				: '40px 40px 20px',
 	);
 	const videoPad = $derived(previewMode ? '4px 20px 40px' : '8px 32px 60px');
 	const hookFontSize = $derived(
-		headlineStyle.fontSize ?? (previewMode ? 28 : 56),
+		headlineStyle.fontSize ?? (previewMode ? 26 : 56),
 	);
 	const creatorFontSize = $derived(
 		headlineStyle.fontSize ?? (previewMode ? 26 : 52),
@@ -309,6 +309,8 @@
 				height: 100%;
 				object-fit: {objectFit};
 				object-position: center center;
+				pointer-events: none;
+				user-select: none;
 				{extraStyle}
 			"
 		></video>
@@ -317,6 +319,7 @@
 			src={posterSrc}
 			alt=""
 			class="video-story-player"
+			draggable="false"
 			style="
 				position: absolute;
 				inset: 0;
@@ -324,10 +327,39 @@
 				height: 100%;
 				object-fit: {objectFit};
 				object-position: center center;
+				pointer-events: none;
+				user-select: none;
 				{extraStyle}
 			"
 		/>
 	{/if}
+{/snippet}
+
+{#snippet draggableMedia(objectFit: 'cover' | 'contain', frameStyle = '')}
+	<DraggableBlock
+		dx={textOffsets.videoStoryMedia?.x ?? 0}
+		dy={textOffsets.videoStoryMedia?.y ?? 0}
+		{interactive}
+		{scale}
+		fill
+		onChange={(x, y) => onTextOffsetChange?.('videoStoryMedia', { x, y })}
+	>
+		{#snippet children()}
+			<div
+				style="
+					position: relative;
+					width: 100%;
+					height: 100%;
+					min-height: 0;
+					touch-action: none;
+					cursor: {interactive ? 'grab' : 'default'};
+					{frameStyle}
+				"
+			>
+				{@render mediaLayer(objectFit)}
+			</div>
+		{/snippet}
+	</DraggableBlock>
 {/snippet}
 
 {#snippet headlineBlock(pill = false)}
@@ -336,6 +368,7 @@
 		dy={textOffsets.videoStoryHeadline?.y ?? 0}
 		{interactive}
 		{scale}
+		holdDragFromText={interactive}
 		onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 	>
 		{#snippet children()}
@@ -347,7 +380,8 @@
 					position: relative;
 					z-index: 5;
 					display: flex;
-					justify-content: center;
+					justify-content: {isHookLayout ? 'stretch' : 'center'};
+					width: 100%;
 				"
 			>
 				<CanvasMarkupTextBlock
@@ -356,7 +390,7 @@
 					defaultColor={highlightColor}
 					selected={selectedText === 'videoStoryHeadline'}
 					toolbarKind="videoStoryHeadline"
-					rows={4}
+					rows={isHookLayout ? 2 : 4}
 					minHeight="0px"
 					ariaLabel="Video headline"
 					fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
@@ -397,7 +431,7 @@
 								/>
 							</div>
 						{:else}
-							<div style="text-align: {headlineStyle.align ?? 'center'}; width: 100%;">
+							<div style="text-align: {headlineStyle.align ?? (isHookLayout ? 'left' : 'center')}; width: 100%;">
 								<HighlightedText
 									as="div"
 									text={isHookLayout ? stripMarkup(headline) : headline}
@@ -405,19 +439,18 @@
 									defaultColor={highlightColor}
 									style="
 										margin: 0;
-										white-space: pre-wrap;
+										white-space: {isHookLayout ? 'normal' : 'pre-wrap'};
 										word-break: break-word;
 										line-height: {isHookLayout ? 1.22 : 1.18};
 										letter-spacing: {isHookLayout ? '-0.02em' : '-0.03em'};
 										color: {isHookLayout ? '#ffffff' : '#f4f4f5'};
-										font-weight: {isHookLayout ? 700 : (headlineStyle.fontWeight ?? 600)};
+										font-weight: {headlineStyle.fontWeight ?? (isHookLayout ? 400 : 600)};
 										font-size: {isHookLayout ? hookFontSize : (headlineStyle.fontSize ?? 46)}px;
-										text-shadow: {isHookLayout
-										? '0 2px 18px rgba(0,0,0,0.55)'
-										: '0 2px 12px rgba(0,0,0,0.45)'};
-										max-width: {isHookLayout ? '92%' : '100%'};
-										margin-left: auto;
-										margin-right: auto;
+										text-shadow: {isHookLayout ? 'none' : '0 2px 12px rgba(0,0,0,0.45)'};
+										max-width: 100%;
+										{isHookLayout
+										? 'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;'
+										: 'margin-left:auto;margin-right:auto;'}
 									"
 								/>
 							</div>
@@ -435,6 +468,7 @@
 		dy={textOffsets.videoStoryWatermark?.y ?? 0}
 		{interactive}
 		{scale}
+		holdDragFromText={interactive}
 		onChange={(x, y) => onTextOffsetChange?.('videoStoryWatermark', { x, y })}
 	>
 		{#snippet children()}
@@ -589,6 +623,7 @@
 						dy={textOffsets.videoStoryHeadline?.y ?? 0}
 						{interactive}
 						{scale}
+						holdDragFromText={interactive}
 						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 					>
 						{#snippet children()}
@@ -637,6 +672,7 @@
 						dy={textOffsets.blackTextBody?.y ?? 0}
 						{interactive}
 						{scale}
+						holdDragFromText={interactive}
 						onChange={(x, y) => onTextOffsetChange?.('blackTextBody', { x, y })}
 					>
 						{#snippet children()}
@@ -703,7 +739,7 @@
 							box-shadow: 0 18px 48px rgba(0,0,0,0.45);
 						"
 					>
-						{@render mediaLayer('cover')}
+						{@render draggableMedia('cover')}
 					</div>
 				</div>
 			</div>
@@ -723,6 +759,7 @@
 					dy={textOffsets.videoStoryHeadline?.y ?? 0}
 					{interactive}
 					{scale}
+					holdDragFromText={interactive}
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}
@@ -787,7 +824,7 @@
 						min-height: 0;
 					"
 				>
-					{@render mediaLayer('contain')}
+					{@render draggableMedia('contain')}
 				</div>
 			</div>
 			<DraggableBlock
@@ -795,6 +832,7 @@
 				dy={textOffsets.videoStoryWatermark?.y ?? 0}
 				{interactive}
 				{scale}
+				holdDragFromText={interactive}
 				onChange={(x, y) => onTextOffsetChange?.('videoStoryWatermark', { x, y })}
 			>
 				{#snippet children()}
@@ -844,7 +882,7 @@
 		{:else if layout === 'text'}
 			<!-- Text on video: full-bleed cover + centered outlined white text -->
 			<div style="position: absolute; inset: 0; z-index: 0;">
-				{@render mediaLayer('cover')}
+				{@render draggableMedia('cover')}
 			</div>
 			<div
 				style="
@@ -866,6 +904,7 @@
 						dy={textOffsets.videoStoryHeadline?.y ?? 0}
 						{interactive}
 						{scale}
+						holdDragFromText={interactive}
 						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 					>
 						{#snippet children()}
@@ -927,6 +966,7 @@
 					dy={textOffsets.videoCreatorProfile?.y ?? 0}
 					{interactive}
 					{scale}
+					holdDragFromText={interactive}
 					onChange={(x, y) => onTextOffsetChange?.('videoCreatorProfile', { x, y })}
 				>
 					{#snippet children()}
@@ -1037,6 +1077,7 @@
 					dy={textOffsets.videoStoryHeadline?.y ?? 0}
 					{interactive}
 					{scale}
+					holdDragFromText={interactive}
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}
@@ -1102,7 +1143,7 @@
 						min-height: 0;
 					"
 				>
-					{@render mediaLayer('contain')}
+					{@render draggableMedia('contain')}
 				</div>
 			</div>
 		{:else if layout === 'creator'}
@@ -1121,6 +1162,7 @@
 					dy={textOffsets.videoCreatorProfile?.y ?? 0}
 					{interactive}
 					{scale}
+					holdDragFromText={interactive}
 					onChange={(x, y) => onTextOffsetChange?.('videoCreatorProfile', { x, y })}
 				>
 					{#snippet children()}
@@ -1257,6 +1299,7 @@
 					dy={textOffsets.videoStoryHeadline?.y ?? 0}
 					{interactive}
 					{scale}
+					holdDragFromText={interactive}
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}
@@ -1324,25 +1367,50 @@
 						min-height: 0;
 					"
 				>
-					{@render mediaLayer('contain')}
+					{@render draggableMedia('contain')}
 				</div>
 			</div>
 		{:else if layout === 'hook'}
-			<!-- Hook: large white title on black + centered letterboxed video (no template karaoke) -->
-			{@render headlineBlock(false)}
+			<!-- Hook: 2-line left-aligned title sharing the video column edge -->
 			<div
 				style="
 					flex: 1;
 					min-height: 0;
-					position: relative;
-					background: #000;
 					display: flex;
+					flex-direction: column;
 					align-items: center;
 					justify-content: center;
+					gap: {previewMode ? '14px' : '36px'};
+					padding: {previewMode ? '36px 16px 40px' : '120px 0 140px'};
+					box-sizing: border-box;
+					background: #000;
 				"
 			>
-				<div style="position: relative; width: 100%; height: {previewMode ? '48%' : '42%'}; min-height: 0;">
-					{@render mediaLayer('contain')}
+				<div
+					style="
+						display: flex;
+						flex-direction: column;
+						align-items: stretch;
+						gap: {previewMode ? '14px' : '36px'};
+						width: {previewMode ? '92%' : '920px'};
+						max-width: 92%;
+					"
+				>
+					<div style="flex-shrink: 0; width: 100%;">
+						{@render headlineBlock(false)}
+					</div>
+					<div
+						style="
+							position: relative;
+							flex-shrink: 0;
+							width: 100%;
+							aspect-ratio: 16 / 9;
+							background: #0a0a0a;
+							overflow: hidden;
+						"
+					>
+						{@render draggableMedia('cover')}
+					</div>
 				</div>
 			</div>
 		{:else if layout === 'fit'}
@@ -1360,7 +1428,7 @@
 				"
 			>
 				<div style="position: relative; width: 100%; height: 56%; min-height: 0;">
-					{@render mediaLayer('contain')}
+					{@render draggableMedia('contain')}
 				</div>
 			</div>
 			{@render subtitleBlock('karaoke')}
@@ -1442,7 +1510,7 @@
 							box-shadow: 0 12px 40px rgba(0,0,0,0.45);
 						"
 					>
-						{@render mediaLayer('cover')}
+						{@render draggableMedia('cover')}
 					</div>
 				</div>
 				{@render subtitleBlock('plain')}
@@ -1474,7 +1542,7 @@
 						box-shadow: 0 24px 80px rgba(0,0,0,0.55);
 					"
 				>
-					{@render mediaLayer('cover')}
+					{@render draggableMedia('cover')}
 					<div
 						style="
 							position: absolute;

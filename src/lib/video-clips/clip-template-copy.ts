@@ -157,7 +157,7 @@ export function buildClipTemplateCopy(
 		!looksLikeRawVideoHook(aiHook, speech)
 			? aiHook
 			: demoVideoHookFromClip(clip, source.title || source.description?.slice(0, 80)),
-		120,
+		90,
 	);
 
 	// Tweet: hook on top, source video as quoted reply context below

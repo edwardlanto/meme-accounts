@@ -50,7 +50,7 @@ These are casual, curiosity-driving one-liners — NOT news headlines.
 
 Rules:
 - Sentence case (NOT ALL CAPS)
-- 6–14 words, one complete thought
+- 6–14 words, one complete thought — must fit on TWO short lines above a 16:9 clip
 - Sound like a real person hyping a clip in the comments: intrigue, discomfort, irony, or a twist
 - Ground ONLY in facts from title + description + channel + this clip's speech — do not invent names or events
 - Do NOT quote the speaker verbatim or paste the transcript

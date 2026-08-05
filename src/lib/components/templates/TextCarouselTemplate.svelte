@@ -295,15 +295,18 @@
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				>
 					{#snippet display()}
-						<p style="
+						<p
+							data-canvas-typography-root
+							style="
 							margin: 0 0 8px;
-							font-size: 46px;
+							font-size: {textCarouselStyles.textCarouselName?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_NAME_SIZE}px;
 							font-weight: 800;
 							color: {baseText};
 							line-height: 1.1;
 							letter-spacing: -0.5px;
 							{nameCss}
-						">{name.trim() ? name : TEXT_CAROUSEL_DEFAULTS.name}</p>
+						"
+						>{name.trim() ? name : TEXT_CAROUSEL_DEFAULTS.name}</p>
 					{/snippet}
 				</CanvasMarkupTextBlock>
 
@@ -322,15 +325,18 @@
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 				>
 					{#snippet display()}
-						<p style="
+						<p
+							data-canvas-typography-root
+							style="
 							margin: 0;
-							font-size: 36px;
+							font-size: {textCarouselStyles.textCarouselHandle?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_HANDLE_SIZE}px;
 							font-weight: 400;
 							font-style: italic;
 							color: {baseMuted};
 							letter-spacing: -0.2px;
 							{handleCss}
-						">{handle.trim() ? handle : TEXT_CAROUSEL_DEFAULTS.handle}</p>
+						"
+						>{handle.trim() ? handle : TEXT_CAROUSEL_DEFAULTS.handle}</p>
 					{/snippet}
 				</CanvasMarkupTextBlock>
 			</div>

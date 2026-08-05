@@ -152,7 +152,9 @@ let {
 }: TweetProps = $props();
 
 	const topTextDisplay = $derived(stripMarkup(topText));
-	const bottomTextDisplay = $derived(stripMarkup(bottomText));
+	const bottomTextDisplay = $derived(
+		stripMarkup(bottomText).trim() || TWEET_DEFAULTS.bottomText,
+	);
 	const topNameDisplay = $derived(String(topName ?? '').trim() || TWEET_DEFAULTS.topName);
 	const topHandleDisplay = $derived(String(topHandle ?? '').trim() || TWEET_DEFAULTS.topHandle);
 	const bottomNameDisplay = $derived(String(bottomName ?? '').trim() || TWEET_DEFAULTS.bottomName);
@@ -505,7 +507,7 @@ let {
 									onTextChange={onTopNameChange}
 								>
 									{#snippet display()}
-										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {topNameCss}">{topNameDisplay}</span>
+										<span style="font-size:{tweetStyles.tweetTopName?.fontSize ?? 38}px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {topNameCss}">{topNameDisplay}</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
 								{#if topVerified}
@@ -531,7 +533,7 @@ let {
 								onTextChange={onTopHandleChange}
 							>
 								{#snippet display()}
-									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandleDisplay}</span>
+									<span style="font-size:{tweetStyles.tweetTopHandle?.fontSize ?? 30}px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandleDisplay}</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -569,7 +571,7 @@ let {
 						>
 							{#snippet display()}
 								<p
-									style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
+									style="font-size:{tweetStyles.tweetTopText?.fontSize ?? 44}px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
 								>
 									{topTextDisplay}
 								</p>
@@ -763,7 +765,7 @@ let {
 									onTextChange={onBottomNameChange}
 								>
 									{#snippet display()}
-										<span style="font-size:38px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {bottomNameCss}">{bottomNameDisplay}</span>
+										<span style="font-size:{tweetStyles.tweetBottomName?.fontSize ?? 38}px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {bottomNameCss}">{bottomNameDisplay}</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
 								{#if bottomVerified}
@@ -789,7 +791,7 @@ let {
 								onTextChange={onBottomHandleChange}
 							>
 								{#snippet display()}
-									<span style="font-size:30px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandleDisplay}</span>
+									<span style="font-size:{tweetStyles.tweetBottomHandle?.fontSize ?? 30}px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandleDisplay}</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -809,7 +811,7 @@ let {
 			>
 				{#snippet children()}
 					<CanvasMarkupTextBlock
-						value={bottomText}
+						value={bottomText.trim() ? bottomText : TWEET_DEFAULTS.bottomText}
 						interactive={bottomEditable}
 						defaultColor={tweetHighlightDefault}
 						toolbarKind="tweetBottomText"
@@ -826,7 +828,7 @@ let {
 					>
 						{#snippet display()}
 							<p
-								style="font-size:44px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; {bottomTextCss}"
+								style="font-size:{tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 44}px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; {bottomTextCss}"
 							>
 								{bottomTextDisplay}
 							</p>

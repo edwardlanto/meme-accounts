@@ -134,7 +134,7 @@ import JSZip from 'jszip';
 	} from '$lib/video-clips/caption-chunking';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
-		Image, Type, Search, FlaskConical, Wifi, Layers,
+		Image, Type, Search, FlaskConical, Wifi, Layers, ListOrdered,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown
 	} from 'lucide-svelte';
 
@@ -209,10 +209,10 @@ import JSZip from 'jszip';
 	let search = $state('');
 	// Fill-in-text uses the same topic input (`search`) as Generate/Fetch.
 	let category = $state('business');
-	/** Sidebar mode for the News template generator: live articles vs synthetic fact/story. */
-	type NewsStudioContentMode = 'news' | 'fact' | 'story' | 'quote';
+	/** Sidebar mode for the News template generator: live articles vs synthetic fact/story/steps. */
+	type NewsStudioContentMode = 'news' | 'fact' | 'story' | 'quote' | 'steps';
 	let newsContentMode = $state<NewsStudioContentMode>('news');
-	/** How Load & Fill fills backgrounds in News studio (News / fact / story / quote). */
+	/** How Load & Fill fills backgrounds in News studio (News / fact / story / quote / steps). */
 	type NewsImageSourceMode = 'pull' | 'ai';
 	let newsImageSourceMode = $state<NewsImageSourceMode>('pull');
 	/** Whether to generate/pull images at all (when off, only text is generated). */
@@ -226,7 +226,24 @@ import JSZip from 'jszip';
 	/** Sent to /api/news as syntheticHint when Quote is selected. */
 	let quoteTopicPrompt = $state('');
 	let quoteTopicCategory = $state('any');
+	/** Steps / listicle: topic prompt + how many numbered steps (deck = hook + N + CTA). */
+	let stepsTopicPrompt = $state('');
+	let stepsCount = $state(5);
 	let slideCount = $state(DEFAULT_STUDIO_SLIDE_COUNT); // 1–10
+
+	function parseStepsCountFromPrompt(prompt: string, fallback: number): number {
+		const m = String(prompt ?? '').match(
+			/(?:^|\b)(\d{1,2})\s*(?:steps?|ways|tips|habits|rules|things)\b/i,
+		);
+		if (m) {
+			const n = Number(m[1]);
+			if (Number.isFinite(n)) return Math.max(3, Math.min(8, Math.floor(n)));
+		}
+		return Math.max(3, Math.min(8, Math.floor(fallback) || 5));
+	}
+	function stepsDeckLength(stepCount: number): number {
+		return Math.max(3, Math.min(10, Math.max(3, Math.min(8, stepCount)) + 2));
+	}
 
 	// Preview/edit view toggle for the canvas area.
 	let fetchingNews = $state(false);
@@ -287,6 +304,11 @@ import JSZip from 'jszip';
 			ensureTweetSlideProfileDefaults(idx);
 			if (!String(tweetTopTextBySlide[idx] ?? '').trim()) {
 				tweetTopTextBySlide = tweetTopTextBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.topText : x));
+			}
+			if (!String(tweetBottomTextBySlide[idx] ?? '').trim()) {
+				tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) =>
+					i === idx ? TWEET_DEFAULTS.bottomText : x,
+				);
 			}
 			return;
 		}
@@ -3163,19 +3185,71 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		});
 	}
 
+	function resolveTypographyEl(el: HTMLElement): HTMLElement {
+		// Ghost anchors from range selection have no layout/styles — keep the fallback path.
+		if (!el.isConnected) return el;
+		if (el.matches('[data-canvas-typography-root]')) return el;
+		const marked = el.querySelector('[data-canvas-typography-root]') as HTMLElement | null;
+		if (marked) return marked;
+		// CanvasMarkupTextBlock wraps display text; font-size lives on the inner node, not the wrapper.
+		const withInline = el.querySelector('[style*="font-size"]') as HTMLElement | null;
+		if (withInline) return withInline;
+		const child = el.firstElementChild as HTMLElement | null;
+		return child ?? el;
+	}
+
+	function readDesignFontPx(el: HTMLElement): number | undefined {
+		const fromAttr = (node: Element | null) => {
+			if (!node) return undefined;
+			const raw = node.getAttribute('data-design-font-px');
+			if (raw == null || raw === '') return undefined;
+			const n = Number(raw);
+			return Number.isFinite(n) && n > 0 ? n : undefined;
+		};
+		const direct = fromAttr(el);
+		if (direct != null) return direct;
+		const marked =
+			(el.matches('[data-canvas-typography-root]') ? el : null) ??
+			(el.querySelector('[data-canvas-typography-root]') as HTMLElement | null);
+		const fromMarked = fromAttr(marked);
+		if (fromMarked != null) return fromMarked;
+		const nested = el.querySelector('[data-design-font-px]') as HTMLElement | null;
+		return fromAttr(nested);
+	}
+
 	function onTextSelect(kind: TextElementKind, el: HTMLElement) {
 		selectedText = kind;
 		selectedTextOverlayId = kind === 'textOverlay' ? (el.dataset.textOverlayId ?? null) : null;
 		toolbarTarget = el;
 		toolbarAnchor = el.getBoundingClientRect();
-		// Try to read the element's computed font-size. Some selections pass a wrapper/ghost
-		// anchor, so also fall back to per-kind template defaults.
+		// Prefer template defaults; then read the *typography* node (not the selectable wrapper).
+		// Reading getComputedStyle on the wrapper inherited a page font (~16–48px) and made +/-
+		// stamp a wrong design-size override — canvas text looked stuck or shrank.
 		toolbarAutoFontSize = defaultFontSizeForKind(kind);
 		requestAnimationFrame(() => {
 			try {
-				const fs = getComputedStyle(el).fontSize;
+				const existing = getActiveStyleForSelection().fontSize;
+				if (typeof existing === 'number' && Number.isFinite(existing) && existing > 0) {
+					toolbarAutoFontSize = defaultFontSizeForKind(kind) ?? existing;
+					return;
+				}
+				const fromData = readDesignFontPx(el);
+				if (fromData != null) {
+					toolbarAutoFontSize = Math.round(fromData);
+					return;
+				}
+				const typo = resolveTypographyEl(el);
+				const fs = getComputedStyle(typo).fontSize;
 				const n = parseFloat(fs);
-				if (Number.isFinite(n) && n > 0) toolbarAutoFontSize = n;
+				if (Number.isFinite(n) && n > 0) {
+					const rounded = Math.round(n);
+					const kindDefault = defaultFontSizeForKind(kind);
+					if (kindDefault != null && rounded < 20 && kindDefault >= 20) {
+						toolbarAutoFontSize = kindDefault;
+					} else {
+						toolbarAutoFontSize = rounded;
+					}
+				}
 			} catch {
 				// keep fallback
 			}
@@ -3592,7 +3666,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			s.newsContentMode === 'news' ||
 			s.newsContentMode === 'fact' ||
 			s.newsContentMode === 'story' ||
-			s.newsContentMode === 'quote'
+			s.newsContentMode === 'quote' ||
+			s.newsContentMode === 'steps'
 		) {
 			newsContentMode = s.newsContentMode;
 		}
@@ -3605,6 +3680,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (typeof (s as any).storyTopicPrompt === 'string') storyTopicPrompt = String((s as any).storyTopicPrompt ?? '');
 		if (typeof (s as any).quoteTopicPrompt === 'string') quoteTopicPrompt = String((s as any).quoteTopicPrompt ?? '');
 		if (typeof (s as any).quoteTopicCategory === 'string') quoteTopicCategory = String((s as any).quoteTopicCategory ?? 'any');
+		if (typeof (s as any).stepsTopicPrompt === 'string') stepsTopicPrompt = String((s as any).stepsTopicPrompt ?? '');
+		{
+			const sc = Number((s as any).stepsCount);
+			if (Number.isFinite(sc)) stepsCount = Math.max(3, Math.min(8, Math.floor(sc)));
+		}
 		if (typeof s.search === 'string') search = s.search;
 		if (typeof s.source === 'string') source = s.source;
 		if (typeof (s as any).sourceLogoSrc === 'string') sourceLogoSrc = String((s as any).sourceLogoSrc ?? '').trim();
@@ -4598,6 +4678,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		storyTopicPrompt,
 		quoteTopicPrompt,
 		quoteTopicCategory,
+		stepsTopicPrompt,
+		stepsCount,
 			search,
 			source,
 			sourceLogoSrc,
@@ -5085,6 +5167,11 @@ tweetTopImagePanYBySlide,
 		if (!String(tweetBottomHandleBySlide[idx] ?? '').trim()) {
 			tweetBottomHandleBySlide = tweetBottomHandleBySlide.map((x, i) => (i === idx ? TWEET_DEFAULTS.bottomHandle : x));
 		}
+		if (!String(tweetBottomTextBySlide[idx] ?? '').trim()) {
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, i) =>
+				i === idx ? TWEET_DEFAULTS.bottomText : x,
+			);
+		}
 	}
 
 	/** Primary on-slide copy per template (for Vertex prompts). */
@@ -5112,6 +5199,8 @@ tweetTopImagePanYBySlide,
 		news: 420,
 		/** Main tweet body above media (~3–4 lines at default size in a 9:16 card). */
 		tweetTop: 230,
+		/** Reply punchline under media (one tight beat). */
+		tweetReply: 160,
 		article: 520,
 		/** Long-form carousel body from APIs (OpenRouter, etc.); paragraphs preserved in clamp. */
 		textCarousel: 6000,
@@ -5119,7 +5208,7 @@ tweetTopImagePanYBySlide,
 		videoStory: 320,
 		videoFit: 320,
 		videoBlur: 320,
-		videoHook: 320,
+		videoHook: 90,
 		videoCreator: 320,
 		videoText: 320,
 		videoSource: 320,
@@ -5196,9 +5285,40 @@ tweetTopImagePanYBySlide,
 		return clampFetchedPlainLength(text, FETCH_TEXT_CLIP.tweetTop);
 	}
 
+	/** Reply under the media — slightly shorter punchline / reaction. */
+	function clampTweetReplyFetched(text: string): string {
+		return clampFetchedPlainLength(text, FETCH_TEXT_CLIP.tweetReply);
+	}
+
+	function normalizeTweetReplies(replies: string[], count: number): string[] {
+		const n = Math.max(1, count);
+		const fallback = TWEET_DEFAULTS.bottomText;
+		const cleaned = (replies ?? [])
+			.map((r) => clampTweetReplyFetched(String(r ?? '').trim()))
+			.filter(Boolean);
+		if (!cleaned.length) {
+			return Array.from({ length: n }, () => fallback);
+		}
+		const out = [...cleaned];
+		while (out.length < n) out.push(out[out.length - 1] ?? fallback);
+		return out.slice(0, n);
+	}
+
+	function applyTweetReplyStrings(replies: string[]) {
+		const n = Math.max(1, slides.length, replies.length);
+		const next = normalizeTweetReplies(replies, n);
+		tweetBottomTextBySlide = Array.from({ length: n }, (_, i) => next[i] ?? TWEET_DEFAULTS.bottomText);
+	}
+
 	function clampFetchedPrimaryForTemplate(template: TemplateId, text: string): string {
 		const raw = String(text ?? '').trim();
 		const preserveMarkup = template === 'news' && studioTextHighlightsEnabled;
+		if (isPhotoStoryFamily(template) || template === 'blackText') {
+			return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.blackText, false);
+		}
+		if (isWhitePostFamily(template)) {
+			return clampFetchedTextCarouselBody(raw, FETCH_TEXT_CLIP.textCarousel);
+		}
 		switch (template) {
 			case 'tweet':
 				return clampTweetTopFetched(raw);
@@ -5237,44 +5357,45 @@ tweetTopImagePanYBySlide,
 	}
 
 	/** Apply carousel headline strings to the template the user had selected (not always News). */
-	function applyHeadlineStringsToTemplate(template: TemplateId, strings: string[]) {
+	function applyHeadlineStringsToTemplate(template: TemplateId, strings: string[], replies?: string[]) {
 		const clipped = strings.map((s) => clampFetchedPrimaryForTemplate(template, s));
 		slides = [...clipped];
 		if (template === 'tweet') {
 			tweetTopTextBySlide = [...clipped];
-			// Bottom block is a tight “reply” slot under the image — full article blurbs overflow the card.
-			tweetBottomTextBySlide = Array.from({ length: clipped.length }, () => '');
+			applyTweetReplyStrings(replies ?? []);
 			for (let i = 0; i < clipped.length; i++) ensureTweetSlideProfileDefaults(i);
 		} else if (template === 'article') {
 			articleTextBySlide = [...clipped];
-		} else if (template === 'textCarousel') {
+		} else if (template === 'textCarousel' || isWhitePostFamily(template)) {
 			textCarouselTextBySlide = [...clipped];
 		} else if (template === 'imageQuote') {
 			imageQuoteTextBySlide = [...clipped];
 		} else if (isVideoStoryFamily(template)) {
 			videoStoryHeadlineBySlide = [...clipped];
-		} else if (template === 'blackText') {
+		} else if (template === 'blackText' || isPhotoStoryFamily(template)) {
 			blackTextHeadlineBySlide = [...clipped];
 		}
 	}
 
-	function applyPrimaryClampedToSlide(i: number, template: TemplateId, raw: string) {
+	function applyPrimaryClampedToSlide(i: number, template: TemplateId, raw: string, reply?: string) {
 		const clipped = clampFetchedPrimaryForTemplate(template, raw);
 		slides = slides.map((s, idx) => (idx === i ? clipped : s));
 		if (template === 'tweet') {
 			tweetTopTextBySlide = tweetTopTextBySlide.map((s, idx) => (idx === i ? clipped : s));
-			// Drop stale reply-line copy so a new fetch does not stack under fresh top text.
-			tweetBottomTextBySlide = tweetBottomTextBySlide.map((s, idx) => (idx === i ? '' : s));
+			const btm = clampTweetReplyFetched(
+				String(reply ?? '').trim() || TWEET_DEFAULTS.bottomText,
+			);
+			tweetBottomTextBySlide = tweetBottomTextBySlide.map((s, idx) => (idx === i ? btm : s));
 			ensureTweetSlideProfileDefaults(i);
 		} else if (template === 'article') {
 			articleTextBySlide = articleTextBySlide.map((s, idx) => (idx === i ? clipped : s));
-		} else if (template === 'textCarousel') {
+		} else if (template === 'textCarousel' || isWhitePostFamily(template)) {
 			textCarouselTextBySlide = textCarouselTextBySlide.map((s, idx) => (idx === i ? clipped : s));
 		} else if (template === 'imageQuote') {
 			imageQuoteTextBySlide = imageQuoteTextBySlide.map((s, idx) => (idx === i ? clipped : s));
 		} else if (isVideoStoryFamily(template)) {
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((s, idx) => (idx === i ? clipped : s));
-		} else if (template === 'blackText') {
+		} else if (template === 'blackText' || isPhotoStoryFamily(template)) {
 			blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((s, idx) => (idx === i ? clipped : s));
 		}
 	}
@@ -5393,6 +5514,11 @@ tweetTopImagePanYBySlide,
 			? factTopics.find((t) => t.id === quoteTopicCategory)?.label ?? ''
 			: '';
 		const quoteFullPrompt = [quoteTopicLabel, quoteTopicPrompt.trim()].filter(Boolean).join(': ');
+		const resolvedStepsCount =
+			newsContentMode === 'steps'
+				? parseStepsCountFromPrompt(stepsTopicPrompt, stepsCount)
+				: stepsCount;
+		if (newsContentMode === 'steps') stepsCount = resolvedStepsCount;
 
 		const syntheticHintStr =
 			newsContentMode === 'fact'
@@ -5401,12 +5527,17 @@ tweetTopImagePanYBySlide,
 					? storyTopicPrompt.trim().slice(0, 600)
 					: newsContentMode === 'quote'
 						? quoteFullPrompt.slice(0, 600)
-						: '';
+						: newsContentMode === 'steps'
+							? stepsTopicPrompt.trim().slice(0, 600)
+							: '';
 
 			/** Synthetic modes without a topic use bundled mocks; any topic hits /api/news. */
 			const useBundledFactStoryMock =
 				useTestData &&
-				(newsContentMode === 'fact' || newsContentMode === 'story' || newsContentMode === 'quote') &&
+				(newsContentMode === 'fact' ||
+					newsContentMode === 'story' ||
+					newsContentMode === 'quote' ||
+					newsContentMode === 'steps') &&
 				!syntheticHintStr;
 
 			if (useTestData && newsContentMode === 'news') {
@@ -5436,7 +5567,7 @@ tweetTopImagePanYBySlide,
 				nextArticleTitle = article.title;
 				articleImageUrl = article.image_url;
 			} else if (useBundledFactStoryMock) {
-				// ── Mock mode: canned fact/story/quote when no custom topic ─────────
+				// ── Mock mode: canned fact/story/quote/steps when no custom topic ─────────
 				await new Promise((r) => setTimeout(r, 400));
 				if (newsContentMode === 'fact') {
 					const pick = MOCK_FACTS[Math.floor(Math.random() * MOCK_FACTS.length)] ?? MOCK_FACTS[0];
@@ -5454,6 +5585,29 @@ tweetTopImagePanYBySlide,
 					nextArticleUrl = '';
 					nextArticleTitle = pick.hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
 					articleImageUrl = '';
+				} else if (newsContentMode === 'steps') {
+					const nSteps = resolvedStepsCount;
+					hookText = `${nSteps} STEPS TO [[FEEL BETTER]] THIS WEEK`;
+					rawText =
+						`Listicle bible (${nSteps} steps).\n` +
+						Array.from({ length: nSteps }, (_, i) => {
+							const actions = [
+								'Audit what you already do daily.',
+								'Cut one habit that quietly hurts progress.',
+								'Add one small move you can finish today.',
+								'Track the change for seven days.',
+								'Protect the window when you actually follow through.',
+								'Repeat the minimum on hard days.',
+								'Reframe slips as data not failure.',
+								'Stack the habit onto something you never skip.',
+							];
+							return `${i + 1}. ${actions[i % actions.length]}`;
+						}).join('\n') +
+						`\nCTA: Start with step 1 this week and tell someone your plan.`;
+					nextSource = 'Steps';
+					nextArticleUrl = '';
+					nextArticleTitle = hookText.replace(/\[\[|\]\]/g, '').slice(0, 120);
+					articleImageUrl = '';
 				} else {
 					const pool = MOCK_STORIES[storyCategory] ?? MOCK_STORIES.health;
 					const pick = pool[Math.floor(Math.random() * pool.length)] ?? pool[0];
@@ -5465,7 +5619,7 @@ tweetTopImagePanYBySlide,
 					articleImageUrl = '';
 				}
 			} else {
-				// ── API: live news, or fact/story (including with Test data + topic) ─
+				// ── API: live news, or fact/story/quote/steps (including with Test data + topic) ─
 				const res = await fetch('/api/news', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -5480,6 +5634,7 @@ tweetTopImagePanYBySlide,
 							(fillExistingDeck ? hasNewsSlidesInDeck : contentTemplate === 'news'),
 						pick: newsContentMode === 'news' ? 'random' : 'first',
 						syntheticHint: syntheticHintStr || undefined,
+						stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
 						studioRegenAt: Date.now(),
 					}),
 				});
@@ -5497,7 +5652,9 @@ tweetTopImagePanYBySlide,
 								? 'Did you know'
 								: newsContentMode === 'quote'
 									? 'Quotes'
-									: storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Story';
+									: newsContentMode === 'steps'
+										? 'Steps'
+										: storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Story';
 				nextArticleUrl = data.url ?? '';
 				nextArticleTitle = data.title ?? '';
 				articleImageUrl = data.imageUrl ?? '';
@@ -5511,6 +5668,9 @@ tweetTopImagePanYBySlide,
 				articleSnippet = rawText;
 			}
 
+			if (!fillExistingDeck && newsContentMode === 'steps') {
+				slideCount = stepsDeckLength(resolvedStepsCount);
+			}
 			const n = fillExistingDeck ? Math.max(1, slides.length) : Math.max(1, slideCount);
 			slideCount = n;
 			lastTemplateUsed = contentTemplate;
@@ -5528,7 +5688,13 @@ tweetTopImagePanYBySlide,
 				articleTitle = nextArticleTitle;
 				articleSnippet = rawText;
 				source = nextSource;
-			} else if (newsContentMode === 'news') {
+			} else if (
+				newsContentMode === 'news' ||
+				newsContentMode === 'fact' ||
+				newsContentMode === 'story' ||
+				newsContentMode === 'quote' ||
+				newsContentMode === 'steps'
+			) {
 				articleUrl = nextArticleUrl;
 				articleTitle = nextArticleTitle;
 				articleSnippet = rawText;
@@ -5551,16 +5717,24 @@ tweetTopImagePanYBySlide,
 				);
 				const variantsNeedHighlights =
 					studioTextHighlightsEnabled && copyTargets.some((t) => t.template === 'news');
+				const wantsTweetReplies = copyTargets.some((t) => t.template === 'tweet');
 
-				const copyStrings = await (async () => {
+				const { copyStrings, tweetReplies } = await (async () => {
 					const want = copyTargets.length;
-					if (want <= 0) return [] as string[];
-					if (want <= 1) return [hookText];
+					if (want <= 0) return { copyStrings: [] as string[], tweetReplies: [] as string[] };
+					if (want <= 1) {
+						return {
+							copyStrings: [hookText],
+							tweetReplies: wantsTweetReplies ? [TWEET_DEFAULTS.bottomText] : [],
+						};
+					}
 					try {
 						const variantBodyText =
 							newsContentMode === 'story'
 								? `HOOK (slide 1 overlay):\n${hookText}\n\nNARRATIVE CONTEXT (continue this story across slides; do not turn it into a news explainer):\n${rawText || articleTitle}`
-								: rawText || articleTitle;
+								: newsContentMode === 'steps'
+									? `HOOK (slide 1 overlay):\n${hookText}\n\nSTEPS BIBLE (use numbered steps; slide 1 = hook, middle = STEP k, last = CTA):\n${rawText || articleTitle}`
+									: rawText || articleTitle;
 						const res = await fetch('/api/news/variants', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
@@ -5571,15 +5745,27 @@ tweetTopImagePanYBySlide,
 								sourceUrl: articleUrl,
 								autoHighlight: variantsNeedHighlights,
 								contentMode: newsContentMode,
+								stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
+								includeReplies: wantsTweetReplies,
 							}),
 						});
 						const data = await res.json();
 						if (!res.ok) throw new Error(data.error ?? 'Variant generation failed');
 						const variants: string[] = data.variants ?? [];
-						return normalizeHeadlineVariants(variants, hookText, want);
+						return {
+							copyStrings: normalizeHeadlineVariants(variants, hookText, want),
+							tweetReplies: wantsTweetReplies
+								? normalizeTweetReplies(data.replies ?? [], want)
+								: [],
+						};
 					} catch (e: any) {
 						newsError = `Slide variants: ${e?.message ?? String(e)}`;
-						return normalizeHeadlineVariants([], hookText, want);
+						return {
+							copyStrings: normalizeHeadlineVariants([], hookText, want),
+							tweetReplies: wantsTweetReplies
+								? normalizeTweetReplies([], want)
+								: [],
+						};
 					}
 				})();
 
@@ -5615,11 +5801,11 @@ tweetTopImagePanYBySlide,
 							carouselBodies[carouselIdx++] ?? '',
 						);
 					} else {
-						applyPrimaryClampedToSlide(
-							t.slide,
-							t.template,
-							copyStrings[copyIdx++] ?? hookText,
-						);
+						const primary = copyStrings[copyIdx] ?? hookText;
+						const reply =
+							t.template === 'tweet' ? tweetReplies[copyIdx] ?? TWEET_DEFAULTS.bottomText : undefined;
+						copyIdx++;
+						applyPrimaryClampedToSlide(t.slide, t.template, primary, reply);
 					}
 					if (t.template === 'tweet') ensureTweetSlideProfileDefaults(t.slide);
 					if (t.template === 'blackText' && !blackTextBodyFilled) {
@@ -5651,7 +5837,11 @@ tweetTopImagePanYBySlide,
 			const refreshNewsDeckOnFetch =
 				!opts.fillOnly &&
 				hasNewsSlidesInDeck &&
-				(newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story' || newsContentMode === 'quote');
+				(newsContentMode === 'news' ||
+					newsContentMode === 'fact' ||
+					newsContentMode === 'story' ||
+					newsContentMode === 'quote' ||
+					newsContentMode === 'steps');
 			if (refreshNewsDeckOnFetch) {
 				await refreshNewsDeckImagesAfterFetch(String(articleImageUrl ?? '').trim());
 			}
@@ -5978,7 +6168,9 @@ tweetTopImagePanYBySlide,
 							.join(': ')
 					: newsContentMode === 'story'
 						? storyTopicPrompt.trim()
-						: '';
+						: newsContentMode === 'steps'
+							? stepsTopicPrompt.trim()
+							: '';
 		const fillTopic = (articleSnippet || articleTitle || syntheticTopic || search || '').trim();
 		if (fillTopic) {
 			// Blank text boxes are filled inside fetchNews; avoid overwriting with /api/generate-slides.
@@ -5987,7 +6179,13 @@ tweetTopImagePanYBySlide,
 		// Second pass: parallel slide Vertex calls can 429 the circle; overlay fill can also shift
 		// scheduling. If any News badge is still empty, retry those slides after everything settles.
 		const n = Math.max(1, slides.length);
-		if (newsContentMode === 'news' || newsContentMode === 'fact' || newsContentMode === 'story' || newsContentMode === 'quote') {
+		if (
+			newsContentMode === 'news' ||
+			newsContentMode === 'fact' ||
+			newsContentMode === 'story' ||
+			newsContentMode === 'quote' ||
+			newsContentMode === 'steps'
+		) {
 			await tick();
 			const needCircle: number[] = [];
 			for (let i = 0; i < n; i++) {
@@ -6016,7 +6214,9 @@ tweetTopImagePanYBySlide,
 			const variantBodyText =
 				newsContentMode === 'story'
 					? `HOOK (slide 1 overlay):\n${hookText}\n\nNARRATIVE CONTEXT (continue this story across slides; do not turn it into a news explainer):\n${rawText || articleTitle}`
-					: rawText || articleTitle;
+					: newsContentMode === 'steps'
+						? `HOOK (slide 1 overlay):\n${hookText}\n\nSTEPS BIBLE (use numbered steps; slide 1 = hook, middle = STEP k, last = CTA):\n${rawText || articleTitle}`
+						: rawText || articleTitle;
 			const res = await fetch('/api/news/variants', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -6027,6 +6227,8 @@ tweetTopImagePanYBySlide,
 					sourceUrl: articleUrl,
 					autoHighlight: studioTextHighlightsEnabled && template === 'news',
 					contentMode: newsContentMode,
+					stepCount: newsContentMode === 'steps' ? stepsCount : undefined,
+					includeReplies: template === 'tweet',
 				}),
 			});
 			const data = await res.json();
@@ -6034,7 +6236,11 @@ tweetTopImagePanYBySlide,
 
 			const variants: string[] = data.variants ?? [];
 			const strings = normalizeHeadlineVariants(variants, hookText, slideCount);
-			applyHeadlineStringsToTemplate(template, strings);
+			applyHeadlineStringsToTemplate(
+				template,
+				strings,
+				template === 'tweet' ? (data.replies ?? []) : undefined,
+			);
 			if (template === 'blackText') {
 				const body0 = clampFetchedBlackTextBody(String(rawText || articleSnippet || '').trim());
 				if (body0) {
@@ -8245,7 +8451,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									: previewTemplate === 'videoHook'
 										? { ...VIDEO_HOOK_HEADLINE_STYLE, ...canvasVideoStoryHeadlineStyle }
 										: canvasVideoStoryHeadlineStyle}
-					bodyStyle={previewTemplate === 'videoFeature' ? { ...VIDEO_FEATURE_BODY_STYLE } : undefined}
+					bodyStyle={previewTemplate === 'videoFeature'
+						? { ...VIDEO_FEATURE_BODY_STYLE, ...canvasBlackTextBodyStyle }
+						: canvasBlackTextBodyStyle}
 					watermarkStyle={canvasVideoStoryWatermarkStyle}
 					selectedText={selectedText}
 					textOffsets={offsetsForTemplate(paintSlide, previewTemplate)}
@@ -9317,6 +9525,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
 							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
 						/>
+					{:else if newsContentMode === 'steps'}
+						<input
+							bind:value={stepsTopicPrompt}
+							placeholder="e.g. 5 steps to get a better gut…"
+							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+						/>
 					{:else}
 						<input
 							bind:value={storyTopicPrompt}
@@ -9353,6 +9568,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{:else if newsContentMode === 'story'}
 								<Type size={11} class="shrink-0" />
 								Random story
+							{:else if newsContentMode === 'steps'}
+								<ListOrdered size={11} class="shrink-0" />
+								Steps
 							{:else}
 								<Quote size={11} class="shrink-0" />
 								Quote
@@ -9365,6 +9583,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{ id: 'fact',  icon: Sparkles,  label: 'Random fact' },
 								{ id: 'story', icon: Type,      label: 'Random story' },
 								{ id: 'quote', icon: Quote,     label: 'Quote' },
+								{ id: 'steps', icon: ListOrdered, label: 'Steps' },
 							] as const) as opt}
 								<button
 									type="button"
@@ -9395,6 +9614,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{storyThemes.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
 							{:else if newsContentMode === 'quote'}
 								{factTopics.find((t) => t.id === quoteTopicCategory)?.label ?? 'Any'}
+							{:else if newsContentMode === 'steps'}
+								{stepsCount} steps
 							{:else}
 								{factTopics.find((t) => t.id === factTopicCategory)?.label ?? 'Any'}
 							{/if}
@@ -9449,6 +9670,23 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										</button>
 									{/each}
 								</div>
+							{:else if newsContentMode === 'steps'}
+								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Step count</p>
+								<p class="mb-2 px-1 text-[10.5px] leading-snug text-[#888]">Deck becomes hook + steps + CTA (max 10 slides). Typing “5 steps…” in the prompt also sets this.</p>
+								<div class="grid grid-cols-3 gap-1.5">
+									{#each [3, 4, 5, 6, 7, 8] as n}
+										<button
+											type="button"
+											onclick={() => (stepsCount = n)}
+											class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
+												{stepsCount === n
+													? 'bg-[#1a1a1a] text-white font-semibold'
+													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+										>
+											{n}
+										</button>
+									{/each}
+								</div>
 							{:else}
 								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Fact Topic</p>
 								<div class="grid grid-cols-2 gap-1.5">
@@ -9469,7 +9707,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						</PopoverContent>
 					</Popover>
 
-					<!-- Image source — all News studio modes (News / fact / story / quote) -->
+					<!-- Image source — all News studio modes (News / fact / story / quote / steps) -->
 					<Popover>
 						<PopoverTrigger
 							class="flex items-center gap-1.5 rounded-full border border-[#e2e2e2] bg-white px-3 py-[7px] text-[11.5px] font-semibold font-body text-[#111] transition-all duration-150 hover:border-[#c8c8c8] select-none shrink-0 max-w-[11.5rem]"

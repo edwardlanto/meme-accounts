@@ -195,7 +195,7 @@
 										as="div"
 										text={line}
 										defaultColor={highlightColor}
-										style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: 82px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,{isLight ? 0.10 : 0.4}); font-family: Impact, 'Arial Black', sans-serif; {quoteTypeCss}"
+										style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: {headlineStyle.fontSize ?? 82}px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,{isLight ? 0.10 : 0.4}); font-family: Impact, 'Arial Black', sans-serif; {quoteTypeCss}"
 									/>
 								{/each}
 							</div>

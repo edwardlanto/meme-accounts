@@ -325,6 +325,7 @@
 		<!-- Font size -->
 		<div class="flex items-center gap-0.5">
 			<button
+				type="button"
 				onclick={() => bumpSize(-4)}
 				class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
 				title="Decrease size"
@@ -335,11 +336,13 @@
 				type="number"
 				value={effectiveSize}
 				oninput={(e) => setSize(parseInt((e.target as HTMLInputElement).value, 10))}
+				onchange={(e) => setSize(parseInt((e.target as HTMLInputElement).value, 10))}
 				class="w-12 h-9 rounded-lg text-center text-xs focus:outline-none focus:border-violet-500/40 ftb-input
 					{isSizeOverridden ? 'text-violet-500' : ''}"
 				title={isSizeOverridden ? 'Manual size (click reset to re-enable auto-sizing)' : 'Auto-sized'}
 			/>
 			<button
+				type="button"
 				onclick={() => bumpSize(4)}
 				class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
 				title="Increase size"

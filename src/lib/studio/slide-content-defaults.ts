@@ -116,14 +116,15 @@ export const VIDEO_STORY_HEADLINE_STYLE = {
 export const VIDEO_HOOK_DEFAULTS = {
 	videoUrl: '/videos/video-template.mp4',
 	watermark: '',
-	headline: 'One of the most uncomfortable live interviews ever',
+	headline: 'One of the most uncomfortable live interviews ever 💀',
 } as const;
 
 export const VIDEO_HOOK_HEADLINE_STYLE = {
 	color: '#ffffff',
-	fontWeight: 700,
+	fontWeight: 400,
 	fontFamily: 'Satoshi',
 	fontSize: 56,
+	align: 'left' as const,
 } as const;
 
 /**
