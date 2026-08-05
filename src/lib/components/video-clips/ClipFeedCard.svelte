@@ -421,7 +421,6 @@
 							{/each}
 						</p>
 					</div>
-					<p class="source-attr">Source: clip</p>
 				{/if}
 				{#if layout === 'feature'}
 					{@const featWords = videoHookLine.trim().split(/\s+/).filter(Boolean)}
@@ -440,9 +439,10 @@
 					<video
 						bind:this={videoEl}
 						class="clip-video"
-						class:clip-video-contain={(layout === 'fit' || layout === 'hook' || layout === 'creator' || layout === 'source') && !hasReframed}
+						class:clip-video-contain={(layout === 'fit' || layout === 'hook' || layout === 'creator') && !hasReframed}
 						class:clip-video-mid={layout === 'blur'}
-						class:clip-video-hook={layout === 'hook' || layout === 'creator' || layout === 'source'}
+						class:clip-video-hook={layout === 'hook' || layout === 'creator'}
+						class:clip-video-source={layout === 'source'}
 						class:clip-video-feature={layout === 'feature'}
 						src={mediaSrc}
 						preload="metadata"
@@ -947,30 +947,37 @@
 	.source-hook {
 		margin: 0;
 		color: #fff;
-		font-weight: 700;
-		font-size: clamp(0.78rem, 3.2vw, 1.05rem);
+		font-weight: 400;
+		font-size: clamp(0.9rem, 3.8vw, 1.15rem);
 		line-height: 1.22;
 		letter-spacing: -0.02em;
 		text-align: left;
-		text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		overflow: hidden;
 	}
 
 	.source-hi {
 		color: #39ff14;
+		font-weight: 700;
+	}
+
+	.layout-source .clip-video-source {
+		left: 0;
+		right: 0;
+		width: 100%;
+		height: auto;
+		aspect-ratio: 16 / 9;
+		inset: auto;
+		top: 48%;
+		transform: translateY(-35%);
+		object-fit: cover;
+		background: #000;
 	}
 
 	.source-attr {
-		position: absolute;
-		left: 7%;
-		right: 7%;
-		bottom: 8%;
-		z-index: 3;
-		margin: 0;
-		color: #fff;
-		font-size: 0.65rem;
-		font-weight: 500;
-		pointer-events: none;
-		opacity: 0.9;
+		display: none;
 	}
 
 	.layout-source .caption-box {

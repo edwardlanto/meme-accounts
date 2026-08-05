@@ -67,7 +67,7 @@ export type VideoLayoutId =
 
 export const VIDEO_LAYOUT_TEMPLATES: { id: VideoLayoutId; label: string; studioId: string }[] = [
 	{ id: 'feature', label: 'Feature card', studioId: 'videoFeature' },
-	{ id: 'source', label: 'Source hook', studioId: 'videoSource' },
+	{ id: 'source', label: 'Highlight', studioId: 'videoSource' },
 	{ id: 'text', label: 'Text on video', studioId: 'videoText' },
 	{ id: 'creator', label: 'Creator hook', studioId: 'videoCreator' },
 	{ id: 'hook', label: 'Hook video', studioId: 'videoHook' },

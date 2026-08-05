@@ -211,8 +211,8 @@
 				display: flex;
 				flex-direction: column;
 				box-sizing: border-box;
-				padding: 100px 88px 100px;
-				overflow: hidden;
+				padding: 88px 88px 88px;
+				overflow: visible;
 			"
 		>
 		<!-- ── Profile row ─────────────────────────────────────────────────── -->
@@ -221,10 +221,13 @@
 			dy={textOffsets.textCarouselProfile?.y ?? 0}
 			{interactive}
 			scale={dragScale}
+			holdDragFromText={interactive}
+			snapToCenter={interactive}
+			snapRoot={exportRef}
 			onChange={(x, y) => onTextOffsetChange?.('textCarouselProfile', { x, y })}
 		>
 			{#snippet children()}
-				<div style="display: flex; align-items: center; gap: 36px; margin-bottom: 100px; flex-shrink: 0;">
+				<div style="display: flex; align-items: center; gap: 36px; margin-bottom: 72px; flex-shrink: 0;">
 
 			<!-- Avatar circle with ring -->
 			<div style="
@@ -345,12 +348,15 @@
 		</DraggableBlock>
 
 		<!-- ── Body text ──────────────────────────────────────────────────── -->
-		<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-start; overflow: hidden;">
+		<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-start; overflow: visible;">
 			<DraggableBlock
 				dx={textOffsets.textCarouselBody?.x ?? 0}
 				dy={textOffsets.textCarouselBody?.y ?? 0}
 				{interactive}
 				scale={dragScale}
+				holdDragFromText={interactive}
+				snapToCenter={interactive}
+				snapRoot={exportRef}
 				onChange={(x, y) => onTextOffsetChange?.('textCarouselBody', { x, y })}
 			>
 				{#snippet children()}

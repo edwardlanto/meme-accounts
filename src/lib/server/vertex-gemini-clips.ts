@@ -281,13 +281,13 @@ Rules:
     - [[PATRICK MAHOMES]] BREAKS DOWN THE PLAY THAT [[ALMOST COST]] THE CHIEFS THE SEASON
     - THIS FOUNDER WON'T [[CONFIRM OR DENY]] THE ACCUSATIONS — BUT ADMITS THERE WAS [[PRE-MEDITATION]]
     - A 20-YEAR-OLD SPENT [[$20 ON CLAUDE]], BUILT AN AI SPEED RADAR IN 9 DAYS, AND [[SOLD IT FOR $317K]]
-- videoHook is a SEPARATE casual line for Hook / Creator video templates (white text above a letterboxed clip on black):
+- videoHook is a SEPARATE casual line for Hook / Creator / Highlight video templates (white text above a clip on black):
   - Sentence case — NEVER ALL CAPS
   - 6–14 words (~2 short lines max), curiosity / discomfort / irony (sounds like a TikTok comment)
   - Do NOT paste the transcript; invent a short hook ABOUT the moment
   - Optional single emoji at the end
-  - Optionally wrap ONE impact phrase in [[...]] for bold emphasis (Creator template)
-  - Examples of cadence: "One of the most uncomfortable live interviews ever 💀", "He gave a 10 second pitch that [[broke the internet]]"
+  - For Highlight template cadence, wrap ONE impact word/phrase in [[...]] (renders neon + bold), e.g. "[[Entrepreneur]] reveals the secret…"
+  - Examples of cadence: "One of the most uncomfortable live interviews ever 💀", "[[Entrepreneur]] reveals the secret to finding billion-dollar ideas:"
 - startSec/endSec must be within 0 and ${durationSec} seconds.
 - Clips must not overlap heavily.
 - viralityScore is 0–100 (higher = more likely to go viral on TikTok/Reels/Shorts).

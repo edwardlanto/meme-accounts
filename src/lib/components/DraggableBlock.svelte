@@ -4,6 +4,8 @@
 	 * - Pointer down on markup text (`data-draggable-no-pan`, etc.) does not start a drag
 	 *   so the user can highlight; hold **Alt** while pressing to drag from inside text.
 	 * - Pointer down on chrome: hold (or small move) begins dragging dx/dy (template px).
+	 * - Optional center snap: when the block’s center nears `snapRoot`’s center, offsets lock
+	 *   and light crosshair guides appear.
 	 */
 	import type { Snippet } from 'svelte';
 
@@ -14,13 +16,16 @@
 		interactive?: boolean;
 		holdMs?: number;
 		/**
-		 * When true, pointer-down on markup text can still arm hold-to-drag / nudge-drag
-		 * (otherwise only Alt+drag works over [[highlight]] text). Use sparingly — conflicts
-		 * with text selection unless the user moves past the drag threshold or holds.
+		 * When true (default), pointer-down on markup text can still arm hold-to-drag /
+		 * nudge-drag. Pass false to require Alt+drag over selectable text.
 		 */
 		holdDragFromText?: boolean;
 		/** Stretch to parent box (needed when wrapping absolutely-positioned media). */
 		fill?: boolean;
+		/** Snap block center to snapRoot (or viewport) center while dragging. */
+		snapToCenter?: boolean;
+		/** Canvas / export root used for center snap bounds. */
+		snapRoot?: HTMLElement | null;
 		onChange?: (nextDx: number, nextDy: number) => void;
 		children: Snippet;
 	}
@@ -31,8 +36,11 @@
 		scale = 1,
 		interactive = true,
 		holdMs = 180,
-		holdDragFromText = false,
+		/** Default on: all templates share hold/nudge-to-drag from text. Pass false to force Alt-only. */
+		holdDragFromText = true,
 		fill = false,
+		snapToCenter = false,
+		snapRoot = null,
 		onChange,
 		children,
 	}: Props = $props();
@@ -46,10 +54,19 @@
 	let armed = false;
 	let pointerId = 0;
 	let holdTimer: any = null;
+	let snapGuide = $state<null | { x?: number; y?: number }>(null);
+	let snappedAxisX = false;
+	let snappedAxisY = false;
+
+	const SNAP_IN_PX = 12;
+	const SNAP_OUT_PX = 20;
 
 	function beginDrag() {
 		dragging = true;
 		armed = false;
+		snappedAxisX = false;
+		snappedAxisY = false;
+		snapGuide = null;
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = null;
 		// Only capture once we commit to dragging, so clicks still focus editors.
@@ -79,6 +96,7 @@
 		downY = e.clientY;
 		baseDx = dx;
 		baseDy = dy;
+		snapGuide = null;
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = setTimeout(() => {
 			if (!armed) return;
@@ -96,8 +114,43 @@
 		// Fast “nudge to drag” when the pointer started on chrome (not on markup text).
 		if (!dragging && armed && Math.abs(dpx) + Math.abs(dpy) > 6) beginDrag();
 		if (!dragging) return;
-		const nx = baseDx + dpx / Math.max(0.0001, scale);
-		const ny = baseDy + dpy / Math.max(0.0001, scale);
+		const s = Math.max(0.0001, scale);
+		let nx = baseDx + dpx / s;
+		let ny = baseDy + dpy / s;
+
+		if (snapToCenter && root) {
+			const elRect = root.getBoundingClientRect();
+			const bounds = snapRoot?.getBoundingClientRect() ?? null;
+			if (bounds && bounds.width > 0 && bounds.height > 0) {
+				const midX = bounds.left + bounds.width / 2;
+				const midY = bounds.top + bounds.height / 2;
+				const curCx = elRect.left + elRect.width / 2;
+				const curCy = elRect.top + elRect.height / 2;
+				const visualCx = curCx + (nx - dx) * s;
+				const visualCy = curCy + (ny - dy) * s;
+				snapGuide = null;
+
+				if (snappedAxisX || Math.abs(visualCx - midX) <= SNAP_IN_PX) {
+					if (Math.abs(visualCx - midX) <= SNAP_OUT_PX) {
+						nx = nx - (visualCx - midX) / s;
+						snappedAxisX = true;
+						snapGuide = { ...(snapGuide ?? {}), x: midX };
+					} else {
+						snappedAxisX = false;
+					}
+				}
+				if (snappedAxisY || Math.abs(visualCy - midY) <= SNAP_IN_PX) {
+					if (Math.abs(visualCy - midY) <= SNAP_OUT_PX) {
+						ny = ny - (visualCy - midY) / s;
+						snappedAxisY = true;
+						snapGuide = { ...(snapGuide ?? {}), y: midY };
+					} else {
+						snappedAxisY = false;
+					}
+				}
+			}
+		}
+
 		onChange?.(nx, ny);
 		e.preventDefault();
 	}
@@ -106,6 +159,9 @@
 		armed = false;
 		dragging = false;
 		pointerId = 0;
+		snapGuide = null;
+		snappedAxisX = false;
+		snappedAxisY = false;
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = null;
 	}
@@ -127,3 +183,33 @@
 	{@render children()}
 </div>
 
+{#if snapToCenter && snapGuide?.x != null}
+	<div
+		aria-hidden="true"
+		style="
+			position: fixed;
+			left: {snapGuide.x}px;
+			top: 0;
+			bottom: 0;
+			width: 1px;
+			background: rgba(56, 189, 248, 0.85);
+			pointer-events: none;
+			z-index: 99999;
+		"
+	></div>
+{/if}
+{#if snapToCenter && snapGuide?.y != null}
+	<div
+		aria-hidden="true"
+		style="
+			position: fixed;
+			top: {snapGuide.y}px;
+			left: 0;
+			right: 0;
+			height: 1px;
+			background: rgba(56, 189, 248, 0.85);
+			pointer-events: none;
+			z-index: 99999;
+		"
+	></div>
+{/if}

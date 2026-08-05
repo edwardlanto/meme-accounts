@@ -186,15 +186,14 @@
 									: undefined
 							}
 							watermark={
-								t.id === 'videoSource'
-									? `Source: ${copy.newsSource || storyWatermark || 'Clips'}`
-									: t.id === 'videoHook' ||
-										  t.id === 'videoCreator' ||
-										  t.id === 'videoPost' ||
-										  t.id === 'videoText' ||
-										  t.id === 'videoFeature'
-										? ''
-										: storyWatermark
+								t.id === 'videoSource' ||
+								t.id === 'videoHook' ||
+								t.id === 'videoCreator' ||
+								t.id === 'videoPost' ||
+								t.id === 'videoText' ||
+								t.id === 'videoFeature'
+									? ''
+									: storyWatermark
 							}
 							profileName={
 								t.id === 'videoPost'

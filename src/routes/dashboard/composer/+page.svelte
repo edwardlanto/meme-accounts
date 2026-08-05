@@ -110,7 +110,7 @@ function defaultText(): TextData {
 		avatar: '',
 		ringColor: '#c9b97a',
 		bgColor: '#ffffff',
-		text: 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.\n\nEnd with momentum — a reason to engage, click, or remember you.',
+		text: 'Lead with a sharp hook on the first line.\n\nUse the second beat for proof, tone, or a CTA — keep it scannable.',
 		showSwipe: true,
 	};
 }

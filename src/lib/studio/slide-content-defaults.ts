@@ -50,12 +50,25 @@ export const TEXT_CAROUSEL_DEFAULTS = {
 	handle: '@captainsofindustryy',
 	body:
 		'Lead with a sharp hook on the first line.\n\n' +
-		'Use the second beat for proof, tone, or a CTA — keep it scannable.\n\n' +
-		'End with momentum — a reason to engage, click, or remember you.',
+		'Use the second beat for proof, tone, or a CTA — keep it scannable.',
 } as const;
 
 /** Minimum plain-text length for text carousel body (studio + API fills). */
 export const TEXT_CAROUSEL_BODY_MIN_CHARS = TEXT_CAROUSEL_DEFAULTS.body.trim().length;
+
+const LEGACY_MOMENTUM_PARA =
+	'End with momentum — a reason to engage, click, or remember you.';
+
+/** Drop the retired third default paragraph if it is still present in saved decks. */
+export function stripLegacyTextCarouselMomentum(body: string): string {
+	return String(body ?? '')
+		.replace(/\r\n/g, '\n')
+		.split(/\n\s*\n+/)
+		.map((p) => p.trim())
+		.filter((p) => p && p !== LEGACY_MOMENTUM_PARA)
+		.join('\n\n')
+		.trim();
+}
 
 /**
  * If body is shorter than {@link TEXT_CAROUSEL_BODY_MIN_CHARS}, append the default deck copy
@@ -63,9 +76,7 @@ export const TEXT_CAROUSEL_BODY_MIN_CHARS = TEXT_CAROUSEL_DEFAULTS.body.trim().l
  */
 export function ensureTextCarouselBodyMinLength(body: string): string {
 	const min = TEXT_CAROUSEL_BODY_MIN_CHARS;
-	let out = String(body ?? '')
-		.trim()
-		.replace(/\r\n/g, '\n');
+	let out = stripLegacyTextCarouselMomentum(body);
 	if (out.length >= min) return out;
 	const filler = String(TEXT_CAROUSEL_DEFAULTS.body)
 		.trim()
@@ -181,21 +192,20 @@ export const VIDEO_TEXT_HEADLINE_STYLE = {
 } as const;
 
 /**
- * Source hook: left-aligned headline with neon-green [[highlight]] on the key word,
- * letterboxed clip, and a "Source: …" line under the video.
+ * Highlight: left-aligned 2-line hook with one neon [[highlighted]] word above a full-width clip.
  */
 export const VIDEO_SOURCE_DEFAULTS = {
 	videoUrl: '/videos/video-template.mp4',
-	watermark: 'Source: The Venture Room',
+	watermark: '',
 	headline: '[[Entrepreneur]] reveals the secret to finding billion-dollar ideas:',
 	highlightColor: '#39FF14',
 } as const;
 
 export const VIDEO_SOURCE_HEADLINE_STYLE = {
 	color: '#ffffff',
-	fontWeight: 700,
+	fontWeight: 400,
 	fontFamily: 'Satoshi',
-	fontSize: 48,
+	fontSize: 56,
 	align: 'left' as const,
 } as const;
 

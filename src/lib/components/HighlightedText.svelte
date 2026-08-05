@@ -86,7 +86,7 @@
 				{:else if emphasisBold}
 					<span style={boldSpanStyle}>{seg.text}</span>
 				{:else}
-					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
+					<span style="color: {seg.color}; font-weight: 700; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
 			{:else}
 				{seg.text}
@@ -106,7 +106,7 @@
 				{:else if emphasisBold}
 					<span style={boldSpanStyle}>{seg.text}</span>
 				{:else}
-					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
+					<span style="color: {seg.color}; font-weight: 700; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
 			{:else}
 				{seg.text}
@@ -126,7 +126,7 @@
 				{:else if emphasisBold}
 					<span style={boldSpanStyle}>{seg.text}</span>
 				{:else}
-					<span style="color: {seg.color}; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
+					<span style="color: {seg.color}; font-weight: 700; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
 				{/if}
 			{:else}
 				{seg.text}

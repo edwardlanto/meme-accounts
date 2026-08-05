@@ -90,6 +90,7 @@ export type TextElementKind =
 	| 'imageQuoteFooterRight'
 	| 'videoStoryHeadline'
 	| 'videoStoryWatermark'
+	| 'videoStoryMedia'
 	| 'blackTextHeadline'
 	| 'blackTextBody'
 	| 'blackTextSwipe'

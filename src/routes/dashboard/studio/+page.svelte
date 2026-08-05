@@ -396,7 +396,15 @@ import JSZip from 'jszip';
 					i === idx ? defaultHeadline : x,
 				);
 			}
-			if (defaultWatermark && !String(videoStoryWatermarkBySlide[idx] ?? '').trim()) {
+			// Highlight template no longer shows a Source: line — clear stale watermarks.
+			if (t === 'videoSource') {
+				const wm = String(videoStoryWatermarkBySlide[idx] ?? '').trim();
+				if (!wm || /^source\s*:/i.test(wm)) {
+					videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) =>
+						i === idx ? '' : x,
+					);
+				}
+			} else if (defaultWatermark && !String(videoStoryWatermarkBySlide[idx] ?? '').trim()) {
 				videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) =>
 					i === idx ? defaultWatermark : x,
 				);
@@ -727,21 +735,16 @@ import JSZip from 'jszip';
 				const headline =
 					template === 'videoSource' ? ensureFirstWordHighlight(rawHook || '') : rawHook;
 				videoStoryHeadlineBySlide = setAt(videoStoryHeadlineBySlide, headline, n, i);
-				const sourceWm = payload.storyWatermark?.trim()
-					? /^source\s*:/i.test(payload.storyWatermark.trim())
-						? payload.storyWatermark.trim()
-						: `Source: ${payload.storyWatermark.trim()}`
-					: VIDEO_SOURCE_DEFAULTS.watermark;
 				videoStoryWatermarkBySlide = setAt(
 					videoStoryWatermarkBySlide,
-					template === 'videoSource'
-						? sourceWm
-						: template === 'videoCreator' ||
-							  template === 'videoPost' ||
-							  template === 'videoText' ||
-							  template === 'videoFeature'
-							? ''
-							: payload.storyWatermark,
+					template === 'videoSource' ||
+						template === 'videoCreator' ||
+						template === 'videoPost' ||
+						template === 'videoText' ||
+						template === 'videoFeature' ||
+						template === 'videoHook'
+						? ''
+						: payload.storyWatermark,
 					n,
 					i,
 				);
@@ -5211,7 +5214,7 @@ tweetTopImagePanYBySlide,
 		videoHook: 90,
 		videoCreator: 320,
 		videoText: 320,
-		videoSource: 320,
+		videoSource: 90,
 		videoFeature: 320,
 		videoPost: 320,
 		blackText: 200,
@@ -8383,9 +8386,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											: VIDEO_STORY_DEFAULTS.headline)}
 					body={blackTextBodyBySlide[paintSlide] ?? VIDEO_FEATURE_DEFAULTS.body}
 					watermark={videoStoryWatermarkBySlide[paintSlide] ??
-						(previewTemplate === 'videoSource'
-							? VIDEO_SOURCE_DEFAULTS.watermark
-							: previewTemplate === 'videoHook' ||
+						(previewTemplate === 'videoSource' ||
+						previewTemplate === 'videoHook' ||
 								  previewTemplate === 'videoCreator' ||
 								  previewTemplate === 'videoPost' ||
 								  previewTemplate === 'videoText' ||

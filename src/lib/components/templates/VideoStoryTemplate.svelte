@@ -120,7 +120,7 @@
 		headlineStyle.fontSize ?? (previewMode ? 30 : 64),
 	);
 	const sourceFontSize = $derived(
-		headlineStyle.fontSize ?? (previewMode ? 22 : 48),
+		headlineStyle.fontSize ?? (previewMode ? 26 : 56),
 	);
 	const featureHeadlineSize = $derived(
 		headlineStyle.fontSize ?? (previewMode ? 20 : 44),
@@ -171,6 +171,50 @@
 
 	let storyVideoEl = $state<HTMLVideoElement | null>(null);
 	let lastDuration = 0;
+
+	/** Uniform stretch of the video frame (1 = fill parent). Stored in textOffsets.videoStoryMediaSize.x */
+	const mediaStretch = $derived(
+		Math.max(0.4, Math.min(1.75, Number(textOffsets.videoStoryMediaSize?.x ?? 1) || 1)),
+	);
+	const mediaSelected = $derived(selectedText === 'videoStoryMedia');
+
+	let mediaResizeStart: { x: number; y: number; stretch: number } | null = null;
+
+	function clampMediaStretch(v: number) {
+		return Math.max(0.4, Math.min(1.75, v));
+	}
+
+	function startMediaResize(e: PointerEvent) {
+		if (!interactive || !onTextOffsetChange) return;
+		e.preventDefault();
+		e.stopPropagation();
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+		mediaResizeStart = {
+			x: e.clientX,
+			y: e.clientY,
+			stretch: mediaStretch,
+		};
+	}
+
+	function moveMediaResize(e: PointerEvent) {
+		if (!mediaResizeStart || !onTextOffsetChange) return;
+		const dx = (e.clientX - mediaResizeStart.x) / Math.max(0.001, scale);
+		const dy = (e.clientY - mediaResizeStart.y) / Math.max(0.001, scale);
+		// Average axis so corner drag feels like uniform stretch.
+		const delta = (dx + dy) / 2;
+		const next = clampMediaStretch(mediaResizeStart.stretch + delta / 520);
+		onTextOffsetChange('videoStoryMediaSize', { x: next, y: next });
+	}
+
+	function endMediaResize() {
+		mediaResizeStart = null;
+	}
+
+	function onMediaFrameClick(e: MouseEvent) {
+		if (!interactive || !onTextSelect) return;
+		e.stopPropagation();
+		onTextSelect('videoStoryMedia', e.currentTarget as HTMLElement);
+	}
 
 	function onStoryVideoMeta(e: Event) {
 		const el = e.currentTarget as HTMLVideoElement;
@@ -346,17 +390,65 @@
 	>
 		{#snippet children()}
 			<div
+				role="presentation"
+				data-text-selectable="videoStoryMedia"
+				onclick={onMediaFrameClick}
+				onpointermove={moveMediaResize}
+				onpointerup={endMediaResize}
+				onpointercancel={endMediaResize}
 				style="
 					position: relative;
-					width: 100%;
-					height: 100%;
+					width: {mediaStretch * 100}%;
+					height: {mediaStretch * 100}%;
 					min-height: 0;
+					margin: 0 auto;
 					touch-action: none;
 					cursor: {interactive ? 'grab' : 'default'};
+					box-sizing: border-box;
+					{mediaSelected && interactive
+						? 'box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.7);'
+						: ''}
 					{frameStyle}
 				"
 			>
 				{@render mediaLayer(objectFit)}
+				{#if interactive && mediaSelected}
+					<div
+						data-draggable-no-pan
+						style="
+							position: absolute;
+							right: 10px;
+							bottom: 10px;
+							z-index: 4;
+							width: 22px;
+							height: 22px;
+							border-radius: 8px;
+							background: rgba(0,0,0,0.5);
+							border: 1px solid rgba(255,255,255,0.25);
+							display: flex;
+							align-items: center;
+							justify-content: center;
+							cursor: nwse-resize;
+							pointer-events: auto;
+							touch-action: none;
+						"
+						onpointerdown={startMediaResize}
+						title="Drag to stretch video"
+						role="button"
+						tabindex="0"
+						aria-label="Stretch video frame"
+					>
+						<div
+							style="
+								width: 10px;
+								height: 10px;
+								border-right: 2px solid rgba(255,255,255,0.8);
+								border-bottom: 2px solid rgba(255,255,255,0.8);
+								transform: translate(1px, 1px);
+							"
+						></div>
+					</div>
+				{/if}
 			</div>
 		{/snippet}
 	</DraggableBlock>
@@ -744,141 +836,88 @@
 				</div>
 			</div>
 		{:else if layout === 'source'}
-			<!-- Source hook: left headline with neon [[highlight]] + letterbox + Source line -->
-			<div
-				style="
-					flex-shrink: 0;
-					padding: {previewMode ? '22px 22px 12px' : '64px 56px 24px'};
-					box-sizing: border-box;
-					position: relative;
-					z-index: 5;
-				"
-			>
-				<DraggableBlock
-					dx={textOffsets.videoStoryHeadline?.x ?? 0}
-					dy={textOffsets.videoStoryHeadline?.y ?? 0}
-					{interactive}
-					{scale}
-					holdDragFromText={interactive}
-					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
-				>
-					{#snippet children()}
-						<CanvasMarkupTextBlock
-							value={headline}
-							{interactive}
-							defaultColor={highlightColor}
-							selected={selectedText === 'videoStoryHeadline'}
-							toolbarKind="videoStoryHeadline"
-							rows={4}
-							minHeight="0px"
-							ariaLabel="Source hook headline"
-							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
-							fontSize={sourceFontSize}
-							{showToolbar}
-							onTextChange={onHeadlineChange}
-							onTextSelect={onTextSelect}
-							onHeadlineRangeSelect={onHeadlineRangeSelect}
-						>
-							{#snippet display()}
-								<div style="text-align: {headlineStyle.align ?? 'left'}; width: 100%;">
-									<HighlightedText
-										as="div"
-										text={headline}
-										parseHighlights={true}
-										defaultColor={highlightColor}
-										style="
-											margin: 0;
-											white-space: pre-wrap;
-											word-break: break-word;
-											line-height: 1.22;
-											letter-spacing: -0.025em;
-											color: #ffffff;
-											font-weight: {headlineStyle.fontWeight ?? 700};
-											font-size: {sourceFontSize}px;
-											text-shadow: 0 2px 14px rgba(0,0,0,0.45);
-											max-width: 100%;
-										"
-									/>
-								</div>
-							{/snippet}
-						</CanvasMarkupTextBlock>
-					{/snippet}
-				</DraggableBlock>
-			</div>
+			<!-- Highlight: 2-line left hook with neon [[word]] + full-width 16:9 video -->
 			<div
 				style="
 					flex: 1;
 					min-height: 0;
-					position: relative;
-					background: #000;
 					display: flex;
-					align-items: center;
+					flex-direction: column;
+					align-items: stretch;
 					justify-content: center;
+					gap: {previewMode ? '14px' : '36px'};
+					padding: {previewMode ? '36px 0 40px' : '100px 0 120px'};
+					box-sizing: border-box;
+					background: #000;
 				"
 			>
+				<div style="flex-shrink: 0; width: 100%; padding: {previewMode ? '0 16px' : '0 48px'}; box-sizing: border-box;">
+					<DraggableBlock
+						dx={textOffsets.videoStoryHeadline?.x ?? 0}
+						dy={textOffsets.videoStoryHeadline?.y ?? 0}
+						{interactive}
+						{scale}
+						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
+					>
+						{#snippet children()}
+							<CanvasMarkupTextBlock
+								value={headline}
+								{interactive}
+								defaultColor={highlightColor}
+								selected={selectedText === 'videoStoryHeadline'}
+								toolbarKind="videoStoryHeadline"
+								rows={2}
+								minHeight="0px"
+								ariaLabel="Highlight headline"
+								fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+								fontSize={sourceFontSize}
+								{showToolbar}
+								onTextChange={onHeadlineChange}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+							>
+								{#snippet display()}
+									<div style="text-align: {headlineStyle.align ?? 'left'}; width: 100%;">
+										<HighlightedText
+											as="div"
+											text={headline}
+											parseHighlights={true}
+											defaultColor={highlightColor}
+											style="
+												margin: 0;
+												white-space: normal;
+												word-break: break-word;
+												line-height: 1.22;
+												letter-spacing: -0.02em;
+												color: #ffffff;
+												font-weight: {headlineStyle.fontWeight ?? 400};
+												font-size: {sourceFontSize}px;
+												max-width: 100%;
+												display: -webkit-box;
+												-webkit-box-orient: vertical;
+												-webkit-line-clamp: 2;
+												overflow: hidden;
+											"
+										/>
+									</div>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						{/snippet}
+					</DraggableBlock>
+				</div>
 				<div
 					style="
 						position: relative;
+						flex-shrink: 0;
 						width: 100%;
-						height: {previewMode ? '50%' : '44%'};
-						min-height: 0;
+						aspect-ratio: 16 / 9;
+						background: #0a0a0a;
+						overflow: visible;
 					"
 				>
-					{@render draggableMedia('contain')}
+					{@render draggableMedia('cover')}
 				</div>
 			</div>
-			<DraggableBlock
-				dx={textOffsets.videoStoryWatermark?.x ?? 0}
-				dy={textOffsets.videoStoryWatermark?.y ?? 0}
-				{interactive}
-				{scale}
-				holdDragFromText={interactive}
-				onChange={(x, y) => onTextOffsetChange?.('videoStoryWatermark', { x, y })}
-			>
-				{#snippet children()}
-					<div
-						style="
-							flex-shrink: 0;
-							padding: {previewMode ? '10px 22px 22px' : '20px 56px 56px'};
-							box-sizing: border-box;
-							position: relative;
-							z-index: 5;
-						"
-					>
-						<CanvasMarkupTextBlock
-							value={sourceLine}
-							{interactive}
-							defaultColor="#ffffff"
-							selected={selectedText === 'videoStoryWatermark'}
-							toolbarKind="videoStoryWatermark"
-							rows={1}
-							minHeight="0px"
-							ariaLabel="Source attribution"
-							fontFamily={watermarkStyle.fontFamily ?? 'Satoshi'}
-							fontSize={watermarkStyle.fontSize ?? (previewMode ? 12 : 26)}
-							{showToolbar}
-							onTextChange={onWatermarkChange}
-							onTextSelect={onTextSelect}
-						>
-							{#snippet display()}
-								<p
-									style="
-										margin: 0;
-										text-align: left;
-										color: #ffffff;
-										font-weight: 500;
-										font-size: {watermarkStyle.fontSize ?? (previewMode ? 12 : 26)}px;
-										letter-spacing: -0.01em;
-										opacity: 0.92;
-									"
-								>
-									{sourceLine}
-								</p>
-							{/snippet}
-						</CanvasMarkupTextBlock>
-					</div>
-				{/snippet}
-			</DraggableBlock>
 		{:else if layout === 'text'}
 			<!-- Text on video: full-bleed cover + centered outlined white text -->
 			<div style="position: absolute; inset: 0; z-index: 0;">

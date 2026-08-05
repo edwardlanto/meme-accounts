@@ -35,7 +35,7 @@ export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 	{ id: 'photoCaption', label: 'Photo caption' },
 	{ id: 'videoPost', label: 'Clip post' },
 	{ id: 'videoFeature', label: 'Feature card' },
-	{ id: 'videoSource', label: 'Source hook' },
+	{ id: 'videoSource', label: 'Highlight' },
 	{ id: 'videoText', label: 'Text on video' },
 	{ id: 'videoCreator', label: 'Creator hook' },
 	{ id: 'videoHook', label: 'Hook video' },

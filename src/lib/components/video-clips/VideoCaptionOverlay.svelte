@@ -158,14 +158,16 @@
 	}
 
 	function textStrokeStyle(t: CaptionTemplate): string {
+		const customShadow = t.textShadow && t.textShadow !== 'none' ? t.textShadow : '';
 		const useStroke = strokeEnabled || t.textStroke;
 		if (!useStroke) {
 			// Always keep a readable shadow so white text doesn't vanish on bright frames
-			return `text-shadow: 0 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.55);`;
+			return `text-shadow: ${customShadow || '0 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.55)'};`;
 		}
 		const w = t.strokeWidth || 3;
 		const c = t.strokeColor || '#000000';
-		return `-webkit-text-stroke: ${w}px ${c}; paint-order: stroke fill; text-shadow: 0 3px 8px rgba(0,0,0,0.65);`;
+		const shadow = customShadow || '0 3px 8px rgba(0,0,0,0.65)';
+		return `-webkit-text-stroke: ${w}px ${c}; paint-order: stroke fill; text-shadow: ${shadow};`;
 	}
 </script>
 

@@ -3,7 +3,7 @@ import { stripMarkup } from '$lib/highlight';
 /** Layout constants matching TextCarouselTemplate (1080×1350 design). */
 export const TEXT_CAROUSEL_BODY_LAYOUT = {
 	contentWidthPx: 904,
-	bodyMaxHeightPx: 900,
+	bodyMaxHeightPx: 980,
 	minFontPx: 30,
 	maxFontPx: 72,
 	lineHeight: 1.38,

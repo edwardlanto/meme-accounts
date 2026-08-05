@@ -136,9 +136,9 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 	},
 	{
 		id: 'video-source',
-		name: 'Source hook',
-		description: 'Left-aligned hook with neon highlight + source line under the clip',
-		href: '/dashboard/studio?template=source',
+		name: 'Highlight',
+		description: 'Left-aligned hook with one neon highlighted word above a full-width clip',
+		href: '/dashboard/studio?template=highlight',
 		previewBg: '/placeholders/carousel/source-hook-placeholder.png',
 		previewText: '',
 		previewSource: '',

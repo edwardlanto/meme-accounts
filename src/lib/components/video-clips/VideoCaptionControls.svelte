@@ -222,15 +222,25 @@
 									color: {template.textColor};
 									background: {template.backgroundColor === 'transparent' ? '#222' : template.backgroundColor};
 									text-transform: {template.textTransform};
+									letter-spacing: {template.letterSpacing};
 									padding: 6px 10px;
 									border-radius: {template.borderRadius};
-									{template.textStroke ? `
+									{template.textStroke
+										? `
 										-webkit-text-stroke: 1px ${template.strokeColor};
 										paint-order: stroke fill;
-									` : ''}
+									`
+										: ''}
+									{template.textShadow && template.textShadow !== 'none'
+										? `text-shadow: ${template.textShadow};`
+										: ''}
 								"
 							>
-								{template.name}
+								{#if template.id === 'cyan-punch' && template.highlightColor}
+									<span>BEST</span><span style="color: {template.highlightColor};"> PART</span><span> MY</span>
+								{:else}
+									{template.name}
+								{/if}
 							</div>
 							<div class="template-meta">
 								<span class="meta-chip">{template.animation}</span>
