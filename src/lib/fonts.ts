@@ -16,6 +16,8 @@ export const GOOGLE_FONTS: GoogleFont[] = [
 	{ family: 'Impact', category: 'display', weights: [400] },
 	/** News-style headlines — lighter than Impact at the same weight */
 	{ family: 'Bebas Neue', category: 'sans', weights: [400] },
+	/** Topic card body — clean geometric sans */
+	{ family: 'Montserrat', category: 'sans', weights: [400, 500, 600] },
 ];
 
 const loadedFonts = new Set<string>();

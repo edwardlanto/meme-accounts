@@ -151,9 +151,9 @@ export const VIDEO_CREATOR_DEFAULTS = {
 
 export const VIDEO_CREATOR_HEADLINE_STYLE = {
 	color: '#ffffff',
-	fontWeight: 500,
+	fontWeight: 400,
 	fontFamily: 'Satoshi',
-	fontSize: 52,
+	fontSize: 48,
 	align: 'left' as const,
 } as const;
 
@@ -239,10 +239,29 @@ export const VIDEO_FEATURE_BODY_STYLE = {
 
 /** Image top + centered title/body on black (Topic card). */
 export const PHOTO_TOPIC_DEFAULTS = {
-	imageUrl: '/placeholders/carousel/photo-topic-placeholder.png',
-	headlineColor: '#A8D8FF',
+	imageUrl: '/images/templates/topic-bg.jpeg',
+	headlineColor: '#95B8F6',
 	headline: 'REGENERATIVE\nMEDICINE',
 	body: 'Stem cells, tissue engineering, and lab-grown organs aim to repair or replace failing body parts, reducing the need for transplants and extending functional lifespan.',
+} as const;
+
+export const PHOTO_TOPIC_HEADLINE_STYLE = {
+	color: '#95B8F6',
+	fontWeight: 400,
+	fontFamily: 'Bebas Neue',
+	fontSize: 96,
+	align: 'center' as const,
+	letterSpacing: 0.06,
+	lineHeight: 0.92,
+} as const;
+
+export const PHOTO_TOPIC_BODY_STYLE = {
+	color: '#ffffff',
+	fontWeight: 400,
+	fontFamily: 'Montserrat',
+	fontSize: 32,
+	align: 'center' as const,
+	lineHeight: 1.45,
 } as const;
 
 /** Full-bleed photo with top gradient + left caption paragraphs (Photo caption). */

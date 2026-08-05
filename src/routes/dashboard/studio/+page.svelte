@@ -106,6 +106,8 @@ import JSZip from 'jszip';
 		VIDEO_POST_DEFAULTS,
 		VIDEO_POST_HEADLINE_STYLE,
 		PHOTO_TOPIC_DEFAULTS,
+		PHOTO_TOPIC_HEADLINE_STYLE,
+		PHOTO_TOPIC_BODY_STYLE,
 		PHOTO_CAPTION_DEFAULTS,
 		WHITE_THREAD_DEFAULTS,
 		WHITE_MEDIA_DEFAULTS,
@@ -592,7 +594,13 @@ import JSZip from 'jszip';
 		if (t === 'blackText' || isPhotoStoryFamily(t)) {
 			const row = [...(bgImagesByTemplate[t] ?? [])];
 			while (row.length <= idx) row.push('');
-			if (!(row[idx] ?? '').trim()) {
+			const curImg = String(row[idx] ?? '').trim();
+			const staleTopicPlaceholder =
+				t === 'photoTopic' &&
+				(!curImg ||
+					curImg.includes('photo-topic-placeholder') ||
+					curImg.endsWith('/placeholders/carousel/photo-topic-placeholder.png'));
+			if (!curImg || staleTopicPlaceholder) {
 				row[idx] =
 					t === 'photoTopic'
 						? PHOTO_TOPIC_DEFAULTS.imageUrl
@@ -8543,8 +8551,12 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					scale={previewScale}
 					interactive={canvasInteractive}
 					selectedText={selectedText}
-					headlineStyle={canvasBlackTextHeadlineStyle}
-					bodyStyle={canvasBlackTextBodyStyle}
+					headlineStyle={previewTemplate === 'photoTopic'
+						? { ...PHOTO_TOPIC_HEADLINE_STYLE, ...canvasBlackTextHeadlineStyle }
+						: canvasBlackTextHeadlineStyle}
+					bodyStyle={previewTemplate === 'photoTopic'
+						? { ...PHOTO_TOPIC_BODY_STYLE, ...canvasBlackTextBodyStyle }
+						: canvasBlackTextBodyStyle}
 					textOffsets={offsetsForTemplate(paintSlide, previewTemplate)}
 					onTextOffsetChange={(kind, next) => {
 						if (!canvasInteractive) return;

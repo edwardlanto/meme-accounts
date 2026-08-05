@@ -111,7 +111,7 @@
 		headlineStyle.fontSize ?? (previewMode ? 26 : 56),
 	);
 	const creatorFontSize = $derived(
-		headlineStyle.fontSize ?? (previewMode ? 26 : 52),
+		headlineStyle.fontSize ?? (previewMode ? 22 : 48),
 	);
 	const postFontSize = $derived(
 		headlineStyle.fontSize ?? (previewMode ? 20 : 44),
@@ -836,7 +836,7 @@
 				</div>
 			</div>
 		{:else if layout === 'source'}
-			<!-- Highlight: 2-line left hook with neon [[word]] + full-width 16:9 video -->
+			<!-- Highlight: 2-line left hook + tall nearly-full-width video -->
 			<div
 				style="
 					flex: 1;
@@ -844,14 +844,14 @@
 					display: flex;
 					flex-direction: column;
 					align-items: stretch;
-					justify-content: center;
-					gap: {previewMode ? '14px' : '36px'};
-					padding: {previewMode ? '36px 0 40px' : '100px 0 120px'};
+					justify-content: flex-start;
+					gap: {previewMode ? '12px' : '28px'};
+					padding: {previewMode ? '28px 14px 24px' : '72px 40px 56px'};
 					box-sizing: border-box;
 					background: #000;
 				"
 			>
-				<div style="flex-shrink: 0; width: 100%; padding: {previewMode ? '0 16px' : '0 48px'}; box-sizing: border-box;">
+				<div style="flex-shrink: 0; width: 100%;">
 					<DraggableBlock
 						dx={textOffsets.videoStoryHeadline?.x ?? 0}
 						dy={textOffsets.videoStoryHeadline?.y ?? 0}
@@ -908,9 +908,9 @@
 				<div
 					style="
 						position: relative;
-						flex-shrink: 0;
+						flex: 1;
+						min-height: {previewMode ? '55%' : '58%'};
 						width: 100%;
-						aspect-ratio: 16 / 9;
 						background: #0a0a0a;
 						overflow: visible;
 					"
@@ -1186,14 +1186,18 @@
 				</div>
 			</div>
 		{:else if layout === 'creator'}
-			<!-- Creator: profile + emphasis headline + letterboxed video -->
+			<!-- Creator: profile + bold [[emphasis]] headline + tall nearly-full-width video -->
 			<div
 				style="
-					flex-shrink: 0;
-					padding: {previewMode ? '22px 22px 10px' : '64px 56px 20px'};
+					flex: 1;
+					min-height: 0;
+					display: flex;
+					flex-direction: column;
+					align-items: stretch;
+					gap: {previewMode ? '12px' : '26px'};
+					padding: {previewMode ? '24px 14px 20px' : '64px 40px 48px'};
 					box-sizing: border-box;
-					position: relative;
-					z-index: 5;
+					background: #000;
 				"
 			>
 				<DraggableBlock
@@ -1201,7 +1205,6 @@
 					dy={textOffsets.videoCreatorProfile?.y ?? 0}
 					{interactive}
 					{scale}
-					holdDragFromText={interactive}
 					onChange={(x, y) => onTextOffsetChange?.('videoCreatorProfile', { x, y })}
 				>
 					{#snippet children()}
@@ -1209,18 +1212,17 @@
 							style="
 								display: flex;
 								align-items: center;
-								gap: {previewMode ? '12px' : '22px'};
-								margin-bottom: {previewMode ? '14px' : '28px'};
+								gap: {previewMode ? '10px' : '18px'};
 							"
 						>
 							<div
 								style="
-									width: {previewMode ? 36 : 72}px;
-									height: {previewMode ? 36 : 72}px;
+									width: {previewMode ? 34 : 68}px;
+									height: {previewMode ? 34 : 68}px;
 									border-radius: 50%;
 									overflow: hidden;
 									flex-shrink: 0;
-									background: #1f2937;
+									background: #111;
 									display: flex;
 									align-items: center;
 									justify-content: center;
@@ -1235,7 +1237,7 @@
 								{:else}
 									<span
 										style="
-											font-size: {previewMode ? 12 : 22}px;
+											font-size: {previewMode ? 11 : 20}px;
 											font-weight: 700;
 											color: #fff;
 											letter-spacing: -0.02em;
@@ -1250,7 +1252,7 @@
 									style="
 										display: flex;
 										align-items: center;
-										gap: {previewMode ? 6 : 10}px;
+										gap: {previewMode ? 5 : 8}px;
 										flex-wrap: wrap;
 									"
 								>
@@ -1263,7 +1265,7 @@
 										minHeight="0px"
 										ariaLabel="Creator name"
 										fontFamily="Satoshi"
-										fontSize={previewMode ? 14 : 32}
+										fontSize={previewMode ? 13 : 30}
 										{showToolbar}
 										onTextChange={onProfileNameChange}
 										onTextSelect={onTextSelect}
@@ -1271,7 +1273,7 @@
 										{#snippet display()}
 											<span
 												style="
-													font-size: {previewMode ? 14 : 32}px;
+													font-size: {previewMode ? 13 : 30}px;
 													font-weight: 700;
 													color: #fff;
 													letter-spacing: -0.02em;
@@ -1283,8 +1285,8 @@
 										{/snippet}
 									</CanvasMarkupTextBlock>
 									<svg
-										width={previewMode ? 14 : 26}
-										height={previewMode ? 14 : 26}
+										width={previewMode ? 13 : 24}
+										height={previewMode ? 13 : 24}
 										viewBox="0 0 24 24"
 										fill="none"
 										aria-hidden="true"
@@ -1309,7 +1311,7 @@
 									minHeight="0px"
 									ariaLabel="Creator handle"
 									fontFamily="Satoshi"
-									fontSize={previewMode ? 12 : 26}
+									fontSize={previewMode ? 11 : 24}
 									{showToolbar}
 									onTextChange={onProfileHandleChange}
 									onTextSelect={onTextSelect}
@@ -1317,9 +1319,9 @@
 									{#snippet display()}
 										<span
 											style="
-												font-size: {previewMode ? 12 : 26}px;
+												font-size: {previewMode ? 11 : 24}px;
 												font-weight: 400;
-												color: rgba(255,255,255,0.55);
+												color: rgba(255,255,255,0.5);
 												letter-spacing: -0.01em;
 												line-height: 1.2;
 											"
@@ -1338,17 +1340,16 @@
 					dy={textOffsets.videoStoryHeadline?.y ?? 0}
 					{interactive}
 					{scale}
-					holdDragFromText={interactive}
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}
 						<CanvasMarkupTextBlock
 							value={headline}
 							{interactive}
-							defaultColor={highlightColor}
+							defaultColor="#ffffff"
 							selected={selectedText === 'videoStoryHeadline'}
 							toolbarKind="videoStoryHeadline"
-							rows={4}
+							rows={3}
 							minHeight="0px"
 							ariaLabel="Creator hook headline"
 							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
@@ -1359,7 +1360,7 @@
 							onHeadlineRangeSelect={onHeadlineRangeSelect}
 						>
 							{#snippet display()}
-								<div style="text-align: {headlineStyle.align ?? 'left'}; width: 100%;">
+								<div style="text-align: left; width: 100%;">
 									<HighlightedText
 										as="div"
 										text={headline}
@@ -1373,9 +1374,8 @@
 											line-height: 1.28;
 											letter-spacing: -0.025em;
 											color: #ffffff;
-											font-weight: {headlineStyle.fontWeight ?? 500};
+											font-weight: {headlineStyle.fontWeight ?? 400};
 											font-size: {creatorFontSize}px;
-											text-shadow: 0 2px 16px rgba(0,0,0,0.45);
 											max-width: 100%;
 										"
 									/>
@@ -1384,29 +1384,18 @@
 						</CanvasMarkupTextBlock>
 					{/snippet}
 				</DraggableBlock>
-			</div>
-			<div
-				style="
-					flex: 1;
-					min-height: 0;
-					position: relative;
-					background: #000;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					padding: {previewMode ? '0 0 28px' : '0 0 80px'};
-					box-sizing: border-box;
-				"
-			>
+
 				<div
 					style="
 						position: relative;
+						flex: 1;
+						min-height: {previewMode ? '52%' : '56%'};
 						width: 100%;
-						height: {previewMode ? '46%' : '40%'};
-						min-height: 0;
+						background: #0a0a0a;
+						overflow: visible;
 					"
 				>
-					{@render draggableMedia('contain')}
+					{@render draggableMedia('cover')}
 				</div>
 			</div>
 		{:else if layout === 'hook'}

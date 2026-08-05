@@ -124,6 +124,7 @@
 			fontWeight: merged.fontWeight ?? 400,
 			fontSize: merged.fontSize ?? autoTextCarouselFontPx(bodyDisplayText, toolbarBodyFontPx),
 			lineHeight: merged.lineHeight ?? 1.38,
+			align: merged.align ?? 'left',
 		};
 	});
 
@@ -348,7 +349,7 @@
 		</DraggableBlock>
 
 		<!-- ── Body text ──────────────────────────────────────────────────── -->
-		<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-start; overflow: visible;">
+		<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; overflow: visible;">
 			<DraggableBlock
 				dx={textOffsets.textCarouselBody?.x ?? 0}
 				dy={textOffsets.textCarouselBody?.y ?? 0}
@@ -379,7 +380,7 @@
 							<HighlightedText
 								as="div"
 								text={bodyDisplayText}
-								style="margin: 0; letter-spacing: -0.8px; word-break: break-word; white-space: pre-wrap; color: {baseText}; {bodyMergedCss}"
+								style="margin: 0; letter-spacing: -0.8px; word-break: break-word; white-space: pre-wrap; text-align: left; color: {baseText}; {bodyMergedCss}"
 							/>
 						{/snippet}
 					</CanvasMarkupTextBlock>

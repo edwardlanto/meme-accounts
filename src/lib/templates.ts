@@ -172,7 +172,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		name: 'Topic card',
 		description: 'Cinematic image on top with a centered title and body on black',
 		href: '/dashboard/studio?template=topic',
-		previewBg: '/placeholders/carousel/photo-topic-placeholder.png',
+		previewBg: '/images/templates/topic-bg.jpeg',
 		previewText: '',
 		previewSource: '',
 		badge: 'Photo',
