@@ -18,14 +18,111 @@
 
 	const featured = [
 		{ title: 'Viral Hooks', creator: 'Maya Carter', initials: 'MC',
-		  bg: '#7B2D26', img: '/placeholders/placeholder-square.jpeg' },
+		  bg: '#7B2D26', img: '/placeholders/placeholder-square.jpeg',
+		  alt: 'Viral hooks meme template preview' },
 		{ title: 'Carousels', creator: 'Avery James', initials: 'AJ',
-		  bg: '#D67862', img: '/placeholders/placeholder-square.jpeg' },
+		  bg: '#D67862', img: '/placeholders/placeholder-square.jpeg',
+		  alt: 'Instagram carousel meme template preview' },
 		{ title: 'News Studio', creator: 'Sienna Cole', initials: 'SC',
-		  bg: '#3D6B8C', img: '/placeholders/placeholder-square.jpeg' },
+		  bg: '#3D6B8C', img: '/placeholders/placeholder-square.jpeg',
+		  alt: 'News-style meme post template preview' },
 		{ title: 'Slide Composer', creator: 'Devin Park', initials: 'DP',
-		  bg: '#A6B4C4', img: '/placeholders/placeholder-square.jpeg' },
+		  bg: '#A6B4C4', img: '/placeholders/placeholder-square.jpeg',
+		  alt: 'Slide composer meme template preview' },
 	];
+
+	const benefits = [
+		{
+			title: 'Bulk create',
+			desc: 'Generate dozens of meme posts in one session — captions, slides, and formats ready to schedule.',
+		},
+		{
+			title: 'Viral templates',
+			desc: 'Start from proven carousel, news, quote, and hook layouts built for meme and niche pages.',
+		},
+		{
+			title: 'Schedule & auto-post',
+			desc: 'Queue daily drops, keep your feed consistent, and stop living in the Instagram draft folder.',
+		},
+		{
+			title: 'Studio polish',
+			desc: 'Tweak type, crops, and branding in one studio so every post looks intentional — not copy-pasted.',
+		},
+	];
+
+	const faqs = [
+		{
+			q: 'What is Meme Accounts?',
+			a: 'Meme Accounts is a create-and-schedule tool for people who run Instagram meme and niche pages. Pick a template, build posts in bulk or in the studio, then schedule and auto-post from one place.',
+		},
+		{
+			q: 'Can I schedule Instagram meme posts?',
+			a: 'Yes. Connect your account, queue carousels and image posts, and let Meme Accounts publish on the schedule you set — so your page stays active without posting manually every day.',
+		},
+		{
+			q: 'Do I need design skills?',
+			a: 'No. Templates handle layout, type, and composition. You bring the joke or niche angle; the studio handles the polish.',
+		},
+		{
+			q: 'Can I create posts in bulk?',
+			a: 'Yes. Bulk tools let you spin up many meme posts at once, then refine winners in the studio before you schedule them.',
+		},
+		{
+			q: 'Is there a free plan?',
+			a: 'Yes. You can start free with no credit card. Upgrade when you need more volume, seats, or advanced scheduling — cancel anytime.',
+		},
+		{
+			q: 'What templates can I use?',
+			a: 'Use viral hooks, carousels, news-style frames, quote slides, and more. Templates are built for meme page formats that already perform on Instagram.',
+		},
+	];
+
+	const metaDescription =
+		'Create viral meme posts, carousels, and reels with ready-made templates. Bulk generate, schedule, and auto-post to Instagram — built for meme page creators.';
+
+	const jsonLd = {
+		'@context': 'https://schema.org',
+		'@graph': [
+			{
+				'@type': 'Organization',
+				'@id': 'https://memeaccounts.com/#organization',
+				name: 'Meme Accounts',
+				url: 'https://memeaccounts.com/',
+			},
+			{
+				'@type': 'WebSite',
+				'@id': 'https://memeaccounts.com/#website',
+				url: 'https://memeaccounts.com/',
+				name: 'Meme Accounts',
+				publisher: { '@id': 'https://memeaccounts.com/#organization' },
+			},
+			{
+				'@type': 'SoftwareApplication',
+				name: 'Meme Accounts',
+				applicationCategory: 'BusinessApplication',
+				operatingSystem: 'Web',
+				url: 'https://memeaccounts.com/',
+				description: metaDescription,
+				offers: {
+					'@type': 'Offer',
+					price: '0',
+					priceCurrency: 'USD',
+				},
+				publisher: { '@id': 'https://memeaccounts.com/#organization' },
+			},
+			{
+				'@type': 'FAQPage',
+				mainEntity: faqs.map((item) => ({
+					'@type': 'Question',
+					name: item.q,
+					acceptedAnswer: {
+						'@type': 'Answer',
+						text: item.a,
+					},
+				})),
+			},
+		],
+	};
 
 	onMount(() => {
 		mounted = true;
@@ -63,8 +160,22 @@
 </script>
 
 <svelte:head>
-	<title>Carousel Studio — Posting Made Easy</title>
-	<meta name="description" content="Pick a template. Connect your account. Auto-post on schedule." />
+	<title>Meme Accounts — Create &amp; Schedule Meme Posts Fast</title>
+	<meta name="description" content={metaDescription} />
+	<link rel="canonical" href="https://memeaccounts.com/" />
+
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="https://memeaccounts.com/" />
+	<meta property="og:title" content="Meme Accounts — Create & Schedule Meme Posts Fast" />
+	<meta property="og:description" content={metaDescription} />
+	<meta property="og:site_name" content="Meme Accounts" />
+
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="Meme Accounts — Create & Schedule Meme Posts Fast" />
+	<meta name="twitter:description" content={metaDescription} />
+
+	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+	{@html `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`}
 </svelte:head>
 
 <div class="page" class:mounted>
@@ -72,11 +183,14 @@
 	<nav class="nav" class:scrolled={scrollY > 24}>
 		<a href="/" class="brand">
 			<span class="brand-mark"></span>
-			<span class="brand-name">CarouselStudio</span>
+			<span class="brand-name">Meme Accounts</span>
 		</a>
 		<div class="nav-actions">
-			<a href="/dashboard" class="btn btn-ghost">Launch a Studio</a>
-			<a href="/signup" class="btn btn-dark">Get CarouselStudio</a>
+			<a href="/pricing" class="btn btn-ghost">Pricing</a>
+			<a href="/fake-tweet-maker" class="btn btn-ghost">Tweet Maker</a>
+			<a href="/instagram-carousel-maker" class="btn btn-ghost">Instagram Carousel</a>
+			<a href="/linkedin-carousel-maker" class="btn btn-ghost">LinkedIn Carousel</a>
+			<a href="/signup" class="btn btn-dark">Get Meme Accounts</a>
 		</div>
 	</nav>
 
@@ -94,10 +208,10 @@
 						<rect x="22" y="32" width="10" height="3" rx="1.5" fill="#0f0f10" opacity="0.5"/>
 					</svg>
 				</div>
-				<p class="hero-app-name">CarouselStudio</p>
+				<p class="hero-app-name">Meme Accounts</p>
 			</div>
-			<h1 class="hero-title">Posting Made Easy</h1>
-			<p class="hero-sub">Pick a Template. Connect your Account. That's it.</p>
+			<h1 class="hero-title">Post memes on autopilot</h1>
+			<p class="hero-sub">Pick a template. Connect your account. Schedule and ship daily.</p>
 			<div class="hero-ctas">
 				<a href="/signup" class="btn btn-dark btn-cta">
 					Explore Templates
@@ -131,13 +245,18 @@
 	</section>
 
 	<!-- FEATURED -->
-	<section class="featured">
+	<section id="features" class="featured">
 		<div class="container">
-			<h2 class="featured-h reveal">Featured</h2>
+			<div class="section-head reveal">
+				<h2 class="featured-h">Featured templates</h2>
+				<p class="section-sub">
+					Ready-made layouts for meme carousels, viral hooks, news frames, and slide stacks.
+				</p>
+			</div>
 			<div class="featured-grid">
 				{#each featured as f, i}
 					<a href="/dashboard" class="feat-card reveal" style="background:{f.bg}; --d:{i * 0.08}s">
-						<img class="feat-img" src={f.img} alt="" />
+						<img class="feat-img" src={f.img} alt={f.alt} />
 						<span class="feat-badge">Featured</span>
 						<div class="feat-info">
 							<h3 class="feat-title">{f.title}</h3>
@@ -154,7 +273,7 @@
 	</section>
 
 	<!-- HOW IT WORKS (floating cards) -->
-	<section class="how">
+	<section id="how" class="how">
 		<div class="container">
 			<h2 class="how-title reveal">How it works.</h2>
 
@@ -178,8 +297,8 @@
 							</div>
 						</div>
 					</div>
-					<h3 class="how-step-title">Pick your Template</h3>
-					<p class="how-step-desc">Choose from any of our templates to post with.</p>
+					<h3 class="how-step-title">Pick your template</h3>
+					<p class="how-step-desc">Choose a meme-ready layout — carousels, hooks, news frames, and more.</p>
 				</div>
 
 				<!-- Step 2: connect account card -->
@@ -193,11 +312,11 @@
 						</div>
 						<div class="fc-text">
 							<p class="fc-title">12,400 followers</p>
-							<p class="fc-handle">@yourbrand</p>
+							<p class="fc-handle">@yourmemepage</p>
 						</div>
 					</div>
-					<h3 class="how-step-title">Connect your Account</h3>
-					<p class="how-step-desc">Link directly to your favorite social platform.</p>
+					<h3 class="how-step-title">Connect your account</h3>
+					<p class="how-step-desc">Link Instagram so finished posts can go live on your schedule.</p>
 				</div>
 
 				<!-- Step 3: auto-post chips -->
@@ -213,9 +332,52 @@
 							<span class="chip-letter">TT</span>
 						</span>
 					</div>
-					<h3 class="how-step-title">Auto-Post Daily</h3>
-					<p class="how-step-desc">CarouselStudio automatically schedules posts across your accounts.</p>
+					<h3 class="how-step-title">Auto-post daily</h3>
+					<p class="how-step-desc">Meme Accounts schedules and publishes so your page never goes quiet.</p>
 				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- BUILT FOR MEME ACCOUNTS -->
+	<section id="built-for" class="benefits">
+		<div class="container">
+			<div class="section-head reveal">
+				<h2 class="benefits-h">Built for meme accounts</h2>
+				<p class="section-sub">
+					Everything you need to ship daily content without bouncing between Canva, drafts, and native schedulers.
+				</p>
+			</div>
+			<ul class="benefits-list">
+				{#each benefits as b, i}
+					<li class="benefit-row reveal" style="--d:{i * 0.06}s">
+						<span class="benefit-mark" aria-hidden="true"></span>
+						<div class="benefit-copy">
+							<h3 class="benefit-title">{b.title}</h3>
+							<p class="benefit-desc">{b.desc}</p>
+						</div>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	</section>
+
+	<!-- FAQ -->
+	<section id="faq" class="faq">
+		<div class="container faq-inner">
+			<div class="section-head reveal">
+				<h2 class="faq-h">Frequently asked questions</h2>
+				<p class="section-sub">
+					Straight answers for creators running meme and niche Instagram pages.
+				</p>
+			</div>
+			<div class="faq-list">
+				{#each faqs as item, i}
+					<details class="faq-item reveal" style="--d:{i * 0.04}s">
+						<summary class="faq-q">{item.q}</summary>
+						<p class="faq-a">{item.a}</p>
+					</details>
+				{/each}
 			</div>
 		</div>
 	</section>
@@ -224,10 +386,10 @@
 	<section class="cta-strip">
 		<div class="container cta-row reveal">
 			<div>
-				<h3 class="cta-h">Ready to put posting on autopilot?</h3>
+				<h2 class="cta-h">Ready to put posting on autopilot?</h2>
 				<p class="cta-p">Free to start. No credit card. Cancel anytime.</p>
 			</div>
-			<a href="/signup" class="btn btn-dark btn-lg">Get CarouselStudio</a>
+			<a href="/signup" class="btn btn-dark btn-lg">Get Meme Accounts</a>
 		</div>
 	</section>
 
@@ -237,9 +399,9 @@
 			<div class="footer-brand">
 				<a href="/" class="brand">
 					<span class="brand-mark"></span>
-					<span class="brand-name">CarouselStudio</span>
+					<span class="brand-name">Meme Accounts</span>
 				</a>
-				<p class="footer-tag">Schedule. Post. Grow. From one calm studio.</p>
+				<p class="footer-tag">Create. Schedule. Grow. Built for meme pages.</p>
 			</div>
 
 			<div class="footer-col">
@@ -247,7 +409,7 @@
 				<a href="/about">About</a>
 				<a href="/careers">Careers</a>
 				<a href="/contact">Contact</a>
-				<a href="/faq">FAQs</a>
+				<a href="#faq">FAQs</a>
 			</div>
 
 			<div class="footer-col">
@@ -259,9 +421,9 @@
 		</div>
 
 		<div class="container footer-bottom">
-			<p>© 2026 CarouselStudio. All rights reserved.</p>
+			<p>© 2026 Meme Accounts. All rights reserved.</p>
 			<p class="footer-fine">
-				CarouselStudio is a content scheduling tool. Brand names belong to their respective owners.
+				Meme Accounts is a content creation and scheduling tool. Brand names belong to their respective owners.
 			</p>
 		</div>
 	</footer>
@@ -278,6 +440,7 @@
 		--ap-line: rgba(15, 15, 16, 0.08);
 		--ap-line-2: rgba(15, 15, 16, 0.14);
 		--ap-accent: #0f0f10;
+		--ap-lime: #E8FF48;
 
 		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 		color: var(--ap-text);
@@ -292,6 +455,17 @@
 		max-width: 1180px;
 		margin: 0 auto;
 		padding: 0 32px;
+	}
+
+	.section-head {
+		margin-bottom: 36px;
+	}
+	.section-sub {
+		font-size: 16px;
+		line-height: 1.55;
+		color: var(--ap-text-2);
+		margin: 10px 0 0;
+		max-width: 560px;
 	}
 
 	/* ─── reveal animation ────────────────────────────────── */
@@ -613,12 +787,13 @@
 	/* ─── featured ────────────────────────────────────────── */
 	.featured {
 		padding: 100px 24px 40px;
+		scroll-margin-top: 88px;
 	}
 	.featured-h {
 		font-weight: 800;
 		font-size: clamp(28px, 3vw, 36px);
 		letter-spacing: -0.025em;
-		margin: 0 0 28px;
+		margin: 0;
 	}
 	.featured-grid {
 		display: grid;
@@ -714,6 +889,7 @@
 	.how {
 		padding: 100px 24px 110px;
 		background: var(--ap-bg);
+		scroll-margin-top: 88px;
 	}
 	.how-title {
 		font-weight: 900;
@@ -831,6 +1007,115 @@
 		max-width: 280px;
 	}
 
+	/* ─── benefits ────────────────────────────────────────── */
+	.benefits {
+		padding: 40px 24px 100px;
+		background: var(--ap-soft);
+		scroll-margin-top: 88px;
+	}
+	.benefits-h {
+		font-weight: 900;
+		font-size: clamp(32px, 4.2vw, 52px);
+		letter-spacing: -0.035em;
+		line-height: 1.05;
+		margin: 0;
+	}
+	.benefits-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0 48px;
+		border-top: 1px solid var(--ap-line-2);
+	}
+	.benefit-row {
+		display: flex;
+		gap: 18px;
+		align-items: flex-start;
+		padding: 28px 0;
+		border-bottom: 1px solid var(--ap-line-2);
+	}
+	.benefit-mark {
+		flex-shrink: 0;
+		width: 12px;
+		height: 12px;
+		margin-top: 8px;
+		border-radius: 3px;
+		background: var(--ap-lime);
+		box-shadow: 0 0 0 1px rgba(15, 15, 16, 0.08);
+	}
+	.benefit-title {
+		font-weight: 800;
+		font-size: 18px;
+		letter-spacing: -0.02em;
+		margin: 0 0 8px;
+	}
+	.benefit-desc {
+		font-size: 15px;
+		line-height: 1.55;
+		color: var(--ap-text-2);
+		margin: 0;
+		max-width: 420px;
+	}
+
+	/* ─── faq ─────────────────────────────────────────────── */
+	.faq {
+		padding: 100px 24px 40px;
+		scroll-margin-top: 88px;
+	}
+	.faq-inner {
+		max-width: 760px;
+	}
+	.faq-h {
+		font-weight: 900;
+		font-size: clamp(32px, 4.2vw, 48px);
+		letter-spacing: -0.035em;
+		line-height: 1.05;
+		margin: 0;
+	}
+	.faq-list {
+		border-top: 1px solid var(--ap-line-2);
+	}
+	.faq-item {
+		border-bottom: 1px solid var(--ap-line-2);
+		padding: 0;
+	}
+	.faq-q {
+		list-style: none;
+		cursor: pointer;
+		font-weight: 700;
+		font-size: 17px;
+		letter-spacing: -0.015em;
+		padding: 22px 36px 22px 0;
+		position: relative;
+		color: var(--ap-text);
+	}
+	.faq-q::-webkit-details-marker { display: none; }
+	.faq-q::after {
+		content: '+';
+		position: absolute;
+		right: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		font-size: 22px;
+		font-weight: 400;
+		color: var(--ap-text-3);
+		line-height: 1;
+	}
+	.faq-item[open] .faq-q::after {
+		content: '−';
+		color: var(--ap-text);
+	}
+	.faq-a {
+		font-size: 15px;
+		line-height: 1.6;
+		color: var(--ap-text-2);
+		margin: 0 0 22px;
+		max-width: 640px;
+		padding-right: 28px;
+	}
+
 	/* ─── cta strip ───────────────────────────────────────── */
 	.cta-strip {
 		padding: 60px 24px 100px;
@@ -929,6 +1214,13 @@
 		.how { padding: 80px 20px; }
 		.how-title { margin-bottom: 56px; }
 		.how-row { grid-template-columns: 1fr; gap: 48px; }
+
+		.benefits { padding: 24px 20px 80px; }
+		.benefits-list { grid-template-columns: 1fr; gap: 0; }
+		.benefit-row { padding: 22px 0; }
+
+		.faq { padding: 80px 20px 20px; }
+		.faq-q { font-size: 16px; padding-right: 32px; }
 
 		.cta-row { flex-direction: column; text-align: center; padding: 32px 28px; }
 

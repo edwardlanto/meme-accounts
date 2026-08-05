@@ -24,6 +24,8 @@
 		peekBulkClipHandoff,
 		stripEmDashes,
 		BULK_EMOTIONS,
+		BULK_AUDIENCES,
+		audiencePromptText,
 		type BulkEmotionId,
 		type BulkClipHandoff,
 		defaultRowCaptions,
@@ -64,6 +66,7 @@
 	let showBrandPanel = $state(false);
 
 	let topic = $state('');
+	let audienceId = $state<string>('');
 	let audience = $state('');
 	let style = $state<'dark' | 'bold' | 'editorial' | 'minimal'>('bold');
 	let emotion = $state<BulkEmotionId>('');
@@ -327,7 +330,7 @@
 					slide.template,
 					slide.headline || showTitle,
 					slide.body,
-					topicHint || showTitle,
+					[topicHint, showTitle].filter(Boolean).join(' '),
 				);
 				return {
 					showId,
@@ -388,7 +391,7 @@
 				slide.template,
 				slide.headline || show.title,
 				slide.body,
-				topic.trim() || show.title,
+				[topic.trim(), show.title].filter(Boolean).join(' '),
 			);
 			updateSlide(showId, slideId, {
 				mediaLoading: false,
@@ -422,7 +425,7 @@
 					slideCount: slidesPerShow,
 					deckCount: ideaCount,
 					imageCount: 0,
-					audience: audience.trim() || 'general audience',
+					audience: audiencePromptText(audienceId, audience) || 'general audience',
 					emotion: emotion || undefined,
 				}),
 			});
@@ -549,10 +552,10 @@
 				<Palette size={15} />
 				Brand
 			</button>
-			<button type="button" class="btn-primary" onclick={openInStudio} disabled={!selectedShow}>
-				Open selected in Studio
+			<!-- <button type="button" class="btn-primary" onclick={openInStudio} disabled={!selectedShow}>
+				Studio
 				<ArrowRight size={15} />
-			</button>
+			</button> -->
 		</div>
 	</header>
 
@@ -619,8 +622,18 @@
 		</label>
 		<label class="field">
 			<span>Audience</span>
-			<input bind:value={audience} placeholder="optional" />
+			<select bind:value={audienceId}>
+				{#each BULK_AUDIENCES as a}
+					<option value={a.id}>{a.label}</option>
+				{/each}
+			</select>
 		</label>
+		{#if audienceId === 'custom'}
+			<label class="field">
+				<span>Describe audience</span>
+				<input bind:value={audience} placeholder="e.g. first-time home buyers" />
+			</label>
+		{/if}
 		<label class="field">
 			<span>Style</span>
 			<select bind:value={style}>

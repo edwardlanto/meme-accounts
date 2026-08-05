@@ -1,5 +1,6 @@
 <script lang="ts">
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
+	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
 	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
@@ -29,6 +30,7 @@
 		VIDEO_FEATURE_HEADLINE_STYLE,
 		VIDEO_FEATURE_BODY_STYLE,
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
+		IMAGE_QUOTE_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
 	import { ensureFirstWordHighlight } from '$lib/video-clips/video-hook';
 	import {
@@ -146,7 +148,7 @@
 					class="preview-frame"
 					style="width:{PREVIEW_W}px;height:{PREVIEW_H}px"
 				>
-					{#if t.id === 'news' || t.id === 'imageQuote'}
+					{#if t.id === 'news'}
 						<NewsTemplate
 							text={copy.newsHeadline}
 							source={copy.newsSource || NEWS_DEFAULT_SOURCE}
@@ -162,6 +164,21 @@
 							bgZoom={100}
 							w={CANVAS_W}
 							h={CANVAS_H}
+							{scale}
+							interactive={false}
+						/>
+					{:else if t.id === 'imageQuote'}
+						<ImageQuoteTemplate
+							image={hasVideo ? IMAGE_QUOTE_DEFAULTS.imageUrl : (thumb || IMAGE_QUOTE_DEFAULTS.imageUrl)}
+							text={copy.newsHeadline || IMAGE_QUOTE_DEFAULTS.body}
+							footerLeft={IMAGE_QUOTE_DEFAULTS.footerLeft}
+							footerRight={IMAGE_QUOTE_DEFAULTS.footerRight}
+							topRatio={IMAGE_QUOTE_DEFAULTS.topRatio}
+							templateTheme="dark"
+							bgColor="#000000"
+							textColor="#ffffff"
+							canvasW={CANVAS_W}
+							canvasH={CANVAS_H}
 							{scale}
 							interactive={false}
 						/>

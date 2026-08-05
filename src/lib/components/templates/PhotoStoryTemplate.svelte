@@ -49,7 +49,7 @@
 		interactive = true,
 		exportRef = $bindable(null),
 		selectedText = null,
-		highlightColor = '#2EE6C5',
+		highlightColor = '#FFEB3B',
 		headlineStyle = {},
 		bodyStyle = {},
 		textOffsets = {},
@@ -195,7 +195,8 @@
 										<HighlightedText
 											as="div"
 											text={headline}
-											parseHighlights={false}
+											defaultColor={highlightColor}
+											parseHighlights={true}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
@@ -226,8 +227,8 @@
 					align-items: center;
 					justify-content: flex-start;
 					padding: {previewMode
-						? `${Math.round(topicHeadlineSize * 0.55)}px 22px 28px`
-						: `${Math.round(topicHeadlineSize * 0.55)}px 72px 72px`};
+						? `${Math.round(topicHeadlineSize * 0.55) + 20}px 22px 28px`
+						: `${Math.round(topicHeadlineSize * 0.55) + 36}px 72px 72px`};
 					box-sizing: border-box;
 					background: #000;
 				"
@@ -261,7 +262,8 @@
 									<HighlightedText
 										as="div"
 										text={body}
-										parseHighlights={false}
+										defaultColor={highlightColor}
+										parseHighlights={true}
 										style="
 											margin: 0;
 											white-space: pre-wrap;

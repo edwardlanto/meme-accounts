@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { toPng } from 'html-to-image';
 	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
+	import { consumeTrialExport } from '$lib/trial-client';
 	import { Download, Loader, Image, CheckSquare, Square, Bird, Plus, Trash2, Copy, Music, Calendar, X } from 'lucide-svelte';
 
 	// ── Types ──────────────────────────────────────────────────────────────────
@@ -39,13 +40,21 @@
 		};
 	}
 
-	// ── Auth ──────────────────────────────────────────────────────────────────
+	// ── Auth & trial ───────────────────────────────────────────────────────────
+	let trialPaid = $state(false);
+	let trialRemaining = $state<number | null>(1);
+
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
-		if (!user) goto('/login');
+		if (!user) { goto('/login'); return; }
+		const res = await fetch('/api/trial/status', { credentials: 'include' });
+		const json = await res.json();
+		if (json?.ok && json.signedIn) {
+			trialPaid = json.isPaid ?? false;
+			trialRemaining = json.isPaid ? null : (json.remaining ?? 0);
+		}
 	});
 
-	// ── Slides state ──────────────────────────────────────────────────────────
 	let slides = $state<TweetSlide[]>([{
 		id: crypto.randomUUID(),
 		topName: 'Chef 👨‍🍳',
@@ -111,10 +120,24 @@
 	let exporting = $state(false);
 	let exportingAll = $state(false);
 	let exportRef: HTMLElement | null = $state(null);
+	let exportError = $state<string | null>(null);
+
+	async function gateExport(): Promise<boolean> {
+		exportError = null;
+		const gate = await consumeTrialExport();
+		if (!gate.ok) {
+			exportError = gate.error ?? 'Upgrade to export more posts.';
+			return false;
+		}
+		trialPaid = gate.isPaid ?? false;
+		trialRemaining = gate.remaining ?? null;
+		return true;
+	}
 
 	async function exportCurrent() {
 		if (!exportRef) return;
 		exporting = true;
+		if (!(await gateExport())) { exporting = false; return; }
 		try {
 			const dataUrl = await toPng(exportRef, {
 				width: 1080, height: 1350, pixelRatio: 1,
@@ -129,12 +152,17 @@
 	}
 
 	async function exportAll() {
+		if (!trialPaid && (trialRemaining ?? 0) < slides.length) {
+			exportError = `Trial allows limited exports. Upgrade to download all ${slides.length} slides.`;
+			return;
+		}
 		exportingAll = true;
 		const saved = activeIdx;
 		for (let i = 0; i < slides.length; i++) {
 			activeIdx = i;
 			await new Promise(r => setTimeout(r, 120));
 			if (!exportRef) continue;
+			if (!(await gateExport())) { exportingAll = false; activeIdx = saved; return; }
 			try {
 				const dataUrl = await toPng(exportRef, {
 					width: 1080, height: 1350, pixelRatio: 1,
@@ -371,6 +399,14 @@
 
 				<!-- Export buttons -->
 				<div class="flex flex-col gap-2 pb-2">
+					{#if !trialPaid && trialRemaining !== null}
+						<p class="text-[11px] text-white/40 font-mono">
+							{trialRemaining > 0 ? `${trialRemaining} trial export left` : 'Trial used — upgrade for more'}
+						</p>
+					{/if}
+					{#if exportError}
+						<p class="text-[11px] text-red-300/90 leading-snug">{exportError} <a href="/pricing" class="underline">Upgrade</a></p>
+					{/if}
 					<button onclick={exportCurrent} disabled={exporting || exportingAll}
 						class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
 						{#if exporting}

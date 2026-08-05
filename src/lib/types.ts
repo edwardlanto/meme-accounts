@@ -91,6 +91,7 @@ export type TextElementKind =
 	| 'videoStoryHeadline'
 	| 'videoStoryWatermark'
 	| 'videoStoryMedia'
+	| 'brandStackBrand'
 	| 'blackTextHeadline'
 	| 'blackTextBody'
 	| 'blackTextSwipe'

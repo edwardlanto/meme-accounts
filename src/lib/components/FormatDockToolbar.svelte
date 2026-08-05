@@ -41,6 +41,8 @@
 		align-items: center;
 		gap: 2px;
 		padding: 6px;
+		min-height: 48px;
+		box-sizing: border-box;
 		border-radius: 16px;
 		background: rgba(255, 255, 255, 0.82);
 		border: 1px solid rgba(10, 10, 10, 0.08);
@@ -55,6 +57,8 @@
 		align-items: center;
 		justify-content: center;
 		min-width: 0;
+		width: auto;
+		height: 36px;
 		min-height: 36px;
 		padding: 8px 14px;
 		border: none;
@@ -68,17 +72,16 @@
 		text-transform: uppercase;
 		white-space: nowrap;
 		color: rgba(10, 10, 10, 0.45);
-		transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
+		transition: background-color 140ms ease, color 140ms ease;
 	}
 
 	.format-dock-btn:hover:not(.format-dock-btn--active) {
 		color: rgba(10, 10, 10, 0.85);
 		background: rgba(10, 10, 10, 0.05);
-		transform: none;
 	}
 
 	.format-dock-btn:active {
-		transform: scale(0.97);
+		opacity: 0.9;
 	}
 
 	.format-dock-btn--active {

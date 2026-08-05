@@ -54,6 +54,8 @@
 		align-items: center;
 		gap: 2px;
 		padding: 6px;
+		min-height: 48px;
+		box-sizing: border-box;
 		border-radius: 16px;
 		background: rgba(255, 255, 255, 0.82);
 		border: 1px solid rgba(10, 10, 10, 0.08);
@@ -67,23 +69,25 @@
 		border: none;
 		background: transparent;
 		padding: 9px 10px;
+		width: 36px;
+		height: 36px;
+		box-sizing: border-box;
 		border-radius: 11px;
 		cursor: pointer;
-		transition: background-color 140ms ease, transform 140ms ease, opacity 140ms ease;
+		transition: background-color 140ms ease, opacity 140ms ease;
 		color: rgba(10, 10, 10, 0.75);
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		flex-shrink: 0;
 	}
 
 	.dock-btn:hover:not(:disabled) {
 		background: rgba(10, 10, 10, 0.06);
 		color: rgba(10, 10, 10, 1);
-		transform: none;
 	}
 
 	.dock-btn:active:not(:disabled) {
-		transform: scale(0.94);
 		background: rgba(10, 10, 10, 0.09);
 	}
 

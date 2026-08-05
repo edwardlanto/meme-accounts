@@ -5,6 +5,7 @@ import { coerceTemplateId, isPhotoStoryFamily, isVideoStoryFamily, isWhitePostFa
 import {
 	BLACK_TEXT_CAROUSEL_DEFAULTS,
 	IMAGE_QUOTE_DEFAULTS,
+	NEWS_DEFAULT_LAYOUT,
 	PHOTO_CAPTION_DEFAULTS,
 	PHOTO_TOPIC_DEFAULTS,
 	TEXT_CAROUSEL_DEFAULTS,
@@ -73,6 +74,30 @@ export const BULK_EMOTIONS = [
 ] as const;
 
 export type BulkEmotionId = (typeof BULK_EMOTIONS)[number]['id'];
+
+export const BULK_AUDIENCES = [
+	{ id: '', label: 'General audience' },
+	{ id: 'beginners', label: 'Beginners / newcomers' },
+	{ id: 'founders', label: 'Founders & entrepreneurs' },
+	{ id: 'creators', label: 'Content creators' },
+	{ id: 'marketers', label: 'Marketers' },
+	{ id: 'developers', label: 'Developers & engineers' },
+	{ id: 'students', label: 'Students' },
+	{ id: 'professionals', label: 'Busy professionals' },
+	{ id: 'parents', label: 'Parents' },
+	{ id: 'investors', label: 'Investors' },
+	{ id: 'travelers', label: 'Travelers' },
+	{ id: 'fitness', label: 'Fitness & health seekers' },
+	{ id: 'custom', label: 'Custom…' },
+] as const;
+
+export type BulkAudienceId = (typeof BULK_AUDIENCES)[number]['id'];
+
+/** Turn the picked audience (or free text) into a prompt-ready phrase. */
+export function audiencePromptText(id: string, custom: string): string {
+	if (id === 'custom') return custom.trim();
+	return BULK_AUDIENCES.find((a) => a.id === id)?.label ?? '';
+}
 
 export function stripEmDashes(text: string): string {
 	return String(text ?? '')
@@ -269,9 +294,20 @@ export function buildDraftStateFromShow(
 		list.findIndex((s) => s.id === show.activeSlideId),
 	);
 
+	// Studio blanks the canvas before applying an import, which zeroes the News
+	// shadow. Ship the defaults back so the headline keeps its dark shelf.
+	const usesNews = slideTemplates.includes('news');
+
 	return {
 		slideCount: n,
 		activeSlide: opts?.activeSlide ?? (activeIdx >= 0 ? activeIdx : 0),
+		...(usesNews
+			? {
+					shadowHeight: NEWS_DEFAULT_LAYOUT.shadowHeight,
+					shadowStrength: NEWS_DEFAULT_LAYOUT.shadowStrength,
+					textPanelOffsetY: NEWS_DEFAULT_LAYOUT.textPanelOffsetY,
+				}
+			: {}),
 		slides,
 		slideTemplates,
 		slideIds,

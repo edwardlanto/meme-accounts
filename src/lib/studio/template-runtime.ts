@@ -26,6 +26,7 @@ const BY_TEMPLATE: Partial<Record<TemplateId, StudioTemplateRuntime>> = {
 	videoSource: DEFAULT,
 	videoFeature: DEFAULT,
 	videoPost: DEFAULT,
+	brandStack: DEFAULT,
 	photoTopic: DEFAULT,
 	photoCaption: DEFAULT,
 	whiteThread: DEFAULT,

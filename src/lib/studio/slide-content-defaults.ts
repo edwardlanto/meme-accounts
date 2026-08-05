@@ -90,9 +90,12 @@ export function ensureTextCarouselBodyMinLength(body: string): string {
 }
 
 export const IMAGE_QUOTE_DEFAULTS = {
-	body: 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
+	imageUrl: '/templates/image-quote/demo-bg.png',
+	body:
+		"IF YOU STILL THINK THE U.S. IS\nFIGHTING IRAN OVER NUCLEAR\nWEAPONS, YOU'VE BEEN FED\nPROPAGANDA. THE U.S. IS\nFIGHTING CHINA. HERE'S THEIR\nSTRATEGY:",
 	footerLeft: '$',
-	footerRight: 'BRAND',
+	footerRight: 'WEALTHY\nSETUP',
+	topRatio: 0.54,
 } as const;
 
 /** Vertical short-form layout: headline + full-bleed video + watermark. */
@@ -113,6 +116,24 @@ export const VIDEO_STORY_DEFAULTS = {
 	watermark: 'BUSINESS FOUNDERS',
 	headline:
 		'He messed up — but the boss taught him a lesson instead.\n\nThe moment went viral for a reason: leadership is rarely loud, and growth rarely looks perfect on camera.',
+} as const;
+
+/** Split top/bottom media with a centered brand bar (Rumble-style clip posts). */
+export const BRAND_STACK_DEFAULTS = {
+	topVideoUrl: '/videos/video-template.mp4',
+	bottomMediaUrl: '/placeholders/placeholder-square.jpeg',
+	watermark: 'Clipgang54',
+	headline:
+		"Rampage Jackson PRESSED these security guards after they told a handicap kid 'NO' to the event 😳👀",
+	brand: 'rumble.com/RampageJackson',
+} as const;
+
+export const BRAND_STACK_HEADLINE_STYLE = {
+	color: '#0f172a',
+	fontWeight: 700,
+	fontFamily: 'Satoshi',
+	fontSize: 36,
+	align: 'center' as const,
 } as const;
 
 /** Readable on the black video-story canvas (Studio + clip previews). */

@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabase';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { PLAN_CATALOG } from '$lib/pricing-catalog';
 	import {
 		AlertTriangle, CheckCircle2, ExternalLink, KeyRound,
-		User, Link2, CreditCard, Settings,
-		Building2, Globe, Copy, Check, ChevronRight
+		User, Link2, CreditCard, Settings, Shield, LogOut,
+		Globe, Copy, Check, ChevronRight, Mail, Lock,
 	} from 'lucide-svelte';
+
+	let { data } = $props();
 
 	type Status = { ok: boolean; missing: string[]; present: string[] };
 	let zernioStatus   = $state<Status | null>(null);
@@ -17,9 +20,6 @@
 	let redditStatus   = $state<Status | null>(null);
 	let youtubeStatus  = $state<Status | null>(null);
 	let loading        = $state(true);
-	let userId         = $state<string>('');
-	let userEmail      = $state<string>('');
-	let userName       = $state<string>('');
 	let copied         = $state<string | null>(null);
 
 	let showBlueskyModal = $state(false);
@@ -28,20 +28,59 @@
 	let bskyConnecting = $state(false);
 	let bskyError = $state<string | null>(null);
 
-	let activeTab = $state<'profile' | 'integrations' | 'billing'>('integrations');
+	type SettingsTab = 'account' | 'billing' | 'integrations' | 'legal';
+	let activeTab = $state<SettingsTab>('account');
+
+	type BillingInfo = {
+		plan: 'free' | 'pro' | 'agency';
+		planName: string;
+		credits: number;
+		planStatus: string;
+		hasCustomer: boolean;
+		hasSubscription: boolean;
+		currentPeriodEnd: string | null;
+		features: string[];
+		monthlyPrice: number;
+		yearlyPrice: number;
+	};
+
+	const billing = $derived(data.billing as BillingInfo | null);
+	const trial = $derived(data.trial);
+	const signedIn = $derived(!!data.user);
+	const userId = $derived(data.user?.id ?? '');
+	const userEmail = $derived(data.user?.email ?? '');
+	const userName = $derived(
+		(data.user?.user_metadata?.full_name as string | undefined) ?? '',
+	);
+
+	let billingBusy = $state(false);
+	let billingError = $state<string | null>(null);
+
+	// Sign-in form (shown when signed out)
+	let loginEmail = $state('');
+	let loginPassword = $state('');
+	let loginLoading = $state(false);
+	let loginError = $state('');
+	let resetSent = $state(false);
+	let resetBusy = $state(false);
 
 	const tabs = [
-		{ id: 'profile',      label: 'Profile',      icon: User },
-		{ id: 'integrations', label: 'Integrations', icon: Link2 },
-		{ id: 'billing',      label: 'Billing',       icon: CreditCard },
+		{ id: 'account' as const,      label: 'Account',      icon: User },
+		{ id: 'billing' as const,      label: 'Billing',       icon: CreditCard },
+		{ id: 'integrations' as const, label: 'Integrations', icon: Link2 },
+		{ id: 'legal' as const,        label: 'Legal',         icon: Shield },
 	];
 
-	onMount(async () => {
-		const { data } = await supabase.auth.getUser();
-		userId    = data.user?.id ?? '';
-		userEmail = data.user?.email ?? '';
-		userName  = data.user?.user_metadata?.full_name ?? '';
+	onMount(() => {
+		const params = new URLSearchParams(window.location.search);
+		const tab = params.get('tab');
+		if (tab === 'account' || tab === 'billing' || tab === 'integrations' || tab === 'legal') {
+			activeTab = tab;
+		}
+	});
 
+	async function loadIntegrations() {
+		loading = true;
 		try {
 			const [zernioRes, liRes, gmbRes, bskyRes, snapRes, redditRes, ytRes] = await Promise.all([
 				fetch('/api/integrations/zernio/status'),
@@ -67,9 +106,110 @@
 			snapchatStatus = { ok: false, missing: ['(failed)'], present: [] };
 			redditStatus   = { ok: false, missing: ['(failed)'], present: [] };
 			youtubeStatus  = { ok: false, missing: ['(failed)'], present: [] };
+		} finally {
+			loading = false;
 		}
-		loading = false;
+	}
+
+	$effect(() => {
+		if (!signedIn) return;
+		void loadIntegrations();
 	});
+
+	async function signIn() {
+		loginLoading = true;
+		loginError = '';
+		const { error } = await supabase.auth.signInWithPassword({
+			email: loginEmail.trim(),
+			password: loginPassword,
+		});
+		if (error) {
+			loginError = error.message;
+			loginLoading = false;
+			return;
+		}
+		await invalidateAll();
+		loginLoading = false;
+	}
+
+	async function signInWithGoogle() {
+		await supabase.auth.signInWithOAuth({
+			provider: 'google',
+			options: {
+				redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent('/dashboard/settings')}`,
+			},
+		});
+	}
+
+	async function sendPasswordReset() {
+		const email = loginEmail.trim() || userEmail;
+		if (!email) {
+			loginError = 'Enter your email above to receive a reset link.';
+			return;
+		}
+		resetBusy = true;
+		loginError = '';
+		const { error } = await supabase.auth.resetPasswordForEmail(email, {
+			redirectTo: `${location.origin}/auth/callback?next=/dashboard/settings`,
+		});
+		resetBusy = false;
+		if (error) {
+			loginError = error.message;
+			return;
+		}
+		resetSent = true;
+	}
+
+	async function signOut() {
+		await supabase.auth.signOut();
+		await invalidateAll();
+		activeTab = 'account';
+	}
+
+	function planStatusLabel(status: string) {
+		switch (status) {
+			case 'active': return 'Active';
+			case 'trialing': return 'Trial';
+			case 'past_due': return 'Past due';
+			case 'canceled': return 'Canceled';
+			default: return 'Free';
+		}
+	}
+
+	function planStatusClass(status: string) {
+		switch (status) {
+			case 'active':
+			case 'trialing':
+				return 'status-pill--ok';
+			case 'past_due':
+				return 'status-pill--warn';
+			case 'canceled':
+				return 'status-pill--muted';
+			default:
+				return 'status-pill--muted';
+		}
+	}
+
+	async function openPortal() {
+		billingBusy = true;
+		billingError = null;
+		try {
+			const res = await fetch('/api/stripe/portal', {
+				method: 'POST',
+				credentials: 'include',
+			});
+			const json = await res.json();
+			if (!res.ok || !json?.ok || !json?.url) {
+				billingError = json?.error ?? 'Could not open billing portal';
+				billingBusy = false;
+				return;
+			}
+			window.location.href = json.url;
+		} catch {
+			billingError = 'Network error';
+			billingBusy = false;
+		}
+	}
 
 	async function copyText(text: string, key: string) {
 		await navigator.clipboard.writeText(text);
@@ -264,9 +404,58 @@
 		</div>
 		<div>
 			<h1 class="page-title">Settings</h1>
-			<p class="page-sub">Manage your profile, integrations, and billing</p>
+			<p class="page-sub">Account, billing, integrations, and legal</p>
 		</div>
 	</div>
+
+	{#if !signedIn}
+		<div class="settings-card login-card">
+			<h2 class="card-title">Sign in to your account</h2>
+			<p class="card-desc">
+				Manage your plan, connected accounts, and privacy preferences. Billing is handled securely through Stripe.
+			</p>
+
+			<button type="button" class="btn-google" onclick={signInWithGoogle}>
+				<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+					<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+					<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+					<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+					<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+				</svg>
+				Continue with Google
+			</button>
+
+			<div class="login-divider"><span>or</span></div>
+
+			{#if loginError}
+				<p class="billing-error" role="alert">{loginError}</p>
+			{/if}
+			{#if resetSent}
+				<p class="login-success" role="status">Password reset link sent — check your inbox.</p>
+			{/if}
+
+			<form class="login-form" onsubmit={(e) => { e.preventDefault(); signIn(); }}>
+				<div class="form-field">
+					<label class="form-label" for="login-email">Email</label>
+					<input id="login-email" class="form-input" type="email" bind:value={loginEmail} required autocomplete="email" />
+				</div>
+				<div class="form-field">
+					<label class="form-label" for="login-password">Password</label>
+					<input id="login-password" class="form-input" type="password" bind:value={loginPassword} required autocomplete="current-password" />
+				</div>
+				<button type="submit" class="btn-upgrade" disabled={loginLoading}>
+					{loginLoading ? 'Signing in…' : 'Sign in'}
+				</button>
+			</form>
+
+			<div class="login-footer">
+				<a href="/signup?next=/dashboard/settings" class="inline-link">Create account</a>
+				<button type="button" class="link-btn" disabled={resetBusy} onclick={sendPasswordReset}>
+					{resetBusy ? 'Sending…' : 'Forgot password?'}
+				</button>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Tab navigation -->
 	<div class="tab-nav">
@@ -275,7 +464,8 @@
 			<button
 				type="button"
 				class="tab-btn {activeTab === t.id ? 'tab-btn--on' : ''}"
-				onclick={() => activeTab = t.id as typeof activeTab}
+				disabled={!signedIn && t.id !== 'legal'}
+				onclick={() => activeTab = t.id}
 			>
 				<Icon size={14} />
 				{t.label}
@@ -283,8 +473,11 @@
 		{/each}
 	</div>
 
-	<!-- ── PROFILE TAB ─────────────────────────────────────────── -->
-	{#if activeTab === 'profile'}
+	<!-- ── ACCOUNT TAB ─────────────────────────────────────────── -->
+	{#if activeTab === 'account'}
+		{#if !signedIn}
+			<p class="tab-desc">Sign in above to view your account details.</p>
+		{:else}
 		<div class="tab-content">
 			<div class="settings-card">
 				<h2 class="card-title">Your Account</h2>
@@ -297,7 +490,7 @@
 						<p class="profile-name">{userName || 'Unnamed User'}</p>
 						<p class="profile-email">{userEmail}</p>
 					</div>
-					<div class="profile-plan-badge">Pro</div>
+					<div class="profile-plan-badge">{billing?.planName ?? 'Free'}</div>
 				</div>
 
 				<div class="form-grid">
@@ -321,46 +514,64 @@
 				</div>
 
 				<div class="card-note">
-					Profile info is managed through Supabase Auth. Contact support to update your email.
+					Profile email is managed through your sign-in provider. Contact
+					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+					to change your email.
+				</div>
+
+				<div class="account-actions">
+					<button type="button" class="btn-outline-sm" disabled={resetBusy} onclick={sendPasswordReset}>
+						<Mail size={13} />
+						{resetBusy ? 'Sending…' : 'Send password reset'}
+					</button>
+					<button type="button" class="btn-outline-sm" onclick={signOut}>
+						<LogOut size={13} />
+						Sign out
+					</button>
 				</div>
 			</div>
 
 			<div class="settings-card">
-				<h2 class="card-title">Preferences</h2>
+				<h2 class="card-title">Session</h2>
 				<div class="pref-list">
 					<div class="pref-row">
 						<div>
-							<p class="pref-label">Default export format</p>
-							<p class="pref-sub">PNG 1080×1350 (Instagram-optimized)</p>
+							<p class="pref-label">Current plan</p>
+							<p class="pref-sub">Synced from Stripe after checkout</p>
 						</div>
-						<div class="pref-value">PNG · 1080px</div>
+						<div class="pref-value">{billing?.planName ?? 'Free'}</div>
 					</div>
-					<div class="pref-row">
-						<div>
-							<p class="pref-label">AI model</p>
-							<p class="pref-sub">Used for hook generation and content analysis</p>
+					{#if trial && !trial.isPaid}
+						<div class="pref-row">
+							<div>
+								<p class="pref-label">Free exports used</p>
+								<p class="pref-sub">Upgrade for unlimited exports</p>
+							</div>
+							<div class="pref-value">{trial.used} / {trial.limit}</div>
 						</div>
-						<div class="pref-value">Claude 3.5 Sonnet</div>
-					</div>
-					<div class="pref-row">
-						<div>
-							<p class="pref-label">Default timezone</p>
-							<p class="pref-sub">Used for scheduling posts</p>
-						</div>
-						<div class="pref-value">UTC · System</div>
-					</div>
+					{/if}
 				</div>
+				<a href="/dashboard/settings?tab=billing" class="inline-link" onclick={(e) => { e.preventDefault(); activeTab = 'billing'; }}>
+					View billing & plans →
+				</a>
 			</div>
 
 			<div class="settings-card settings-card--danger">
 				<h2 class="card-title card-title--danger">Danger Zone</h2>
-				<p class="card-desc">Permanently delete your account and all data. This cannot be undone.</p>
-				<button type="button" class="btn-danger">Delete Account</button>
+				<p class="card-desc">
+					Permanently delete your account and all data. Email
+					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+					with your account email to request deletion.
+				</p>
 			</div>
 		</div>
+		{/if}
 
 	<!-- ── INTEGRATIONS TAB ────────────────────────────────────── -->
 	{:else if activeTab === 'integrations'}
+		{#if !signedIn}
+			<p class="tab-desc">Sign in to connect social accounts.</p>
+		{:else}
 		<div class="tab-content">
 			<p class="tab-desc">Connect your social accounts to enable publishing and scheduling from Carousel Studio.</p>
 
@@ -489,45 +700,215 @@
 
 			<div class="settings-card settings-card--info">
 				<h2 class="card-title">Channel overview</h2>
-				<p class="card-desc">Use <a href="/dashboard/analytics" class="inline-link">Analytics</a> to connect from channel tabs, or the Zernio card above.</p>
+				<p class="card-desc">Connected accounts publish and schedule from Carousel Studio. OAuth tokens are stored securely server-side.</p>
 			</div>
 		</div>
+		{/if}
 
 	<!-- ── BILLING TAB ─────────────────────────────────────────── -->
 	{:else if activeTab === 'billing'}
+		{#if !signedIn}
+			<p class="tab-desc">Sign in to view your plan and manage billing.</p>
+		{:else}
 		<div class="tab-content">
 			<div class="settings-card">
 				<h2 class="card-title">Current Plan</h2>
 
-				<div class="plan-row">
-					<div class="plan-info">
-						<div class="plan-badge">Pro</div>
-						<div>
-							<p class="plan-name">Pro Plan</p>
-							<p class="plan-price">$29 <span>/month</span></p>
+				{#if billing}
+					<div class="plan-row">
+						<div class="plan-info">
+							<div class="plan-badge">{billing.planName.slice(0, 3)}</div>
+							<div>
+								<p class="plan-name">{billing.planName} Plan</p>
+								<p class="plan-price">
+									{#if billing.monthlyPrice === 0}
+										$0 <span>/month</span>
+									{:else}
+										${billing.monthlyPrice} <span>/month</span>
+									{/if}
+								</p>
+								<div class="plan-meta">
+									<span class="status-pill {planStatusClass(billing.planStatus)}">
+										{planStatusLabel(billing.planStatus)}
+									</span>
+									{#if billing.currentPeriodEnd && billing.plan !== 'free'}
+										<span class="plan-renew">
+											Renews {new Date(billing.currentPeriodEnd).toLocaleDateString()}
+										</span>
+									{/if}
+								</div>
+							</div>
+						</div>
+						<div class="plan-features">
+							{#each billing.features as f}
+								<div class="plan-feature">
+									<CheckCircle2 size={13} class="feature-check" />
+									{f}
+								</div>
+							{/each}
 						</div>
 					</div>
-					<div class="plan-features">
-						{#each ['Unlimited carousels', '25 competitor tracks', 'Claude 3.5 Sonnet AI', 'News-to-Post (Vertex AI)', 'Full canvas + export', 'Style extraction'] as f}
-							<div class="plan-feature">
-								<CheckCircle2 size={13} class="feature-check" />
-								{f}
-							</div>
-						{/each}
-					</div>
-				</div>
+
+					{#if trial && !trial.isPaid}
+						<div class="trial-banner">
+							<p class="trial-title">Free trial exports</p>
+							<p class="trial-sub">
+								{trial.used} of {trial.limit} free export{trial.limit === 1 ? '' : 's'} used.
+								{#if trial.remaining === 0}
+									Upgrade to Pro or Agency for unlimited exports.
+								{:else}
+									{trial.remaining} remaining on the Free plan.
+								{/if}
+							</p>
+						</div>
+					{/if}
+				{:else}
+					<p class="card-desc">Could not load billing details. Try refreshing the page.</p>
+				{/if}
+
+				{#if billingError}
+					<p class="billing-error" role="alert">{billingError}</p>
+				{/if}
 
 				<div class="billing-actions">
-					<button type="button" class="btn-outline-sm">Manage subscription</button>
-					<button type="button" class="btn-outline-sm">Download invoices</button>
+					{#if billing?.hasCustomer}
+						<button type="button" class="btn-outline-sm" disabled={billingBusy} onclick={openPortal}>
+							{billingBusy ? 'Opening…' : 'Manage subscription'}
+						</button>
+						<button type="button" class="btn-outline-sm" disabled={billingBusy} onclick={openPortal}>
+							Invoices & payment method
+						</button>
+					{:else}
+						<a href="/pricing" class="btn-outline-sm" style="text-decoration:none;display:inline-flex;align-items:center;">
+							View all plans
+						</a>
+					{/if}
 				</div>
 			</div>
 
 			<div class="settings-card">
-				<h2 class="card-title">Upgrade to Agency</h2>
-				<p class="card-desc">Get unlimited accounts, team workspace, white-label export, and API access.</p>
-				<div class="upgrade-price">$99<span>/month</span></div>
-				<button type="button" class="btn-upgrade">Upgrade to Agency</button>
+				<h2 class="card-title">Compare plans</h2>
+				<p class="card-desc">Plans match our <a href="/pricing" class="inline-link">pricing page</a>. Checkout is secured by Stripe.</p>
+				<div class="plan-compare-grid">
+					{#each (['free', 'pro', 'agency'] as const) as planId}
+						{@const p = PLAN_CATALOG[planId]}
+						<div class="plan-compare-card" class:plan-compare-card--current={billing?.plan === planId}>
+							<div class="plan-compare-head">
+								<p class="plan-compare-name">{p.name}</p>
+								{#if billing?.plan === planId}
+									<span class="status-pill status-pill--ok">Current</span>
+								{/if}
+							</div>
+							<p class="plan-compare-price">
+								{#if planId === 'free'}
+									$0<span>/mo</span>
+								{:else}
+									${p.monthly}<span>/mo</span>
+									<span class="plan-compare-year">or ${p.yearly}/yr</span>
+								{/if}
+							</p>
+							<ul class="plan-compare-features">
+								{#each p.features.slice(0, 4) as f}
+									<li>{f}</li>
+								{/each}
+							</ul>
+							{#if planId !== 'free' && billing?.plan !== planId}
+								<a href="/checkout?plan={planId}" class="btn-upgrade plan-compare-cta">
+									{planId === 'agency' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
+								</a>
+							{:else if planId === 'free' && billing?.plan !== 'free'}
+								<p class="plan-compare-note">Downgrade via Stripe portal</p>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+
+			{#if billing?.plan !== 'agency'}
+				<div class="settings-card">
+					<h2 class="card-title">
+						{billing?.plan === 'pro' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
+					</h2>
+					<p class="card-desc">
+						{#if billing?.plan === 'pro'}
+							Unlimited accounts, team workspace, white-label export, and API access — ${PLAN_CATALOG.agency.monthly}/mo.
+						{:else}
+							Unlimited carousels, Claude AI, News-to-Post, and full export — ${PLAN_CATALOG.pro.monthly}/mo.
+						{/if}
+					</p>
+					<a
+						href={`/checkout?plan=${billing?.plan === 'pro' ? 'agency' : 'pro'}`}
+						class="btn-upgrade"
+						style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;"
+					>
+						{billing?.plan === 'pro' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
+					</a>
+				</div>
+			{/if}
+
+			<div class="settings-card settings-card--info">
+				<h2 class="card-title">Billing compliance</h2>
+				<p class="card-desc">
+					Payments are processed by Stripe. We store your plan and subscription status — not full card numbers.
+					See our <a href="/refund-policy" class="inline-link">Refund Policy</a> for cancellations and refunds.
+				</p>
+			</div>
+		</div>
+		{/if}
+
+	<!-- ── LEGAL TAB ───────────────────────────────────────────── -->
+	{:else if activeTab === 'legal'}
+		<div class="tab-content">
+			<div class="settings-card">
+				<h2 class="card-title">Legal & privacy</h2>
+				<p class="card-desc">
+					Carousel Studio is operated in compliance with standard SaaS privacy and billing practices.
+					Review the documents below for how we handle your data and subscriptions.
+				</p>
+				<div class="legal-links">
+					<a href="/terms" class="legal-link">
+						<Shield size={16} />
+						<span>
+							<strong>Terms of Service</strong>
+							<small>Acceptable use, subscriptions, and trials</small>
+						</span>
+						<ChevronRight size={16} />
+					</a>
+					<a href="/privacy" class="legal-link">
+						<Lock size={16} />
+						<span>
+							<strong>Privacy Policy</strong>
+							<small>What we collect and how we use it</small>
+						</span>
+						<ChevronRight size={16} />
+					</a>
+					<a href="/refund-policy" class="legal-link">
+						<CreditCard size={16} />
+						<span>
+							<strong>Refund Policy</strong>
+							<small>Cancellations, renewals, and refunds</small>
+						</span>
+						<ChevronRight size={16} />
+					</a>
+				</div>
+			</div>
+
+			<div class="settings-card">
+				<h2 class="card-title">Your data rights</h2>
+				<p class="card-desc">
+					You may access, correct, or delete your personal data. To export your content or request account
+					deletion, email
+					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+					from the address on your account.
+				</p>
+			</div>
+
+			<div class="settings-card">
+				<h2 class="card-title">Contact</h2>
+				<p class="card-desc">
+					Billing questions, privacy requests, or compliance inquiries:
+					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+				</p>
 			</div>
 		</div>
 	{/if}
@@ -607,7 +988,7 @@
 	}
 
 	.page { color: var(--app-text); }
-	.page { padding: 2rem 2.5rem; max-width: 860px; display: flex; flex-direction: column; gap: 1.5rem; }
+	.page { padding: 2rem 2.5rem; max-width: 920px; display: flex; flex-direction: column; gap: 1.5rem; }
 
 	/* ── Header ────────────────────────────────────────────────── */
 	.page-head { display: flex; align-items: center; gap: 1rem; }
@@ -890,6 +1271,21 @@
 	.plan-name  { font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; font-size: 0.9375rem; }
 	.plan-price { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
 	.plan-price span { font-size: 0.875rem; color: rgba(255,255,255,0.4); font-family: 'Satoshi', sans-serif; }
+	.plan-status {
+		margin: 0.35rem 0 0;
+		font-size: 0.75rem;
+		color: rgba(255,255,255,0.45);
+		text-transform: capitalize;
+	}
+	.billing-error {
+		margin: 0 0 0.75rem;
+		padding: 0.65rem 0.85rem;
+		border-radius: 9px;
+		background: rgba(255,80,60,0.12);
+		border: 1px solid rgba(255,80,60,0.28);
+		color: #ffb4a8;
+		font-size: 0.8125rem;
+	}
 
 	.plan-features { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 	.plan-feature  { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: rgba(255,255,255,0.6); }
@@ -918,4 +1314,96 @@
 		font-family: 'Satoshi', sans-serif; transition: all 0.15s; width: fit-content;
 	}
 	.btn-upgrade:hover { background: #f0ff70; transform: translateY(-1px); }
+
+	/* ── Login gate ────────────────────────────────────────────── */
+	.login-card { max-width: 420px; }
+	.btn-google {
+		display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem;
+		width: 100%; padding: 0.7rem 1rem; border-radius: 10px;
+		border: 1px solid var(--panel-border); background: var(--panel-bg-2);
+		color: var(--t-strong); font-size: 0.875rem; font-weight: 600;
+		font-family: 'Satoshi', sans-serif; cursor: pointer; transition: background 0.15s;
+	}
+	.btn-google:hover { background: var(--panel-bg); }
+	.login-divider {
+		display: flex; align-items: center; gap: 0.75rem;
+		font-size: 0.75rem; color: var(--t-muted); text-transform: uppercase; letter-spacing: 0.08em;
+	}
+	.login-divider::before, .login-divider::after {
+		content: ''; flex: 1; height: 1px; background: var(--panel-border);
+	}
+	.login-form { display: flex; flex-direction: column; gap: 0.75rem; }
+	.login-footer {
+		display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+		font-size: 0.8125rem;
+	}
+	.link-btn {
+		border: none; background: transparent; color: var(--t-muted);
+		font-family: 'Satoshi', sans-serif; font-size: 0.8125rem; cursor: pointer;
+		text-decoration: underline; padding: 0;
+	}
+	.link-btn:hover { color: var(--t-strong); }
+	.login-success {
+		margin: 0; padding: 0.65rem 0.85rem; border-radius: 9px;
+		background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2);
+		color: #34d399; font-size: 0.8125rem;
+	}
+	.account-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; }
+
+	/* ── Status pills ──────────────────────────────────────────── */
+	.status-pill {
+		display: inline-flex; align-items: center;
+		padding: 0.2rem 0.55rem; border-radius: 999px;
+		font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+	}
+	.status-pill--ok { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+	.status-pill--warn { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+	.status-pill--muted { background: var(--panel-bg-2); color: var(--t-muted); border: 1px solid var(--panel-border); }
+	.plan-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.35rem; }
+	.plan-renew { font-size: 0.75rem; color: var(--t-muted); }
+
+	.trial-banner {
+		padding: 0.85rem 1rem; border-radius: 10px;
+		background: rgba(232,255,72,0.06); border: 1px solid rgba(232,255,72,0.15);
+	}
+	.trial-title { margin: 0 0 0.25rem; font-size: 0.8125rem; font-weight: 600; color: var(--t-strong); }
+	.trial-sub { margin: 0; font-size: 0.75rem; color: var(--t-muted); line-height: 1.5; }
+
+	.plan-compare-grid {
+		display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;
+	}
+	@media (max-width: 720px) { .plan-compare-grid { grid-template-columns: 1fr; } }
+	.plan-compare-card {
+		border-radius: 12px; padding: 1rem;
+		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
+		display: flex; flex-direction: column; gap: 0.65rem;
+	}
+	.plan-compare-card--current { border-color: rgba(232,255,72,0.35); box-shadow: 0 0 0 1px rgba(232,255,72,0.12); }
+	.plan-compare-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+	.plan-compare-name { margin: 0; font-weight: 700; color: var(--t-strong); font-size: 0.9375rem; }
+	.plan-compare-price {
+		margin: 0; font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+		font-size: 1.5rem; font-weight: 900; color: var(--t-strong);
+	}
+	.plan-compare-price span { font-size: 0.8rem; color: var(--t-muted); font-weight: 500; }
+	.plan-compare-year { display: block; font-size: 0.7rem; color: var(--t-muted); margin-top: 0.15rem; font-weight: 500; }
+	.plan-compare-features {
+		margin: 0; padding-left: 1rem; font-size: 0.75rem; color: var(--t-muted); line-height: 1.55;
+	}
+	.plan-compare-cta { width: 100%; justify-content: center; text-decoration: none; }
+	.plan-compare-note { margin: 0; font-size: 0.7rem; color: var(--t-muted); }
+
+	.legal-links { display: flex; flex-direction: column; gap: 0.5rem; }
+	.legal-link {
+		display: flex; align-items: center; gap: 0.75rem;
+		padding: 0.85rem 1rem; border-radius: 10px;
+		border: 1px solid var(--panel-border); background: var(--panel-bg-2);
+		color: var(--t-strong); text-decoration: none; transition: background 0.15s;
+	}
+	.legal-link:hover { background: var(--panel-bg); }
+	.legal-link span { flex: 1; display: flex; flex-direction: column; gap: 0.15rem; }
+	.legal-link strong { font-size: 0.875rem; font-weight: 600; }
+	.legal-link small { font-size: 0.75rem; color: var(--t-muted); font-weight: 400; }
+
+	.tab-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>

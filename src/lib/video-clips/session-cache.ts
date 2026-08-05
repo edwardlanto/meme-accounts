@@ -1,4 +1,5 @@
 import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
+import type { VideoLayoutId } from '$lib/templates';
 
 export const VIDEO_SESSION_KEY = 'videos_clip_session_v1';
 export const VIDEO_FORM_PREFS_KEY = 'videos_clip_form_prefs_v1';
@@ -52,7 +53,8 @@ export type VideoFormPrefs = {
 	clipMinSec: number;
 	clipMaxSec: number;
 	videoAspectRatio?: '9:16' | '1:1' | '16:9';
-	clipLayout?: 'story' | 'fit' | 'blur';
+	/** @deprecated Template picker removed from Videos — ignored if present. */
+	clipLayout?: VideoLayoutId;
 	autoReframeEnabled?: boolean;
 	reframeAspectRatio?: '9:16' | '1:1' | '16:9' | '4:5';
 	reframeMethod?: 'detection' | 'saliency';
@@ -200,7 +202,7 @@ function writeSavedVideoClips(items: SavedVideoClipsEntry[]): void {
 	writeLocalJson(VIDEO_SAVED_CLIPS_KEY, { v: 1 as const, items: items.slice(0, MAX_SAVED_CLIPS) });
 }
 
-/** Persist the current working session into the saved library (explicit user action). */
+/** Persist the current working session into the saved library (explicit user action or auto-save). */
 export function saveVideoClipsToLibrary(
 	session: Omit<VideoSessionCache, 'v' | 'savedAt'>,
 ): SavedVideoClipsEntry | null {
@@ -210,6 +212,11 @@ export function saveVideoClipsToLibrary(
 		session.topicHint?.trim() ||
 		session.youtubeUrl?.trim() ||
 		'Saved clips';
+	const sourceKey =
+		session.source.r2Key?.trim() ||
+		session.source.youtubeId?.trim() ||
+		session.youtubeUrl?.trim() ||
+		'';
 	const entry: SavedVideoClipsEntry = {
 		id: `saved_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
 		savedAt: Date.now(),
@@ -218,11 +225,18 @@ export function saveVideoClipsToLibrary(
 		thumbnailUrl: session.source.thumbnailUrl || undefined,
 		session: { ...session },
 	};
+	const existing = loadSavedVideoClips();
 	const next = [
 		entry,
-		...loadSavedVideoClips().filter(
-			(x) => !(x.title === title && x.clipCount === entry.clipCount),
-		),
+		...existing.filter((x) => {
+			if (!sourceKey) return !(x.title === title && x.clipCount === entry.clipCount);
+			const otherKey =
+				x.session?.source?.r2Key?.trim() ||
+				x.session?.source?.youtubeId?.trim() ||
+				x.session?.youtubeUrl?.trim() ||
+				'';
+			return otherKey !== sourceKey;
+		}),
 	];
 	writeSavedVideoClips(next);
 	return entry;

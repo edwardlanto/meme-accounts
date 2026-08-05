@@ -35,16 +35,16 @@
 
 	let {
 		image = '/templates/image-quote/demo-bg.png',
-		text = 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
+		text = "IF YOU STILL THINK THE U.S. IS\nFIGHTING IRAN OVER NUCLEAR\nWEAPONS, YOU'VE BEEN FED\nPROPAGANDA. THE U.S. IS\nFIGHTING CHINA. HERE'S THEIR\nSTRATEGY:",
 		highlightColor = '#F5A623',
 		footerLeft = '$',
-		footerRight = 'BRAND',
+		footerRight = 'WEALTHY\nSETUP',
 		onFooterLeftChange,
 		onFooterRightChange,
-		topRatio = 0.56,
+		topRatio = 0.54,
 		bgColor = '',
 		textColor = '',
-		templateTheme = 'light',
+		templateTheme = 'dark',
 		canvasW = 1080,
 		canvasH = 1350,
 		scale = 1,
@@ -90,6 +90,7 @@
 	const dragScale = $derived(scale * layoutScale);
 	const topH = $derived(Math.round(BASE_H * Math.min(0.75, Math.max(0.35, topRatio))));
 	const bottomH = $derived(BASE_H - topH);
+	const quoteSize = $derived(headlineStyle.fontSize ?? 72);
 
 	function splitLines(v: string) {
 		return (v || '').split('\n').map((x) => x.trim()).filter(Boolean);
@@ -133,7 +134,7 @@
 			"
 		>
 		<!-- Top image -->
-		<div style="height: {topH}px; width: 100%; position: relative; overflow: hidden; background: {isLight ? '#f1f2f6' : '#111'};">
+		<div style="height: {topH}px; width: 100%; position: relative; overflow: hidden; background: #111;">
 			{#if image}
 				<img
 					src={image}
@@ -142,13 +143,11 @@
 						width: 100%;
 						height: 100%;
 						object-fit: cover;
+						object-position: center top;
 						display: block;
-						filter: contrast(1.05) saturate(1.05);
 					"
 				/>
 			{/if}
-			<!-- subtle top vignette -->
-			<div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(0,0,0,0.28), rgba(0,0,0,0) 45%);pointer-events:none;"></div>
 		</div>
 
 		<!-- Bottom quote block -->
@@ -160,9 +159,10 @@
 				display: flex;
 				flex-direction: column;
 				justify-content: center;
-				padding: 86px 84px 66px;
+				align-items: center;
+				padding: 56px 72px 72px;
 				box-sizing: border-box;
-				gap: 28px;
+				gap: 36px;
 			"
 		>
 			<DraggableBlock
@@ -178,24 +178,24 @@
 						{interactive}
 						defaultColor={highlightColor}
 						selected={selectedText === 'headline'}
-						rows={5}
+						rows={6}
 						uppercase={true}
 						ariaLabel="Quote text"
 						fontFamily={headlineStyle.fontFamily ?? 'Impact'}
-						fontSize={headlineStyle.fontSize ?? 82}
+						fontSize={quoteSize}
 						{showToolbar}
 						onTextChange={onTextChange}
 						onTextSelect={onTextSelect}
 						onHeadlineRangeSelect={onHeadlineRangeSelect}
 					>
 						{#snippet display()}
-							<div style="display:flex;flex-direction:column;gap:18px;">
+							<div style="display:flex;flex-direction:column;gap:6px;width:100%;">
 								{#each splitLines(text) as line, i (i)}
 									<HighlightedText
 										as="div"
 										text={line}
 										defaultColor={highlightColor}
-										style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.02em; line-height: 1.02; font-size: {headlineStyle.fontSize ?? 82}px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,{isLight ? 0.10 : 0.4}); font-family: Impact, 'Arial Black', sans-serif; {quoteTypeCss}"
+										style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.05; font-size: {quoteSize}px; text-align: center; font-family: Impact, 'Arial Black', sans-serif; {quoteTypeCss}"
 									/>
 								{/each}
 							</div>
@@ -207,11 +207,10 @@
 			<!-- Footer -->
 			<div
 				style="
-					margin-top: 10px;
 					display:flex;
 					align-items:center;
 					justify-content:center;
-					gap: 14px;
+					gap: 12px;
 					opacity: 0.95;
 				"
 			>
@@ -232,12 +231,12 @@
 							selected={selectedText === 'imageQuoteFooterLeft'}
 							ariaLabel="Footer left"
 							fontFamily={headlineStyle.fontFamily ?? 'Impact'}
-							fontSize={44}
+							fontSize={40}
 							onTextChange={onFooterLeftChange}
 							onTextSelect={onTextSelect}
 						>
 							{#snippet display()}
-								<span style="font-size: 44px; font-weight: 900; color: {baseText}; font-family: Impact, 'Arial Black', sans-serif;">
+								<span style="font-size: 40px; font-weight: 900; color: {baseText}; font-family: Impact, 'Arial Black', sans-serif; line-height: 1;">
 									{footerLeft}
 								</span>
 							{/snippet}
@@ -256,18 +255,18 @@
 						<CanvasMarkupTextBlock
 							value={footerRight}
 							{interactive}
-							rows={1}
+							rows={2}
 							{showToolbar}
 							toolbarKind="imageQuoteFooterRight"
 							selected={selectedText === 'imageQuoteFooterRight'}
 							ariaLabel="Footer right"
-							fontFamily={headlineStyle.fontFamily ?? 'Impact'}
-							fontSize={26}
+							fontFamily="Satoshi"
+							fontSize={18}
 							onTextChange={onFooterRightChange}
 							onTextSelect={onTextSelect}
 						>
 							{#snippet display()}
-								<span style="font-size: 26px; font-weight: 800; color: {baseText}; letter-spacing: 0.08em; font-family: 'Satoshi', system-ui, sans-serif;">
+								<span style="font-size: 18px; font-weight: 800; color: {baseText}; letter-spacing: 0.14em; font-family: 'Satoshi', system-ui, sans-serif; text-transform: uppercase; line-height: 1.15; text-align: left; white-space: pre-line;">
 									{footerRight}
 								</span>
 							{/snippet}
@@ -279,4 +278,3 @@
 		</div>
 	</div>
 </div>
-

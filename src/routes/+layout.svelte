@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>Carousel Studio — AI-Powered Instagram Growth</title>
+	<title>Meme Accounts — Create &amp; Schedule Meme Posts Fast</title>
 </svelte:head>
 
 {@render children()}

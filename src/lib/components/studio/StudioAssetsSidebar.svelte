@@ -33,12 +33,16 @@
 
 	let {
 		userId = '',
+		collapsed = $bindable(false),
 		onUseAsBackground,
+		onUseAsBottomBackground,
 		onAddAsSticker,
 		onUseUnsplashBackground,
 	}: {
 		userId?: string;
+		collapsed?: boolean;
 		onUseAsBackground?: (r2Ref: string) => void | Promise<void>;
+		onUseAsBottomBackground?: (r2Ref: string) => void | Promise<void>;
 		onAddAsSticker?: (r2Ref: string) => void | Promise<void>;
 		onUseUnsplashBackground?: (photo: {
 			url: string;
@@ -424,10 +428,35 @@
 	}
 </script>
 
+{#if collapsed}
+	<aside class="assets-sidebar assets-sidebar--collapsed" aria-label="Image assets">
+		<button
+			type="button"
+			class="assets-collapse-btn"
+			onclick={() => (collapsed = false)}
+			title="Show assets"
+			aria-label="Show assets"
+			aria-expanded="false"
+		>
+			<ImagePlus size={15} />
+		</button>
+		<span class="assets-rail-label">Assets</span>
+	</aside>
+{:else}
 <aside class="assets-sidebar" aria-label="Image assets">
 	<header class="assets-header">
 		<div class="assets-title-row">
 			<span class="assets-title">Assets</span>
+			<button
+				type="button"
+				class="assets-collapse-btn"
+				onclick={() => (collapsed = true)}
+				title="Hide assets"
+				aria-label="Hide assets"
+				aria-expanded="true"
+			>
+				<X size={14} />
+			</button>
 			{#if tab === 'library'}
 				<button
 					type="button"
@@ -625,6 +654,17 @@
 										<Wallpaper size={11} />
 										<span>BG</span>
 									</button>
+									{#if onUseAsBottomBackground}
+										<button
+											type="button"
+											class="action-chip"
+											title="Use as bottom media"
+											onclick={() => void onUseAsBottomBackground?.(r2Ref(asset))}
+										>
+											<Wallpaper size={11} />
+											<span>Bottom</span>
+										</button>
+									{/if}
 									<button
 										type="button"
 										class="action-chip"
@@ -836,18 +876,54 @@
 		{/if}
 	{/if}
 </aside>
+{/if}
 
 <style>
 	.assets-sidebar {
-		width: 272px;
-		flex-shrink: 0;
-		height: 100%;
+		width: 100%;
+		flex: 1 1 auto;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
 		border-left: 1px solid color-mix(in oklab, var(--app-border, #e8e8e8) 100%, transparent);
 		background: color-mix(in oklab, var(--app-surface, #fff) 100%, transparent);
 		box-shadow: -8px 0 24px rgba(0, 0, 0, 0.04);
+		overflow: hidden;
+	}
+
+	.assets-sidebar--collapsed {
+		align-items: center;
+		gap: 10px;
+		padding: 12px 6px;
+	}
+
+	.assets-rail-label {
+		font-size: 10px;
+		font-weight: 650;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--app-text-3, #8a8a8a);
+		writing-mode: vertical-rl;
+		user-select: none;
+	}
+
+	.assets-collapse-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		flex-shrink: 0;
+		border: 1px solid color-mix(in oklab, var(--app-border, #e8e8e8) 100%, transparent);
+		border-radius: 8px;
+		background: transparent;
+		color: var(--app-text-2, #555);
+		cursor: pointer;
+		transition: background 140ms ease, color 140ms ease;
+	}
+	.assets-collapse-btn:hover {
+		background: color-mix(in oklab, var(--app-text, #000) 6%, transparent);
+		color: var(--app-text, #111);
 	}
 
 	.assets-header {

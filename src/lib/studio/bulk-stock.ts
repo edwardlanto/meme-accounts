@@ -111,30 +111,29 @@ export function templateUsesStockMedia(id: TemplateId): boolean {
  * Prefers concrete nouns from the headline; always returns something searchable.
  */
 export function stockQueryFromSlide(headline: string, body = '', topicHint = ''): string {
-	const raw = `${headline} ${body}`.replace(/[^\p{L}\p{N}\s]/gu, ' ');
-	const words = raw
-		.split(/\s+/)
-		.map((w) => w.trim())
-		.filter((w) => w.length > 2 && !STOP.has(w.toLowerCase()));
-	const unique: string[] = [];
-	const seen = new Set<string>();
-	for (const w of words) {
-		const key = w.toLowerCase();
-		if (seen.has(key)) continue;
-		seen.add(key);
-		unique.push(w);
-		if (unique.length >= 5) break;
-	}
-	let q = unique.join(' ').trim();
-	if (!q && topicHint.trim()) {
-		q = topicHint
-			.trim()
-			.split(/\s+/)
-			.filter((w) => w.length > 1 && !STOP.has(w.toLowerCase()))
-			.slice(0, 4)
-			.join(' ');
-	}
-	return q.slice(0, 80) || 'cinematic portrait business';
+	const keywords = (text: string, limit: number): string[] => {
+		const out: string[] = [];
+		const seen = new Set<string>();
+		for (const w of text.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)) {
+			const word = w.trim();
+			if (word.length < 3 || STOP.has(word.toLowerCase())) continue;
+			const key = word.toLowerCase();
+			if (seen.has(key)) continue;
+			seen.add(key);
+			out.push(word);
+			if (out.length >= limit) break;
+		}
+		return out;
+	};
+
+	// Lead with the topic so every slide in a deck pulls imagery from the same subject.
+	const topicWords = keywords(topicHint, 2);
+	const slideWords = keywords(`${headline} ${body}`, 3).filter(
+		(w) => !topicWords.some((t) => t.toLowerCase() === w.toLowerCase()),
+	);
+
+	const q = [...topicWords, ...slideWords].join(' ').trim();
+	return q.slice(0, 80) || 'cinematic editorial background';
 }
 
 export type StockPick = {

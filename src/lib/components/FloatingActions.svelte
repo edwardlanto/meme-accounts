@@ -4,6 +4,8 @@
 
 	interface $$Props {
 		slideLabels?: string[];
+		/** Render as a normal row inside a layout column instead of a fixed overlay. */
+		inline?: boolean;
 		rightOffsetPx?: number;
 		bottomOffsetPx?: number;
 		zIndex?: number;
@@ -18,6 +20,7 @@
 
 	let {
 		slideLabels = [],
+		inline = false,
 		rightOffsetPx = 24,
 		bottomOffsetPx = 24,
 		zIndex = 50,
@@ -69,8 +72,12 @@
 
 {#if hasSlides}
 	<div
-		class="fixed flex flex-row items-end gap-2"
-		style="right:{rightOffsetPx}px;bottom:{bottomOffsetPx}px;z-index:{zIndex};"
+		class="flex flex-row items-end gap-2 {inline
+			? 'w-full flex-wrap justify-end'
+			: 'fixed'}"
+		style={inline
+			? ''
+			: `right:${rightOffsetPx}px;bottom:${bottomOffsetPx}px;z-index:${zIndex};`}
 	>
 		<!-- Save template -->
 		{#if typeof onSaveTemplate === 'function'}

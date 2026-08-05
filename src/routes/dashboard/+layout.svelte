@@ -3,13 +3,13 @@
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
 	import {
-		Layers, LayoutDashboard, Search, ImagePlus,
-		FlaskConical, BarChart3,
-		CalendarDays, PenSquare, Plug, Video, Rows3,
+		Layers, LayoutDashboard, ImagePlus, Settings,
+		// Search, FlaskConical, BarChart3, CalendarDays, Plug,
+		PenSquare, Video, Rows3,
 	} from 'lucide-svelte';
 	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
 
-	let { children } = $props();
+	let { children, data } = $props();
 
 	const navGroups = [
 		{
@@ -26,24 +26,31 @@
 			label: 'Brand',
 			items: [
 				{ href: '/dashboard/branding',      label: 'Branding',      icon: Layers },
-				{ href: '/dashboard/integrations',  label: 'Integrations',  icon: Plug },
+				{ href: '/dashboard/settings',      label: 'Settings',      icon: Settings },
+				// { href: '/dashboard/integrations',  label: 'Integrations',  icon: Plug },
 			]
 		},
-		{
-			label: 'Grow',
-			items: [
-				{ href: '/dashboard/discover',     label: 'Discover',     icon: Search },
-				{ href: '/dashboard/analytics',    label: 'Analytics',    icon: BarChart3 },
-				{ href: '/dashboard/post-scheduler', label: 'Scheduler',  icon: CalendarDays },
-				{ href: '/dashboard/post-tests',   label: 'Post Tests',   icon: FlaskConical },
-			]
-		},
+		// {
+		// 	label: 'Grow',
+		// 	items: [
+		// 		{ href: '/dashboard/discover',     label: 'Discover',     icon: Search },
+		// 		{ href: '/dashboard/analytics',    label: 'Analytics',    icon: BarChart3 },
+		// 		{ href: '/dashboard/post-scheduler', label: 'Scheduler',  icon: CalendarDays },
+		// 		{ href: '/dashboard/post-tests',   label: 'Post Tests',   icon: FlaskConical },
+		// 	]
+		// },
 	];
 
 	async function signOut() {
+		if (!data.user) {
+			goto('/login?next=/dashboard/settings');
+			return;
+		}
 		await supabase.auth.signOut();
-		goto('/login');
+		goto('/login?next=/dashboard/settings');
 	}
+
+	const signedIn = $derived(!!data.user);
 
 	let currentPath = $derived($page.url.pathname);
 	let sidebarRailOnly = $derived(
@@ -72,6 +79,7 @@
 			currentPath={currentPath}
 			theme={theme}
 			railOnly={sidebarRailOnly}
+			signedIn={signedIn}
 			onThemeToggle={() => applyTheme(theme === 'dark' ? 'light' : 'dark')}
 			onSignOut={signOut}
 		/>

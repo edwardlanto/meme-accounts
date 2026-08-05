@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { supabase } from '$lib/supabase';
+	import { goto } from '$app/navigation';
 	import { AlertCircle, CheckCircle } from 'lucide-svelte';
+
+	let { data } = $props();
 
 	let email    = $state('');
 	let password = $state('');
 	let fullName = $state('');
+	let marketingEmails = $state(false);
 	let loading  = $state(false);
 	let error    = $state('');
 	let success  = $state(false);
@@ -17,16 +21,36 @@
 		loading = true; error = '';
 		const { error: err } = await supabase.auth.signUp({
 			email, password,
-			options: { data: { full_name: fullName } }
+			options: {
+				data: {
+					full_name: fullName,
+					marketing_emails: marketingEmails,
+				},
+			},
 		});
 		if (err) { error = err.message; loading = false; return; }
+		// If email confirm is off, session exists — sync profile + send them to intended next.
+		const { data: sessionData } = await supabase.auth.getSession();
+		if (sessionData.session) {
+			await supabase
+				.from('users')
+				.update({ marketing_emails: marketingEmails, updated_at: new Date().toISOString() })
+				.eq('id', sessionData.session.user.id);
+			goto(data.next || '/dashboard');
+			return;
+		}
 		success = true; loading = false;
 	}
 
 	async function loginWithGoogle() {
+		const next = encodeURIComponent(data.next || '/dashboard');
+		const marketing = marketingEmails ? '1' : '0';
 		await supabase.auth.signInWithOAuth({
 			provider: 'google',
-			options: { redirectTo: `${location.origin}/auth/callback?next=/dashboard` },
+			options: {
+				redirectTo: `${location.origin}/auth/callback?next=${next}&marketing_emails=${marketing}`,
+				data: { marketing_emails: marketingEmails },
+			},
 		});
 	}
 
@@ -107,6 +131,21 @@
 
 					<div class="form-section">
 						<p class="form-eyebrow">Continue With</p>
+
+						<label class="marketing-opt">
+							<input
+								type="checkbox"
+								bind:checked={marketingEmails}
+								class="marketing-check"
+								aria-describedby="marketing-opt-desc"
+							/>
+							<span class="marketing-copy">
+								<span class="marketing-title">Email me discounts &amp; viral trends</span>
+								<span id="marketing-opt-desc" class="marketing-desc">
+									Product updates, tips, and occasional offers. Unsubscribe anytime.
+								</span>
+							</span>
+						</label>
 
 						<button type="button" class="oauth-btn" onclick={loginWithGoogle}>
 							<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -413,6 +452,47 @@
 		gap: 12px;
 	}
 	.field { display: flex; flex-direction: column; }
+
+	.marketing-opt {
+		display: flex;
+		align-items: flex-start;
+		gap: 12px;
+		padding: 12px 14px;
+		margin-bottom: 12px;
+		border-radius: 10px;
+		border: 1px solid #2b2a2a;
+		background: rgba(255, 255, 255, 0.03);
+		cursor: pointer;
+		transition: border-color 0.18s ease, background 0.18s ease;
+	}
+	.marketing-opt:hover {
+		border-color: rgba(252, 105, 255, 0.35);
+		background: rgba(252, 105, 255, 0.05);
+	}
+	.marketing-check {
+		margin-top: 2px;
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+		accent-color: #fc69ff;
+		cursor: pointer;
+	}
+	.marketing-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.marketing-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.9);
+		line-height: 1.3;
+	}
+	.marketing-desc {
+		font-size: 12px;
+		line-height: 1.45;
+		color: rgba(255, 255, 255, 0.45);
+	}
 
 	.input {
 		width: 100%;

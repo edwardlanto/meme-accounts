@@ -8,6 +8,7 @@
 	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
+	import { IMAGE_QUOTE_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	// ImageQuoteTemplate removed from public templates
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
@@ -77,11 +78,11 @@
 	}
 function blankImageQuote(): ImageQuoteData {
 	return {
-		image: '/templates/image-quote/demo-bg.png',
-		text: 'YOUR BIG STATEMENT GOES HERE.\nMAKE IT SHORT, PUNCHY, AND ALL CAPS.',
-		footerLeft: '$',
-		footerRight: 'WEALTHY SETUP',
-		topRatio: 0.56,
+		image: IMAGE_QUOTE_DEFAULTS.imageUrl,
+		text: IMAGE_QUOTE_DEFAULTS.body,
+		footerLeft: IMAGE_QUOTE_DEFAULTS.footerLeft,
+		footerRight: IMAGE_QUOTE_DEFAULTS.footerRight,
+		topRatio: IMAGE_QUOTE_DEFAULTS.topRatio,
 		bgColor: '#000000',
 		textColor: '#FFFFFF',
 	};

@@ -284,7 +284,7 @@
 		}}
 		style="
 			position: relative;
-			{selected ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6);' : ''}
+			{selected ? 'box-shadow: 0 0 0 2px rgba(255,235,59,0.92);' : ''}
 			border-radius: 4px;
 			{canEdit
 				? 'cursor: text; user-select: text !important; -webkit-user-select: text !important; touch-action: pan-x pan-y;'

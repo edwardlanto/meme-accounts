@@ -54,24 +54,5 @@ export function videoAspectById(id: string | null | undefined): VideoAspectRatio
 	return VIDEO_ASPECT_RATIOS.find((a) => a.id === id) ?? VIDEO_ASPECT_RATIOS[0]!;
 }
 
-/** Featured video layout templates (Fit / Blur / Hook). */
-export type VideoLayoutId =
-	| 'story'
-	| 'fit'
-	| 'blur'
-	| 'hook'
-	| 'creator'
-	| 'text'
-	| 'source'
-	| 'feature';
-
-export const VIDEO_LAYOUT_TEMPLATES: { id: VideoLayoutId; label: string; studioId: string }[] = [
-	{ id: 'feature', label: 'Feature card', studioId: 'videoFeature' },
-	{ id: 'source', label: 'Highlight', studioId: 'videoSource' },
-	{ id: 'text', label: 'Text on video', studioId: 'videoText' },
-	{ id: 'creator', label: 'Creator hook', studioId: 'videoCreator' },
-	{ id: 'hook', label: 'Hook video', studioId: 'videoHook' },
-	{ id: 'fit', label: 'Fit video', studioId: 'videoFit' },
-	{ id: 'blur', label: 'Blur', studioId: 'videoBlur' },
-	{ id: 'story', label: 'Video story', studioId: 'videoStory' },
-];
+export type { VideoLayoutId } from '$lib/templates';
+export { VIDEO_LAYOUT_TEMPLATES } from '$lib/templates';

@@ -248,6 +248,13 @@ Generate exactly ${deckCount} SEPARATE Instagram carousel slideshows about the s
 Each slideshow is its own distinct ANGLE / IDEA (not the same carousel rewritten).
 Each slideshow has exactly ${slideCount} slides.
 
+TOPIC COHERENCE (most important rule):
+- Every slide inside a deck must advance that deck's ONE angle, named in its title.
+- A reader seeing any single slide must be able to tell it belongs to that deck.
+- Do not drift: no generic social-media advice, no unrelated tangents, no filler slides.
+- Repeat the deck's core subject noun (or an unmistakable synonym) in most slides.
+- The last slide's CTA must reference that deck's specific angle, not a generic "follow for more".
+
 ${single}
 
 OVERRIDE OUTPUT FORMAT (multi-deck):

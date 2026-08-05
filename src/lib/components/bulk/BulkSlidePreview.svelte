@@ -77,7 +77,7 @@
 					: template === 'whiteMedia'
 						? WHITE_MEDIA_DEFAULTS.imageUrl
 						: template === 'imageQuote'
-							? '/templates/image-quote/demo-bg.png'
+							? IMAGE_QUOTE_DEFAULTS.imageUrl
 							: '',
 	);
 
@@ -220,8 +220,14 @@
 		/>
 	{:else if template === 'imageQuote'}
 		<ImageQuoteTemplate
-			image={mediaUrl || '/templates/image-quote/demo-bg.png'}
+			image={mediaUrl || IMAGE_QUOTE_DEFAULTS.imageUrl}
 			text={headline === ' ' ? IMAGE_QUOTE_DEFAULTS.body : headline}
+			footerLeft={IMAGE_QUOTE_DEFAULTS.footerLeft}
+			footerRight={IMAGE_QUOTE_DEFAULTS.footerRight}
+			topRatio={IMAGE_QUOTE_DEFAULTS.topRatio}
+			templateTheme="dark"
+			bgColor="#000000"
+			textColor="#ffffff"
 			canvasW={CANVAS_W}
 			canvasH={CANVAS_H}
 			{scale}

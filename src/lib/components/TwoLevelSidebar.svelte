@@ -10,6 +10,7 @@
 		currentPath?: string;
 		theme?: 'light' | 'dark';
 		railOnly?: boolean;
+		signedIn?: boolean;
 		onThemeToggle?: () => void;
 		onSignOut?: () => void;
 	};
@@ -19,6 +20,7 @@
 		currentPath = '',
 		theme = 'light',
 		railOnly = false,
+		signedIn = true,
 		onThemeToggle,
 		onSignOut,
 	}: Props = $props();
@@ -37,6 +39,7 @@
 		Analytics: 'linear-gradient(135deg, #a3e635 0%, #65a30d 100%)',
 		Scheduler: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
 		'Post Tests': 'linear-gradient(135deg, #c084fc 0%, #7c3aed 100%)',
+		Settings: 'linear-gradient(135deg, #a1a1aa 0%, #52525b 100%)',
 	};
 
 	function accentFor(item: NavGroupItem): string {
@@ -149,13 +152,13 @@
 				class="ssp-signout"
 				class:rail={isCollapsed}
 				onclick={() => onSignOut?.()}
-				aria-label="Sign out"
-				title="Sign out"
+				aria-label={signedIn ? 'Sign out' : 'Sign in'}
+				title={signedIn ? 'Sign out' : 'Sign in'}
 			>
 				{#if isCollapsed}
 					<LogOut size={17} />
 				{:else}
-					Sign out
+					{signedIn ? 'Sign out' : 'Sign in'}
 				{/if}
 			</button>
 		</div>

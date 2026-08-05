@@ -52,13 +52,11 @@
 	import {
 		CLIP_LENGTH_PRESETS,
 		VIDEO_ASPECT_RATIOS,
-		VIDEO_LAYOUT_TEMPLATES,
 		applyClipLengthPreset,
 		clipLengthPresetFromRange,
 		videoAspectById,
 		type ClipLengthPresetId,
 		type VideoAspectRatioId,
-		type VideoLayoutId,
 	} from '$lib/video-clips/clip-presets';
 	import {
 		DEFAULT_CAPTION_ENHANCE,
@@ -163,7 +161,8 @@
 	let clipMaxSec = $state(60);
 	let clipLengthPreset = $state<ClipLengthPresetId>('30to60');
 	let videoAspectRatio = $state<VideoAspectRatioId>('9:16');
-	let clipLayout = $state<VideoLayoutId>('fit');
+	/** Preview layout on clip cards — template picking moved to Studio / Carousels. */
+	const clipLayout = 'fit' as const;
 	let lengthMenuOpen = $state(false);
 	let ratioMenuOpen = $state(false);
 	let captionEnhance = $state<CaptionEnhanceOptions>({ ...DEFAULT_CAPTION_ENHANCE });
@@ -388,10 +387,7 @@
 		const list = (Array.isArray(templateRaw) ? templateRaw : [templateRaw])
 			.map((t) => coerceTemplateId(t))
 			.filter(Boolean);
-		const preferred =
-			list[0] ||
-			VIDEO_LAYOUT_TEMPLATES.find((l) => l.id === clipLayout)?.studioId ||
-			'videoFit';
+		const preferred = list[0] || 'videoFit';
 		const template = coerceTemplateId(preferred);
 		const carouselTemplates = list.length >= 2 ? list.slice(0, 10) : undefined;
 
@@ -761,7 +757,6 @@
 			clipMinSec,
 			clipMaxSec,
 			videoAspectRatio,
-			clipLayout,
 			autoReframeEnabled: autoReframe.enabled,
 			reframeAspectRatio: autoReframe.aspectRatio,
 			reframeMethod: autoReframe.method,
@@ -866,16 +861,25 @@
 		};
 	}
 
-	function saveCurrentClipsToLibrary() {
+	function saveCurrentClipsToLibrary(opts?: { quiet?: boolean }) {
 		const payload = buildSessionPayload();
 		if (!payload) return;
 		const entry = saveVideoClipsToLibrary(payload);
 		if (!entry) return;
 		refreshSavedClipJobs();
+		if (opts?.quiet) return;
 		clipsSavedNote = 'Saved — find it on the Videos home screen';
 		setTimeout(() => {
 			clipsSavedNote = '';
 		}, 2800);
+	}
+
+	/** Persist clips to the Videos library as soon as analysis finishes. */
+	function autoSaveClipsAfterAnalyze() {
+		// Defer so `source` / `clips` state is committed before we snapshot.
+		queueMicrotask(() => {
+			saveCurrentClipsToLibrary({ quiet: true });
+		});
 	}
 
 	async function restoreCachedSession() {
@@ -894,18 +898,6 @@
 			clipLengthPreset = clipLengthPresetFromRange(clipMinSec, clipMaxSec);
 			const ar = String(prefs.videoAspectRatio ?? '');
 			if (ar === '9:16' || ar === '1:1' || ar === '16:9') videoAspectRatio = ar;
-			const lay = String(prefs.clipLayout ?? '');
-			if (
-				lay === 'fit' ||
-				lay === 'blur' ||
-				lay === 'story' ||
-				lay === 'hook' ||
-				lay === 'creator' ||
-				lay === 'text' ||
-				lay === 'source' ||
-				lay === 'feature'
-			)
-				clipLayout = lay;
 			if (typeof prefs.autoReframeEnabled === 'boolean') {
 				autoReframe = { ...autoReframe, enabled: prefs.autoReframeEnabled };
 			}
@@ -1019,7 +1011,6 @@
 		clipMinSec;
 		clipMaxSec;
 		videoAspectRatio;
-		clipLayout;
 		autoReframe.enabled;
 		autoReframe.aspectRatio;
 		autoReframe.method;
@@ -1071,6 +1062,7 @@
 			toolsWarning = String(data.warning ?? toolsWarning);
 			selectedClipId = clips[0]?.id ?? null;
 			enterCaptionsStep();
+			autoSaveClipsAfterAnalyze();
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : String(e);
 			phase = 'idle';
@@ -1137,6 +1129,7 @@
 			selectedClipId = clips[0]?.id ?? null;
 			uploadProgress = 100;
 			enterCaptionsStep();
+			autoSaveClipsAfterAnalyze();
 		} catch (err: unknown) {
 			error = err instanceof Error ? err.message : String(err);
 			phase = 'idle';
@@ -1500,7 +1493,7 @@
 				<div class="saved-clips" aria-label="Saved clips">
 					<div class="saved-clips-head">
 						<strong>Saved clips</strong>
-						<span>Reopen anytime — Videos always starts fresh otherwise</span>
+						<span>Auto-saved after clipping — reopen anytime</span>
 					</div>
 					<ul class="saved-clips-list">
 						{#each savedClipJobs as job (job.id)}
@@ -1752,23 +1745,6 @@
 									{/each}
 								</ul>
 							{/if}
-						</div>
-					</div>
-
-					<div class="clip-field">
-						<span class="clip-field-label">Video template</span>
-						<div class="layout-picker" role="listbox" aria-label="Video template">
-							{#each VIDEO_LAYOUT_TEMPLATES as lay (lay.id)}
-								<button
-									type="button"
-									class="layout-chip"
-									class:layout-chip-on={clipLayout === lay.id}
-									disabled={isBusy}
-									onclick={() => (clipLayout = lay.id)}
-								>
-									{lay.label}
-								</button>
-							{/each}
 						</div>
 					</div>
 				</fieldset>
@@ -3174,29 +3150,6 @@
 	.ratio-icon[data-ratio='16:9'] {
 		width: 0.95rem;
 		height: 0.55rem;
-	}
-
-	.layout-picker {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.4rem;
-	}
-
-	.layout-chip {
-		padding: 0.4rem 0.75rem;
-		border-radius: 0.5rem;
-		border: 1px solid #e2e8f0;
-		background: #fff;
-		font-size: 0.78rem;
-		font-weight: 700;
-		color: #64748b;
-		cursor: pointer;
-	}
-
-	.layout-chip-on {
-		border-color: #c4b5fd;
-		background: #f5f3ff;
-		color: #6d28d9;
 	}
 
 	.enhance-grid {

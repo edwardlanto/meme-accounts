@@ -5,18 +5,14 @@
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import { stripMarkup } from '$lib/highlight';
 	import { coerceTemplateId, STUDIO_TEMPLATES } from '$lib/studio/template-ids';
-	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
+	import StarterTemplateGrid from '$lib/components/templates/StarterTemplateGrid.svelte';
+	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight } from 'lucide-svelte';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte` (workspace autosave rows). */
 	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte` (saved templates). */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
-	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
-	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
-	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
-	// ImageQuoteTemplate removed from public templates
-	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight } from 'lucide-svelte';
 
 	let carousels: any[] = $state([]);
 	let studioDrafts = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
@@ -30,41 +26,6 @@
 	let userId = $state('');
 	let mounted = $state(false);
 	onMount(() => { mounted = true; });
-
-	// Preview scale for template cards — fixed 220px preview width
-	let templatesWrapEl = $state<HTMLDivElement | null>(null);
-	let templateCols = $state(5);
-	let templateCardW = $state(220);
-	const templateScale = $derived(templateCardW / 1080);
-
-	onMount(() => {
-		const el = templatesWrapEl;
-		if (!el) return;
-		const GAP = 16; // px
-		const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
-		const compute = (w: number) => {
-			const cols =
-				w >= 1560 ? 6 :
-				w >= 1240 ? 5 :
-				w >= 980  ? 4 :
-				w >= 720  ? 3 :
-				2;
-			templateCols = cols;
-			const card = (w - GAP * (cols - 1)) / cols;
-			templateCardW = Math.round(clamp(card, 180, 260));
-		};
-
-		const ro = new ResizeObserver((entries) => {
-			const cr = entries[0]?.contentRect;
-			if (!cr) return;
-			compute(cr.width);
-		});
-		ro.observe(el);
-		// Initial pass
-		compute(el.getBoundingClientRect().width);
-		return () => ro.disconnect();
-	});
 
 	function studioDraftTitle(d: { state?: Record<string, unknown> }): string {
 		const slides = d.state?.slides;
@@ -429,15 +390,6 @@
 	};
 
 	let filterTab = $state<'all' | 'draft' | 'published' | 'scheduled'>('all');
-	let uiTheme = $state<'light' | 'dark'>('light');
-
-	onMount(() => {
-		const readTheme = (): 'light' | 'dark' => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
-		uiTheme = readTheme();
-		const obs = new MutationObserver(() => { uiTheme = readTheme(); });
-		obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-		return () => obs.disconnect();
-	});
 
 	const filteredCarousels = $derived(
 		filterTab === 'all' ? carousels : carousels.filter(c => c.status === filterTab)
@@ -490,146 +442,10 @@
 	<section class="templates-section reveal" style="--d:0.05s">
 		<div class="section-head">
 			<h2 class="section-title">Start from a template</h2>
-			<p class="section-sub">Hand‑crafted layouts that open straight into Studio.</p>
+			<p class="section-sub">Hand‑crafted layouts that open straight into Studio — {STARTER_TEMPLATES.length} templates.</p>
 		</div>
 
-		<div
-			bind:this={templatesWrapEl}
-			class="templates-grid"
-			style="--cols:{templateCols}; --cardw:{templateCardW}px;"
-		>
-			{#each STARTER_TEMPLATES.filter((t) => t.id !== 'image-quote') as tmpl, i}
-				{@const hoverClass =
-						tmpl.id === 'empty'   ? 'hover:border-neutral-400/35 hover:shadow-[0_0_24px_rgba(115,115,115,0.10)]'
-						: tmpl.id === 'tweet'   ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(14,165,233,0.12)]'
-						: tmpl.id === 'text'  ? 'hover:border-white/25 hover:shadow-[0_0_28px_rgba(255,255,255,0.06)]'
-						: tmpl.id === 'black-text' ? 'hover:border-sky-500/35 hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]'
-						: tmpl.id === 'article' ? 'hover:border-emerald-500/40 hover:shadow-[0_0_28px_rgba(52,211,153,0.12)]'
-						: tmpl.id.startsWith('video-') ? 'hover:border-fuchsia-500/40 hover:shadow-[0_0_28px_rgba(217,70,239,0.12)]'
-						: tmpl.id.startsWith('photo-') ? 'hover:border-sky-500/40 hover:shadow-[0_0_28px_rgba(56,189,248,0.12)]'
-						: tmpl.id.startsWith('white-') ? 'hover:border-neutral-400/50 hover:shadow-[0_0_28px_rgba(0,0,0,0.08)]'
-						: 'hover:border-amber-500/40 hover:shadow-[0_0_28px_rgba(245,166,35,0.12)]'}
-				{@const arrowColor =
-						tmpl.id === 'empty'   ? 'group-hover:text-neutral-400'
-						: tmpl.id === 'tweet'   ? 'group-hover:text-sky-400'
-						: tmpl.id === 'text'  ? 'group-hover:text-white/70'
-						: tmpl.id === 'black-text' ? 'group-hover:text-sky-400'
-						: tmpl.id === 'article' ? 'group-hover:text-emerald-400'
-						: tmpl.id.startsWith('video-') ? 'group-hover:text-fuchsia-400'
-						: tmpl.id.startsWith('photo-') ? 'group-hover:text-sky-300'
-						: tmpl.id.startsWith('white-') ? 'group-hover:text-neutral-500'
-						: 'group-hover:text-amber-400'}
-				<a
-					href={tmpl.href}
-					class="tmpl-card reveal group flex flex-col rounded-2xl overflow-hidden flex-shrink-0 {hoverClass}"
-					style="width: 100%; --d:{0.06 + i * 0.04}s"
-				>
-					<!-- Preview area -->
-					<div style="width: 100%; height: {Math.round(templateCardW * 1350/1080)}px; overflow: hidden; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;">
-						{#if tmpl.id === 'empty'}
-							<div
-								class="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none select-none"
-								style="background: {uiTheme === 'dark' ? 'rgba(23,23,23,0.92)' : '#fafafa'}; border: 2px dashed {uiTheme === 'dark' ? 'rgba(163,163,163,0.35)' : 'rgba(163,163,163,0.55)'};"
-							>
-								<span
-									class="text-[9px] font-mono uppercase tracking-[0.2em]"
-									style="color: {uiTheme === 'dark' ? 'rgba(163,163,163,0.65)' : 'rgba(115,115,115,0.85)'};"
-								>Blank canvas</span>
-								<span
-									class="text-[8px] font-body max-w-[75%] text-center leading-snug"
-									style="color: {uiTheme === 'dark' ? 'rgba(163,163,163,0.45)' : 'rgba(115,115,115,0.55)'};"
-								>Opens Studio with no placeholder copy or media</span>
-							</div>
-						{:else if tmpl.id === 'news'}
-							<img
-								src={tmpl.previewBg}
-								alt=""
-								class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
-								loading="lazy"
-								draggable="false"
-							/>
-						{:else if tmpl.id === 'tweet'}
-							<TweetTemplate
-								templateTheme={uiTheme}
-								topName="Chef 👨‍🍳"
-								topHandle="@chefsevenn"
-								topVerified={true}
-								topText="Ketchup or mayo or mustard?"
-								bottomName="Mo Mohler"
-								bottomHandle="@MoMohler"
-								bottomVerified={true}
-								bottomText="3 straight misses chef. These appear to be French fries."
-								scale={templateScale}
-							/>
-						{:else if tmpl.id === 'text'}
-							{#if tmpl.previewBg}
-								<img
-									src={tmpl.previewBg}
-									alt=""
-									class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
-									loading="lazy"
-									draggable="false"
-								/>
-							{:else}
-								<TextCarouselTemplate
-									templateTheme={uiTheme}
-									name="Captains of industry"
-									handle="@captainsofindustryy"
-									text={TEXT_CAROUSEL_DEFAULTS.body}
-									showSwipe={false}
-									scale={templateScale}
-									interactive={false}
-								/>
-							{/if}
-						{:else if tmpl.id === 'black-text'}
-							{#if tmpl.previewBg}
-								<img
-									src={tmpl.previewBg}
-									alt=""
-									class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
-									loading="lazy"
-									draggable="false"
-								/>
-							{/if}
-						{:else if (tmpl.id.startsWith('video-') || tmpl.id.startsWith('photo-') || tmpl.id.startsWith('white-')) && tmpl.previewBg}
-							<img
-								src={tmpl.previewBg}
-								alt=""
-								class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
-								loading="lazy"
-								draggable="false"
-							/>
-						{:else if tmpl.id === 'article'}
-							<ArticleTemplate
-								templateTheme={uiTheme}
-								text={"Here's the trillion-dollar problem everyone avoids.\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate."}
-								showSwipe={true}
-								scale={templateScale}
-								interactive={false}
-							/>
-						{/if}
-					</div>
-
-					<!-- Card footer -->
-					<div class="tmpl-footer px-3 py-2.5 flex items-center justify-between gap-2 border-t">
-						<div class="min-w-0">
-							<p class="tmpl-title text-xs font-display font-semibold truncate">{tmpl.name}</p>
-							<p class="tmpl-desc text-[10px] font-body truncate leading-tight">{tmpl.description}</p>
-						</div>
-						<ArrowRight size={13} class="tmpl-arrow {arrowColor} group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-					</div>
-				</a>
-			{/each}
-
-			<!-- "More coming" placeholder -->
-			<div
-				class="tmpl-more reveal flex flex-col items-center justify-center rounded-2xl border-2 border-dashed flex-shrink-0"
-				style="width: 100%; height: {Math.round(templateCardW * 1350/1080) + 46}px; display: flex; --d:{0.06 + STARTER_TEMPLATES.length * 0.04}s"
-			>
-				<Plus size={18} class="mb-2 opacity-40" />
-				<span class="text-[10px] font-mono">More templates soon</span>
-			</div>
-		</div>
+		<StarterTemplateGrid templates={STARTER_TEMPLATES} />
 	</section>
 
 	{#if studioSavedTemplates.length > 0}
@@ -924,66 +740,6 @@
 
 	/* ─── Templates section ────────────────────────────────── */
 	.templates-section { margin-bottom: 32px; }
-
-	.templates-grid {
-		display: grid;
-		grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
-		gap: 16px;
-		align-items: start;
-	}
-
-	/* Starter template cards */
-	.tmpl-card {
-		border: 1px solid var(--panel-border);
-		background: var(--panel-bg);
-		box-shadow: var(--shadow-soft);
-		transition:
-			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-			border-color 0.25s ease,
-			box-shadow 0.32s ease,
-			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
-	}
-	.tmpl-card:hover {
-		transform: translateY(-3px);
-		border-color: var(--panel-border-hover);
-		box-shadow: var(--shadow-pop);
-	}
-
-	:global(.tmpl-footer) {
-		background: var(--panel-bg);
-		border-color: var(--panel-border) !important;
-	}
-	:global(.tmpl-title) {
-		color: var(--t-strong) !important;
-		font-family: 'Satoshi', sans-serif;
-		font-weight: 700;
-		letter-spacing: -0.01em;
-	}
-	:global(.tmpl-desc)  { color: var(--t-muted) !important; }
-	:global(.tmpl-arrow) {
-		color: var(--t-muted) !important;
-		transition: transform 0.22s ease, color 0.22s ease;
-	}
-	.tmpl-card:hover :global(.tmpl-arrow) {
-		color: var(--t-strong) !important;
-		transform: translateX(2px);
-	}
-
-	.tmpl-more {
-		border-color: var(--panel-border);
-		color: var(--t-muted);
-		background: color-mix(in oklab, var(--panel-bg) 70%, transparent);
-		transition:
-			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-			border-color 0.25s ease,
-			color 0.25s ease,
-			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
-	}
-	.tmpl-more:hover {
-		transform: translateY(-3px);
-		border-color: var(--panel-border-hover);
-		color: var(--t-strong);
-	}
 
 	/* ─── Studio workspace drafts ──────────────────────────── */
 	.studio-drafts-block {
@@ -1376,7 +1132,7 @@
 	@media (prefers-reduced-motion: reduce) {
 		.reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
 		.page-hero { animation: none; opacity: 1; transform: none; }
-		.tmpl-card, .saved-template-tile, .carousel-card, .tmpl-more {
+		.saved-template-tile, .carousel-card {
 			transition: border-color 0.2s, box-shadow 0.2s;
 		}
 	}

@@ -1,143 +1,88 @@
+<script lang="ts">
+	import LegalDoc from '$lib/components/LegalDoc.svelte';
+</script>
+
 <svelte:head>
-	<title>Terms of Service — Dropslot</title>
+	<title>Terms of Service — Carousel Studio</title>
+	<meta name="description" content="Terms of Service for Carousel Studio — acceptable use, subscriptions, trials, and third-party integrations." />
 </svelte:head>
 
-<main class="wrap">
-	<article class="doc">
-		<a class="back" href="/">← Home</a>
+<LegalDoc title="Carousel Studio — Terms of Service" effectiveDate="August 5, 2026">
+	<h2>1. Acceptance</h2>
+	<p>
+		By using Carousel Studio (&ldquo;the Service&rdquo;), you agree to these Terms. If you do not
+		agree, do not use the Service.
+	</p>
 
-		<h1>Dropslot — Terms of Service</h1>
-		<p class="meta">Effective date: April 22, 2026</p>
+	<h2>2. The Service</h2>
+	<p>
+		Carousel Studio helps you design social content (including tweet-style graphics, carousels,
+		and videos), connect social accounts, and schedule or publish posts. Features vary by plan.
+	</p>
 
-		<h2>1. Acceptance of Terms</h2>
-		<p>
-			By accessing or using Dropslot (&ldquo;the Service&rdquo;), you
-			agree to be bound by these Terms of Service. If you do not agree, do
-			not use the Service.
-		</p>
+	<h2>3. Accounts</h2>
+	<p>
+		You are responsible for your credentials and all activity under your account. Keep your
+		password secure and notify us of unauthorized access.
+	</p>
 
-		<h2>2. Use of the Service</h2>
-		<p>
-			Dropslot lets you connect your third-party social media accounts
-			(including TikTok, Instagram, and Facebook) and schedule or publish
-			content through those accounts. You are responsible for all content
-			you upload and for complying with the platform policies of each
-			connected service, including but not limited to the TikTok Community
-			Guidelines and Meta&apos;s Community Standards.
-		</p>
+	<h2>4. Free trial & plans</h2>
+	<ul>
+		<li>Free accounts include a limited trial (currently <strong>one exported post</strong> on trial-gated tools such as the Tweet Maker).</li>
+		<li>Paid plans (Pro, Agency) remove trial limits subject to fair use.</li>
+		<li>Subscriptions renew automatically until canceled via the Stripe Customer Portal.</li>
+		<li>We may change plan features or pricing with notice on the pricing page.</li>
+	</ul>
 
-		<h2>3. Account Responsibilities</h2>
-		<p>
-			You are responsible for maintaining the confidentiality of your
-			account credentials and for all activity that occurs under your
-			account. You must notify us immediately of any unauthorized access.
-		</p>
+	<h2>5. Acceptable use</h2>
+	<p>You agree not to use the Service to:</p>
+	<ul>
+		<li>Impersonate real people or brands in a deceptive or harmful way.</li>
+		<li>Publish illegal content, spam, malware, or content that infringes intellectual property.</li>
+		<li>Violate the terms or community guidelines of any connected social platform.</li>
+		<li>Circumvent plan limits, trial restrictions, or security measures.</li>
+	</ul>
+	<p>
+		Tweet-style templates are for parody, commentary, and creative content. You are solely
+		responsible for how you use exported graphics.
+	</p>
 
-		<h2>4. Acceptable Use</h2>
-		<p>
-			You agree not to use Dropslot to publish illegal content, spam,
-			misleading information, content that infringes intellectual
-			property, or content that violates the policies of any connected
-			third-party service.
-		</p>
+	<h2>6. Third-party platforms</h2>
+	<p>
+		When you connect Instagram, TikTok, LinkedIn, or other services, your use of those platforms
+		is governed by their terms. We are not responsible for outages, policy changes, or actions
+		taken by third parties.
+	</p>
 
-		<h2>5. Third-Party Services</h2>
-		<p>
-			Dropslot acts on your behalf when you connect third-party accounts.
-			Your use of those services is governed by their own terms. We are
-			not responsible for any outage, policy change, or action taken by a
-			connected service.
-		</p>
+	<h2>7. AI-generated content</h2>
+	<p>
+		AI outputs may be inaccurate or inappropriate. Review all generated content before publishing.
+		You retain responsibility for what you post.
+	</p>
 
-		<h2>6. Termination</h2>
-		<p>
-			We may suspend or terminate your access at any time if you violate
-			these Terms. You may stop using the Service at any time by deleting
-			your account.
-		</p>
+	<h2>8. Termination</h2>
+	<p>
+		We may suspend or terminate access for violations of these Terms. You may stop using the
+		Service at any time. See our <a href="/refund-policy">Refund Policy</a> for billing questions.
+	</p>
 
-		<h2>7. Disclaimer</h2>
-		<p>
-			The Service is provided &ldquo;as is&rdquo; without warranties of
-			any kind. To the maximum extent permitted by law, we disclaim all
-			warranties, express or implied.
-		</p>
+	<h2>9. Disclaimer</h2>
+	<p>
+		The Service is provided &ldquo;as is&rdquo; without warranties of any kind, to the maximum
+		extent permitted by law.
+	</p>
 
-		<h2>8. Limitation of Liability</h2>
-		<p>
-			Dropslot is not liable for any indirect, incidental, special, or
-			consequential damages arising from use of the Service.
-		</p>
+	<h2>10. Limitation of liability</h2>
+	<p>
+		To the fullest extent permitted by law, Carousel Studio is not liable for indirect,
+		incidental, special, or consequential damages arising from use of the Service.
+	</p>
 
-		<h2>9. Changes</h2>
-		<p>
-			We may update these Terms at any time. Continued use of the Service
-			after changes constitutes acceptance of the new Terms.
-		</p>
+	<h2>11. Changes</h2>
+	<p>We may update these Terms. Continued use after changes constitutes acceptance.</p>
 
-		<h2>10. Contact</h2>
-		<p>
-			Questions about these Terms: <a href="mailto:support@dropslot.app"
-				>support@dropslot.app</a
-			>
-		</p>
-	</article>
-</main>
-
-<style>
-	.wrap {
-		min-height: 100vh;
-		background: var(--app-bg);
-		color: var(--app-text);
-		font-family: "Satoshi", system-ui, sans-serif;
-		padding: 48px 24px 96px;
-	}
-	.doc {
-		max-width: 720px;
-		margin: 0 auto;
-		line-height: 1.65;
-	}
-	.back {
-		display: inline-block;
-		margin-bottom: 32px;
-		font-size: 13px;
-		color: var(--app-text-2);
-		text-decoration: none;
-		font-family: "Satoshi", sans-serif;
-	}
-	.back:hover {
-		color: var(--app-text);
-	}
-	h1 {
-		font-family: var(--font-display, var(--font-sans, system-ui));
-		font-size: clamp(32px, 5vw, 44px);
-		font-weight: 900;
-		letter-spacing: -0.02em;
-		margin: 0 0 8px;
-	}
-	.meta {
-		font-size: 13px;
-		color: var(--app-text-3);
-		font-family: "Satoshi", sans-serif;
-		margin: 0 0 48px;
-	}
-	h2 {
-		font-family: var(--font-display, var(--font-sans, system-ui));
-		font-size: 20px;
-		font-weight: 700;
-		margin: 36px 0 10px;
-		color: var(--app-text);
-	}
-	p {
-		font-size: 15px;
-		color: var(--app-text-2);
-		margin: 0 0 12px;
-	}
-	a {
-		color: #e8ff48;
-		text-decoration: none;
-	}
-	a:hover {
-		text-decoration: underline;
-	}
-</style>
+	<h2>12. Contact</h2>
+	<p>
+		<a href="mailto:support@carouselstudio.app">support@carouselstudio.app</a>
+	</p>
+</LegalDoc>

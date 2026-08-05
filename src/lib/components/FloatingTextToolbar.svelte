@@ -586,7 +586,7 @@
 			>
 				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Presets</p>
 				<div class="mb-3 grid grid-cols-6 gap-1.5">
-					{#each ['transparent', '#000000', '#FFFFFF', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#111827'] as c}
+					{#each ['transparent', '#FFEB3B', '#FFFFFF', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#111827'] as c}
 						<button
 							type="button"
 							onclick={() => pickBackgroundPreset(c)}
@@ -603,7 +603,7 @@
 				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Custom</p>
 				<input
 					type="color"
-					value={style.bgColor ?? '#000000'}
+					value={style.bgColor ?? '#FFEB3B'}
 					oninput={onBgCustomColorInput}
 					disabled={supportsHighlights && !hasRangeSelection}
 					class="h-8 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent"

@@ -45,7 +45,7 @@
 		reframeLocked?: boolean;
 		muted?: boolean;
 		/** Video preview layouts matching Studio video templates */
-		layout?: 'story' | 'fit' | 'blur' | 'hook' | 'creator' | 'text' | 'source' | 'feature';
+		layout?: 'story' | 'fit' | 'blur' | 'hook' | 'creator' | 'text' | 'source' | 'feature' | 'post';
 		/** CSS aspect-ratio value e.g. "9 / 16" */
 		aspectRatio?: string;
 		enhance?: CaptionEnhanceOptions;
@@ -132,6 +132,8 @@
 					? 'videoHook'
 					: layout === 'creator'
 						? 'videoCreator'
+						: layout === 'post'
+							? 'videoPost'
 						: layout === 'text'
 							? 'videoText'
 							: layout === 'source'
@@ -361,12 +363,13 @@
 				class="phone-frame"
 				class:layout-fit={layout === 'fit'}
 				class:layout-hook={layout === 'hook'}
-				class:layout-creator={layout === 'creator'}
+				class:layout-creator={layout === 'creator' || layout === 'post'}
 				class:layout-text={layout === 'text'}
 				class:layout-source={layout === 'source'}
 				class:layout-feature={layout === 'feature'}
 				class:layout-blur={layout === 'blur'}
 				class:layout-story={layout === 'story'}
+				class:layout-post={layout === 'post'}
 				style="aspect-ratio: {aspectRatio}"
 			>
 				{#if layout === 'blur'}
@@ -383,7 +386,7 @@
 				{#if layout === 'hook'}
 					<p class="hook-title" aria-hidden="true">{videoHookLine}</p>
 				{/if}
-				{#if layout === 'creator'}
+				{#if layout === 'creator' || layout === 'post'}
 					<div class="creator-head" aria-hidden="true">
 						<div class="creator-avatar">
 							{#if source.thumbnailUrl}
@@ -439,9 +442,9 @@
 					<video
 						bind:this={videoEl}
 						class="clip-video"
-						class:clip-video-contain={(layout === 'fit' || layout === 'hook' || layout === 'creator') && !hasReframed}
+						class:clip-video-contain={(layout === 'fit' || layout === 'hook' || layout === 'creator' || layout === 'post') && !hasReframed}
 						class:clip-video-mid={layout === 'blur'}
-						class:clip-video-hook={layout === 'hook' || layout === 'creator'}
+						class:clip-video-hook={layout === 'hook' || layout === 'creator' || layout === 'post'}
 						class:clip-video-source={layout === 'source'}
 						class:clip-video-feature={layout === 'feature'}
 						src={mediaSrc}
@@ -781,11 +784,11 @@
 
 	.clip-video-blur {
 		z-index: 0;
-		inset: -10%;
-		width: 120%;
-		height: 120%;
-		filter: blur(28px) brightness(0.85);
-		transform: scale(1.08);
+		inset: -18%;
+		width: 136%;
+		height: 136%;
+		filter: blur(42px) brightness(0.78) saturate(1.05);
+		transform: scale(1.12);
 		pointer-events: none;
 	}
 
@@ -1033,12 +1036,19 @@
 	}
 
 	.layout-blur .clip-video-mid {
-		top: 29%;
-		bottom: 29%;
+		/* Full-width 16:9 band centered — matches Studio blur template (~31.6% of 9:16 frame) */
+		inset: auto;
+		left: 0;
+		right: 0;
+		top: 50%;
+		width: 100%;
 		height: auto;
-		inset: 29% 0;
+		aspect-ratio: 16 / 9;
+		transform: translateY(-50%);
 		object-fit: cover;
-		box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+		box-shadow:
+			0 -18px 0 #000,
+			0 18px 0 #000;
 	}
 
 	.layout-fit .caption-box {
@@ -1051,7 +1061,8 @@
 	}
 
 	.layout-blur .caption-box {
-		top: 10%;
+		top: 9%;
+		bottom: auto;
 	}
 
 	.yt-frame iframe {

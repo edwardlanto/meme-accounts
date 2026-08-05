@@ -86,6 +86,8 @@
 		display: flex;
 		align-items: center;
 		padding: 6px;
+		min-height: 48px;
+		box-sizing: border-box;
 		border-radius: 16px;
 		background: rgba(255, 255, 255, 0.82);
 		border: 1px solid rgba(10, 10, 10, 0.08);
@@ -96,5 +98,8 @@
 
 	:global(.template-dock-float [data-slot='select-trigger']) {
 		gap: 6px;
+		height: 36px;
+		min-height: 36px;
+		min-width: 9rem;
 	}
 </style>

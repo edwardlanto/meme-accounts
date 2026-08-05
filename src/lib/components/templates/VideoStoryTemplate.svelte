@@ -467,7 +467,15 @@
 			<div
 				style="
 					flex-shrink: 0;
-					padding: {pill ? (previewMode ? '28px 36px 12px' : '56px 48px 20px') : headlinePad};
+					padding: {pill
+						? layout === 'blur'
+							? previewMode
+								? '0 22px 0'
+								: '0 56px 0'
+							: previewMode
+								? '28px 36px 12px'
+								: '56px 48px 20px'
+						: headlinePad};
 					box-sizing: border-box;
 					position: relative;
 					z-index: 5;
@@ -497,11 +505,17 @@
 							<div
 								style="
 									display: inline-block;
-									max-width: 92%;
-									padding: {previewMode ? '10px 18px' : '16px 28px'};
-									border-radius: 999px;
-									background: rgba(255,255,255,0.95);
-									box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+									max-width: {layout === 'blur' ? '86%' : '92%'};
+									padding: {layout === 'blur'
+										? previewMode
+											? '12px 18px'
+											: '22px 36px'
+										: previewMode
+											? '10px 18px'
+											: '16px 28px'};
+									border-radius: {layout === 'blur' ? (previewMode ? '18px' : '32px') : '999px'};
+									background: rgba(255,255,255,0.96);
+									box-shadow: 0 10px 32px rgba(0,0,0,0.28);
 									text-align: center;
 								"
 							>
@@ -514,11 +528,18 @@
 										margin: 0;
 										white-space: pre-wrap;
 										word-break: break-word;
-										line-height: 1.2;
+										line-height: {layout === 'blur' ? 1.28 : 1.2};
 										letter-spacing: -0.02em;
 										color: #0f172a;
 										font-weight: 700;
-										font-size: {headlineStyle.fontSize ?? (previewMode ? 28 : 36)}px;
+										font-size: {headlineStyle.fontSize ??
+										(layout === 'blur'
+											? previewMode
+												? 22
+												: 34
+											: previewMode
+												? 28
+												: 36)}px;
 									"
 								/>
 							</div>
@@ -1461,8 +1482,15 @@
 			</div>
 			{@render subtitleBlock('karaoke')}
 		{:else if layout === 'blur'}
-			<!-- Blur: blurred fill + sharp middle band -->
-			<div style="position: absolute; inset: 0; z-index: 0; overflow: hidden;">
+			<!--
+				Blur template proportions (9:16 canvas):
+				- Full-bleed zoomed/blurred backdrop
+				- Sharp landscape band = full width × 16:9 (~31.6% of frame height), vertically centered
+				- Thin black letterbox bars above/below the sharp band
+				- White pill headline in the upper third, watermark in the lower third
+			-->
+			{@const blurBar = previewMode ? 6 : 18}
+			<div style="position: absolute; inset: 0; z-index: 0; overflow: hidden; background: #0a0a0a;">
 				{#if resolvedVideo}
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
@@ -1476,12 +1504,12 @@
 						aria-hidden="true"
 						style="
 							position: absolute;
-							inset: -8%;
-							width: 116%;
-							height: 116%;
+							inset: -18%;
+							width: 136%;
+							height: 136%;
 							object-fit: cover;
-							filter: blur(28px) brightness(0.85);
-							transform: scale(1.08);
+							filter: blur(42px) brightness(0.78) saturate(1.05);
+							transform: scale(1.12);
 						"
 					></video>
 				{:else if posterSrc}
@@ -1491,57 +1519,66 @@
 						aria-hidden="true"
 						style="
 							position: absolute;
-							inset: -8%;
-							width: 116%;
-							height: 116%;
+							inset: -18%;
+							width: 136%;
+							height: 136%;
 							object-fit: cover;
-							filter: blur(28px) brightness(0.85);
-							transform: scale(1.08);
+							filter: blur(42px) brightness(0.78) saturate(1.05);
+							transform: scale(1.12);
 						"
 					/>
 				{/if}
-				<div
-					style="
-						position: absolute;
-						inset: 0;
-						background: linear-gradient(
-							180deg,
-							rgba(0,0,0,0.25) 0%,
-							transparent 28%,
-							transparent 72%,
-							rgba(0,0,0,0.35) 100%
-						);
-					"
-				></div>
 			</div>
 
-			<div style="position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; min-height: 0;">
-				{@render headlineBlock(true)}
+			<!-- Sharp 16:9 band + black letterbox bars, locked to full-canvas center -->
+			<div
+				style="
+					position: absolute;
+					left: 0;
+					right: 0;
+					top: 50%;
+					transform: translateY(-50%);
+					z-index: 1;
+					display: flex;
+					flex-direction: column;
+					width: 100%;
+					pointer-events: none;
+				"
+			>
+				<div style="height: {blurBar}px; width: 100%; background: #000; flex-shrink: 0;"></div>
 				<div
 					style="
-						flex: 1;
-						min-height: 0;
-						display: flex;
-						align-items: center;
-						justify-content: center;
-						padding: 0;
+						position: relative;
+						width: 100%;
+						aspect-ratio: 16 / 9;
+						overflow: hidden;
+						background: #000;
+						pointer-events: auto;
 					"
 				>
-					<div
-						style="
-							position: relative;
-							width: 100%;
-							height: 42%;
-							min-height: 180px;
-							overflow: hidden;
-							background: #0a0a0a;
-							box-shadow: 0 12px 40px rgba(0,0,0,0.45);
-						"
-					>
-						{@render draggableMedia('cover')}
-					</div>
+					{@render draggableMedia('cover')}
 				</div>
-				{@render subtitleBlock('plain')}
+				<div style="height: {blurBar}px; width: 100%; background: #000; flex-shrink: 0;"></div>
+			</div>
+
+			<!-- Text layers sit above the blur + strip without shifting strip proportions -->
+			<div
+				style="
+					position: absolute;
+					inset: 0;
+					z-index: 2;
+					display: flex;
+					flex-direction: column;
+					justify-content: space-between;
+					pointer-events: none;
+				"
+			>
+				<div style="pointer-events: auto; padding-top: {previewMode ? '8%' : '7%'};">
+					{@render headlineBlock(true)}
+				</div>
+				<div style="pointer-events: auto; padding-bottom: {previewMode ? '6%' : '5%'};">
+					{@render subtitleBlock('plain')}
+				</div>
 			</div>
 		{:else}
 			<!-- Story (default): inset rounded video card -->

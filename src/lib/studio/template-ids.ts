@@ -15,6 +15,7 @@ export type TemplateId =
 	| 'videoSource'
 	| 'videoFeature'
 	| 'videoPost'
+	| 'brandStack'
 	| 'photoTopic'
 	| 'photoCaption'
 	| 'whiteThread'
@@ -31,7 +32,6 @@ export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 	{ id: 'textCarousel', label: 'Text carousel' },
 	{ id: 'whiteThread', label: 'White thread' },
 	{ id: 'whiteMedia', label: 'White media' },
-	{ id: 'photoTopic', label: 'Topic card' },
 	{ id: 'photoCaption', label: 'Photo caption' },
 	{ id: 'videoPost', label: 'Clip post' },
 	{ id: 'videoFeature', label: 'Feature card' },
@@ -42,6 +42,7 @@ export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 	{ id: 'videoFit', label: 'Fit video' },
 	{ id: 'videoBlur', label: 'Blur' },
 	{ id: 'videoStory', label: 'Video story' },
+	{ id: 'brandStack', label: 'Brand stack' },
 	{ id: 'imageQuote', label: 'Image quote' },
 	{ id: 'blackText', label: 'Black text' },
 ];
@@ -90,10 +91,10 @@ const QUERY_TEMPLATE_MAP: Record<string, TemplateId> = {
 	clippost: 'videoPost',
 	clip: 'videoPost',
 	mma: 'videoPost',
-	phototopic: 'photoTopic',
-	'photo-topic': 'photoTopic',
-	topic: 'photoTopic',
-	'topic-card': 'photoTopic',
+	brandstack: 'brandStack',
+	'brand-stack': 'brandStack',
+	stack: 'brandStack',
+	'rumble-stack': 'brandStack',
 	photocaption: 'photoCaption',
 	'photo-caption': 'photoCaption',
 	caption: 'photoCaption',
@@ -136,6 +137,7 @@ const CANONICAL_TEMPLATE_IDS: TemplateId[] = [
 	'videoSource',
 	'videoFeature',
 	'videoPost',
+	'brandStack',
 	'photoTopic',
 	'photoCaption',
 	'whiteThread',
@@ -170,6 +172,10 @@ export function videoLayoutForTemplate(
 	if (id === 'videoFit') return 'fit';
 	if (id === 'videoBlur') return 'blur';
 	return 'story';
+}
+
+export function isBrandStackFamily(id: TemplateId): boolean {
+	return id === 'brandStack';
 }
 
 export function isVideoStoryFamily(id: TemplateId): boolean {

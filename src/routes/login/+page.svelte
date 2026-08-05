@@ -3,6 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { AlertCircle } from 'lucide-svelte';
 
+	let { data } = $props();
+
 	let email    = $state('');
 	let password = $state('');
 	let loading  = $state(false);
@@ -16,13 +18,14 @@
 		loading = true; error = '';
 		const { error: err } = await supabase.auth.signInWithPassword({ email, password });
 		if (err) { error = err.message; loading = false; return; }
-		goto('/dashboard');
+		goto(data.next || '/dashboard');
 	}
 
 	async function loginWithGoogle() {
+		const next = encodeURIComponent(data.next || '/dashboard');
 		await supabase.auth.signInWithOAuth({
 			provider: 'google',
-			options: { redirectTo: `${location.origin}/auth/callback?next=/dashboard` },
+			options: { redirectTo: `${location.origin}/auth/callback?next=${next}` },
 		});
 	}
 
