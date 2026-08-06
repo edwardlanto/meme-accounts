@@ -3,7 +3,14 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { stripMarkup } from '$lib/highlight';
-	import { coerceTemplateId, STUDIO_TEMPLATES } from '$lib/studio/template-ids';
+	import {
+		coerceTemplateId,
+		isBrandStackFamily,
+		isVideoStoryFamily,
+		STUDIO_TEMPLATES,
+		type TemplateId,
+	} from '$lib/studio/template-ids';
+	import { defaultThumbForTemplate } from '$lib/studio/slide-content-defaults';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
 		loadBulkHistory,
@@ -20,6 +27,7 @@
 		FileText,
 		Loader,
 		Rows3,
+		Video,
 	} from 'lucide-svelte';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte`. */
@@ -81,9 +89,13 @@
 	/** Multi-select for Studio drafts (bulk delete). */
 	let selectedDraftIds = $state<string[]>([]);
 	let bulkDeletingDrafts = $state(false);
+	/** Multi-select for YouTube clip cards (keys from clipShowCards). */
+	let selectedClipKeys = $state<string[]>([]);
+	let bulkDeletingClips = $state(false);
 	/** Track hero URLs that failed to load so we fall back to text cards. */
 	let brokenDraftThumbIds = $state<Record<string, true>>({});
 	let brokenSavedThumbIds = $state<Record<string, true>>({});
+	let brokenClipThumbKeys = $state<Record<string, true>>({});
 
 	/** Bulk stacks that are not YouTube-clip projects (those get their own section). */
 	const topicBulkWorkspaces = $derived(
@@ -164,6 +176,42 @@
 			});
 
 			return [...fromLinkedBulk, ...fromOrphans];
+		})(),
+	);
+
+	/** Group clip cards by source video so the library is scannable. */
+	const clipGroups = $derived(
+		(() => {
+			const order: string[] = [];
+			const map = new Map<
+				string,
+				{
+					groupId: string;
+					title: string;
+					updatedAt: string;
+					cards: (typeof clipShowCards)[number][];
+				}
+			>();
+			for (const card of clipShowCards) {
+				const groupId = String(card.projectId || card.workspaceId || card.key);
+				let g = map.get(groupId);
+				if (!g) {
+					g = {
+						groupId,
+						title: card.projectTitle || 'YouTube clips',
+						updatedAt: card.updatedAt,
+						cards: [],
+					};
+					map.set(groupId, g);
+					order.push(groupId);
+				}
+				g.cards.push(card);
+				if (new Date(card.updatedAt).getTime() > new Date(g.updatedAt).getTime()) {
+					g.updatedAt = card.updatedAt;
+					g.title = card.projectTitle || g.title;
+				}
+			}
+			return order.map((id) => map.get(id)!);
 		})(),
 	);
 
@@ -249,6 +297,14 @@
 		fullSlideRaster: boolean;
 	};
 
+	function isUsableThumbUrl(u: string): boolean {
+		const s = String(u ?? '').trim();
+		if (!s) return false;
+		if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/')) return true;
+		if (s.startsWith('data:image/') && s.length < 2_500_000) return true;
+		return false;
+	}
+
 	function studioDraftPreview(d: {
 		id: string;
 		updated_at?: string;
@@ -264,9 +320,7 @@
 		const bgMap = (s.bgImagesByTemplate ?? {}) as Record<string, string[]>;
 		const pickHero = (key: string) => {
 			const u = String(bgMap[key]?.[0] ?? '').trim();
-			if (u.startsWith('http://') || u.startsWith('https://')) return u;
-			if (u.startsWith('data:image/') && u.length < 2_500_000) return u;
-			return '';
+			return isUsableThumbUrl(u) ? u : '';
 		};
 
 		const storagePreviewHero = (() => {
@@ -278,14 +332,19 @@
 			return u.startsWith('http://') || u.startsWith('https://') ? u : '';
 		})();
 
+		const thumbFallback = () => {
+			const demo = defaultThumbForTemplate(tpl as TemplateId);
+			return isUsableThumbUrl(demo) ? demo : '';
+		};
+
 		let headline = '';
 		if (tpl === 'tweet') {
 			headline = stripMarkup(String(strArr(s.tweetTopTextBySlide)[0] ?? '')).trim();
 		} else if (tpl === 'blackText') {
 			headline = stripMarkup(String(strArr(s.blackTextHeadlineBySlide)[0] ?? '')).trim();
-		} else if (tpl === 'textCarousel') {
+		} else if (tpl === 'textCarousel' || tpl === 'whiteThread' || tpl === 'whiteMedia') {
 			headline = stripMarkup(String(strArr(s.textCarouselTextBySlide)[0] ?? '')).trim();
-		} else if (tpl === 'videoStory') {
+		} else if (isVideoStoryFamily(tpl) || isBrandStackFamily(tpl)) {
 			headline = stripMarkup(String(strArr(s.videoStoryHeadlineBySlide)[0] ?? '')).trim();
 		} else if (tpl === 'imageQuote') {
 			headline = stripMarkup(String(strArr(s.imageQuoteTextBySlide)[0] ?? '')).trim();
@@ -307,7 +366,7 @@
 		let heroUrl = '';
 
 		if (tpl === 'news') {
-			heroUrl = storagePreviewHero || pickHero('news');
+			heroUrl = storagePreviewHero || pickHero('news') || thumbFallback();
 			const solid = String(strArr(s.newsSolidBgBySlide)[0] ?? '').trim();
 			bgSolid = solid || (heroUrl ? '#0a0a0a' : '#ffffff');
 			const tc = String(s.textColor ?? '').trim();
@@ -317,33 +376,45 @@
 		} else if (tpl === 'tweet') {
 			bgSolid = '#ffffff';
 			textColor = '#0a0a0a';
-			heroUrl = storagePreviewHero || pickHero('tweet');
+			heroUrl = storagePreviewHero || pickHero('tweet') || thumbFallback();
 		} else if (tpl === 'blackText') {
 			bgSolid = '#000000';
 			textColor = '#e5e5e5';
 			heroUrl = storagePreviewHero || pickHero('blackText');
-		} else if (tpl === 'textCarousel') {
-			bgSolid = '#0a0a0a';
-			textColor = '#f5f5f5';
+		} else if (tpl === 'textCarousel' || tpl === 'whiteThread') {
+			bgSolid = tpl === 'whiteThread' ? '#ffffff' : '#0a0a0a';
+			textColor = tpl === 'whiteThread' ? '#0a0a0a' : '#f5f5f5';
 			heroUrl = storagePreviewHero;
-		} else if (tpl === 'videoStory') {
+		} else if (tpl === 'whiteMedia') {
+			bgSolid = '#ffffff';
+			textColor = '#0a0a0a';
+			heroUrl = storagePreviewHero || pickHero('whiteMedia') || thumbFallback();
+		} else if (isVideoStoryFamily(tpl) || isBrandStackFamily(tpl)) {
 			bgSolid = '#0a0a0a';
 			textColor = '#fafafa';
-			heroUrl = storagePreviewHero || pickHero('videoStory');
+			heroUrl = storagePreviewHero || pickHero(tpl) || thumbFallback();
 		} else if (tpl === 'imageQuote') {
 			bgSolid = '#0f172a';
 			textColor = '#fafafa';
-			heroUrl = storagePreviewHero || pickHero('imageQuote');
+			heroUrl = storagePreviewHero || pickHero('imageQuote') || thumbFallback();
+		} else if (tpl === 'photoTopic' || tpl === 'photoCaption') {
+			bgSolid = '#0a0a0a';
+			textColor = '#fafafa';
+			heroUrl = storagePreviewHero || pickHero(tpl) || thumbFallback();
 		} else if (tpl === 'article') {
 			bgSolid = '#fafafa';
 			textColor = '#0a0a0a';
 			heroUrl = storagePreviewHero || pickHero('article');
+		} else {
+			heroUrl = storagePreviewHero || pickHero(tpl) || thumbFallback();
 		}
 
 		const fullSlideRaster = !!storagePreviewHero;
 		const filmLight =
 			!fullSlideRaster &&
 			(tpl === 'tweet' ||
+				tpl === 'whiteThread' ||
+				tpl === 'whiteMedia' ||
 				(tpl === 'article' && !heroUrl) ||
 				(tpl === 'news' && !heroUrl && isLightHex(bgSolid)));
 
@@ -428,6 +499,276 @@
 			selectedDraftIds = [];
 		} finally {
 			bulkDeletingDrafts = false;
+		}
+	}
+
+	const allClipsSelected = $derived(
+		clipShowCards.length > 0 && selectedClipKeys.length === clipShowCards.length,
+	);
+
+	function toggleClipSelected(key: string) {
+		if (selectedClipKeys.includes(key)) {
+			selectedClipKeys = selectedClipKeys.filter((x) => x !== key);
+		} else {
+			selectedClipKeys = [...selectedClipKeys, key];
+		}
+	}
+
+	function toggleSelectAllClips() {
+		if (allClipsSelected) selectedClipKeys = [];
+		else selectedClipKeys = clipShowCards.map((c) => c.key);
+	}
+
+	function toggleSelectClipGroup(groupId: string) {
+		const group = clipGroups.find((g) => g.groupId === groupId);
+		if (!group) return;
+		const keys = group.cards.map((c) => c.key);
+		const allOn = keys.every((k) => selectedClipKeys.includes(k));
+		if (allOn) {
+			selectedClipKeys = selectedClipKeys.filter((k) => !keys.includes(k));
+		} else {
+			const set = new Set(selectedClipKeys);
+			for (const k of keys) set.add(k);
+			selectedClipKeys = [...set];
+		}
+	}
+
+	function groupAllSelected(groupId: string): boolean {
+		const group = clipGroups.find((g) => g.groupId === groupId);
+		if (!group?.cards.length) return false;
+		return group.cards.every((c) => selectedClipKeys.includes(c.key));
+	}
+
+	function syncWorkspaceShowsLocal(
+		workspaceId: string,
+		nextShows: BulkShowCard[],
+		clipPid: string,
+	) {
+		if (nextShows.length === 0) {
+			bulkWorkspaces = bulkWorkspaces.filter((w) => w.id !== workspaceId);
+			if (clipPid) clipProjects = clipProjects.filter((p) => p.id !== clipPid);
+			return;
+		}
+		bulkWorkspaces = bulkWorkspaces.map((w) =>
+			w.id === workspaceId
+				? {
+						...w,
+						shows: nextShows,
+						showCount: nextShows.length,
+						titles: nextShows.slice(0, 4).map((s) => s.title || 'Untitled'),
+						thumbnailUrl: nextShows[0]?.thumb || w.thumbnailUrl,
+					}
+				: w,
+		);
+	}
+
+	async function deleteWorkspaceAndClipProject(workspaceId: string, clipPid: string) {
+		const res = await fetch(`/api/bulk/workspaces/${workspaceId}`, { method: 'DELETE' });
+		if (!res.ok) throw new Error('Could not delete workspace');
+		bulkWorkspaces = bulkWorkspaces.filter((w) => w.id !== workspaceId);
+		if (clipPid) {
+			await fetch(`/api/videos/clip-projects/${clipPid}`, { method: 'DELETE' }).catch(() => {});
+			clipProjects = clipProjects.filter((p) => p.id !== clipPid);
+		}
+	}
+
+	/** Remove one or more shows from a bulk YouTube workspace (PATCH), or delete the stack. */
+	async function removeShowsFromWorkspace(workspaceId: string, showIds: string[]) {
+		const ws = bulkWorkspaces.find((w) => w.id === workspaceId);
+		const clipPid = String(ws?.clipProjectId ?? '').trim();
+		const ids = new Set(showIds.map((id) => String(id || '').trim()).filter(Boolean));
+
+		if (!ids.size) {
+			await deleteWorkspaceAndClipProject(workspaceId, clipPid);
+			return;
+		}
+
+		const getRes = await fetch(`/api/bulk/workspaces/${workspaceId}`);
+		if (!getRes.ok) throw new Error('Could not load workspace');
+		const payload = (await getRes.json()) as {
+			workspace?: { shows?: { id?: string }[]; selectedShowId?: string | null };
+		};
+		const fullShows = Array.isArray(payload.workspace?.shows) ? payload.workspace!.shows! : [];
+		const remaining = fullShows.filter((s) => !ids.has(String(s.id ?? '').trim()));
+
+		if (remaining.length === 0) {
+			await deleteWorkspaceAndClipProject(workspaceId, clipPid);
+			return;
+		}
+
+		const selectedShowId = String(payload.workspace?.selectedShowId ?? '').trim();
+		const patchRes = await fetch(`/api/bulk/workspaces/${workspaceId}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				shows: remaining,
+				selectedShowId:
+					selectedShowId && ids.has(selectedShowId)
+						? String((remaining[0] as { id?: string })?.id ?? '') || null
+						: undefined,
+			}),
+		});
+		if (!patchRes.ok) throw new Error('Could not delete clip');
+
+		const nextLocal = (ws?.shows ?? []).filter((s) => !ids.has(String(s.id ?? '').trim()));
+		syncWorkspaceShowsLocal(workspaceId, nextLocal, clipPid);
+	}
+
+	/** Remove shows from an orphan clip project, or delete the project. */
+	async function removeShowsFromClipProject(projectId: string, showIds: string[]) {
+		const ids = new Set(showIds.map((id) => String(id || '').trim()).filter(Boolean));
+		if (!ids.size) {
+			const res = await fetch(`/api/videos/clip-projects/${projectId}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error('Could not delete clip project');
+			clipProjects = clipProjects.filter((p) => p.id !== projectId);
+			return;
+		}
+
+		const getRes = await fetch(`/api/videos/clip-projects/${projectId}`);
+		if (!getRes.ok) throw new Error('Could not load clip project');
+		const payload = (await getRes.json()) as {
+			project?: {
+				title?: string;
+				thumbnailUrl?: string | null;
+				source?: Record<string, unknown>;
+				clips?: { id?: string }[];
+				summary?: string;
+				demo?: boolean;
+				model?: string;
+				bulkShows?: { id?: string }[] | null;
+			};
+		};
+		const project = payload.project;
+		if (!project) throw new Error('Clip project not found');
+
+		const bulkShows = Array.isArray(project.bulkShows) ? project.bulkShows : [];
+		if (bulkShows.length > 0) {
+			const remainingShows = bulkShows.filter((s) => !ids.has(String(s.id ?? '').trim()));
+			if (remainingShows.length === 0) {
+				const res = await fetch(`/api/videos/clip-projects/${projectId}`, { method: 'DELETE' });
+				if (!res.ok) throw new Error('Could not delete clip project');
+				clipProjects = clipProjects.filter((p) => p.id !== projectId);
+				return;
+			}
+			const remainingClips = Array.isArray(project.clips)
+				? project.clips.filter((c) => !ids.has(String(c.id ?? '').trim()))
+				: project.clips;
+			const postRes = await fetch('/api/videos/clip-projects', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					id: projectId,
+					title: project.title,
+					thumbnailUrl: project.thumbnailUrl,
+					source: project.source ?? {},
+					clips: remainingClips ?? [],
+					summary: project.summary ?? '',
+					demo: project.demo ?? false,
+					model: project.model ?? '',
+					bulkShows: remainingShows,
+				}),
+			});
+			if (!postRes.ok) throw new Error('Could not delete clip');
+			clipProjects = clipProjects.map((p) =>
+				p.id === projectId
+					? {
+							...p,
+							shows: (p.shows ?? []).filter((s) => !ids.has(String(s.id ?? '').trim())),
+							showCount: Math.max(0, (p.showCount ?? 1) - ids.size),
+							clipCount: Array.isArray(remainingClips) ? remainingClips.length : p.clipCount,
+						}
+					: p,
+			);
+			return;
+		}
+
+		const res = await fetch(`/api/videos/clip-projects/${projectId}`, { method: 'DELETE' });
+		if (!res.ok) throw new Error('Could not delete clip project');
+		clipProjects = clipProjects.filter((p) => p.id !== projectId);
+	}
+
+	async function removeClipCard(card: (typeof clipShowCards)[number]) {
+		const showId = String(card.show?.id ?? '').trim();
+		if (card.workspaceId) {
+			await removeShowsFromWorkspace(card.workspaceId, showId ? [showId] : []);
+			return;
+		}
+		const pid = String(card.projectId ?? '').trim();
+		if (!pid) return;
+		await removeShowsFromClipProject(pid, showId ? [showId] : []);
+	}
+
+	async function deleteSelectedClips() {
+		const keys = [...selectedClipKeys];
+		if (!keys.length) return;
+		const cards = clipShowCards.filter((c) => keys.includes(c.key));
+		if (
+			!confirm(
+				`Delete ${cards.length} YouTube clip${cards.length === 1 ? '' : 's'}? This cannot be undone.`,
+			)
+		) {
+			return;
+		}
+		bulkDeletingClips = true;
+		try {
+			const byWorkspace = new Map<string, string[]>();
+			const byProject = new Map<string, string[]>();
+			const wholeWorkspace: string[] = [];
+			const wholeProject: string[] = [];
+
+			for (const card of cards) {
+				const showId = String(card.show?.id ?? '').trim();
+				if (card.workspaceId) {
+					if (!showId) {
+						wholeWorkspace.push(card.workspaceId);
+						continue;
+					}
+					const list = byWorkspace.get(card.workspaceId) ?? [];
+					list.push(showId);
+					byWorkspace.set(card.workspaceId, list);
+				} else {
+					const pid = String(card.projectId ?? '').trim();
+					if (!pid) continue;
+					if (!showId) {
+						wholeProject.push(pid);
+						continue;
+					}
+					const list = byProject.get(pid) ?? [];
+					list.push(showId);
+					byProject.set(pid, list);
+				}
+			}
+
+			for (const id of [...new Set(wholeWorkspace)]) {
+				const ws = bulkWorkspaces.find((w) => w.id === id);
+				await deleteWorkspaceAndClipProject(id, String(ws?.clipProjectId ?? '').trim());
+			}
+			for (const [workspaceId, showIds] of byWorkspace) {
+				if (wholeWorkspace.includes(workspaceId)) continue;
+				await removeShowsFromWorkspace(workspaceId, showIds);
+			}
+			for (const id of [...new Set(wholeProject)]) {
+				await removeShowsFromClipProject(id, []);
+			}
+			for (const [projectId, showIds] of byProject) {
+				if (wholeProject.includes(projectId)) continue;
+				await removeShowsFromClipProject(projectId, showIds);
+			}
+			selectedClipKeys = [];
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'Could not delete');
+		} finally {
+			bulkDeletingClips = false;
+		}
+	}
+
+	async function deleteOneClipCard(card: (typeof clipShowCards)[number]) {
+		if (!confirm('Delete this YouTube clip? This cannot be undone.')) return;
+		try {
+			await removeClipCard(card);
+			selectedClipKeys = selectedClipKeys.filter((k) => k !== card.key);
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'Could not delete');
 		}
 	}
 
@@ -830,60 +1171,126 @@
 	{/if}
 
 	{#if clipShowCards.length > 0}
-		<section class="studio-drafts-block reveal" style="--d:0.02s">
+		<section class="yt-clips-block reveal" style="--d:0.02s">
 			<div class="studio-drafts-head">
-				<h2 class="studio-drafts-title">From YouTube clips</h2>
-				<p class="studio-drafts-sub">
-					Carousels built from long-video clip finder. Open one to edit captions, reframe, and export.
-				</p>
-			</div>
-			<div class="carousel-grid studio-drafts-grid">
-				{#each clipShowCards as card, i (card.key)}
-					{@const title = card.show.title || card.show.headline || 'Untitled clip'}
-					{@const headline = card.show.headline || title}
-					<div class="carousel-card reveal group studio-draft-card" style="--d:{0.06 + i * 0.03}s">
-						<a href={card.href} class="card-preview studio-draft-card-preview" style="background-color: #0a0a0a;">
-							{#if card.show.thumb}
-								<img
-									src={card.show.thumb}
-									alt=""
-									class="studio-draft-bg-img studio-draft-bg-img--full-slide"
-									referrerpolicy="no-referrer"
-									loading="lazy"
-									draggable="false"
-								/>
-							{:else}
-								<p class="card-preview-text studio-draft-preview-headline" style="color: #f5f5f5">
-									{headline}
-								</p>
+				<div class="studio-drafts-head-row">
+					<div>
+						<h2 class="studio-drafts-title">From YouTube clips</h2>
+						<p class="studio-drafts-sub">
+							{clipShowCards.length} clip{clipShowCards.length === 1 ? '' : 's'}
+							{#if clipGroups.length > 1}
+								· {clipGroups.length} videos
 							{/if}
-						</a>
-						{#if card.show.slideCount}
-							<div class="slide-count">{card.show.slideCount} slides</div>
+							— select to clean up, or open one to edit.
+						</p>
+					</div>
+					<div class="draft-select-bar">
+						<button type="button" class="draft-select-all" onclick={toggleSelectAllClips}>
+							<span
+								class="draft-select-box"
+								class:draft-select-box--on={allClipsSelected}
+								aria-hidden="true"
+							></span>
+							{allClipsSelected ? 'Deselect all' : 'Select all'}
+						</button>
+						{#if selectedClipKeys.length > 0}
+							<button
+								type="button"
+								class="draft-bulk-delete"
+								disabled={bulkDeletingClips}
+								onclick={() => void deleteSelectedClips()}
+							>
+								{#if bulkDeletingClips}
+									<Loader size={13} class="spin" />
+								{:else}
+									<Trash2 size={13} />
+								{/if}
+								Delete {selectedClipKeys.length}
+							</button>
 						{/if}
-						<div class="studio-draft-template-pill">{card.pill}</div>
-						<div class="card-footer">
-							<div class="card-info">
-								<p class="card-title-text">{title}</p>
-								<p class="card-time">
-									{card.projectTitle ? `${card.projectTitle.slice(0, 42)}${card.projectTitle.length > 42 ? '…' : ''} · ` : ''}{timeAgo(card.updatedAt)}
+						<a href="/dashboard/videos" class="yt-clips-add">
+							<Video size={13} /> Find clips
+						</a>
+					</div>
+				</div>
+			</div>
+
+			<div class="yt-clip-groups">
+				{#each clipGroups as group, gi (group.groupId)}
+					{@const groupOn = groupAllSelected(group.groupId)}
+					<div class="yt-clip-group" style="--d:{0.04 + gi * 0.03}s">
+						<div class="yt-clip-group-head">
+							<button
+								type="button"
+								class="draft-select-all yt-group-select"
+								onclick={() => toggleSelectClipGroup(group.groupId)}
+								title={groupOn ? 'Deselect video' : 'Select all clips from this video'}
+							>
+								<span
+									class="draft-select-box"
+									class:draft-select-box--on={groupOn}
+									aria-hidden="true"
+								></span>
+							</button>
+							<div class="yt-clip-group-meta">
+								<p class="yt-clip-group-title" title={group.title}>{group.title}</p>
+								<p class="yt-clip-group-sub">
+									{group.cards.length} clip{group.cards.length === 1 ? '' : 's'} · {timeAgo(group.updatedAt)}
 								</p>
 							</div>
-							<div class="card-actions">
-								<a href={card.href} class="card-action card-action--edit" title="Open clip carousel">
-									<Edit2 size={11} />
-								</a>
-								{#if card.workspaceId}
-									<button
-										type="button"
-										class="card-action card-action--delete"
-										title="Delete from library"
-										onclick={() => void deleteBulkWorkspace(card.workspaceId)}
-									>
-										<Trash2 size={11} />
-									</button>
-								{/if}
-							</div>
+						</div>
+						<div class="yt-clips-grid">
+							{#each group.cards as card, i (card.key)}
+								{@const title = card.show.title || card.show.headline || 'Untitled clip'}
+								{@const isSelected = selectedClipKeys.includes(card.key)}
+								{@const thumbBroken = !!brokenClipThumbKeys[card.key]}
+								<div
+									class="yt-clip-card group"
+									class:yt-clip-card--selected={isSelected}
+									style="--d:{0.06 + i * 0.02}s"
+								>
+									<label class="draft-check yt-clip-check">
+										<input
+											type="checkbox"
+											checked={isSelected}
+											onchange={() => toggleClipSelected(card.key)}
+											onclick={(e) => e.stopPropagation()}
+										/>
+										<span class="sr-only">Select clip</span>
+									</label>
+									<a href={card.href} class="yt-clip-thumb" title={title}>
+										{#if card.show.thumb && !thumbBroken}
+											<img
+												src={card.show.thumb}
+												alt=""
+												referrerpolicy="no-referrer"
+												loading="lazy"
+												draggable="false"
+												onerror={() => {
+													brokenClipThumbKeys = { ...brokenClipThumbKeys, [card.key]: true };
+												}}
+											/>
+										{:else}
+											<span class="yt-clip-thumb-fallback">{title.slice(0, 48)}</span>
+										{/if}
+									</a>
+									{#if card.show.slideCount}
+										<span class="yt-clip-slides">{card.show.slideCount}</span>
+									{/if}
+									<div class="yt-clip-caption">
+										<a href={card.href} class="yt-clip-name" title={title}>{title}</a>
+										<button
+											type="button"
+											class="yt-clip-del"
+											title="Delete"
+											aria-label="Delete clip"
+											onclick={() => void deleteOneClipCard(card)}
+										>
+											<Trash2 size={11} />
+										</button>
+									</div>
+								</div>
+							{/each}
 						</div>
 					</div>
 				{/each}
@@ -1093,7 +1500,7 @@
 								{/each}
 							</div>
 						</a>
-						<div class="slide-count">{pv.slideCount} slides</div>
+						<div class="slide-count">{pv.slideCount} slide{pv.slideCount === 1 ? '' : 's'}</div>
 						<div class="studio-draft-template-pill">{pv.templateLabel}</div>
 						<div class="card-footer">
 							<div class="card-info">
@@ -1896,5 +2303,197 @@
 	.new-card-label {
 		font-size: 13px;
 		font-weight: 700;
+	}
+
+	/* —— YouTube clips: dense, grouped library —— */
+	.yt-clips-block {
+		margin-bottom: 28px;
+		padding: 18px 18px 16px;
+		border-radius: 18px;
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
+		box-shadow: var(--shadow-soft);
+	}
+	.yt-clips-add {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 34px;
+		padding: 0 12px;
+		border-radius: 10px;
+		border: 1px solid var(--panel-border);
+		background: #fff;
+		font-size: 12px;
+		font-weight: 650;
+		color: var(--t-strong);
+		text-decoration: none;
+	}
+	.yt-clips-add:hover {
+		border-color: var(--panel-border-hover);
+	}
+	.yt-clip-groups {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+	}
+	.yt-clip-group-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 8px;
+		min-width: 0;
+	}
+	.yt-group-select {
+		padding: 0 8px;
+		height: 28px;
+		flex-shrink: 0;
+	}
+	.yt-clip-group-meta {
+		min-width: 0;
+		flex: 1;
+	}
+	.yt-clip-group-title {
+		margin: 0;
+		font-size: 13px;
+		font-weight: 750;
+		color: var(--t-strong);
+		letter-spacing: -0.01em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.yt-clip-group-sub {
+		margin: 1px 0 0;
+		font-size: 11px;
+		color: var(--t-muted);
+	}
+	.yt-clips-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+		gap: 10px;
+	}
+	.yt-clip-card {
+		position: relative;
+		border-radius: 12px;
+		border: 1px solid var(--panel-border);
+		background: #fff;
+		overflow: hidden;
+		transition:
+			border-color 0.2s ease,
+			box-shadow 0.2s ease,
+			outline-color 0.15s ease;
+	}
+	.yt-clip-card:hover {
+		border-color: var(--panel-border-hover);
+		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+	}
+	.yt-clip-card--selected {
+		outline: 2px solid #111;
+		outline-offset: 1px;
+		border-color: #111;
+	}
+	.yt-clip-check {
+		top: 6px;
+		left: 6px;
+		width: 20px;
+		height: 20px;
+		border-radius: 6px;
+	}
+	.yt-clip-thumb {
+		display: block;
+		aspect-ratio: 16 / 9;
+		background: #111;
+		text-decoration: none;
+		overflow: hidden;
+	}
+	.yt-clip-thumb img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	.yt-clip-thumb-fallback {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		height: 100%;
+		padding: 8px;
+		font-size: 10px;
+		font-weight: 650;
+		line-height: 1.3;
+		text-align: center;
+		color: rgba(255, 255, 255, 0.72);
+	}
+	.yt-clip-slides {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		z-index: 4;
+		padding: 2px 6px;
+		border-radius: 5px;
+		background: rgba(0, 0, 0, 0.72);
+		color: #fff;
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 1.2;
+		pointer-events: none;
+	}
+	.yt-clip-caption {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 6px 7px 7px;
+		min-width: 0;
+	}
+	.yt-clip-name {
+		flex: 1;
+		min-width: 0;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--t-strong);
+		text-decoration: none;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		letter-spacing: -0.01em;
+	}
+	.yt-clip-name:hover {
+		text-decoration: underline;
+	}
+	.yt-clip-del {
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--t-muted);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		opacity: 0;
+		transition:
+			opacity 0.15s,
+			background 0.15s,
+			color 0.15s;
+	}
+	.yt-clip-card:hover .yt-clip-del,
+	.yt-clip-card:focus-within .yt-clip-del {
+		opacity: 1;
+	}
+	.yt-clip-del:hover {
+		background: #fef2f2;
+		color: #b91c1c;
+	}
+	@media (max-width: 720px) {
+		.yt-clips-grid {
+			grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+			gap: 8px;
+		}
+		.yt-clip-del {
+			opacity: 1;
+		}
 	}
 </style>

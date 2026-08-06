@@ -63,14 +63,14 @@
 	type ThemeMode = 'light' | 'dark';
 	let theme = $state<ThemeMode>('light');
 	function applyTheme(next: ThemeMode) {
-		theme = next;
-		document.documentElement.dataset.theme = next;
-		try { localStorage.setItem('theme', next); } catch { /* ignore */ }
+		// Product is light-only — ignore dark requests and clear any stale preference.
+		theme = 'light';
+		document.documentElement.dataset.theme = 'light';
+		try { localStorage.setItem('theme', 'light'); } catch { /* ignore */ }
+		void next;
 	}
-	// Initialize from already-applied theme (app.html sets it before paint)
 	if (typeof window !== 'undefined') {
-		const t = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-		theme = t;
+		applyTheme('light');
 	}
 </script>
 

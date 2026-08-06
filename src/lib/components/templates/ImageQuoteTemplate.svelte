@@ -15,6 +15,12 @@
 		onFooterRightChange?: (v: string) => void;
 		/** Preferred image height fraction (0–1). Bottom panel grows with copy and can push this down. */
 		topRatio?: number;
+		/**
+		 * Optional letterbox control (studio). When set, top/bottom black bars use these
+		 * percentages of the layout height instead of the auto-growing quote panel.
+		 */
+		filmStripTopPct?: number;
+		filmStripBottomPct?: number;
 		bgColor?: string;
 		textColor?: string;
 		templateTheme?: 'light' | 'dark';
@@ -42,6 +48,8 @@
 		onFooterLeftChange,
 		onFooterRightChange,
 		topRatio = 0.48,
+		filmStripTopPct = undefined,
+		filmStripBottomPct = undefined,
 		bgColor = '',
 		textColor = '',
 		templateTheme = 'dark',
@@ -113,6 +121,18 @@
 	});
 	const quoteSize = $derived(headlineStyle.fontSize ?? autoQuoteSize);
 
+	const useFilmStrip = $derived(
+		filmStripTopPct != null || filmStripBottomPct != null,
+	);
+	const stripTopPct = $derived(
+		Math.max(0, Math.min(55, Number(filmStripTopPct) || 0)),
+	);
+	const stripBottomPct = $derived(
+		Math.max(0, Math.min(55, Number(filmStripBottomPct) || 0)),
+	);
+	const filmTopH = $derived(Math.round((BASE_H * stripTopPct) / 100));
+	const filmBottomH = $derived(Math.round((BASE_H * stripBottomPct) / 100));
+
 	const preferredTopH = $derived(
 		Math.round(BASE_H * Math.min(0.72, Math.max(0.28, Number(topRatio) || 0.48))),
 	);
@@ -157,6 +177,18 @@
 				overflow: hidden;
 			"
 		>
+			{#if useFilmStrip && filmTopH > 0}
+				<div
+					aria-hidden="true"
+					style="
+						flex: 0 0 {filmTopH}px;
+						height: {filmTopH}px;
+						width: 100%;
+						background: {baseBg};
+					"
+				></div>
+			{/if}
+
 			<!-- Top image — fills leftover space after the quote panel -->
 			<div
 				data-text-selectable={interactive ? 'articleImage' : undefined}
@@ -176,9 +208,9 @@
 					}
 				}}
 				style="
-					flex: 1 1 {preferredTopH}px;
-					min-height: {BASE_H - maxBottomH}px;
-					max-height: {BASE_H - minBottomH}px;
+					{useFilmStrip
+						? `flex: 1 1 auto; min-height: 0;`
+						: `flex: 1 1 ${preferredTopH}px; min-height: ${BASE_H - maxBottomH}px; max-height: ${BASE_H - minBottomH}px;`}
 					width: 100%;
 					position: relative;
 					overflow: hidden;
@@ -209,9 +241,9 @@
 			<div
 				class="iq-quote-panel"
 				style="
-					flex: 0 1 auto;
-					min-height: {minBottomH}px;
-					max-height: {maxBottomH}px;
+					{useFilmStrip
+						? `flex: 0 0 ${filmBottomH}px; height: ${filmBottomH}px; min-height: ${filmBottomH}px; max-height: ${filmBottomH}px;`
+						: `flex: 0 1 auto; min-height: ${minBottomH}px; max-height: ${maxBottomH}px;`}
 					width: 100%;
 					background: {baseBg};
 					display: flex;

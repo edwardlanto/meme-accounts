@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { PanelLeft, Sun, Moon, LogOut, MoreHorizontal } from 'lucide-svelte';
+	import { PanelLeft, LogOut, MoreHorizontal } from 'lucide-svelte';
 
 	type NavGroupItem = { href: string; label: string; icon: any; accent?: string };
 	type NavGroup = { label: string; items: NavGroupItem[] };
@@ -21,9 +21,11 @@
 		theme = 'light',
 		railOnly = false,
 		signedIn = true,
-		onThemeToggle,
+		onThemeToggle: _onThemeToggle,
 		onSignOut,
 	}: Props = $props();
+	void theme;
+	void _onThemeToggle;
 
 	let isCollapsed = $state(false);
 	const softEase = 'cubic-bezier(0.22, 1, 0.36, 1)';
@@ -149,16 +151,6 @@
 		{/if}
 
 		<div class="ssp-footer-actions" class:stack={isCollapsed}>
-			<button
-				type="button"
-				class="ssp-icon-btn ssp-theme-btn"
-				aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-				title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-				onclick={() => onThemeToggle?.()}
-			>
-				{#if theme === 'dark'}<Sun size={17} />{:else}<Moon size={17} />{/if}
-			</button>
-
 			<button
 				type="button"
 				class="ssp-signout"

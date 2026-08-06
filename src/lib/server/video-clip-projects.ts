@@ -114,3 +114,22 @@ export async function getVideoClipProject(userId: string, id: string): Promise<V
 		return null;
 	}
 }
+
+export async function deleteVideoClipProject(userId: string, id: string): Promise<boolean> {
+	try {
+		const admin = adminClient();
+		const { error } = await admin
+			.from('video_clip_projects')
+			.delete()
+			.eq('id', id)
+			.eq('user_id', userId);
+		if (error) {
+			console.warn('[video_clip_projects] delete failed', error.message);
+			return false;
+		}
+		return true;
+	} catch (e) {
+		console.warn('[video_clip_projects] delete error', e);
+		return false;
+	}
+}

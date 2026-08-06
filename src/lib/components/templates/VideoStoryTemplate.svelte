@@ -55,6 +55,9 @@
 		previewMode?: boolean;
 		/** Visual layout — story / fit / blur / hook / creator / text / source / feature / post */
 		layout?: 'story' | 'fit' | 'blur' | 'hook' | 'creator' | 'text' | 'source' | 'feature' | 'post';
+		/** Black letterbox heights (% of canvas) for hook / creator / source layouts. */
+		filmStripTopPct?: number;
+		filmStripBottomPct?: number;
 		/** Double-click video/media frame to open BG tools. */
 		onBackgroundDblClick?: (detail: { clientX: number; clientY: number }) => void;
 	}
@@ -96,10 +99,31 @@
 		onVideoDuration,
 		previewMode = false,
 		layout = 'story',
+		filmStripTopPct = undefined,
+		filmStripBottomPct = undefined,
 		onBackgroundDblClick,
 	}: Props = $props();
 
 	const isHookLayout = $derived(layout === 'hook');
+	const letterboxTopPct = $derived.by(() => {
+		if (filmStripTopPct != null && Number.isFinite(filmStripTopPct)) {
+			return Math.max(0, Math.min(55, Number(filmStripTopPct)));
+		}
+		if (layout === 'hook') return 26;
+		if (layout === 'creator') return 28;
+		if (layout === 'source') return 30;
+		return 0;
+	});
+	const letterboxBottomPct = $derived.by(() => {
+		if (filmStripBottomPct != null && Number.isFinite(filmStripBottomPct)) {
+			return Math.max(0, Math.min(55, Number(filmStripBottomPct)));
+		}
+		if (layout === 'hook') return 10;
+		if (layout === 'creator') return 8;
+		if (layout === 'source') return 8;
+		return 0;
+	});
+	const letterboxPadX = $derived(previewMode ? 14 : 40);
 	const headlinePad = $derived(
 		isHookLayout
 			? previewMode
@@ -873,7 +897,7 @@
 				</div>
 			</div>
 		{:else if layout === 'source'}
-			<!-- Highlight: full multi-line hook + tall nearly-full-width video -->
+			<!-- Highlight: letterbox top (hook copy) + media + letterbox bottom -->
 			<div
 				style="
 					flex: 1;
@@ -881,14 +905,24 @@
 					display: flex;
 					flex-direction: column;
 					align-items: stretch;
-					justify-content: flex-start;
-					gap: {previewMode ? '12px' : '28px'};
-					padding: {previewMode ? '28px 14px 24px' : '56px 40px 48px'};
 					box-sizing: border-box;
 					background: #000;
 				"
 			>
-				<div style="flex-shrink: 0; width: 100%;">
+				<div
+					style="
+						flex: 0 0 {letterboxTopPct}%;
+						height: {letterboxTopPct}%;
+						min-height: 0;
+						width: 100%;
+						display: flex;
+						flex-direction: column;
+						justify-content: flex-end;
+						padding: {previewMode ? '10px' : '20px'} {letterboxPadX}px {previewMode ? '10px' : '22px'};
+						box-sizing: border-box;
+						overflow: hidden;
+					"
+				>
 					<DraggableBlock
 						dx={textOffsets.videoStoryHeadline?.x ?? 0}
 						dy={textOffsets.videoStoryHeadline?.y ?? 0}
@@ -941,15 +975,24 @@
 				<div
 					style="
 						position: relative;
-						flex: 1;
-						min-height: {previewMode ? '55%' : '58%'};
+						flex: 1 1 auto;
+						min-height: 0;
 						width: 100%;
 						background: #0a0a0a;
-						overflow: visible;
+						overflow: hidden;
 					"
 				>
 					{@render draggableMedia('cover')}
 				</div>
+				<div
+					aria-hidden="true"
+					style="
+						flex: 0 0 {letterboxBottomPct}%;
+						height: {letterboxBottomPct}%;
+						width: 100%;
+						background: #000;
+					"
+				></div>
 			</div>
 		{:else if layout === 'text'}
 			<!-- Text on video: full-bleed cover + centered outlined white text -->
@@ -1219,7 +1262,7 @@
 				</div>
 			</div>
 		{:else if layout === 'creator'}
-			<!-- Creator: profile + bold [[emphasis]] headline + tall nearly-full-width video -->
+			<!-- Creator: letterbox top (profile + headline) + media + letterbox bottom -->
 			<div
 				style="
 					flex: 1;
@@ -1227,12 +1270,25 @@
 					display: flex;
 					flex-direction: column;
 					align-items: stretch;
-					gap: {previewMode ? '12px' : '26px'};
-					padding: {previewMode ? '24px 14px 20px' : '64px 40px 48px'};
 					box-sizing: border-box;
 					background: #000;
 				"
 			>
+				<div
+					style="
+						flex: 0 0 {letterboxTopPct}%;
+						height: {letterboxTopPct}%;
+						min-height: 0;
+						width: 100%;
+						display: flex;
+						flex-direction: column;
+						justify-content: flex-end;
+						gap: {previewMode ? '10px' : '20px'};
+						padding: {previewMode ? '10px' : '18px'} {letterboxPadX}px {previewMode ? '10px' : '20px'};
+						box-sizing: border-box;
+						overflow: hidden;
+					"
+				>
 				<DraggableBlock
 					dx={textOffsets.videoCreatorProfile?.x ?? 0}
 					dy={textOffsets.videoCreatorProfile?.y ?? 0}
@@ -1417,62 +1473,85 @@
 						</CanvasMarkupTextBlock>
 					{/snippet}
 				</DraggableBlock>
+				</div>
 
 				<div
 					style="
 						position: relative;
-						flex: 1;
-						min-height: {previewMode ? '52%' : '56%'};
+						flex: 1 1 auto;
+						min-height: 0;
 						width: 100%;
 						background: #0a0a0a;
-						overflow: visible;
+						overflow: hidden;
 					"
 				>
 					{@render draggableMedia('cover')}
 				</div>
+				<div
+					aria-hidden="true"
+					style="
+						flex: 0 0 {letterboxBottomPct}%;
+						height: {letterboxBottomPct}%;
+						width: 100%;
+						background: #000;
+					"
+				></div>
 			</div>
 		{:else if layout === 'hook'}
-			<!-- Hook: 2-line left-aligned title sharing the video column edge -->
+			<!-- Hook: letterbox top (title) + 16:9 media + letterbox bottom -->
 			<div
 				style="
 					flex: 1;
 					min-height: 0;
 					display: flex;
 					flex-direction: column;
-					align-items: center;
-					justify-content: center;
-					gap: {previewMode ? '14px' : '36px'};
-					padding: {previewMode ? '36px 16px 40px' : '120px 0 140px'};
+					align-items: stretch;
 					box-sizing: border-box;
 					background: #000;
 				"
 			>
 				<div
 					style="
+						flex: 0 0 {letterboxTopPct}%;
+						height: {letterboxTopPct}%;
+						min-height: 0;
+						width: 100%;
 						display: flex;
 						flex-direction: column;
-						align-items: stretch;
-						gap: {previewMode ? '14px' : '36px'};
-						width: {previewMode ? '92%' : '920px'};
-						max-width: 92%;
+						justify-content: flex-end;
+						padding: {previewMode ? '10px 16px' : `24px ${letterboxPadX}px 28px`};
+						box-sizing: border-box;
+						overflow: hidden;
 					"
 				>
-					<div style="flex-shrink: 0; width: 100%;">
+					<div style="width: 100%; max-width: {previewMode ? '92%' : '920px'}; margin: 0 auto;">
 						{@render headlineBlock(false)}
 					</div>
-					<div
-						style="
-							position: relative;
-							flex-shrink: 0;
-							width: 100%;
-							aspect-ratio: 16 / 9;
-							background: #0a0a0a;
-							overflow: hidden;
-						"
-					>
-						{@render draggableMedia('cover')}
-					</div>
 				</div>
+				<div
+					style="
+						position: relative;
+						flex: 1 1 auto;
+						min-height: 0;
+						width: 100%;
+						max-width: {previewMode ? '92%' : '920px'};
+						margin: 0 auto;
+						aspect-ratio: auto;
+						background: #0a0a0a;
+						overflow: hidden;
+					"
+				>
+					{@render draggableMedia('cover')}
+				</div>
+				<div
+					aria-hidden="true"
+					style="
+						flex: 0 0 {letterboxBottomPct}%;
+						height: {letterboxBottomPct}%;
+						width: 100%;
+						background: #000;
+					"
+				></div>
 			</div>
 		{:else if layout === 'fit'}
 			<!-- Fit: letterboxed video + title + karaoke subtitle -->

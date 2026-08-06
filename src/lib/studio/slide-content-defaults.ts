@@ -12,7 +12,7 @@ export const NEWS_DEFAULT_SUBTEXT =
 
 export const NEWS_DEFAULT_SOURCE = D.news.source;
 
-/** Site wordmark used as the default News source logo when brand kit has none. */
+/** Optional News source logo asset (user can switch source label to logo mode). */
 export const NEWS_DEFAULT_SOURCE_LOGO = '/logo/meme-accounts-logo.webp';
 
 /** Default News badge / canvas geometry (matches initial studio state). */
@@ -108,6 +108,53 @@ export const IMAGE_QUOTE_DEFAULTS = {
 	footerRight: D['image-quote'].footerRight,
 	topRatio: D['image-quote'].topRatio,
 } as const;
+
+/**
+ * Black letterbox / film-strip heights as % of canvas height.
+ * Top + bottom should stay under ~72% so media remains visible.
+ */
+export type FilmStripPct = { topPct: number; bottomPct: number };
+
+export const FILM_STRIP_DEFAULTS: Record<
+	'imageQuote' | 'videoHook' | 'videoCreator' | 'videoSource',
+	FilmStripPct
+> = {
+	/** Image on top, quote panel on bottom — no top bar by default. */
+	imageQuote: { topPct: 0, bottomPct: Math.round((1 - (D['image-quote'].topRatio ?? 0.48)) * 100) },
+	/** Hook copy sits in the top bar above the clip. */
+	videoHook: { topPct: 26, bottomPct: 10 },
+	/** Profile + headline in the top bar. */
+	videoCreator: { topPct: 28, bottomPct: 8 },
+	/** Multi-line highlight hook in the top bar. */
+	videoSource: { topPct: 30, bottomPct: 8 },
+};
+
+export const FILM_STRIP_MAX_SUM_PCT = 72;
+export const FILM_STRIP_MAX_SIDE_PCT = 55;
+
+export function clampFilmStripPct(
+	topPct: number,
+	bottomPct: number,
+	prefer: 'top' | 'bottom' = 'top',
+): FilmStripPct {
+	let top = Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(topPct) || 0));
+	let bottom = Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(bottomPct) || 0));
+	if (top + bottom > FILM_STRIP_MAX_SUM_PCT) {
+		const overflow = top + bottom - FILM_STRIP_MAX_SUM_PCT;
+		if (prefer === 'bottom') {
+			top = Math.max(0, top - overflow);
+			if (top + bottom > FILM_STRIP_MAX_SUM_PCT) {
+				bottom = Math.max(0, FILM_STRIP_MAX_SUM_PCT - top);
+			}
+		} else {
+			bottom = Math.max(0, bottom - overflow);
+			if (top + bottom > FILM_STRIP_MAX_SUM_PCT) {
+				top = Math.max(0, FILM_STRIP_MAX_SUM_PCT - bottom);
+			}
+		}
+	}
+	return { topPct: Math.round(top * 10) / 10, bottomPct: Math.round(bottom * 10) / 10 };
+}
 
 /** Black full-bleed carousel: left-aligned profile + gold hook + white body. */
 export const BLACK_TEXT_CAROUSEL_DEFAULTS = {
@@ -332,4 +379,52 @@ export const WHITE_MEDIA_DEFAULTS = {
 /** Labels for docs / error messages when extending templates. */
 export function templateLabel(id: TemplateId): string {
 	return STUDIO_TEMPLATES.find((t) => t.id === id)?.label ?? id;
+}
+
+/**
+ * Still-image fallback for Carousels / library cards when a draft has no
+ * captured `draftPreviewKey` and no usable `bgImagesByTemplate` entry.
+ * Video templates use demo posters; photo templates use their default image.
+ */
+export function defaultThumbForTemplate(id: TemplateId): string {
+	switch (id) {
+		case 'news':
+			return NEWS_DEMO_IMAGE;
+		case 'tweet':
+			return TWEET_DEFAULTS.topImage;
+		case 'imageQuote':
+			return IMAGE_QUOTE_DEFAULTS.imageUrl;
+		case 'blackText':
+			return '';
+		case 'videoFeature':
+			return VIDEO_FEATURE_DEFAULTS.posterUrl;
+		case 'videoHook':
+			return VIDEO_HOOK_DEFAULTS.posterUrl;
+		case 'videoCreator':
+			return VIDEO_CREATOR_DEFAULTS.posterUrl;
+		case 'videoText':
+			return VIDEO_TEXT_DEFAULTS.posterUrl;
+		case 'videoSource':
+			return VIDEO_SOURCE_DEFAULTS.posterUrl;
+		case 'videoPost':
+			return VIDEO_POST_DEFAULTS.posterUrl;
+		case 'videoSplit':
+			return VIDEO_SPLIT_DEFAULTS.posterUrl;
+		case 'brandStack':
+			return BRAND_STACK_DEFAULTS.posterUrl;
+		case 'photoTopic':
+			return PHOTO_TOPIC_DEFAULTS.imageUrl;
+		case 'photoCaption':
+			return PHOTO_CAPTION_DEFAULTS.imageUrl;
+		case 'whiteMedia':
+			return WHITE_MEDIA_DEFAULTS.imageUrl;
+		case 'videoFit':
+			return D['video-fit'].posterUrl;
+		case 'videoBlur':
+			return D['video-blur'].posterUrl;
+		case 'videoStory':
+			return VIDEO_STORY_DEFAULTS.posterUrl;
+		default:
+			return '';
+	}
 }

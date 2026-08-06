@@ -205,3 +205,17 @@ export function isPhotoStoryFamily(id: TemplateId): boolean {
 export function isWhitePostFamily(id: TemplateId): boolean {
 	return id === 'whiteThread' || id === 'whiteMedia';
 }
+
+/** Templates with adjustable black letterbox / film-strip bars. */
+export const FILM_STRIP_TEMPLATE_IDS = [
+	'imageQuote',
+	'videoHook',
+	'videoCreator',
+	'videoSource',
+] as const;
+
+export type FilmStripTemplateId = (typeof FILM_STRIP_TEMPLATE_IDS)[number];
+
+export function supportsFilmStrip(id: TemplateId): id is FilmStripTemplateId {
+	return (FILM_STRIP_TEMPLATE_IDS as readonly string[]).includes(id);
+}

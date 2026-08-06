@@ -4,6 +4,7 @@
 	 * - Drag on markup text → native highlight / selection (block does not steal the gesture).
 	 * - Hold still on text (~holdMs), then drag → move the block (when holdDragFromText).
 	 * - Alt+drag on text → move the block immediately.
+	 * - When `immediateTextDrag` is set (e.g. already selected), text nudges into a drag like chrome.
 	 * - Pointer down on chrome / padding: small move or hold begins dragging dx/dy (template px).
 	 * - Optional center snap: when the block’s center nears `snapRoot`’s center, offsets lock
 	 *   and light crosshair guides appear.
@@ -21,6 +22,12 @@
 		 * Quick drag on text always selects. Pass false to require Alt+drag over text.
 		 */
 		holdDragFromText?: boolean;
+		/**
+		 * When true, pointer-down on selectable text nudges into a block drag immediately
+		 * (same as chrome). Use after the element is already selected so the first click
+		 * can still select / highlight, and a follow-up drag repositions.
+		 */
+		immediateTextDrag?: boolean;
 		/** Stretch to parent box (needed when wrapping absolutely-positioned media). */
 		fill?: boolean;
 		/** Snap block center to snapRoot (or viewport) center while dragging. */
@@ -39,6 +46,7 @@
 		holdMs = 220,
 		/** Default on: still-hold on text can drag; never steal a quick selection drag. */
 		holdDragFromText = true,
+		immediateTextDrag = false,
 		fill = false,
 		snapToCenter = false,
 		snapRoot = null,
@@ -65,7 +73,13 @@
 
 	const SNAP_IN_PX = 12;
 	const SNAP_OUT_PX = 20;
+	/** Chrome / Alt: start block drag after this much pointer travel. */
 	const NUDGE_PX = 6;
+	/**
+	 * Text without Alt: abort hold-to-drag only after a clear selection stroke.
+	 * Must be higher than typical mouse jitter or hold-to-drag never commits.
+	 */
+	const SELECT_CANCEL_PX = 18;
 
 	function beginDrag() {
 		dragging = true;
@@ -78,6 +92,11 @@
 		// Only capture once we commit to dragging, so clicks / selection still work.
 		if (pointerId) {
 			try { root?.setPointerCapture(pointerId); } catch {}
+		}
+		try {
+			window.getSelection()?.removeAllRanges();
+		} catch {
+			/* ignore */
 		}
 	}
 
@@ -96,11 +115,12 @@
 		const onSelectableText = !!t?.closest?.(
 			'[data-draggable-no-pan],[contenteditable="true"],[data-text-selectable]',
 		);
-		startedOnText = onSelectableText;
+		// Already-selected blocks: treat text like chrome so a follow-up drag moves immediately.
+		startedOnText = onSelectableText && !immediateTextDrag;
 		startedWithAlt = !!e.altKey;
 
 		// Text without Alt: either allow still-hold-to-drag, or leave the gesture to selection.
-		if (onSelectableText && !e.altKey && !holdDragFromText) return;
+		if (onSelectableText && !e.altKey && !holdDragFromText && !immediateTextDrag) return;
 
 		dragging = false;
 		armed = true;
@@ -125,15 +145,19 @@
 		const my = e.clientY;
 		const dpx = mx - downX;
 		const dpy = my - downY;
-		const moved = Math.abs(dpx) + Math.abs(dpy) > NUDGE_PX;
+		const travel = Math.abs(dpx) + Math.abs(dpy);
+		const moved = travel > NUDGE_PX;
 
 		if (!dragging && armed && moved) {
 			// Chrome / Alt: nudge immediately into a block drag.
-			// Text without Alt: this is a highlight gesture — do not steal it.
 			if (!startedOnText || startedWithAlt) {
 				beginDrag();
 			} else {
-				cancelArm();
+				// Text without Alt: keep the hold timer alive through tiny jitter.
+				// Only cancel once movement looks like an intentional highlight stroke.
+				if (travel > SELECT_CANCEL_PX) {
+					cancelArm();
+				}
 				return;
 			}
 		}

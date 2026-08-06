@@ -90,14 +90,16 @@ import JSZip from 'jszip';
 		isPhotoStoryFamily,
 		isWhitePostFamily,
 		videoLayoutForTemplate,
+		supportsFilmStrip,
+		FILM_STRIP_TEMPLATE_IDS,
 		type TemplateId,
 		type StudioTemplateDef,
+		type FilmStripTemplateId,
 	} from '$lib/studio/template-ids';
 	import {
 		NEWS_PLACEHOLDER_HEADLINE,
 		NEWS_DEFAULT_SOURCE,
 		NEWS_DEFAULT_SUBTEXT,
-		NEWS_DEFAULT_SOURCE_LOGO,
 		NEWS_DEFAULT_LAYOUT,
 		NEWS_DEMO_VIDEO,
 		TWEET_DEFAULTS,
@@ -106,6 +108,8 @@ import JSZip from 'jszip';
 		TEXT_CAROUSEL_DEFAULTS,
 		ensureTextCarouselBodyMinLength,
 		IMAGE_QUOTE_DEFAULTS,
+		FILM_STRIP_DEFAULTS,
+		clampFilmStripPct,
 		VIDEO_STORY_DEFAULTS,
 		VIDEO_HOOK_DEFAULTS,
 		VIDEO_HOOK_HEADLINE_STYLE,
@@ -157,7 +161,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, Layers, ListOrdered,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -372,10 +376,7 @@ import JSZip from 'jszip';
 					i === idx ? NEWS_DEFAULT_SUBTEXT : x,
 				);
 			}
-			if (!String(sourceLogoSrc ?? '').trim()) {
-				sourceLogoSrc = NEWS_DEFAULT_SOURCE_LOGO;
-				sourceLabelMode = 'logo';
-			}
+			if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
 			const newsVids = bgVideosByTemplate.news ?? [];
 			const newsImgs = bgImagesByTemplate.news ?? [];
 			const hasVid = String(newsVids[idx] ?? '').trim();
@@ -668,10 +669,6 @@ import JSZip from 'jszip';
 			);
 		}
 		if (!String(source ?? '').trim() && idx === 0) source = NEWS_DEFAULT_SOURCE;
-		if (!String(sourceLogoSrc ?? '').trim()) {
-			sourceLogoSrc = NEWS_DEFAULT_SOURCE_LOGO;
-			sourceLabelMode = 'logo';
-		}
 		while (newsSolidBgBySlide.length <= idx) newsSolidBgBySlide = [...newsSolidBgBySlide, ''];
 		if (isBlankCanvasSolidFill(newsSolidBgBySlide[idx] ?? '')) {
 			newsSolidBgBySlide = newsSolidBgBySlide.map((c, i) => (i === idx ? '' : c));
@@ -1775,6 +1772,7 @@ import JSZip from 'jszip';
 		if (t === 'news') {
 			slides = slides.map((x, idx) => (idx === i ? NEWS_PLACEHOLDER_HEADLINE : x));
 			source = NEWS_DEFAULT_SOURCE;
+			sourceLabelMode = 'text';
 			circleImages = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (circleImages[idx] ?? ''),
 			);
@@ -1903,6 +1901,20 @@ import JSZip from 'jszip';
 				videoFeature: patchVideo(bgVideosByTemplate.videoFeature),
 				videoPost: patchVideo(bgVideosByTemplate.videoPost),
 			};
+			if (supportsFilmStrip(t)) {
+				filmStripTopPctByTemplate = {
+					...filmStripTopPctByTemplate,
+					[t]: (filmStripTopPctByTemplate[t] ?? []).map((x, idx) =>
+						idx === i ? FILM_STRIP_DEFAULTS[t].topPct : x,
+					),
+				};
+				filmStripBottomPctByTemplate = {
+					...filmStripBottomPctByTemplate,
+					[t]: (filmStripBottomPctByTemplate[t] ?? []).map((x, idx) =>
+						idx === i ? FILM_STRIP_DEFAULTS[t].bottomPct : x,
+					),
+				};
+			}
 		} else if (t === 'blackText' || t === 'photoTopic' || t === 'photoCaption') {
 			const defaultHeadline =
 				t === 'photoTopic'
@@ -1942,6 +1954,18 @@ import JSZip from 'jszip';
 				...bgImagesByTemplate,
 				imageQuote: (bgImagesByTemplate.imageQuote ?? []).map((x, idx) =>
 					idx === i ? IMAGE_QUOTE_DEFAULTS.imageUrl : x,
+				),
+			};
+			filmStripTopPctByTemplate = {
+				...filmStripTopPctByTemplate,
+				imageQuote: (filmStripTopPctByTemplate.imageQuote ?? []).map((x, idx) =>
+					idx === i ? FILM_STRIP_DEFAULTS.imageQuote.topPct : x,
+				),
+			};
+			filmStripBottomPctByTemplate = {
+				...filmStripBottomPctByTemplate,
+				imageQuote: (filmStripBottomPctByTemplate.imageQuote ?? []).map((x, idx) =>
+					idx === i ? FILM_STRIP_DEFAULTS.imageQuote.bottomPct : x,
 				),
 			};
 		}
@@ -2073,8 +2097,8 @@ import JSZip from 'jszip';
 
 	// Post data
 	let source = $state('Markets');
-	let sourceLogoSrc = $state(NEWS_DEFAULT_SOURCE_LOGO); // optional logo for News "source label"
-	let sourceLabelMode = $state<'text' | 'logo'>('logo');
+	let sourceLogoSrc = $state(''); // optional — user can switch News source to logo mode
+	let sourceLabelMode = $state<'text' | 'logo'>('text');
 	/** Max width in px for source logo (News template). */
 	let sourceLogoWidth = $state(260);
 	let articleUrl = $state('');
@@ -3041,6 +3065,17 @@ import JSZip from 'jszip';
 		];
 		imageQuoteFooterLeftBySlide = [...imageQuoteFooterLeftBySlide, imageQuoteFooterLeftBySlide[imageQuoteFooterLeftBySlide.length - 1] ?? IMAGE_QUOTE_DEFAULTS.footerLeft];
 		imageQuoteFooterRightBySlide = [...imageQuoteFooterRightBySlide, imageQuoteFooterRightBySlide[imageQuoteFooterRightBySlide.length - 1] ?? IMAGE_QUOTE_DEFAULTS.footerRight];
+		{
+			const nextTop = { ...filmStripTopPctByTemplate };
+			const nextBottom = { ...filmStripBottomPctByTemplate };
+			for (const id of FILM_STRIP_TEMPLATE_IDS) {
+				const d = FILM_STRIP_DEFAULTS[id];
+				nextTop[id] = [...(nextTop[id] ?? []), nextTop[id]?.[nextTop[id].length - 1] ?? d.topPct];
+				nextBottom[id] = [...(nextBottom[id] ?? []), nextBottom[id]?.[nextBottom[id].length - 1] ?? d.bottomPct];
+			}
+			filmStripTopPctByTemplate = nextTop;
+			filmStripBottomPctByTemplate = nextBottom;
+		}
 		articleSwipeTextBySlide = [...articleSwipeTextBySlide, articleSwipeTextBySlide[articleSwipeTextBySlide.length - 1] ?? '«« Swipe'];
 		articleLogoSrcBySlide = [...articleLogoSrcBySlide, articleLogoSrcBySlide[articleLogoSrcBySlide.length - 1] ?? ''];
 		videoStoryHeadlineBySlide = [
@@ -3201,6 +3236,81 @@ import JSZip from 'jszip';
 	let textCarouselAvatarLabelBySlide = $state<string[]>(emptySlides(() => ''));
 	let imageQuoteFooterLeftBySlide = $state<string[]>(emptySlides(() => IMAGE_QUOTE_DEFAULTS.footerLeft));
 	let imageQuoteFooterRightBySlide = $state<string[]>(emptySlides(() => IMAGE_QUOTE_DEFAULTS.footerRight));
+
+	/** Per-template letterbox / film-strip heights (% of canvas) for image-quote, hook, creator, highlight. */
+	function emptyFilmStripTop(id: FilmStripTemplateId): number[] {
+		return emptySlides(() => FILM_STRIP_DEFAULTS[id].topPct);
+	}
+	function emptyFilmStripBottom(id: FilmStripTemplateId): number[] {
+		return emptySlides(() => FILM_STRIP_DEFAULTS[id].bottomPct);
+	}
+	let filmStripTopPctByTemplate = $state<Record<FilmStripTemplateId, number[]>>({
+		imageQuote: emptyFilmStripTop('imageQuote'),
+		videoHook: emptyFilmStripTop('videoHook'),
+		videoCreator: emptyFilmStripTop('videoCreator'),
+		videoSource: emptyFilmStripTop('videoSource'),
+	});
+	let filmStripBottomPctByTemplate = $state<Record<FilmStripTemplateId, number[]>>({
+		imageQuote: emptyFilmStripBottom('imageQuote'),
+		videoHook: emptyFilmStripBottom('videoHook'),
+		videoCreator: emptyFilmStripBottom('videoCreator'),
+		videoSource: emptyFilmStripBottom('videoSource'),
+	});
+	let filmStripPopoverOpen = $state(false);
+
+	const activeFilmStrip = $derived.by(() => {
+		const t = activeTemplate;
+		if (!supportsFilmStrip(t)) return null;
+		const top = filmStripTopPctByTemplate[t]?.[activeSlide] ?? FILM_STRIP_DEFAULTS[t].topPct;
+		const bottom = filmStripBottomPctByTemplate[t]?.[activeSlide] ?? FILM_STRIP_DEFAULTS[t].bottomPct;
+		return clampFilmStripPct(top, bottom);
+	});
+
+	function setActiveFilmStripTop(raw: number) {
+		const t = activeTemplate;
+		if (!supportsFilmStrip(t)) return;
+		const curBottom =
+			filmStripBottomPctByTemplate[t]?.[activeSlide] ?? FILM_STRIP_DEFAULTS[t].bottomPct;
+		const next = clampFilmStripPct(raw, curBottom, 'top');
+		const tops = [...(filmStripTopPctByTemplate[t] ?? emptyFilmStripTop(t))];
+		const bottoms = [...(filmStripBottomPctByTemplate[t] ?? emptyFilmStripBottom(t))];
+		while (tops.length <= activeSlide) tops.push(FILM_STRIP_DEFAULTS[t].topPct);
+		while (bottoms.length <= activeSlide) bottoms.push(FILM_STRIP_DEFAULTS[t].bottomPct);
+		tops[activeSlide] = next.topPct;
+		bottoms[activeSlide] = next.bottomPct;
+		filmStripTopPctByTemplate = { ...filmStripTopPctByTemplate, [t]: tops };
+		filmStripBottomPctByTemplate = { ...filmStripBottomPctByTemplate, [t]: bottoms };
+	}
+
+	function setActiveFilmStripBottom(raw: number) {
+		const t = activeTemplate;
+		if (!supportsFilmStrip(t)) return;
+		const curTop = filmStripTopPctByTemplate[t]?.[activeSlide] ?? FILM_STRIP_DEFAULTS[t].topPct;
+		const next = clampFilmStripPct(curTop, raw, 'bottom');
+		const tops = [...(filmStripTopPctByTemplate[t] ?? emptyFilmStripTop(t))];
+		const bottoms = [...(filmStripBottomPctByTemplate[t] ?? emptyFilmStripBottom(t))];
+		while (tops.length <= activeSlide) tops.push(FILM_STRIP_DEFAULTS[t].topPct);
+		while (bottoms.length <= activeSlide) bottoms.push(FILM_STRIP_DEFAULTS[t].bottomPct);
+		tops[activeSlide] = next.topPct;
+		bottoms[activeSlide] = next.bottomPct;
+		filmStripTopPctByTemplate = { ...filmStripTopPctByTemplate, [t]: tops };
+		filmStripBottomPctByTemplate = { ...filmStripBottomPctByTemplate, [t]: bottoms };
+	}
+
+	function resetActiveFilmStrip() {
+		const t = activeTemplate;
+		if (!supportsFilmStrip(t)) return;
+		const d = FILM_STRIP_DEFAULTS[t];
+		const tops = [...(filmStripTopPctByTemplate[t] ?? emptyFilmStripTop(t))];
+		const bottoms = [...(filmStripBottomPctByTemplate[t] ?? emptyFilmStripBottom(t))];
+		while (tops.length <= activeSlide) tops.push(d.topPct);
+		while (bottoms.length <= activeSlide) bottoms.push(d.bottomPct);
+		tops[activeSlide] = d.topPct;
+		bottoms[activeSlide] = d.bottomPct;
+		filmStripTopPctByTemplate = { ...filmStripTopPctByTemplate, [t]: tops };
+		filmStripBottomPctByTemplate = { ...filmStripBottomPctByTemplate, [t]: bottoms };
+	}
+
 	let articleSwipeTextBySlide = $state<string[]>(emptySlides(() => '«« Swipe'));
 	/** Article bottom-bar logo image per slide (empty = template default glyph). */
 	let articleLogoSrcBySlide = $state<string[]>(emptySlides(() => ''));
@@ -3329,6 +3439,18 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		textCarouselAvatarLabelBySlide = pickOr(textCarouselAvatarLabelBySlide, '');
 		imageQuoteFooterLeftBySlide = pickOr(imageQuoteFooterLeftBySlide, IMAGE_QUOTE_DEFAULTS.footerLeft);
 		imageQuoteFooterRightBySlide = pickOr(imageQuoteFooterRightBySlide, IMAGE_QUOTE_DEFAULTS.footerRight);
+		filmStripTopPctByTemplate = {
+			imageQuote: pickOr(filmStripTopPctByTemplate.imageQuote, FILM_STRIP_DEFAULTS.imageQuote.topPct),
+			videoHook: pickOr(filmStripTopPctByTemplate.videoHook, FILM_STRIP_DEFAULTS.videoHook.topPct),
+			videoCreator: pickOr(filmStripTopPctByTemplate.videoCreator, FILM_STRIP_DEFAULTS.videoCreator.topPct),
+			videoSource: pickOr(filmStripTopPctByTemplate.videoSource, FILM_STRIP_DEFAULTS.videoSource.topPct),
+		};
+		filmStripBottomPctByTemplate = {
+			imageQuote: pickOr(filmStripBottomPctByTemplate.imageQuote, FILM_STRIP_DEFAULTS.imageQuote.bottomPct),
+			videoHook: pickOr(filmStripBottomPctByTemplate.videoHook, FILM_STRIP_DEFAULTS.videoHook.bottomPct),
+			videoCreator: pickOr(filmStripBottomPctByTemplate.videoCreator, FILM_STRIP_DEFAULTS.videoCreator.bottomPct),
+			videoSource: pickOr(filmStripBottomPctByTemplate.videoSource, FILM_STRIP_DEFAULTS.videoSource.bottomPct),
+		};
 		videoStoryHeadlineBySlide = pickOr(videoStoryHeadlineBySlide, VIDEO_STORY_DEFAULTS.headline);
 		videoStoryWatermarkBySlide = pickOr(videoStoryWatermarkBySlide, VIDEO_STORY_DEFAULTS.watermark);
 		brandStackBrandBySlide = pickOr(brandStackBrandBySlide, BRAND_STACK_DEFAULTS.brand);
@@ -4551,6 +4673,33 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 		if (Array.isArray(s.imageQuoteFooterLeftBySlide)) imageQuoteFooterLeftBySlide = s.imageQuoteFooterLeftBySlide;
 		if (Array.isArray(s.imageQuoteFooterRightBySlide)) imageQuoteFooterRightBySlide = s.imageQuoteFooterRightBySlide;
+		{
+			const nSlides = Array.isArray(s.slides) ? s.slides.length : slides.length;
+			const rawTop = (s as any).filmStripTopPctByTemplate;
+			const rawBottom = (s as any).filmStripBottomPctByTemplate;
+			if (rawTop && typeof rawTop === 'object') {
+				const next = { ...filmStripTopPctByTemplate };
+				for (const id of FILM_STRIP_TEMPLATE_IDS) {
+					const row = Array.isArray(rawTop[id]) ? rawTop[id].map((x: unknown) => Number(x) || 0) : null;
+					next[id] = Array.from(
+						{ length: nSlides },
+						(_, i) => row?.[i] ?? FILM_STRIP_DEFAULTS[id].topPct,
+					);
+				}
+				filmStripTopPctByTemplate = next;
+			}
+			if (rawBottom && typeof rawBottom === 'object') {
+				const next = { ...filmStripBottomPctByTemplate };
+				for (const id of FILM_STRIP_TEMPLATE_IDS) {
+					const row = Array.isArray(rawBottom[id]) ? rawBottom[id].map((x: unknown) => Number(x) || 0) : null;
+					next[id] = Array.from(
+						{ length: nSlides },
+						(_, i) => row?.[i] ?? FILM_STRIP_DEFAULTS[id].bottomPct,
+					);
+				}
+				filmStripBottomPctByTemplate = next;
+			}
+		}
 		if (Array.isArray(s.articleSwipeTextBySlide)) articleSwipeTextBySlide = s.articleSwipeTextBySlide;
 		if (Array.isArray((s as any).articleLogoSrcBySlide)) {
 			articleLogoSrcBySlide = (s as any).articleLogoSrcBySlide.map((x: unknown) => String(x ?? ''));
@@ -4902,6 +5051,18 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		imageQuoteTextBySlide = [IMAGE_QUOTE_DEFAULTS.body];
 		imageQuoteFooterLeftBySlide = [IMAGE_QUOTE_DEFAULTS.footerLeft];
 		imageQuoteFooterRightBySlide = [IMAGE_QUOTE_DEFAULTS.footerRight];
+		filmStripTopPctByTemplate = {
+			imageQuote: [FILM_STRIP_DEFAULTS.imageQuote.topPct],
+			videoHook: [FILM_STRIP_DEFAULTS.videoHook.topPct],
+			videoCreator: [FILM_STRIP_DEFAULTS.videoCreator.topPct],
+			videoSource: [FILM_STRIP_DEFAULTS.videoSource.topPct],
+		};
+		filmStripBottomPctByTemplate = {
+			imageQuote: [FILM_STRIP_DEFAULTS.imageQuote.bottomPct],
+			videoHook: [FILM_STRIP_DEFAULTS.videoHook.bottomPct],
+			videoCreator: [FILM_STRIP_DEFAULTS.videoCreator.bottomPct],
+			videoSource: [FILM_STRIP_DEFAULTS.videoSource.bottomPct],
+		};
 		videoStoryHeadlineBySlide = [''];
 		videoStoryWatermarkBySlide = [''];
 		blackTextHeadlineBySlide = [''];
@@ -4977,15 +5138,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			return i === 0 ? NEWS_DEFAULT_SUBTEXT : '';
 		});
 		if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
-		if (!String(sourceLogoSrc ?? '').trim()) {
-			try {
-				const kitLogo = userId ? String(loadBrandKit(userId).logoUrl ?? '').trim() : '';
-				sourceLogoSrc = kitLogo || NEWS_DEFAULT_SOURCE_LOGO;
-			} catch {
-				sourceLogoSrc = NEWS_DEFAULT_SOURCE_LOGO;
-			}
-			sourceLabelMode = 'logo';
-		}
+		sourceLabelMode = 'text';
 		newsSolidBgBySlide = Array.from({ length: n }, () => '');
 		// Match default hook behaviour: badge on slide 1 only until user adds elsewhere.
 		showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
@@ -5477,6 +5630,8 @@ tweetTopImagePanYBySlide,
 			textCarouselAvatarLabelBySlide,
 			imageQuoteFooterLeftBySlide,
 			imageQuoteFooterRightBySlide,
+			filmStripTopPctByTemplate,
+			filmStripBottomPctByTemplate,
 			articleSwipeTextBySlide,
 			articleLogoSrcBySlide: articleLogoSrcBySlide.map(pruneMediaUrl),
 			slideIds,
@@ -5708,14 +5863,12 @@ tweetTopImagePanYBySlide,
 		userId = user.id;
 		const kit = loadBrandKit(user.id);
 		brandCta = kit.cta?.headline || kit.cta?.image ? kit.cta : loadBrandCta(user.id);
+		// Prefill logo asset if brand kit has one, but keep source label as text by default.
 		const kitLogo = String(kit.logoUrl ?? '').trim();
-		if (kitLogo) {
+		if (kitLogo && !String(sourceLogoSrc ?? '').trim()) {
 			sourceLogoSrc = kitLogo;
-			sourceLabelMode = 'logo';
-		} else if (!String(sourceLogoSrc ?? '').trim()) {
-			sourceLogoSrc = NEWS_DEFAULT_SOURCE_LOGO;
-			sourceLabelMode = 'logo';
 		}
+		if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
 		draftRestoring = true;
 		const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 		const savedParam = sp?.get('saved') ?? null;
@@ -7388,6 +7541,33 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (imageQuoteFooterRightBySlide.length !== n) {
 			imageQuoteFooterRightBySlide = Array.from({ length: n }, (_, i) => imageQuoteFooterRightBySlide[i] ?? IMAGE_QUOTE_DEFAULTS.footerRight);
 		}
+		{
+			const nextTop = { ...filmStripTopPctByTemplate };
+			const nextBottom = { ...filmStripBottomPctByTemplate };
+			let changed = false;
+			for (const id of FILM_STRIP_TEMPLATE_IDS) {
+				const tops = nextTop[id] ?? [];
+				const bottoms = nextBottom[id] ?? [];
+				if (tops.length !== n) {
+					nextTop[id] = Array.from(
+						{ length: n },
+						(_, i) => tops[i] ?? FILM_STRIP_DEFAULTS[id].topPct,
+					);
+					changed = true;
+				}
+				if (bottoms.length !== n) {
+					nextBottom[id] = Array.from(
+						{ length: n },
+						(_, i) => bottoms[i] ?? FILM_STRIP_DEFAULTS[id].bottomPct,
+					);
+					changed = true;
+				}
+			}
+			if (changed) {
+				filmStripTopPctByTemplate = nextTop;
+				filmStripBottomPctByTemplate = nextBottom;
+			}
+		}
 		if (videoStoryHeadlineBySlide.length !== n) {
 			videoStoryHeadlineBySlide = Array.from(
 				{ length: n },
@@ -8633,6 +8813,71 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				selectedId={formatId}
 				onSelect={(id) => (formatId = id as FormatId)}
 			/>
+			{#if supportsFilmStrip(activeTemplate) && activeFilmStrip}
+				<Popover bind:open={filmStripPopoverOpen}>
+					<PopoverTrigger
+						class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.7)] shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.05)] backdrop-blur-[14px] transition-colors hover:bg-white hover:text-[#111]"
+						title="Letterbox / film strip height"
+						aria-label="Letterbox height"
+					>
+						<Rows2 size={15} strokeWidth={1.8} />
+						<span class="hidden sm:inline">Letterbox</span>
+					</PopoverTrigger>
+					<PopoverContent
+						side="bottom"
+						sideOffset={10}
+						align="center"
+						portalProps={{ to: 'body' }}
+						class="z-[400] w-[260px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+					>
+						<div class="mb-3 flex items-center justify-between gap-2">
+							<p class="text-[12px] font-semibold tracking-tight">Film strip</p>
+							<button
+								type="button"
+								class="text-[10px] font-medium text-[#888] hover:text-[#111]"
+								onclick={resetActiveFilmStrip}
+							>
+								Reset
+							</button>
+						</div>
+						<label class="mb-1 flex items-center justify-between text-[11px] font-medium text-[#555]">
+							<span>Top</span>
+							<span class="tabular-nums text-[#111]">{Math.round(activeFilmStrip.topPct)}%</span>
+						</label>
+						<Slider
+							type="single"
+							value={activeFilmStrip.topPct}
+							onValueChange={(v) => {
+								const n = Array.isArray(v) ? v[0] : v;
+								setActiveFilmStripTop(Number(n) || 0);
+							}}
+							min={0}
+							max={55}
+							step={1}
+							class="mb-3.5 min-w-0"
+						/>
+						<label class="mb-1 flex items-center justify-between text-[11px] font-medium text-[#555]">
+							<span>Bottom</span>
+							<span class="tabular-nums text-[#111]">{Math.round(activeFilmStrip.bottomPct)}%</span>
+						</label>
+						<Slider
+							type="single"
+							value={activeFilmStrip.bottomPct}
+							onValueChange={(v) => {
+								const n = Array.isArray(v) ? v[0] : v;
+								setActiveFilmStripBottom(Number(n) || 0);
+							}}
+							min={0}
+							max={55}
+							step={1}
+							class="min-w-0"
+						/>
+						<p class="mt-3 text-[10px] leading-snug text-[#999]">
+							Black letterbox height as a percent of the canvas.
+						</p>
+					</PopoverContent>
+				</Popover>
+			{/if}
 			</div>
 			{#if !studioRevealReady}
 				<div class="studio-dock-skel" aria-hidden="true">
@@ -8760,7 +9005,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</div>
 			{:else if previewTemplate === 'news'}
 				<NewsTemplate
-					templateTheme={uiTheme}
+					templateTheme="dark"
 					bind:exportRef
 					bind:circleX
 					bind:circleY
@@ -9487,6 +9732,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						if (!canvasInteractive) return;
 						openBgToolbarAt(d.clientX, d.clientY);
 					}}
+					filmStripTopPct={supportsFilmStrip(previewTemplate)
+						? (filmStripTopPctByTemplate[previewTemplate]?.[paintSlide] ??
+							FILM_STRIP_DEFAULTS[previewTemplate].topPct)
+						: undefined}
+					filmStripBottomPct={supportsFilmStrip(previewTemplate)
+						? (filmStripBottomPctByTemplate[previewTemplate]?.[paintSlide] ??
+							FILM_STRIP_DEFAULTS[previewTemplate].bottomPct)
+						: undefined}
 					showToolbar={false}
 				/>
 				<StudioImageStickers
@@ -9670,6 +9923,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					footerLeft={imageQuoteFooterLeftBySlide[paintSlide] ?? ''}
 					footerRight={imageQuoteFooterRightBySlide[paintSlide] ?? ''}
 					topRatio={IMAGE_QUOTE_DEFAULTS.topRatio}
+					filmStripTopPct={filmStripTopPctByTemplate.imageQuote?.[paintSlide] ?? FILM_STRIP_DEFAULTS.imageQuote.topPct}
+					filmStripBottomPct={filmStripBottomPctByTemplate.imageQuote?.[paintSlide] ?? FILM_STRIP_DEFAULTS.imageQuote.bottomPct}
 					highlightColor={highlightColor}
 					bgColor="#000000"
 					textColor="#ffffff"

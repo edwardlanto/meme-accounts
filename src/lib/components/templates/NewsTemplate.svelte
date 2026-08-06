@@ -2331,6 +2331,7 @@
 							dy={textOffsets.source?.y ?? 0}
 							{interactive}
 							{scale}
+							immediateTextDrag={selectedText === 'source'}
 							onChange={(x, y) => onTextOffsetChange?.('source', { x, y })}
 						>
 							{#snippet children()}
@@ -2602,6 +2603,7 @@
 				dy={textOffsets.headline?.y ?? 0}
 				{interactive}
 				{scale}
+				immediateTextDrag={selectedText === 'headline'}
 				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 			>
 				{#snippet children()}
@@ -2609,7 +2611,7 @@
 					<div
 						data-news-block="headline"
 						style="position: relative; overflow: visible; {interactive ? 'cursor: grab;' : ''}"
-						title={interactive ? 'Drag text to highlight · Hold still then drag to move · Alt+drag to move' : undefined}
+						title={interactive ? 'Click to select · Drag to move · Drag text to highlight · Hold still or Alt+drag to move' : undefined}
 						onmouseenter={() => (hoveringText = true)}
 						onmouseleave={() => (hoveringText = false)}
 					>
