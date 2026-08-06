@@ -3,6 +3,7 @@
 
 	let mounted = $state(false);
 	let scrollY = $state(0);
+	let counted = $state(false);
 
 	/** Phone marquee — replace with your own image/video assets when ready. */
 	const phoneMarqueePlaceholder = '/placeholders/marquee/news-template-placeholder.png';
@@ -14,6 +15,24 @@
 		{ tint: '#A0C4FF', tag: 'Story' },
 		{ tint: '#FFC8DD', tag: 'Post' },
 		{ tint: '#FFD6A5', tag: 'Schedule' },
+	];
+
+	/** Platforms Meme Accounts publishes to — shown as a trust/connector strip. */
+	const platforms = [
+		{ label: 'Instagram', abbr: 'IG', bg: 'linear-gradient(135deg,#f58529,#dd2a7b,#8134af)' },
+		{ label: 'TikTok', abbr: 'TT', bg: 'linear-gradient(135deg,#25f4ee,#0f0f10 55%,#fe2c55)' },
+		{ label: 'X', abbr: 'X', bg: '#0f0f10' },
+		{ label: 'LinkedIn', abbr: 'in', bg: '#0A66C2' },
+		{ label: 'YouTube', abbr: '▶', bg: '#FF0000' },
+		{ label: 'Facebook', abbr: 'f', bg: '#1877F2' },
+		{ label: 'Pinterest', abbr: 'P', bg: '#E60023' },
+		{ label: 'Threads', abbr: '@', bg: '#0f0f10' },
+	];
+
+	const stats = [
+		{ value: 10, suffix: 'x', label: 'faster than building posts by hand in Canva' },
+		{ value: 40, suffix: '+', label: 'hours saved a month once posting is on autopilot' },
+		{ value: 3, suffix: 'x', label: 'more consistent posting once schedules run themselves' },
 	];
 
 	const featured = [
@@ -35,18 +54,46 @@
 		{
 			title: 'Bulk create',
 			desc: 'Generate dozens of meme posts in one session — captions, slides, and formats ready to schedule.',
+			icon: 'grid',
 		},
 		{
 			title: 'Viral templates',
 			desc: 'Start from proven carousel, news, quote, and hook layouts built for meme and niche pages.',
+			icon: 'spark',
 		},
 		{
 			title: 'Schedule & auto-post',
 			desc: 'Queue daily drops, keep your feed consistent, and stop living in the Instagram draft folder.',
+			icon: 'clock',
 		},
 		{
 			title: 'Studio polish',
 			desc: 'Tweak type, crops, and branding in one studio so every post looks intentional — not copy-pasted.',
+			icon: 'wand',
+		},
+	];
+
+	const testimonials = [
+		{
+			quote: 'I went from posting twice a week to every single day. The bulk studio does in one sitting what used to eat my whole Sunday.',
+			name: 'Maya Carter',
+			role: 'Runs a 240K-follower meme page',
+			initials: 'MC',
+			bg: '#7B2D26',
+		},
+		{
+			quote: 'Templates that already look like the top posts in my niche — I just swap the joke and schedule the week.',
+			name: 'Avery James',
+			role: 'Instagram carousel creator',
+			initials: 'AJ',
+			bg: '#D67862',
+		},
+		{
+			quote: 'Auto-posting means my page never goes quiet, even on weeks I barely open the app.',
+			name: 'Sienna Cole',
+			role: 'News-style meme account',
+			initials: 'SC',
+			bg: '#3D6B8C',
 		},
 	];
 
@@ -68,6 +115,10 @@
 			a: 'Yes. Bulk tools let you spin up many meme posts at once, then refine winners in the studio before you schedule them.',
 		},
 		{
+			q: 'Which platforms can I post to?',
+			a: 'Meme Accounts is built around Instagram, with support for cross-posting formats to TikTok, X, LinkedIn, Facebook, and more as you connect them.',
+		},
+		{
 			q: 'Is there a free plan?',
 			a: 'Yes. You can start free with no credit card. Upgrade when you need more volume, seats, or advanced scheduling — cancel anytime.',
 		},
@@ -78,7 +129,7 @@
 	];
 
 	const metaDescription =
-		'Create viral meme posts, carousels, and reels with ready-made templates. Bulk generate, schedule, and auto-post to Instagram — built for meme page creators.';
+		'Create viral meme posts, carousels, and reels with ready-made templates. Bulk generate, schedule, and auto-post to Instagram, TikTok, and more — built for meme page creators.';
 
 	const jsonLd = {
 		'@context': 'https://schema.org',
@@ -152,9 +203,36 @@
 			}
 		});
 
+		// Stat counters — animate once the stats bar scrolls into view.
+		const statEls = Array.from(document.querySelectorAll<HTMLElement>('.stat-num'));
+		const statIo = new IntersectionObserver((entries) => {
+			entries.forEach((e) => {
+				if (e.isIntersecting && !counted) {
+					counted = true;
+					statEls.forEach((el) => {
+						const target = Number(el.dataset.target || '0');
+						const start = performance.now();
+						const dur = 1100;
+						const step = (t: number) => {
+							const p = Math.min(1, (t - start) / dur);
+							const eased = 1 - Math.pow(1 - p, 3);
+							el.textContent = Math.round(eased * target).toString();
+							if (p < 1) requestAnimationFrame(step);
+							else el.textContent = target.toString();
+						};
+						requestAnimationFrame(step);
+					});
+					statIo.disconnect();
+				}
+			});
+		}, { threshold: 0.4 });
+		const statsBar = document.querySelector('.stats-bar');
+		if (statsBar) statIo.observe(statsBar);
+
 		return () => {
 			window.removeEventListener('scroll', onScroll);
 			io.disconnect();
+			statIo.disconnect();
 		};
 	});
 </script>
@@ -179,6 +257,13 @@
 </svelte:head>
 
 <div class="page" class:mounted>
+	<!-- ANNOUNCEMENT BAR -->
+	<a href="#features" class="announce">
+		<span class="announce-badge">New</span>
+		<span>Bulk studio now generates a full week of posts in one pass</span>
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+	</a>
+
 	<!-- NAV -->
 	<nav class="nav" class:scrolled={scrollY > 24}>
 		<a href="/" class="brand">
@@ -197,6 +282,7 @@
 
 	<!-- HERO -->
 	<section class="hero">
+		<div class="hero-glow" aria-hidden="true"></div>
 		<div class="hero-inner">
 			<div class="hero-app">
 				<div class="hero-icon" aria-hidden="true">
@@ -212,7 +298,7 @@
 				<p class="hero-app-name">Meme Accounts</p>
 			</div>
 			<h1 class="hero-title">Post memes on autopilot</h1>
-			<p class="hero-sub">Pick a template. Connect your account. Schedule and ship daily.</p>
+			<p class="hero-sub">Pick a template, connect your account, and let Meme Accounts build, schedule, and ship your daily posts — while you focus on the next viral idea.</p>
 			<div class="hero-ctas">
 				<a href="/?auth=signup" class="btn btn-dark btn-cta">
 					Explore Templates
@@ -221,6 +307,58 @@
 						<polyline points="12 5 19 12 12 19"/>
 					</svg>
 				</a>
+				<a href="#how" class="btn btn-light-outline btn-cta">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20"/></svg>
+					See how it works
+				</a>
+			</div>
+
+			<!-- Platform strip -->
+			<div class="platform-strip" aria-label="Platforms Meme Accounts publishes to">
+				<span class="platform-strip-label">Publish everywhere</span>
+				<div class="platform-icons">
+					{#each platforms as p}
+						<span class="platform-chip" style="background:{p.bg}" title={p.label} aria-label={p.label}>{p.abbr}</span>
+					{/each}
+				</div>
+			</div>
+		</div>
+
+		<!-- Product preview mockup -->
+		<div class="preview-stage reveal">
+			<div class="preview-frame">
+				<div class="preview-topbar">
+					<span class="preview-dot" style="background:#ff5f57"></span>
+					<span class="preview-dot" style="background:#febc2e"></span>
+					<span class="preview-dot" style="background:#28c840"></span>
+					<span class="preview-url">memeaccounts.com/studio</span>
+				</div>
+				<div class="preview-body">
+					<div class="preview-sidebar">
+						<div class="pv-side-item pv-active">Templates</div>
+						<div class="pv-side-item">Bulk Create</div>
+						<div class="pv-side-item">Schedule</div>
+						<div class="pv-side-item">Studio</div>
+						<div class="pv-side-item">Analytics</div>
+					</div>
+					<div class="preview-canvas">
+						<div class="pv-card" style="background:#7B2D26">
+							<span class="pv-tag">Carousel · 6 slides</span>
+						</div>
+						<div class="pv-card" style="background:#3D6B8C">
+							<span class="pv-tag">News frame</span>
+						</div>
+						<div class="pv-card" style="background:#D67862">
+							<span class="pv-tag">Viral hook</span>
+						</div>
+						<div class="pv-queue">
+							<div class="pv-queue-h">Scheduled — this week</div>
+							<div class="pv-queue-row"><span class="pv-dot" style="background:#E8FF48"></span>Mon 9:00 AM · Carousel</div>
+							<div class="pv-queue-row"><span class="pv-dot" style="background:#A0C4FF"></span>Wed 6:30 PM · Story</div>
+							<div class="pv-queue-row"><span class="pv-dot" style="background:#FFC8DD"></span>Fri 8:00 AM · Reel</div>
+						</div>
+					</div>
+				</div>
 			</div>
 		</div>
 
@@ -242,6 +380,18 @@
 					</div>
 				{/each}
 			</div>
+		</div>
+	</section>
+
+	<!-- STATS -->
+	<section class="stats-bar">
+		<div class="container stats-row">
+			{#each stats as s, i}
+				<div class="stat reveal" style="--d:{i * 0.08}s">
+					<p class="stat-value"><span class="stat-num" data-target={s.value}>0</span>{s.suffix}</p>
+					<p class="stat-label">{s.label}</p>
+				</div>
+			{/each}
 		</div>
 	</section>
 
@@ -275,6 +425,7 @@
 
 	<!-- HOW IT WORKS (floating cards) -->
 	<section id="how" class="how">
+		<div class="how-glow" aria-hidden="true"></div>
 		<div class="container">
 			<h2 class="how-title reveal">How it works.</h2>
 
@@ -344,22 +495,54 @@
 	<section id="built-for" class="benefits">
 		<div class="container">
 			<div class="section-head reveal">
-				<h2 class="benefits-h">Built for meme accounts</h2>
+				<h2 class="benefits-h">Everything you need to ship daily</h2>
 				<p class="section-sub">
 					Everything you need to ship daily content without bouncing between Canva, drafts, and native schedulers.
 				</p>
 			</div>
-			<ul class="benefits-list">
+			<div class="benefits-grid">
 				{#each benefits as b, i}
-					<li class="benefit-row reveal" style="--d:{i * 0.06}s">
-						<span class="benefit-mark" aria-hidden="true"></span>
-						<div class="benefit-copy">
-							<h3 class="benefit-title">{b.title}</h3>
-							<p class="benefit-desc">{b.desc}</p>
-						</div>
-					</li>
+					<div class="benefit-card reveal" style="--d:{i * 0.06}s">
+						<span class="benefit-icon" aria-hidden="true">
+							{#if b.icon === 'grid'}
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+							{:else if b.icon === 'spark'}
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 L14 9 L21 12 L14 15 L12 22 L10 15 L3 12 L10 9 Z"/></svg>
+							{:else if b.icon === 'clock'}
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>
+							{:else}
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4 L20 9 L8 21 L3 21 L3 16 Z"/><line x1="13" y1="6" x2="18" y2="11"/></svg>
+							{/if}
+						</span>
+						<h3 class="benefit-title">{b.title}</h3>
+						<p class="benefit-desc">{b.desc}</p>
+					</div>
 				{/each}
-			</ul>
+			</div>
+		</div>
+	</section>
+
+	<!-- TESTIMONIALS -->
+	<section id="testimonials" class="testimonials">
+		<div class="container">
+			<div class="section-head reveal">
+				<h2 class="testimonials-h">Creators run their pages on Meme Accounts</h2>
+				<p class="section-sub">Real workflows from people who post daily, not just when they find time.</p>
+			</div>
+			<div class="testi-grid">
+				{#each testimonials as t, i}
+					<figure class="testi-card reveal" style="--d:{i * 0.08}s">
+						<blockquote class="testi-quote">&ldquo;{t.quote}&rdquo;</blockquote>
+						<figcaption class="testi-by">
+							<span class="testi-avatar" style="background:{t.bg}">{t.initials}</span>
+							<span>
+								<span class="testi-name">{t.name}</span>
+								<span class="testi-role">{t.role}</span>
+							</span>
+						</figcaption>
+					</figure>
+				{/each}
+			</div>
 		</div>
 	</section>
 
@@ -386,6 +569,7 @@
 	<!-- CTA STRIP -->
 	<section class="cta-strip">
 		<div class="container cta-row reveal">
+			<div class="cta-glow" aria-hidden="true"></div>
 			<div>
 				<h2 class="cta-h">Ready to put posting on autopilot?</h2>
 				<p class="cta-p">Free to start. No credit card. Cancel anytime.</p>
@@ -406,6 +590,15 @@
 			</div>
 
 			<div class="footer-col">
+				<p class="footer-h">Product</p>
+				<a href="/instagram-carousel-maker">Instagram Carousel</a>
+				<a href="/instagram-grid-maker">Instagram Grid</a>
+				<a href="/linkedin-carousel-maker">LinkedIn Carousel</a>
+				<a href="/fake-tweet-maker">Tweet Maker</a>
+				<a href="/pricing">Pricing</a>
+			</div>
+
+			<div class="footer-col">
 				<p class="footer-h">Company</p>
 				<a href="/about">About</a>
 				<a href="/careers">Careers</a>
@@ -417,7 +610,7 @@
 				<p class="footer-h">Legal</p>
 				<a href="/privacy">Privacy</a>
 				<a href="/terms">Terms</a>
-				<a href="/disclaimer">Disclaimer</a>
+				<a href="/refund-policy">Refund Policy</a>
 			</div>
 		</div>
 
@@ -434,7 +627,8 @@
 	/* ─── tokens ──────────────────────────────────────────── */
 	.page {
 		--ap-bg: #ffffff;
-		--ap-soft: #f6f5f1;
+		--ap-soft: #f6f7f9;
+		--ap-soft-2: #eef1f5;
 		--ap-text: #0f0f10;
 		--ap-text-2: #5b5b62;
 		--ap-text-3: #9a9aa1;
@@ -486,9 +680,36 @@
 		transform: translateY(0);
 	}
 
+	/* ─── announcement bar ─────────────────────────────────── */
+	.announce {
+		position: relative;
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 10px 16px;
+		background: #0f0f10;
+		color: #fff;
+		font-size: 13px;
+		font-weight: 600;
+		text-decoration: none;
+		text-align: center;
+	}
+	.announce-badge {
+		background: var(--ap-lime);
+		color: #0f0f10;
+		border-radius: 999px;
+		padding: 2px 9px;
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+	}
+	.announce svg { flex-shrink: 0; opacity: 0.7; }
+
 	/* ─── nav ─────────────────────────────────────────────── */
 	.nav {
-		position: fixed;
+		position: sticky;
 		top: 0; left: 0; right: 0;
 		z-index: 50;
 		display: flex;
@@ -590,15 +811,30 @@
 	/* ─── hero ────────────────────────────────────────────── */
 	.hero {
 		position: relative;
-		padding: clamp(110px, 14vh, 160px) 24px 60px;
+		padding: clamp(90px, 12vh, 130px) 24px 60px;
 		text-align: center;
 		overflow: hidden;
+		background: var(--ap-soft);
+	}
+	.hero-glow {
+		position: absolute;
+		top: -20%;
+		left: 50%;
+		width: 1100px;
+		height: 620px;
+		transform: translateX(-50%);
 		background:
-			radial-gradient(ellipse 70% 50% at 50% 0%, rgba(15, 15, 16, 0.04) 0%, transparent 70%),
-			#fff;
+			radial-gradient(closest-side, rgba(232, 255, 72, 0.22), transparent 70%),
+			radial-gradient(closest-side at 30% 60%, rgba(139, 92, 246, 0.10), transparent 70%),
+			radial-gradient(closest-side at 70% 40%, rgba(6, 182, 212, 0.10), transparent 70%);
+		filter: blur(10px);
+		pointer-events: none;
+		z-index: 0;
 	}
 
 	.hero-inner {
+		position: relative;
+		z-index: 1;
 		max-width: 880px;
 		margin: 0 auto;
 	}
@@ -652,7 +888,7 @@
 	.hero-title {
 		font-family: 'Satoshi', sans-serif;
 		font-weight: 900;
-		font-size: clamp(44px, 7.4vw, 92px);
+		font-size: clamp(40px, 6.6vw, 80px);
 		line-height: 0.98;
 		letter-spacing: -0.04em;
 		margin: 0 0 22px;
@@ -661,10 +897,10 @@
 		animation: hero-fade-up 800ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both;
 	}
 	.hero-sub {
-		font-size: clamp(17px, 1.6vw, 21px);
-		line-height: 1.5;
+		font-size: clamp(16px, 1.5vw, 20px);
+		line-height: 1.55;
 		color: var(--ap-text-2);
-		margin: 0 auto 36px;
+		margin: 0 auto 32px;
 		max-width: 620px;
 		font-weight: 400;
 		opacity: 0;
@@ -689,9 +925,154 @@
 		transform: translateX(3px);
 	}
 
+	/* ─── platform strip ──────────────────────────────────── */
+	.platform-strip {
+		margin-top: 44px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		opacity: 0;
+		animation: hero-fade-up 800ms cubic-bezier(0.16, 1, 0.3, 1) 920ms both;
+	}
+	.platform-strip-label {
+		font-size: 12px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ap-text-3);
+	}
+	.platform-icons {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+	.platform-chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border-radius: 10px;
+		color: #fff;
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.01em;
+		box-shadow: 0 1px 2px rgba(15, 15, 16, 0.08), 0 6px 14px -8px rgba(15, 15, 16, 0.3);
+		transition: transform 0.25s ease;
+	}
+	.platform-chip:hover { transform: translateY(-3px); }
+
+	/* ─── product preview mockup ───────────────────────────── */
+	.preview-stage {
+		position: relative;
+		z-index: 1;
+		max-width: 980px;
+		margin: 56px auto 0;
+		padding: 0 8px;
+	}
+	.preview-frame {
+		background: #fff;
+		border-radius: 20px;
+		border: 1px solid var(--ap-line);
+		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.6) inset,
+			0 40px 80px -30px rgba(15, 15, 16, 0.28),
+			0 14px 30px -14px rgba(15, 15, 16, 0.18);
+		overflow: hidden;
+	}
+	.preview-topbar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--ap-line);
+		background: #fafafa;
+	}
+	.preview-dot { width: 10px; height: 10px; border-radius: 50%; }
+	.preview-url {
+		margin-left: 10px;
+		font-size: 12px;
+		color: var(--ap-text-3);
+		font-weight: 600;
+	}
+	.preview-body {
+		display: grid;
+		grid-template-columns: 180px 1fr;
+		min-height: 320px;
+	}
+	.preview-sidebar {
+		border-right: 1px solid var(--ap-line);
+		padding: 18px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		background: #fbfbfc;
+	}
+	.pv-side-item {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ap-text-2);
+		padding: 9px 12px;
+		border-radius: 10px;
+	}
+	.pv-side-item.pv-active {
+		background: #0f0f10;
+		color: #fff;
+	}
+	.preview-canvas {
+		padding: 22px;
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 14px;
+		align-content: start;
+	}
+	.pv-card {
+		aspect-ratio: 4 / 5;
+		border-radius: 14px;
+		position: relative;
+		overflow: hidden;
+		display: flex;
+		align-items: flex-end;
+		padding: 10px;
+	}
+	.pv-tag {
+		background: rgba(255, 255, 255, 0.92);
+		color: #0f0f10;
+		font-size: 10px;
+		font-weight: 700;
+		padding: 4px 8px;
+		border-radius: 999px;
+	}
+	.pv-queue {
+		grid-column: 1 / -1;
+		border-top: 1px solid var(--ap-line);
+		margin-top: 8px;
+		padding-top: 14px;
+	}
+	.pv-queue-h {
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--ap-text-3);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin-bottom: 10px;
+	}
+	.pv-queue-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		color: var(--ap-text-2);
+		padding: 6px 0;
+	}
+	.pv-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
 	/* ─── phone marquee ───────────────────────────────────── */
 	.phone-stage {
-		margin-top: 80px;
+		margin-top: 64px;
 		padding: 20px 0;
 		mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
 		-webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
@@ -783,6 +1164,35 @@
 		background: rgba(255, 255, 255, 0.55);
 		border-radius: 2px;
 		transform: translateX(-50%);
+	}
+
+	/* ─── stats bar ───────────────────────────────────────── */
+	.stats-bar {
+		padding: 56px 24px;
+		background: #0f0f10;
+		color: #fff;
+	}
+	.stats-row {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 32px;
+		text-align: center;
+	}
+	.stat-value {
+		font-family: 'Satoshi', sans-serif;
+		font-weight: 900;
+		font-size: clamp(36px, 4.6vw, 56px);
+		letter-spacing: -0.03em;
+		margin: 0 0 8px;
+		color: var(--ap-lime);
+	}
+	.stat-label {
+		font-size: 14px;
+		line-height: 1.5;
+		color: rgba(255, 255, 255, 0.65);
+		margin: 0;
+		max-width: 260px;
+		margin-inline: auto;
 	}
 
 	/* ─── featured ────────────────────────────────────────── */
@@ -888,19 +1298,34 @@
 
 	/* ─── how it works (floating cards) ───────────────────── */
 	.how {
+		position: relative;
 		padding: 100px 24px 110px;
 		background: var(--ap-bg);
 		scroll-margin-top: 88px;
+		overflow: hidden;
+	}
+	.how-glow {
+		position: absolute;
+		top: 10%;
+		right: -10%;
+		width: 640px;
+		height: 640px;
+		background: radial-gradient(closest-side, rgba(139, 92, 246, 0.08), transparent 70%);
+		pointer-events: none;
 	}
 	.how-title {
+		position: relative;
+		z-index: 1;
 		font-weight: 900;
-		font-size: clamp(40px, 5.4vw, 72px);
+		font-size: clamp(36px, 5vw, 64px);
 		line-height: 1;
 		letter-spacing: -0.035em;
 		text-align: center;
 		margin: 0 0 80px;
 	}
 	.how-row {
+		position: relative;
+		z-index: 1;
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
 		gap: 40px;
@@ -1016,48 +1441,114 @@
 	}
 	.benefits-h {
 		font-weight: 900;
-		font-size: clamp(32px, 4.2vw, 52px);
+		font-size: clamp(30px, 4vw, 46px);
 		letter-spacing: -0.035em;
-		line-height: 1.05;
+		line-height: 1.08;
 		margin: 0;
 	}
-	.benefits-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
+	.benefits-grid {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 0 48px;
-		border-top: 1px solid var(--ap-line-2);
-	}
-	.benefit-row {
-		display: flex;
+		grid-template-columns: repeat(4, 1fr);
 		gap: 18px;
-		align-items: flex-start;
-		padding: 28px 0;
-		border-bottom: 1px solid var(--ap-line-2);
 	}
-	.benefit-mark {
-		flex-shrink: 0;
-		width: 12px;
-		height: 12px;
-		margin-top: 8px;
-		border-radius: 3px;
-		background: var(--ap-lime);
-		box-shadow: 0 0 0 1px rgba(15, 15, 16, 0.08);
+	.benefit-card {
+		background: #fff;
+		border: 1px solid var(--ap-line);
+		border-radius: 20px;
+		padding: 26px 22px;
+		transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.35s ease;
+	}
+	.benefit-card:hover {
+		transform: translateY(-4px);
+		box-shadow: 0 20px 40px -22px rgba(15, 15, 16, 0.25);
+		border-color: var(--ap-line-2);
+	}
+	.benefit-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		border-radius: 12px;
+		background: linear-gradient(160deg, #0f0f10, #2a2a2a);
+		color: var(--ap-lime);
+		margin-bottom: 18px;
 	}
 	.benefit-title {
 		font-weight: 800;
-		font-size: 18px;
+		font-size: 17px;
 		letter-spacing: -0.02em;
 		margin: 0 0 8px;
 	}
 	.benefit-desc {
-		font-size: 15px;
+		font-size: 14px;
 		line-height: 1.55;
 		color: var(--ap-text-2);
 		margin: 0;
-		max-width: 420px;
+	}
+
+	/* ─── testimonials ────────────────────────────────────── */
+	.testimonials {
+		padding: 100px 24px;
+		scroll-margin-top: 88px;
+	}
+	.testimonials-h {
+		font-weight: 900;
+		font-size: clamp(30px, 4vw, 44px);
+		letter-spacing: -0.03em;
+		line-height: 1.08;
+		margin: 0;
+	}
+	.testi-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 20px;
+	}
+	.testi-card {
+		background: var(--ap-soft);
+		border: 1px solid var(--ap-line);
+		border-radius: 20px;
+		padding: 26px;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		gap: 22px;
+	}
+	.testi-quote {
+		font-size: 15px;
+		line-height: 1.6;
+		color: var(--ap-text);
+		margin: 0;
+		font-weight: 500;
+		letter-spacing: -0.01em;
+	}
+	.testi-by {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		font-size: 13px;
+	}
+	.testi-avatar {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 50%;
+		color: #fff;
+		font-weight: 800;
+		font-size: 13px;
+		flex-shrink: 0;
+	}
+	.testi-name {
+		display: block;
+		font-weight: 700;
+		color: var(--ap-text);
+	}
+	.testi-role {
+		display: block;
+		color: var(--ap-text-3);
+		font-size: 12px;
 	}
 
 	/* ─── faq ─────────────────────────────────────────────── */
@@ -1122,6 +1613,7 @@
 		padding: 60px 24px 100px;
 	}
 	.cta-row {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -1130,18 +1622,31 @@
 		background: var(--ap-soft);
 		border: 1px solid var(--ap-line);
 		border-radius: 28px;
+		overflow: hidden;
+	}
+	.cta-glow {
+		position: absolute;
+		top: -60%;
+		right: -10%;
+		width: 420px;
+		height: 420px;
+		background: radial-gradient(closest-side, rgba(232, 255, 72, 0.28), transparent 70%);
+		pointer-events: none;
 	}
 	.cta-h {
+		position: relative;
 		font-weight: 800;
 		font-size: clamp(22px, 2.4vw, 30px);
 		letter-spacing: -0.02em;
 		margin: 0 0 6px;
 	}
 	.cta-p {
+		position: relative;
 		font-size: 15px;
 		color: var(--ap-text-2);
 		margin: 0;
 	}
+	.cta-row > .btn { position: relative; }
 
 	/* ─── footer ──────────────────────────────────────────── */
 	.footer {
@@ -1151,8 +1656,8 @@
 	}
 	.footer-grid {
 		display: grid;
-		grid-template-columns: 2fr 1fr 1fr;
-		gap: 48px;
+		grid-template-columns: 2fr 1fr 1fr 1fr;
+		gap: 40px;
 		padding-bottom: 48px;
 	}
 	.footer-brand .brand { margin-bottom: 14px; }
@@ -1200,13 +1705,23 @@
 	}
 
 	/* ─── responsive ──────────────────────────────────────── */
+	@media (max-width: 1000px) {
+		.preview-body { grid-template-columns: 1fr; }
+		.preview-sidebar { display: none; }
+		.stats-row { grid-template-columns: 1fr; gap: 40px; }
+		.benefits-grid { grid-template-columns: repeat(2, 1fr); }
+		.testi-grid { grid-template-columns: 1fr; }
+	}
+
 	@media (max-width: 880px) {
 		.nav { padding: 16px 20px; }
 		.nav.scrolled { padding: 12px 20px; }
 		.btn-ghost { display: none; }
 
-		.hero { padding-top: 100px; }
-		.phone-stage { margin-top: 56px; }
+		.hero { padding-top: 90px; }
+		.preview-stage { margin-top: 40px; }
+		.preview-canvas { grid-template-columns: repeat(2, 1fr); }
+		.phone-stage { margin-top: 48px; }
 		.phone-frame { width: 180px; height: 380px; border-radius: 32px; }
 
 		.featured { padding: 80px 20px 20px; }
@@ -1217,15 +1732,16 @@
 		.how-row { grid-template-columns: 1fr; gap: 48px; }
 
 		.benefits { padding: 24px 20px 80px; }
-		.benefits-list { grid-template-columns: 1fr; gap: 0; }
-		.benefit-row { padding: 22px 0; }
+		.benefits-grid { grid-template-columns: 1fr; }
+
+		.testimonials { padding: 80px 20px; }
 
 		.faq { padding: 80px 20px 20px; }
 		.faq-q { font-size: 16px; padding-right: 32px; }
 
 		.cta-row { flex-direction: column; text-align: center; padding: 32px 28px; }
 
-		.footer-grid { grid-template-columns: 1fr; gap: 32px; }
+		.footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
 		.footer-bottom { flex-direction: column; }
 		.footer-fine { text-align: center; }
 	}

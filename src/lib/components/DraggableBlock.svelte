@@ -82,7 +82,7 @@
 
 		const t = e.target as HTMLElement | null;
 		const onSelectableText = !!t?.closest?.(
-			'[data-draggable-no-pan],[contenteditable="true"],[data-text-selectable="true"]',
+			'[data-draggable-no-pan],[contenteditable="true"],[data-text-selectable]',
 		);
 		// Let the inner markup layer own the gesture for selection/editing.
 		// Hold Alt while pressing to drag-reposition from inside text (default).

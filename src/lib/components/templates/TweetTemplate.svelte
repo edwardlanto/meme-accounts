@@ -100,7 +100,7 @@ let {
 	topAvatarLabel = '',
 	topVerified  = true,
 	topText      = 'Ketchup or mayo or mustard?',
-	topImage     = '/templates/tweet/demo-bg.jpg',
+	topImage     = TWEET_DEFAULTS.topImage || '/templates/tweet/demo-bg.jpg',
 	topVideo     = '',
 	videoSeekSec = NaN,
 	videoTrimStartSec = 0,

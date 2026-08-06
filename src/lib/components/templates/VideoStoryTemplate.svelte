@@ -757,7 +757,7 @@
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
-									<div style="text-align: left; width: 100%;">
+									<div style="text-align: {headlineStyle.align ?? 'left'}; width: 100%;">
 										<HighlightedText
 											as="div"
 											text={headline}
@@ -806,7 +806,7 @@
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
-									<div style="text-align: left; width: 100%;">
+									<div style="text-align: {bodyStyle.align ?? 'left'}; width: 100%;">
 										<HighlightedText
 											as="div"
 											text={body}
@@ -857,7 +857,7 @@
 				</div>
 			</div>
 		{:else if layout === 'source'}
-			<!-- Highlight: 2-line left hook + tall nearly-full-width video -->
+			<!-- Highlight: full multi-line hook + tall nearly-full-width video -->
 			<div
 				style="
 					flex: 1;
@@ -867,7 +867,7 @@
 					align-items: stretch;
 					justify-content: flex-start;
 					gap: {previewMode ? '12px' : '28px'};
-					padding: {previewMode ? '28px 14px 24px' : '72px 40px 56px'};
+					padding: {previewMode ? '28px 14px 24px' : '56px 40px 48px'};
 					box-sizing: border-box;
 					background: #000;
 				"
@@ -887,7 +887,7 @@
 								defaultColor={highlightColor}
 								selected={selectedText === 'videoStoryHeadline'}
 								toolbarKind="videoStoryHeadline"
-								rows={2}
+								rows={6}
 								minHeight="0px"
 								ariaLabel="Highlight headline"
 								fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
@@ -906,18 +906,14 @@
 											defaultColor={highlightColor}
 											style="
 												margin: 0;
-												white-space: normal;
+												white-space: pre-wrap;
 												word-break: break-word;
-												line-height: 1.22;
+												line-height: {headlineStyle.lineHeight ?? 1.28};
 												letter-spacing: -0.02em;
 												color: #ffffff;
 												font-weight: {headlineStyle.fontWeight ?? 400};
 												font-size: {sourceFontSize}px;
 												max-width: 100%;
-												display: -webkit-box;
-												-webkit-box-orient: vertical;
-												-webkit-line-clamp: 2;
-												overflow: hidden;
 											"
 										/>
 									</div>

@@ -96,6 +96,7 @@ import JSZip from 'jszip';
 		NEWS_PLACEHOLDER_HEADLINE,
 		NEWS_DEFAULT_SOURCE,
 		NEWS_DEFAULT_LAYOUT,
+		NEWS_DEMO_IMAGE,
 		TWEET_DEFAULTS,
 		ARTICLE_DEFAULT_BODY,
 		ARTICLE_DEFAULT_SWIPE,
@@ -313,6 +314,13 @@ import JSZip from 'jszip';
 		if (t === 'news') {
 			if (!String(slides[idx] ?? '').trim()) {
 				slides = slides.map((x, i) => (i === idx ? NEWS_PLACEHOLDER_HEADLINE : x));
+			}
+			const newsImgs = bgImagesByTemplate.news ?? [];
+			if (!String(newsImgs[idx] ?? '').trim()) {
+				const next = Array.from({ length: Math.max(newsImgs.length, idx + 1, slides.length) }, (_, i) =>
+					String(newsImgs[i] ?? '').trim() ? String(newsImgs[i]) : i === idx ? NEWS_DEMO_IMAGE : '',
+				);
+				bgImagesByTemplate = { ...bgImagesByTemplate, news: next };
 			}
 			return;
 		}
@@ -701,6 +709,14 @@ import JSZip from 'jszip';
 			finalizeTemplateSwitch(from, t, i);
 		}
 		if (t === 'news' && !opts?.skipNewsSeed) seedNewsStarterPlaceholderLayout();
+		if (t === 'news') {
+			const n = slides.length;
+			const prev = bgImagesByTemplate.news ?? [];
+			const row = Array.from({ length: n }, (_, i) =>
+				String(prev[i] ?? '').trim() ? String(prev[i]) : NEWS_DEMO_IMAGE,
+			);
+			bgImagesByTemplate = { ...bgImagesByTemplate, news: row };
+		}
 		if (isVideoSplitFamily(t)) {
 			formatId = 'vertical';
 			const n = slides.length;
@@ -1924,8 +1940,8 @@ import JSZip from 'jszip';
 	// Background media — per template, per slide (keep EVERYTHING independent).
 	let bgImagesByTemplate = $state<Record<TemplateId, string[]>>({
 		blank: emptySlides(() => ''),
-		news: emptySlides(() => ''),
-		tweet: emptySlides(() => ''),
+		news: emptySlides(() => NEWS_DEMO_IMAGE),
+		tweet: emptySlides(() => TWEET_DEFAULTS.topImage),
 		article: emptySlides(() => ''),
 		textCarousel: emptySlides(() => ''),
 		imageQuote: emptySlides(() => IMAGE_QUOTE_DEFAULTS.imageUrl),
@@ -1939,7 +1955,7 @@ import JSZip from 'jszip';
 		videoSource: emptySlides(() => ''),
 		videoFeature: emptySlides(() => ''),
 		videoPost: emptySlides(() => ''),
-		brandStack: emptySlides(() => ''),
+		brandStack: emptySlides(() => BRAND_STACK_DEFAULTS.bottomMediaUrl),
 		photoTopic: emptySlides(() => PHOTO_TOPIC_DEFAULTS.imageUrl),
 		photoCaption: emptySlides(() => PHOTO_CAPTION_DEFAULTS.imageUrl),
 		whiteThread: emptySlides(() => ''),
@@ -1953,17 +1969,17 @@ import JSZip from 'jszip';
 		article: emptySlides(() => ''),
 		textCarousel: emptySlides(() => ''),
 		imageQuote: emptySlides(() => ''),
-		videoStory: emptySlides(() => ''),
-		videoFit: emptySlides(() => ''),
-		videoSplit: emptySlides(() => ''),
-		videoBlur: emptySlides(() => ''),
-		videoHook: emptySlides(() => ''),
-		videoCreator: emptySlides(() => ''),
-		videoText: emptySlides(() => ''),
-		videoSource: emptySlides(() => ''),
-		videoFeature: emptySlides(() => ''),
-		videoPost: emptySlides(() => ''),
-		brandStack: emptySlides(() => ''),
+		videoStory: emptySlides(() => VIDEO_STORY_DEFAULTS.videoUrl),
+		videoFit: emptySlides(() => VIDEO_STORY_DEFAULTS.videoUrl),
+		videoSplit: emptySlides(() => VIDEO_SPLIT_DEFAULTS.videoUrl),
+		videoBlur: emptySlides(() => VIDEO_STORY_DEFAULTS.videoUrl),
+		videoHook: emptySlides(() => VIDEO_HOOK_DEFAULTS.videoUrl),
+		videoCreator: emptySlides(() => VIDEO_CREATOR_DEFAULTS.videoUrl),
+		videoText: emptySlides(() => VIDEO_TEXT_DEFAULTS.videoUrl),
+		videoSource: emptySlides(() => VIDEO_SOURCE_DEFAULTS.videoUrl),
+		videoFeature: emptySlides(() => VIDEO_FEATURE_DEFAULTS.videoUrl),
+		videoPost: emptySlides(() => VIDEO_POST_DEFAULTS.videoUrl),
+		brandStack: emptySlides(() => BRAND_STACK_DEFAULTS.topVideoUrl),
 		photoTopic: emptySlides(() => ''),
 		photoCaption: emptySlides(() => ''),
 		whiteThread: emptySlides(() => ''),
@@ -4650,6 +4666,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
 		shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
 		shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
+		// Demo cover image (SoftBank / generated demos) — blank canvas wiped this to ''.
+		const prevNews = bgImagesByTemplate.news ?? [];
+		bgImagesByTemplate = {
+			...bgImagesByTemplate,
+			news: Array.from({ length: n }, (_, i) =>
+				String(prevNews[i] ?? '').trim() ? String(prevNews[i]) : NEWS_DEMO_IMAGE,
+			),
+		};
+		applyNewsSeedBackgroundLayout();
 	}
 
 	async function loadLatestDraft() {
@@ -7616,7 +7641,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
-	// Preview scale — fit the live viewport and cap so tall formats (9:16) never swamp the docks
+	// Preview scale — fit the live viewport. Tall formats (9:16) stay capped so they
+	// don't swamp the docks; short/wide formats grow to fill host height toward the filmstrip.
 	const PREVIEW_COMFORT_MAX_W = 720;
 	const PREVIEW_COMFORT_MAX_H = 900;
 	let studioPreviewHostEl = $state<HTMLElement | null>(null);
@@ -7637,9 +7663,16 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	);
 
 	function fitScaleFor(hostW: number, hostH: number, canvasW: number, canvasH: number) {
+		const aspect = canvasW / Math.max(1, canvasH);
+		// Landscape / square: use the full host so height grows toward the filmstrip.
+		// Portrait (e.g. 9:16): keep comfort caps so the canvas doesn't crush the docks.
+		const comfortW =
+			aspect >= 0.95 ? Math.max(PREVIEW_COMFORT_MAX_W, hostW) : PREVIEW_COMFORT_MAX_W;
+		const comfortH =
+			aspect <= 0.72 ? PREVIEW_COMFORT_MAX_H : Math.max(PREVIEW_COMFORT_MAX_H, hostH);
 		return Math.min(
-			PREVIEW_COMFORT_MAX_W / canvasW,
-			PREVIEW_COMFORT_MAX_H / canvasH,
+			comfortW / canvasW,
+			comfortH / canvasH,
 			hostW / canvasW,
 			hostH / canvasH,
 		);
@@ -7653,8 +7686,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		// Wait until draft/format restore finishes so the first lock matches the real canvas size.
 		if (booting) return;
 
-		const padX = 40;
-		const padY = 56;
+		const padX = 24;
+		const padY = 24;
 		const applyHostSize = (w: number, h: number, lockShell: boolean) => {
 			previewHostW = w;
 			previewHostH = h;
@@ -8264,10 +8297,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 		<!-- Main preview + quick actions (next to canvas) -->
 		<div
-			class="flex min-h-0 w-full min-w-0 flex-1 items-start justify-center overflow-hidden"
+			class="flex min-h-0 w-full min-w-0 flex-1 items-center justify-center overflow-hidden"
 			bind:this={studioPreviewHostEl}
 		>
-		<div class="flex shrink-0 justify-center py-2 px-1">
+		<div class="flex shrink-0 justify-center py-1 px-1">
 			<div
 				style="width: {previewDisplayW}px;"
 				class="studio-canvas-shell relative z-10 max-w-full shrink-0"
@@ -8434,6 +8467,11 @@ showSubjectCutout={canvasShowCutout}
 					textOverlays={[]}
 					headlineStyle={canvasHeadlineStyle}
 					sourceStyle={canvasSourceStyle}
+					textOffsets={offsetsForTemplate(paintSlide, 'news')}
+					onTextOffsetChange={(kind, next) => {
+						if (!canvasInteractive) return;
+						setTemplateOffset(paintSlide, 'news', String(kind), next);
+					}}
 					selectedText={selectedText}
 					onHeadlineEditStart={() => {
 						if (!canvasInteractive) return;
@@ -9380,7 +9418,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							<span class="text-[10px] text-white/35">Saved to your brand</span>
 						{/if}
 						<a
-							href="/dashboard/bulk"
+							href="/dashboard/bulk?resume=1"
 							class="ml-auto text-[10px] text-sky-300/90 hover:text-sky-200 underline-offset-2 hover:underline"
 						>
 							Brand kit &amp; Bulk

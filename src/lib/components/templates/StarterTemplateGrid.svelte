@@ -1,10 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { ArrowRight } from 'lucide-svelte';
-	import TweetTemplate from '$lib/components/templates/TweetTemplate.svelte';
-	import TextCarouselTemplate from '$lib/components/templates/TextCarouselTemplate.svelte';
-	import ArticleTemplate from '$lib/components/templates/ArticleTemplate.svelte';
-	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import {
 		STARTER_TEMPLATES,
 		starterArrowClass,
@@ -21,7 +17,6 @@
 	let gridEl = $state<HTMLDivElement | null>(null);
 	let templateCols = $state(5);
 	let templateCardW = $state(220);
-	const templateScale = $derived(templateCardW / 1080);
 
 	let uiTheme = $state<'light' | 'dark'>('light');
 
@@ -77,7 +72,7 @@
 	{#each templates as tmpl, i (tmpl.id)}
 		<a
 			href={tmpl.href}
-			class="tmpl-card group flex flex-col rounded-2xl overflow-hidden flex-shrink-0 {starterHoverClass(tmpl.id)}"
+			class="tmpl-card group flex flex-col rounded-2xl overflow-hidden shrink-0 {starterHoverClass(tmpl.id)}"
 			style="width: 100%; --d:{0.06 + i * 0.04}s"
 		>
 			<div
@@ -98,37 +93,6 @@
 							style="color: {uiTheme === 'dark' ? 'rgba(163,163,163,0.45)' : 'rgba(115,115,115,0.55)'};"
 						>Opens Studio with no placeholder copy or media</span>
 					</div>
-				{:else if tmpl.id === 'tweet'}
-					<TweetTemplate
-						templateTheme={uiTheme}
-						topName="Chef 👨‍🍳"
-						topHandle="@chefsevenn"
-						topVerified={true}
-						topText="Ketchup or mayo or mustard?"
-						bottomName="Mo Mohler"
-						bottomHandle="@MoMohler"
-						bottomVerified={true}
-						bottomText="3 straight misses chef. These appear to be French fries."
-						scale={templateScale}
-					/>
-				{:else if tmpl.id === 'text' && !tmpl.previewBg}
-					<TextCarouselTemplate
-						templateTheme={uiTheme}
-						name="Captains of industry"
-						handle="@captainsofindustryy"
-						text={TEXT_CAROUSEL_DEFAULTS.body}
-						showSwipe={false}
-						scale={templateScale}
-						interactive={false}
-					/>
-				{:else if tmpl.id === 'article'}
-					<ArticleTemplate
-						templateTheme={uiTheme}
-						text={"Here's the trillion-dollar problem everyone avoids.\n\nA *1-gigawatt AI data center* costs roughly *$80B* to build & operate."}
-						showSwipe={true}
-						scale={templateScale}
-						interactive={false}
-					/>
 				{:else if tmpl.previewBg}
 					<img
 						src={tmpl.previewBg}
@@ -147,7 +111,7 @@
 				</div>
 				<ArrowRight
 					size={13}
-					class="tmpl-arrow {starterArrowClass(tmpl.id)} group-hover:translate-x-0.5 transition-all flex-shrink-0"
+					class="tmpl-arrow {starterArrowClass(tmpl.id)} group-hover:translate-x-0.5 transition-all shrink-0"
 				/>
 			</div>
 		</a>
@@ -188,6 +152,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		background: #0a0a0c;
 	}
 
 	.preview-img {
@@ -196,6 +161,7 @@
 		height: 100%;
 		width: 100%;
 		object-fit: cover;
+		object-position: top center;
 		pointer-events: none;
 		user-select: none;
 	}

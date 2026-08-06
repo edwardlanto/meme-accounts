@@ -3,7 +3,7 @@
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
 	import {
-		Layers, LayoutDashboard, ImagePlus, Settings,
+		LayoutDashboard, ImagePlus, Settings,
 		// Search, FlaskConical, BarChart3, CalendarDays, Plug,
 		Rows3,
 		Video,
@@ -25,9 +25,8 @@
 			]
 		},
 		{
-			label: 'Brand',
+			label: 'Account',
 			items: [
-				{ href: '/dashboard/branding',      label: 'Branding',      icon: Layers },
 				{ href: '/dashboard/settings',      label: 'Settings',      icon: Settings },
 				// { href: '/dashboard/integrations',  label: 'Integrations',  icon: Plug },
 			]

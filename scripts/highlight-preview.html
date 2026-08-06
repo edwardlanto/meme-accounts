@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Highlight preview</title>
+	<link href="https://fonts.googleapis.com/css2?family=Satoshi:wght@400;700&display=swap" rel="stylesheet" />
+	<style>
+		html, body { margin: 0; background: #111; }
+		#card {
+			width: 540px; height: 675px; background: #000; border-radius: 24px; overflow: hidden;
+			box-sizing: border-box; padding: 28px 20px 24px; font-family: Satoshi, system-ui, sans-serif; color: #fff;
+			display: flex; flex-direction: column; gap: 14px;
+		}
+		h1 {
+			margin: 0; font-size: 22px; font-weight: 400; line-height: 1.28; letter-spacing: -0.02em;
+		}
+		.hl { color: #39FF14; font-weight: 700; }
+		.media {
+			flex: 1; min-height: 0; border-radius: 16px; overflow: hidden;
+			background: linear-gradient(160deg, #1b2430 0%, #0c1018 55%, #05070a 100%);
+		}
+	</style>
+</head>
+<body>
+	<div id="card">
+		<h1><span class="hl">Nobody</span> tells you the first ten thousand is the hardest — after that the game changes, because you finally know the machine works and every new dollar is proof you can do it again.</h1>
+		<div class="media"></div>
+	</div>
+</body>
+</html>

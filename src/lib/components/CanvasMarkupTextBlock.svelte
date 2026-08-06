@@ -42,7 +42,7 @@
 		selected = false,
 		toolbarKind = 'headline',
 		rows = 6,
-		minHeight,
+		minHeight = '0px',
 		uppercase = false,
 		showToolbar = false,
 		fontFamily,
@@ -242,8 +242,8 @@
 				value={value}
 				style="
 					display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 6px 8px;
-					min-height: {minHeight ?? `${Math.max(2, rows) * 1.35}em`};
-					resize: vertical;
+					min-height: {minHeight ?? '0px'};
+					resize: none;
 					border: none; outline: none; background: transparent;
 					color: {editTextColor ?? 'inherit'};
 					font-family: {editTypography?.fontFamily ?? (fontFamily ? `'${fontFamily}', sans-serif` : 'inherit')};

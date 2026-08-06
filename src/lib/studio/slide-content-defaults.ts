@@ -1,10 +1,10 @@
 import { STUDIO_TEMPLATES, type TemplateId } from './template-ids';
+import { GENERATED_DEMO_POSTS as D } from './generated-demo-posts';
 
-/** Placeholder headline when no story is loaded (News + shared `slides` array). */
-export const NEWS_PLACEHOLDER_HEADLINE =
-	'YOUR HEADLINE WILL APPEAR HERE ONCE YOU FETCH A NEWS STORY';
+/** Demo headline when opening News (real story fetch replaces this). */
+export const NEWS_PLACEHOLDER_HEADLINE = D.news.headline;
 
-export const NEWS_DEFAULT_SOURCE = 'Markets';
+export const NEWS_DEFAULT_SOURCE = D.news.source;
 
 /** Default News badge / canvas geometry (matches initial studio state). */
 export const NEWS_DEFAULT_LAYOUT = {
@@ -24,13 +24,15 @@ export const NEWS_DEFAULT_LAYOUT = {
 	shadowStrength: 1,
 };
 
+export const NEWS_DEMO_IMAGE = D.news.imageUrl;
+
 export const TWEET_DEFAULTS = {
-	topName: 'Chef 👨‍🍳',
-	topHandle: '@chefsevenn',
-	bottomName: 'Mo Mohler',
-	bottomHandle: '@MoMohler',
-	topText: 'Ketchup or mayo or mustard?',
-	bottomText: '3 straight misses chef. These appear to be French fries.',
+	topName: D.tweet.topName,
+	topHandle: D.tweet.topHandle,
+	bottomName: D.tweet.bottomName,
+	bottomHandle: D.tweet.bottomHandle,
+	topText: D.tweet.topText,
+	bottomText: D.tweet.bottomText,
 	replyCount: '4.2K',
 	repostCount: '12.8K',
 	likeCount: '89.4K',
@@ -39,6 +41,7 @@ export const TWEET_DEFAULTS = {
 	topImageZoom: 1,
 	topImagePanX: 50,
 	topImagePanY: 50,
+	topImage: D.tweet.imageUrl,
 } as const;
 
 export const ARTICLE_DEFAULT_BODY =
@@ -46,11 +49,9 @@ export const ARTICLE_DEFAULT_BODY =
 export const ARTICLE_DEFAULT_SWIPE = '«« Swipe';
 
 export const TEXT_CAROUSEL_DEFAULTS = {
-	name: 'Captains of industry',
-	handle: '@captainsofindustryy',
-	body:
-		'Lead with a sharp hook on the first line.\n\n' +
-		'Use the second beat for proof, tone, or a CTA — keep it scannable.',
+	name: D.text.name,
+	handle: D.text.handle,
+	body: D.text.body,
 } as const;
 
 /** Minimum plain-text length for text carousel body (studio + API fills). */
@@ -90,42 +91,37 @@ export function ensureTextCarouselBodyMinLength(body: string): string {
 }
 
 export const IMAGE_QUOTE_DEFAULTS = {
-	imageUrl: '/templates/image-quote/demo-bg.png',
-	body:
-		"IF YOU STILL THINK THE U.S. IS\nFIGHTING IRAN OVER NUCLEAR\nWEAPONS, YOU'VE BEEN FED\nPROPAGANDA. THE U.S. IS\nFIGHTING CHINA. HERE'S THEIR\nSTRATEGY:",
-	footerLeft: '$',
-	footerRight: 'WEALTHY\nSETUP',
-	topRatio: 0.54,
+	imageUrl: D['image-quote'].imageUrl,
+	body: D['image-quote'].body,
+	footerLeft: D['image-quote'].footerLeft,
+	footerRight: D['image-quote'].footerRight,
+	topRatio: D['image-quote'].topRatio,
 } as const;
 
-/** Vertical short-form layout: headline + full-bleed video + watermark. */
-/** Black full-bleed carousel: profile row + gold hook + white body. */
+/** Black full-bleed carousel: centered profile + gold hook + white body. */
 export const BLACK_TEXT_CAROUSEL_DEFAULTS = {
-	name: 'Jack Blair',
-	handle: '@jackblairofficial',
-	headline: '3. "What\'s the cost of inaction in 6 months, 1 year, 3 years?"',
-	body:
-		'Step three of fear-setting. The math nobody runs.\n\n' +
-		'His TED talk: "We see what could go wrong if we act. We don\'t see what goes wrong if we don\'t."\n\n' +
-		'Tim left BrainQUICKEN for a month. The business did better without him.',
+	name: D['black-text'].name,
+	handle: D['black-text'].handle,
+	headline: D['black-text'].headline,
+	body: D['black-text'].body,
 	headlineColor: '#E8C547',
 } as const;
 
 export const VIDEO_STORY_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
-	watermark: 'BUSINESS FOUNDERS',
-	headline:
-		'He messed up — but the boss taught him a lesson instead.\n\nThe moment went viral for a reason: leadership is rarely loud, and growth rarely looks perfect on camera.',
+	videoUrl: D['video-story'].videoUrl,
+	watermark: D['video-story'].watermark,
+	headline: D['video-story'].headline,
+	posterUrl: D['video-story'].posterUrl,
 } as const;
 
 /** Split top/bottom media with a centered brand bar (Rumble-style clip posts). */
 export const BRAND_STACK_DEFAULTS = {
-	topVideoUrl: '/videos/video-template.mp4',
-	bottomMediaUrl: '/placeholders/placeholder-square.jpeg',
-	watermark: 'Clipgang54',
-	headline:
-		"Rampage Jackson PRESSED these security guards after they told a handicap kid 'NO' to the event 😳👀",
-	brand: 'rumble.com/RampageJackson',
+	topVideoUrl: D['brand-stack'].videoUrl,
+	bottomMediaUrl: D['brand-stack'].bottomMediaUrl,
+	watermark: D['brand-stack'].watermark,
+	headline: D['brand-stack'].headline,
+	brand: D['brand-stack'].brand,
+	posterUrl: D['brand-stack'].posterUrl,
 } as const;
 
 export const BRAND_STACK_HEADLINE_STYLE = {
@@ -138,8 +134,9 @@ export const BRAND_STACK_HEADLINE_STYLE = {
 
 /** Dual-panel 9:16 — pyautoflip saliency multi-face stack. */
 export const VIDEO_SPLIT_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
+	videoUrl: D['video-split'].videoUrl,
 	badgeLabel: 'Output (9:16)',
+	posterUrl: D['video-split'].posterUrl,
 } as const;
 
 /** Readable on the black video-story canvas (Studio + clip previews). */
@@ -152,9 +149,10 @@ export const VIDEO_STORY_HEADLINE_STYLE = {
 
 /** Black letterbox + large white hook above the clip (Hook video template). */
 export const VIDEO_HOOK_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
+	videoUrl: D['video-hook'].videoUrl,
 	watermark: '',
-	headline: 'One of the most uncomfortable live interviews ever 💀',
+	headline: D['video-hook'].headline,
+	posterUrl: D['video-hook'].posterUrl,
 } as const;
 
 export const VIDEO_HOOK_HEADLINE_STYLE = {
@@ -170,10 +168,11 @@ export const VIDEO_HOOK_HEADLINE_STYLE = {
  * above a letterboxed clip on black.
  */
 export const VIDEO_CREATOR_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
-	name: 'Startup Revenue AI',
-	handle: '@startuprevenue.ai',
-	headline: 'He gave a 10 second pitch that [[broke the internet]]',
+	videoUrl: D['video-creator'].videoUrl,
+	name: D['video-creator'].name,
+	handle: D['video-creator'].handle,
+	headline: D['video-creator'].headline,
+	posterUrl: D['video-creator'].posterUrl,
 } as const;
 
 export const VIDEO_CREATOR_HEADLINE_STYLE = {
@@ -188,11 +187,12 @@ export const VIDEO_CREATOR_HEADLINE_STYLE = {
  * Clip post: profile row (no verified badge) + casual hook above a wide letterboxed clip.
  */
 export const VIDEO_POST_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
-	name: 'Saturday Nite MMA',
-	handle: '@SaturdayNiteMMA',
-	avatarUrl: '/placeholders/carousel/clip-post-avatar.png',
-	headline: "Rampage Jackson found out he couldn't take his son anymore 😭💀",
+	videoUrl: D['video-post'].videoUrl,
+	name: D['video-post'].name,
+	handle: D['video-post'].handle,
+	avatarUrl: D['video-post'].avatarUrl,
+	headline: D['video-post'].headline,
+	posterUrl: D['video-post'].posterUrl,
 } as const;
 
 export const VIDEO_POST_HEADLINE_STYLE = {
@@ -205,9 +205,10 @@ export const VIDEO_POST_HEADLINE_STYLE = {
 
 /** Full-bleed video with centered outlined white text (Text on video template). */
 export const VIDEO_TEXT_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
+	videoUrl: D['video-text'].videoUrl,
 	watermark: '',
-	headline: 'POV: you found the clip that explains everything',
+	headline: D['video-text'].headline,
+	posterUrl: D['video-text'].posterUrl,
 } as const;
 
 export const VIDEO_TEXT_HEADLINE_STYLE = {
@@ -219,21 +220,23 @@ export const VIDEO_TEXT_HEADLINE_STYLE = {
 } as const;
 
 /**
- * Highlight: left-aligned 2-line hook with one neon [[highlighted]] word above a full-width clip.
+ * Highlight: full multi-line hook with one neon [[highlighted]] word above a full-width clip.
  */
 export const VIDEO_SOURCE_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
+	videoUrl: D['video-source'].videoUrl,
 	watermark: '',
-	headline: '[[Entrepreneur]] reveals the secret to finding billion-dollar ideas:',
-	highlightColor: '#39FF14',
+	headline: D['video-source'].headline,
+	highlightColor: D['video-source'].highlightColor,
+	posterUrl: D['video-source'].posterUrl,
 } as const;
 
 export const VIDEO_SOURCE_HEADLINE_STYLE = {
 	color: '#ffffff',
 	fontWeight: 400,
 	fontFamily: 'Satoshi',
-	fontSize: 56,
+	fontSize: 48,
 	align: 'left' as const,
+	lineHeight: 1.28,
 } as const;
 
 /**
@@ -241,11 +244,11 @@ export const VIDEO_SOURCE_HEADLINE_STYLE = {
  * rounded landscape media in the lower half on black.
  */
 export const VIDEO_FEATURE_DEFAULTS = {
-	videoUrl: '/videos/video-template.mp4',
-	highlightColor: '#2EE6C5',
-	headline: 'Rocket.new just launched 1.0 as the world’s first [[Vibe Solutioning]] platform',
-	body:
-		'Data from 1.5M users shows 60–70% of vibe coding users still don’t know what they’re building... [[Rocket 1.0]] brings its original vision to life as a complete product.',
+	videoUrl: D['video-feature'].videoUrl,
+	highlightColor: D['video-feature'].highlightColor,
+	headline: D['video-feature'].headline,
+	body: D['video-feature'].body,
+	posterUrl: D['video-feature'].posterUrl,
 } as const;
 
 export const VIDEO_FEATURE_HEADLINE_STYLE = {
@@ -293,37 +296,26 @@ export const PHOTO_TOPIC_BODY_STYLE = {
 
 /** Full-bleed photo with top gradient + left caption paragraphs (Photo caption). */
 export const PHOTO_CAPTION_DEFAULTS = {
-	imageUrl: '/placeholders/carousel/photo-caption-placeholder.png',
-	headline:
-		'Despite having no engineering background and no technical co-founder…',
-	body: 'Nico built the entire product using Lovable, working nights after putting his kids to bed.',
+	imageUrl: D['photo-caption'].imageUrl,
+	headline: D['photo-caption'].headline,
+	body: D['photo-caption'].body,
 } as const;
 
 /** White card: profile row + multi-paragraph thread body (no emoji CTA). */
 export const WHITE_THREAD_DEFAULTS = {
-	name: 'Katie & Luke Johnson',
-	handle: '@feetandmore',
-	avatarUrl: '/placeholders/carousel/white-thread-avatar.png',
-	body:
-		"A year ago today, I was diagnosed with a rare disease that left me with limited mobility and in need of a full-time caregiver.\n\n" +
-		"Today, I'm happy to report that I've made a full recovery.\n\n" +
-		"I never would have made it without Luke.\n\n" +
-		"He quit his job to take care of me.\n\n" +
-		"He carried me when I couldn't walk.\n\n" +
-		"He fed me when I couldn't feed myself.\n\n" +
-		'He never once complained.',
+	name: D['white-thread'].name,
+	handle: D['white-thread'].handle,
+	avatarUrl: D['white-thread'].avatarUrl,
+	body: D['white-thread'].body,
 } as const;
 
 /** White card: profile + short copy + rounded media attachment. */
 export const WHITE_MEDIA_DEFAULTS = {
-	name: 'chronically online',
-	handle: '@chronicallyon',
-	avatarUrl: '/placeholders/carousel/white-media-avatar.png',
-	imageUrl: '/placeholders/carousel/white-media-attachment.png',
-	body:
-		"If you've been scrolling this week, you've probably seen this image.\n\n" +
-		"It's a bizarre illustration from a Persian manuscript created in 1921.\n\n" +
-		"And somehow...it's become the internet's newest obsession.",
+	name: D['white-media'].name,
+	handle: D['white-media'].handle,
+	avatarUrl: D['white-media'].avatarUrl,
+	imageUrl: D['white-media'].imageUrl,
+	body: D['white-media'].body,
 } as const;
 
 /** Labels for docs / error messages when extending templates. */

@@ -6,6 +6,8 @@
 	 */
 	interface Props {
 		videoSrc?: string;
+		/** When video is empty, show this still in both panels (covers / headless capture). */
+		posterSrc?: string;
 		/** True when `videoSrc` is already a pyautoflip saliency split-screen export. */
 		autoflipComposited?: boolean;
 		w?: number;
@@ -26,6 +28,7 @@
 
 	let {
 		videoSrc = '',
+		posterSrc = '',
 		autoflipComposited = false,
 		w = 1080,
 		h = 1920,
@@ -44,7 +47,10 @@
 	}: Props = $props();
 
 	const DEFAULT_VIDEO = '/videos/video-template.mp4';
-	const resolvedSrc = $derived((videoSrc && videoSrc.trim()) || DEFAULT_VIDEO);
+	const trimmedVideo = $derived((videoSrc && videoSrc.trim()) || '');
+	const trimmedPoster = $derived((posterSrc && posterSrc.trim()) || '');
+	const resolvedSrc = $derived(trimmedVideo || (!trimmedPoster ? DEFAULT_VIDEO : ''));
+	const usePoster = $derived(!resolvedSrc && !!trimmedPoster);
 
 	const PANEL_H = $derived(Math.floor(h / 2));
 	const DIVIDER_H = 4;
@@ -126,7 +132,7 @@
 	data-studio-canvas-root
 	data-template="videoSplit"
 >
-	{#if autoflipComposited}
+	{#if autoflipComposited && resolvedSrc}
 		<!-- Pyautoflip saliency already stacked both faces into one 9:16 frame -->
 		<video
 			bind:this={fullEl}
@@ -139,6 +145,14 @@
 			preload="metadata"
 			onloadedmetadata={onMeta}
 		></video>
+	{:else if usePoster}
+		<div class="panel top" style="height: {TOP_H}px;">
+			<img class="panel-still" src={trimmedPoster} alt="" draggable="false" />
+		</div>
+		<div class="divider" style="height: {DIVIDER_H}px;" aria-hidden="true"></div>
+		<div class="panel bottom" style="height: {BOTTOM_H}px;">
+			<img class="panel-still bottom-still" src={trimmedPoster} alt="" draggable="false" />
+		</div>
 	{:else}
 		<!-- CSS multi-panel preview (same source, two focal crops) -->
 		<div class="panel top" style="height: {TOP_H}px;">
@@ -187,6 +201,7 @@
 		background: #0a0a0a;
 	}
 	.panel video,
+	.panel-still,
 	.full-video {
 		position: absolute;
 		inset: 0;
@@ -194,10 +209,12 @@
 		height: 100%;
 		object-fit: cover;
 	}
-	.panel.top video {
+	.panel.top video,
+	.panel.top .panel-still {
 		object-position: center 22%;
 	}
-	.panel.bottom video {
+	.panel.bottom video,
+	.panel.bottom .panel-still {
 		object-position: center 78%;
 	}
 	.full-video {

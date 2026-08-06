@@ -6,6 +6,7 @@
 	import { loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import ImageStickerOverlayBox from '$lib/components/ImageStickerOverlayBox.svelte';
+	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import ClassicLoader from '$lib/components/ClassicLoader.svelte';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
@@ -125,6 +126,9 @@
 		/** Per-element style overrides (font, size, weight, color, etc.) */
 		headlineStyle?: TextStyle;
 		sourceStyle?: TextStyle;
+		/** Independent drag offsets for source vs headline (template px). */
+		textOffsets?: Record<string, { x: number; y: number }>;
+		onTextOffsetChange?: (kind: string, next: { x: number; y: number }) => void;
 		/** Which text element is currently selected (shows dashed outline). */
 		selectedText?: TextElementKind | null;
 		onTextChange?: (t: string) => void;
@@ -218,6 +222,8 @@
 		resolveSrc,
 		headlineStyle = {},
 		sourceStyle = {},
+		textOffsets = {},
+		onTextOffsetChange,
 		selectedText = null,
 		onTextChange,
 		onSubtextChange,
@@ -430,8 +436,30 @@
 	});
 
 	let headlineEl = $state<HTMLElement | null>(null);
+	let headlineBlockEl = $state<HTMLElement | null>(null);
+	/** Template-px height of the headline block — keeps source parked above it by default. */
+	let headlineBlockH = $state(220);
 	let sourceEl = $state<HTMLElement | null>(null);
 	let lastHeadlineRestoreNonce = $state(-1);
+
+	const showSource = $derived(
+		(sourceLabelMode === 'logo' && !!sourceLogoSrc) || (sourceLabelMode === 'text' && !!source),
+	);
+
+	$effect(() => {
+		const el = headlineBlockEl;
+		if (!el || typeof ResizeObserver === 'undefined') {
+			headlineBlockH = 220;
+			return;
+		}
+		const measure = () => {
+			headlineBlockH = Math.max(80, el.offsetHeight || 220);
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 
 	/** After parent applies highlight markup, re-show the blue selection so editing feels continuous. */
 	$effect(() => {
@@ -527,6 +555,7 @@
 	let headlineDraft = $state('');
 	let editableEl = $state<HTMLElement | null>(null);
 	let hoveringText = $state(false);
+	let hoveringSource = $state(false);
 
 	let editingSubtext = $state(false);
 	let subtextDraft = $state('');
@@ -629,11 +658,8 @@
 	let textPointerId = 0;
 	let textCaptureEl: HTMLElement | null = null;
 	let textStartY = 0;
-	let textStartX = 0;
 	let textStartOffset = 0;
 	let textMoved = false;
-	/** Pointer down began on headline/source (selectable) — avoid treating small moves as panel drag. */
-	let textGestureBeganOnSelectable = false;
 
 	function startEdit(e: MouseEvent) {
 		if (!interactive) return;
@@ -695,52 +721,28 @@
 		if (!interactive) return;
 		if (editing || editingSubtext) return;
 		const target = e.target as HTMLElement;
-		const startedOnSelectable = !!target.closest('[data-text-selectable]');
-		textGestureBeganOnSelectable = startedOnSelectable;
+		// Source + headline are separate DraggableBlocks — never pan the whole stack from them.
+		const startedOnSelectable = !!target.closest('[data-text-selectable], [data-news-block]');
+		if (startedOnSelectable) return;
 		textArmed = true;
-		textDragging = !startedOnSelectable; // if on text, only start drag after threshold move
+		textDragging = true;
 		textMoved = false;
 		textStartY = e.clientY;
-		textStartX = e.clientX;
 		textStartOffset = textPanelOffsetY;
 		textPointerId = e.pointerId;
 		textCaptureEl = e.currentTarget as HTMLElement;
-		// Pointer-capturing immediately can interfere with dblclick on the headline/source.
-		// Only capture right away when we *know* we're dragging (i.e. started off-text).
-		if (!startedOnSelectable) textCaptureEl.setPointerCapture(e.pointerId);
-		// If the gesture started on text, allow click handlers to run unless we
-		// later detect an actual drag (then we suppress the click via textMoved).
-		if (!startedOnSelectable) e.stopPropagation();
+		textCaptureEl.setPointerCapture(e.pointerId);
+		e.stopPropagation();
 	}
 
 	function textPointerMove(e: PointerEvent) {
 		if (!textArmed) return;
 		const dy = (e.clientY - textStartY) / scale;
-		const dx = (e.clientX - textStartX) / scale;
-		if (!textDragging) {
-			// When the gesture began on headline/source, require a clear vertical panel-drag
-			// (not a slight wobble while selecting text horizontally).
-			if (textGestureBeganOnSelectable) {
-				if (Math.abs(dx) + Math.abs(dy) <= 10) return;
-				if (Math.abs(dy) < 40) return;
-				if (Math.abs(dy) < Math.abs(dx) * 1.15) return;
-			} else if (Math.abs(dy) <= 4) {
-				return;
-			}
-			textDragging = true;
-			textMoved = true;
-			// Capture once we commit to dragging (safe for dblclick).
-			try { textCaptureEl?.setPointerCapture(textPointerId); } catch { /* ignore */ }
-			// Once we start dragging, prevent text selection and cancel downstream clicks.
-			e.preventDefault();
-			e.stopPropagation();
-			window.getSelection()?.removeAllRanges();
-		} else if (Math.abs(dy) > 4) {
-			textMoved = true;
-		}
+		if (!textDragging) return;
+		if (Math.abs(dy) > 4) textMoved = true;
 
-		// Allow dragging panel from its base position (0) all the way up to top
-		const baseTop = H - TEXT_PANEL_H; // y where panel starts (in template px)
+		// Empty-padding drag only: nudge the whole stack vertically.
+		const baseTop = H - TEXT_PANEL_H;
 		const minOffset = -baseTop;
 		const maxOffset = 0;
 		textPanelOffsetY = Math.max(minOffset, Math.min(maxOffset, textStartOffset + dy));
@@ -752,7 +754,6 @@
 		textDragging = false;
 		textPointerId = 0;
 		textCaptureEl = null;
-		textGestureBeganOnSelectable = false;
 		// No-op when click ends without drag — selection is handled by the
 		// individual headline / source elements' own click handlers.
 	}
@@ -1725,7 +1726,8 @@
 					>
 						<HighlightEditor
 							value={t.text}
-							rows={3}
+							rows={1}
+							minHeight="0px"
 							showToolbar={false}
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
@@ -1802,9 +1804,8 @@
 					border-radius: 50%;
 					border: {circleBorderWidth}px solid {circleBorderColor};
 					overflow: visible;
-					/* Keep circle controls above the shadow gradient (z=30),
-					   but below the main text layer (z=40). */
-					z-index: 32;
+					/* Above gradient; floats over text while dragging/editing. */
+					z-index: {dragging || circleToolbarPopoverOpen ? 85 : 45};
 					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 					cursor: {interactive ? (dragging ? 'grabbing' : 'grab') : 'default'};
 					touch-action: none;
@@ -1998,8 +1999,7 @@
 					border-radius: 50%;
 					border: {circle2BorderWidth}px solid {circle2BorderColor};
 					overflow: visible;
-					/* Above gradient (z=30), below text (z=40), below main circle (z=32). */
-					z-index: 31;
+					z-index: {dragging2 || circle2ToolbarPopoverOpen ? 84 : 44};
 					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 					cursor: {interactive ? (dragging2 ? 'grabbing' : 'grab') : 'default'};
 					touch-action: none;
@@ -2228,19 +2228,122 @@
 			</div>
 		{/if}
 
-		<!-- ── Text area ──────────────────────────────────────────────────── -->
-		<!-- z=40 keeps text in front of EVERYTHING (cutout @ 25, gradient @ 30,
-		     circle @ 20, overlays @ 15) so words are never covered.
-		     Full-frame clip + bottom-aligned inner so huge toolbar font sizes cannot
-		     paint below the canvas (interactive preview + scaled studio).
-		     pointer-events: none on this shell so the circle/background stay draggable;
-		     only the inner content column re-enables hits. -->
+		<!-- Source / markets — separate layer above the headline stack (never clipped by it). -->
+		{#if showSource}
+			<div
+				style="
+					position: absolute;
+					inset: 0;
+					z-index: 90;
+					overflow: visible;
+					display: flex;
+					flex-direction: column;
+					justify-content: flex-end;
+					transform: translateY({textPanelOffsetY}px);
+					pointer-events: none;
+				"
+			>
+				<div
+					style="
+						width: 100%;
+						padding: 48px 64px {72 + headlineBlockH + 22}px;
+						box-sizing: border-box;
+						pointer-events: none;
+					"
+				>
+					<div style="pointer-events: auto; width: 100%; overflow: visible;">
+						<DraggableBlock
+							dx={textOffsets.source?.x ?? 0}
+							dy={textOffsets.source?.y ?? 0}
+							{interactive}
+							{scale}
+							onChange={(x, y) => onTextOffsetChange?.('source', { x, y })}
+						>
+							{#snippet children()}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div
+									data-news-block="source"
+									class="news-source-block"
+									style="
+										position: relative;
+										display: flex; align-items: center;
+										gap: 18px;
+										overflow: visible;
+										{interactive ? 'cursor: grab;' : ''}
+										{selectedText === 'source' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.55); border-radius: 6px; padding: 4px;' : ''}
+									"
+									onmouseenter={() => (hoveringSource = true)}
+									onmouseleave={() => (hoveringSource = false)}
+									onclick={(e) => {
+										if (!interactive || textMoved) return;
+										selectSource(e);
+									}}
+								>
+									{#if interactive && hoveringSource && selectedText !== 'source'}
+										<div style="
+											position: absolute;
+											inset: -6px;
+											border: 2px dashed rgba(255,255,255,0.28);
+											border-radius: 8px;
+											pointer-events: none;
+										"></div>
+									{/if}
+									<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+									<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+									<span
+										bind:this={sourceEl}
+										data-text-selectable="source"
+										onclick={selectSource}
+										onkeydown={(e) => { if (e.key === 'Enter') selectSource(e as any); }}
+										role={interactive ? 'button' : undefined}
+										tabindex={interactive ? 0 : undefined}
+										style="
+											{sourceCss}
+											white-space: nowrap;
+											overflow: visible;
+											{interactive ? 'cursor: pointer; user-select: text !important; -webkit-user-select: text !important;' : ''}
+										"
+									>
+										{#if sourceLabelMode === 'logo' && sourceLogoSrc}
+											<img
+												src={sourceLogoSrc}
+												alt=""
+												draggable="false"
+												style="
+													display: block;
+													max-width: {Math.max(40, sourceLogoWidth)}px;
+													max-height: 52px;
+													width: auto;
+													height: auto;
+													object-fit: contain;
+													filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18));
+												"
+											/>
+										{:else if sourceLabelMode === 'text' && source}
+											{#if sourceStyle.fontFamily}
+												{source}
+											{:else}
+												<span style="font-style: italic;">{source.slice(0,1).toLowerCase()}</span>{source.slice(1)}
+											{/if}
+										{/if}
+									</span>
+									<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+								</div>
+							{/snippet}
+						</DraggableBlock>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- ── Text area (headline + paragraph) ───────────────────────────── -->
+		<!-- Headline stack only — source lives in the layer above. -->
 		<div
 			style="
 				position: absolute;
 				inset: 0;
 				z-index: 40;
-				overflow: hidden;
+				overflow: {interactive ? 'visible' : 'hidden'};
 				display: flex;
 				flex-direction: column;
 				justify-content: flex-end;
@@ -2255,9 +2358,7 @@
 					max-height: 100%;
 					min-height: 0;
 					flex: 0 1 auto;
-					overflow-x: hidden;
-					overflow-y: auto;
-					overscroll-behavior: contain;
+					overflow: {interactive ? 'visible' : 'hidden'};
 					padding: 48px 64px 72px;
 					box-sizing: border-box;
 					pointer-events: auto;
@@ -2268,82 +2369,55 @@
 				onpointerup={textPointerUp}
 				onpointercancel={textPointerUp}
 				role={interactive ? 'group' : undefined}
-				aria-label={interactive ? 'News headline area' : undefined}
-				onmouseenter={() => (hoveringText = true)}
-				onmouseleave={() => (hoveringText = false)}
+				aria-label={interactive ? 'News text area' : undefined}
 			>
-			<!-- Edit hint outline -->
-			{#if interactive && hoveringText && !editing}
-				<div style="
-					position: absolute;
-					inset: 8px;
-					border: 2px dashed rgba(255,255,255,0.25);
-					border-radius: 8px;
-					pointer-events: none;
-				"></div>
-				<div style="
-					position: absolute;
-					top: 14px; right: 18px;
-					font-family: 'Satoshi', sans-serif;
-					font-size: 20px;
-					color: rgba(255,255,255,0.4);
-					pointer-events: none;
-					letter-spacing: 0;
-				">✎ double-click to edit</div>
-			{/if}
-
-			<!-- Source label -->
-			{#if (sourceLabelMode === 'logo' && sourceLogoSrc) || (sourceLabelMode === 'text' && source)}
-				<div style="
-					display: flex; align-items: center;
-					gap: 18px; margin-bottom: 22px;
-				">
-					<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-					<span
-						bind:this={sourceEl}
-						data-text-selectable="source"
-						onclick={selectSource}
-						onkeydown={(e) => { if (e.key === 'Enter') selectSource(e as any); }}
-						role={interactive ? 'button' : undefined}
-						tabindex={interactive ? 0 : undefined}
-						style="
-							{sourceCss}
-							white-space: nowrap;
-							{interactive ? 'cursor: pointer; user-select: text !important; -webkit-user-select: text !important;' : ''}
-							{selectedText === 'source' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 2px;' : ''}
-						"
+			<!-- Headline (+ paragraph) -->
+			<div
+				bind:this={headlineBlockEl}
+				style="
+					position: relative;
+					z-index: {selectedText === 'headline' || hoveringText || editing ? 70 : 50};
+				"
+			>
+			<DraggableBlock
+				dx={textOffsets.headline?.x ?? 0}
+				dy={textOffsets.headline?.y ?? 0}
+				{interactive}
+				{scale}
+				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
+			>
+				{#snippet children()}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						data-news-block="headline"
+						style="position: relative; overflow: visible; {interactive ? 'cursor: grab;' : ''}"
+						onmouseenter={() => (hoveringText = true)}
+						onmouseleave={() => (hoveringText = false)}
 					>
-						{#if sourceLabelMode === 'logo' && sourceLogoSrc}
-							<img
-								src={sourceLogoSrc}
-								alt=""
-								draggable="false"
-								style="
-									display: block;
-									max-width: {Math.max(40, sourceLogoWidth)}px;
-									max-height: 52px;
-									width: auto;
-									height: auto;
-									object-fit: contain;
-									filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18));
-								"
-							/>
-						{:else if sourceLabelMode === 'text' && source}
-							{#if sourceStyle.fontFamily}
-								{source}
-							{:else}
-								<span style="font-style: italic;">{source.slice(0,1).toLowerCase()}</span>{source.slice(1)}
-							{/if}
+						{#if interactive && hoveringText && !editing}
+							<div style="
+								position: absolute;
+								inset: -8px;
+								border: 2px dashed rgba(255,255,255,0.25);
+								border-radius: 8px;
+								pointer-events: none;
+								z-index: 1;
+							"></div>
+							<div style="
+								position: absolute;
+								top: -2px; right: 0;
+								font-family: 'Satoshi', sans-serif;
+								font-size: 20px;
+								color: rgba(255,255,255,0.4);
+								pointer-events: none;
+								letter-spacing: 0;
+								z-index: 2;
+							">✎ double-click to edit</div>
 						{/if}
-					</span>
-					<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
-				</div>
-			{/if}
 
 			<!--
-			  Stack static headline + editor overlay so exiting edit only peels off the overlay.
-			  The <p> stays mounted (hidden while editing) — avoids tearing down/rebuilding segment markup on blur.
+			  In-flow edit swap (not a taller absolute overlay) so headline stays put.
+			  Keep the <p> mounted off-layout while editing to avoid markup flash on blur.
 			-->
 			<div style="position: relative;">
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -2360,9 +2434,12 @@
 						word-break: break-word;
 						white-space: pre-line;
 						touch-action: pan-x;
-						visibility: {interactive && editing ? 'hidden' : 'visible'};
-						pointer-events: {interactive && editing ? 'none' : 'auto'};
-						{selectedText === 'headline' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 4px;' : ''}
+						{interactive && editing
+							? 'position: absolute; left: 0; right: 0; top: 0; visibility: hidden; pointer-events: none; height: auto;'
+							: ''}
+						{selectedText === 'headline' && !(interactive && editing)
+							? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 4px;'
+							: ''}
 						{interactive ? 'user-select: text !important; -webkit-user-select: text !important;' : ''}
 					"
 				>
@@ -2406,8 +2483,7 @@
 						onclick={(e) => e.stopPropagation()}
 						onmousedown={(e) => e.stopPropagation()}
 						style="
-							position: absolute;
-							inset: 0;
+							position: relative;
 							margin: 0; padding: 0;
 							{headlineCss}
 							text-transform: uppercase;
@@ -2420,7 +2496,8 @@
 					>
 						<HighlightEditor
 							value={headlineDraft}
-							rows={4}
+							rows={1}
+							minHeight="0px"
 							showToolbar={false}
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
@@ -2436,7 +2513,7 @@
 				{/if}
 			</div>
 
-			{#if interactive || String(subtext ?? '').trim()}
+			{#if String(subtext ?? '').trim() || editingSubtext}
 				<div style="position: relative; margin-top: 18px;">
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<p
@@ -2452,7 +2529,6 @@
 						style="
 							margin: 0;
 							padding: 0;
-							min-height: {interactive ? '1.2em' : '0'};
 							{subtextCss}
 							word-break: break-word;
 							white-space: pre-line;
@@ -2462,9 +2538,8 @@
 								? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.35); border-radius: 4px;'
 								: ''}
 							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
-							{interactive && !String(subtext ?? '').trim() ? 'opacity: 0.35;' : ''}
 						"
-					>{String(subtext ?? '').trim() || (interactive ? 'Add paragraph…' : '')}</p>
+					>{String(subtext ?? '').trim()}</p>
 					{#if editingSubtext && interactive}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
@@ -2497,6 +2572,10 @@
 					{/if}
 				</div>
 			{/if}
+					</div>
+				{/snippet}
+			</DraggableBlock>
+			</div>
 			</div>
 		</div>
 	</div>

@@ -30,7 +30,7 @@
 		/** When set, bare `[[phrase]]` uses this solid / gradient / pattern default. */
 		defaultStyle?: HighlightDefaults;
 		rows?: number;
-		/** Override min-height CSS (e.g. '0px' to remove extra gap). */
+		/** Override min-height CSS. Defaults to 0 so canvas text stays put while editing. */
 		minHeight?: string;
 		/** Font used for the editor content. */
 		fontFamily?: string;
@@ -552,8 +552,8 @@
 			onblur={handleEditorBlur}
 			class="hl-editor w-full outline-none whitespace-pre-wrap break-words"
 			style="
-				/* Use line-based min-height so large font sizes don't create huge empty gaps. */
-				min-height: {minHeight ?? `${Math.max(1, rows)}lh`};
+				/* Hug content — large canvas fonts × rows was leaving a tall empty box and shifting layout. */
+				min-height: {minHeight ?? '0px'};
 				color: currentColor;
 				padding: 0;
 				{typographySnapshot

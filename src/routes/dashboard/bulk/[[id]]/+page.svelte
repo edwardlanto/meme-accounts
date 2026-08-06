@@ -45,6 +45,8 @@
 		saveBulkWorkspace,
 		clearBulkWorkspace,
 		showsHaveContent,
+		touchBulkWorkspaceSession,
+		archiveBulkShowsToHistory,
 	} from '$lib/studio/bulk-workspace';
 	import type { PageData } from './$types';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
@@ -169,6 +171,8 @@
 	let workspaceHydrated = $state(false);
 	/** Brief hold so restore doesn't pop in before paint settles. */
 	let workspaceRevealReady = $state(false);
+	/** Ignore autosave until hydrate finishes (prevents refreshing yesterday’s savedAt). */
+	let workspaceAutosaveReady = $state(false);
 
 	const stackLoading = $derived(!workspaceHydrated || !workspaceRevealReady || generating);
 
@@ -272,12 +276,36 @@
 		}
 	}
 
-	async function finishWorkspaceHydrate(opts?: { skeletonCount?: number }) {
+	async function finishWorkspaceHydrate(opts?: { skeletonCount?: number; resumeUrl?: boolean }) {
 		workspaceHydrated = true;
 		void refreshLibrary();
 		const holdMs = opts?.skeletonCount != null && opts.skeletonCount > 0 ? 280 : 160;
 		await new Promise((r) => setTimeout(r, holdMs));
+		// Filmstrips / focus can shove the window mid-page — pin to top after reveal.
+		try {
+			window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+		} catch {
+			window.scrollTo(0, 0);
+		}
 		workspaceRevealReady = true;
+		requestAnimationFrame(() => {
+			try {
+				window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+			} catch {
+				window.scrollTo(0, 0);
+			}
+			// Enable autosave after the hydrate assignment wave settles
+			setTimeout(() => {
+				workspaceAutosaveReady = true;
+			}, 80);
+		});
+		if (opts?.resumeUrl && typeof window !== 'undefined') {
+			const url = new URL(window.location.href);
+			if (url.searchParams.get('resume') !== '1' && !url.pathname.match(/\/bulk\/[^/]+$/)) {
+				url.searchParams.set('resume', '1');
+				history.replaceState({}, '', url.pathname + url.search + url.hash);
+			}
+		}
 	}
 
 	async function saveShowsToCloud(
@@ -350,6 +378,7 @@
 			if (userId) clearBulkWorkspace(userId);
 			const caps = captionDefaultsFromKit(brandKit);
 			const blank = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, 3);
+			workspaceAutosaveReady = false;
 			workspaceRevealReady = false;
 			shows = [blank];
 			selectedShowId = blank.id;
@@ -359,10 +388,10 @@
 			libraryOpen = false;
 			libraryNote = 'Saved previous work to library — starting fresh';
 			setTimeout(() => (libraryNote = ''), 2800);
-			await persistBulkWorkspace();
 			await goto('/dashboard/bulk', { replaceState: true, noScroll: true });
 			await new Promise((r) => setTimeout(r, 180));
 			workspaceRevealReady = true;
+			workspaceAutosaveReady = true;
 		} catch (e) {
 			libraryNote = e instanceof Error ? e.message : 'Could not clear workspace';
 			setTimeout(() => (libraryNote = ''), 3200);
@@ -409,6 +438,15 @@
 	}
 
 	onMount(async () => {
+		if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
+			history.scrollRestoration = 'manual';
+		}
+		try {
+			window.scrollTo(0, 0);
+		} catch {
+			/* ignore */
+		}
+
 		const {
 			data: { user },
 		} = await supabase.auth.getUser();
@@ -445,22 +483,25 @@
 					: shows[0]?.id ?? null;
 			if (cloud.topic?.trim()) topic = cloud.topic;
 			if (cloud.clipProjectId) clipProjectId = cloud.clipProjectId;
+			touchBulkWorkspaceSession(user.id);
 			void persistBulkWorkspace();
-			await finishWorkspaceHydrate({ skeletonCount: shows.length });
+			await finishWorkspaceHydrate({ skeletonCount: shows.length, resumeUrl: true });
 			return;
 		}
 
 		const pendingImport = takeClipImportResult();
 		if (pendingImport) {
 			onClipImportComplete(pendingImport);
-			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2 });
+			touchBulkWorkspaceSession(user.id);
+			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
 			return;
 		}
 
 		const projectParam = $page.url.searchParams.get('project');
 		if (projectParam) {
 			await loadClipProject(projectParam);
-			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2 });
+			touchBulkWorkspaceSession(user.id);
+			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
 			return;
 		}
 
@@ -486,13 +527,16 @@
 			});
 			shows = newShows;
 			selectedShowId = newShows[0]?.id ?? null;
+			touchBulkWorkspaceSession(user.id);
 			void persistBulkWorkspace();
-			await finishWorkspaceHydrate({ skeletonCount: newShows.length });
+			await finishWorkspaceHydrate({ skeletonCount: newShows.length, resumeUrl: true });
 			return;
 		}
 
 		const saved = loadBulkWorkspace(user.id);
-		if (saved?.shows?.length) {
+		// Bare /dashboard/bulk → placeholders. Resume only with ?resume=1 (Studio / F5 mid-edit).
+		const wantResume = $page.url.searchParams.get('resume') === '1';
+		if (wantResume && saved?.shows?.length) {
 			shows = saved.shows;
 			selectedShowId =
 				saved.selectedShowId && saved.shows.some((s) => s.id === saved.selectedShowId)
@@ -500,8 +544,24 @@
 					: saved.shows[0]?.id ?? null;
 			if (saved.topic?.trim()) topic = saved.topic;
 			if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
-			await finishWorkspaceHydrate({ skeletonCount: saved.shows.length });
+			touchBulkWorkspaceSession(user.id);
+			await finishWorkspaceHydrate({ skeletonCount: saved.shows.length, resumeUrl: true });
 			return;
+		}
+
+		if (saved?.shows?.length) {
+			try {
+				await archiveBulkShowsToHistory(user.id, {
+					shows: saved.shows,
+					selectedShowId: saved.selectedShowId,
+					topic: saved.topic,
+				});
+				libraryNote = 'Previous draft moved to Library — starting fresh';
+				setTimeout(() => (libraryNote = ''), 3200);
+			} catch {
+				/* ignore */
+			}
+			clearBulkWorkspace(user.id);
 		}
 
 		const show = createBlankShow(defaultTpl, caps, 3);
@@ -531,6 +591,17 @@
 				topic,
 				clipProjectId,
 			});
+			// Keep F5 / Studio return on the active draft
+			if (typeof window !== 'undefined' && showsHaveContent(shows)) {
+				const url = new URL(window.location.href);
+				if (
+					url.pathname.replace(/\/+$/, '') === '/dashboard/bulk' &&
+					url.searchParams.get('resume') !== '1'
+				) {
+					url.searchParams.set('resume', '1');
+					history.replaceState({}, '', url.pathname + url.search + url.hash);
+				}
+			}
 			// Keep the open cloud row in sync while editing /dashboard/bulk/[id]
 			if (cloudWorkspaceId && showsHaveContent(shows)) {
 				await fetch(`/api/bulk/workspaces/${cloudWorkspaceId}`, {
@@ -554,7 +625,7 @@
 		void shows;
 		void selectedShowId;
 		void topic;
-		if (!workspaceHydrated || !userId) return;
+		if (!workspaceHydrated || !userId || !workspaceAutosaveReady) return;
 		scheduleBulkWorkspaceSave();
 	});
 
@@ -588,13 +659,14 @@
 		selectedShowId = showId;
 	}
 
-	function filmstripScrollAction(node: HTMLElement, activeSlideId: string) {
+	function filmstripScrollAction(node: HTMLElement, _activeSlideId: string) {
 		function scrollActive() {
 			requestAnimationFrame(() => {
-				const active = node.querySelector('.filmstrip-on');
-				if (active) {
-					active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-				}
+				const active = node.querySelector('.filmstrip-on') as HTMLElement | null;
+				if (!active) return;
+				// Horizontal only inside the filmstrip — never scrollIntoView (that jumps the page).
+				const left = active.offsetLeft - (node.clientWidth - active.offsetWidth) / 2;
+				node.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
 			});
 		}
 		scrollActive();

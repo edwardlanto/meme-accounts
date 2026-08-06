@@ -197,7 +197,7 @@
 			position: absolute;
 			left: {overlay.x}px; top: {overlay.y}px;
 			width: {overlay.w}px; height: {overlay.h}px;
-			z-index: 15;
+			z-index: {active || hovered || popoverOpen ? 90 : 55};
 			pointer-events: auto;
 			cursor: {active && overlayAction === 'drag' ? 'grabbing' : interactive ? 'grab' : 'default'};
 			touch-action: none;

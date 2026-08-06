@@ -8,6 +8,17 @@ export const BULK_WORKSPACE_KEY_PREFIX = 'bulk_workspace_v1';
 export const BULK_HISTORY_KEY_PREFIX = 'bulk_history_v1';
 export const BULK_HISTORY_MAX = 12;
 
+/**
+ * Local draft auto-restore window (hard cap). Combined with a live session
+ * marker so overnight / new-day visits open placeholders instead of old clips.
+ */
+export const BULK_WORKSPACE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+/** sessionStorage: only restore local draft while this tab session is “live”. */
+const BULK_WS_SESSION_PREFIX = 'bulk_ws_live_v1';
+/** How long a tab session stays eligible for auto-restore after last touch. */
+export const BULK_WS_SESSION_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+
 export type BulkWorkspaceSnapshot = {
 	v: 1;
 	savedAt: number;
@@ -182,6 +193,7 @@ export async function saveBulkWorkspace(
 			clipProjectId: snapshot.clipProjectId ?? null,
 		};
 		localStorage.setItem(bulkWorkspaceStorageKey(userId), JSON.stringify(payload));
+		touchBulkWorkspaceSession(userId);
 		return true;
 	} catch (e) {
 		console.warn('[bulk] workspace save failed', e);
@@ -208,6 +220,7 @@ export async function saveBulkWorkspace(
 				clipProjectId: snapshot.clipProjectId ?? null,
 			};
 			localStorage.setItem(bulkWorkspaceStorageKey(userId), JSON.stringify(payload));
+			touchBulkWorkspaceSession(userId);
 			return true;
 		} catch {
 			return false;
@@ -233,6 +246,66 @@ export function loadBulkWorkspace(userId: string): BulkWorkspaceSnapshot | null 
 	}
 }
 
+/** True when a local draft is recent enough to auto-restore on /dashboard/bulk. */
+export function isBulkWorkspaceFresh(
+	savedAt: number | null | undefined,
+	now = Date.now(),
+): boolean {
+	const t = Number(savedAt);
+	if (!Number.isFinite(t) || t <= 0) return false;
+	return now - t <= BULK_WORKSPACE_MAX_AGE_MS;
+}
+
+function bulkWorkspaceSessionKey(userId: string): string {
+	return `${BULK_WS_SESSION_PREFIX}_${userId}`;
+}
+
+/** Mark this tab as actively editing Bulk (Studio round-trips / reloads). */
+export function touchBulkWorkspaceSession(userId: string): void {
+	if (typeof sessionStorage === 'undefined' || !userId) return;
+	try {
+		sessionStorage.setItem(bulkWorkspaceSessionKey(userId), String(Date.now()));
+	} catch {
+		/* ignore */
+	}
+}
+
+/** True when this tab recently edited Bulk — safe to restore the local draft. */
+export function hasLiveBulkWorkspaceSession(
+	userId: string,
+	now = Date.now(),
+): boolean {
+	if (typeof sessionStorage === 'undefined' || !userId) return false;
+	try {
+		const t = Number(sessionStorage.getItem(bulkWorkspaceSessionKey(userId)));
+		if (!Number.isFinite(t) || t <= 0) return false;
+		return now - t <= BULK_WS_SESSION_MAX_AGE_MS;
+	} catch {
+		return false;
+	}
+}
+
+export function clearBulkWorkspaceSession(userId: string): void {
+	if (typeof sessionStorage === 'undefined' || !userId) return;
+	try {
+		sessionStorage.removeItem(bulkWorkspaceSessionKey(userId));
+	} catch {
+		/* ignore */
+	}
+}
+
+/**
+ * Whether bare `/dashboard/bulk` should hydrate from localStorage.
+ * Requires both a fresh snapshot and a live tab session (not yesterday’s leftovers).
+ */
+export function shouldRestoreBulkWorkspace(
+	userId: string,
+	saved: BulkWorkspaceSnapshot | null | undefined,
+): boolean {
+	if (!userId || !saved?.shows?.length) return false;
+	return isBulkWorkspaceFresh(saved.savedAt) && hasLiveBulkWorkspaceSession(userId);
+}
+
 export function clearBulkWorkspace(userId: string): void {
 	if (typeof localStorage === 'undefined' || !userId) return;
 	try {
@@ -240,6 +313,7 @@ export function clearBulkWorkspace(userId: string): void {
 	} catch {
 		/* ignore */
 	}
+	clearBulkWorkspaceSession(userId);
 }
 
 export function loadBulkHistory(userId: string): BulkHistoryEntry[] {

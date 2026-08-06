@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Black text preview</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+	<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;700&display=swap" rel="stylesheet" />
+	<style>
+		html, body { margin: 0; background: #111; }
+		#card {
+			width: 540px;
+			height: 675px;
+			background: #000;
+			border-radius: 24px;
+			overflow: hidden;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			box-sizing: border-box;
+			padding: 44px 36px 60px;
+			font-family: Lexend, -apple-system, sans-serif;
+			color: #fff;
+			text-align: center;
+		}
+		.avatar {
+			width: 54px; height: 54px; border-radius: 50%;
+			background: #1a1a1a; display: grid; place-items: center;
+			font-weight: 600; font-size: 16px; margin: 0 auto 9px;
+		}
+		.name { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 19px; font-weight: 700; }
+		.handle { font-size: 16px; color: rgba(255,255,255,0.55); margin-top: 2px; }
+		.profile { margin-bottom: 28px; }
+		.headline {
+			color: #E8C547; font-size: 23px; font-weight: 700; line-height: 1.28;
+			margin: 0 0 18px; max-width: 100%;
+		}
+		.body {
+			font-size: 18px; font-weight: 400; line-height: 1.5; color: #fff;
+			white-space: pre-wrap; margin: 0; max-width: 100%;
+		}
+	</style>
+</head>
+<body>
+	<div id="card">
+		<div class="profile">
+			<div class="avatar">MC</div>
+			<div class="name">
+				Maya Chen
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<circle cx="12" cy="12" r="10" fill="#1D9BF0" />
+					<path d="M7.5 12.2l2.8 2.8 6.2-6.4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</div>
+			<div class="handle">@mayabuilds</div>
+		</div>
+		<p class="headline">The quietest founders ship the loudest products.</p>
+		<p class="body">They don't announce every half-built idea.
+
+They disappear for ninety days.
+
+Then they drop something people can't ignore.</p>
+	</div>
+</body>
+</html>

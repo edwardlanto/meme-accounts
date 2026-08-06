@@ -3,6 +3,7 @@
 	import { createBlankSlide } from '$lib/studio/bulk-to-studio';
 	import {
 		coerceTemplateId,
+		isBrandStackFamily,
 		isVideoStoryFamily,
 		isVideoSplitFamily,
 		videoLayoutForTemplate,
@@ -19,6 +20,7 @@
 	} from '$lib/video-clips/reframe';
 	import {
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
+		BRAND_STACK_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
 		NEWS_DEFAULT_SOURCE,
 		PHOTO_CAPTION_DEFAULTS,
@@ -26,11 +28,13 @@
 		PHOTO_TOPIC_BODY_STYLE,
 		PHOTO_TOPIC_HEADLINE_STYLE,
 		TEXT_CAROUSEL_DEFAULTS,
+		TWEET_DEFAULTS,
 		VIDEO_CREATOR_DEFAULTS,
 		VIDEO_CREATOR_HEADLINE_STYLE,
 		VIDEO_FEATURE_BODY_STYLE,
 		VIDEO_FEATURE_DEFAULTS,
 		VIDEO_FEATURE_HEADLINE_STYLE,
+		VIDEO_HOOK_DEFAULTS,
 		VIDEO_HOOK_HEADLINE_STYLE,
 		VIDEO_POST_DEFAULTS,
 		VIDEO_POST_HEADLINE_STYLE,
@@ -38,6 +42,7 @@
 		VIDEO_SOURCE_HEADLINE_STYLE,
 		VIDEO_STORY_DEFAULTS,
 		VIDEO_SPLIT_DEFAULTS,
+		VIDEO_TEXT_DEFAULTS,
 		VIDEO_TEXT_HEADLINE_STYLE,
 		WHITE_MEDIA_DEFAULTS,
 		WHITE_THREAD_DEFAULTS,
@@ -51,6 +56,7 @@
 	import WhitePostTemplate from '$lib/components/templates/WhitePostTemplate.svelte';
 	import VideoStoryTemplate from '$lib/components/templates/VideoStoryTemplate.svelte';
 	import VideoSplitTemplate from '$lib/components/templates/VideoSplitTemplate.svelte';
+	import BrandStackTemplate from '$lib/components/templates/BrandStackTemplate.svelte';
 	import BlackTextCarouselTemplate from '$lib/components/templates/BlackTextCarouselTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
@@ -88,8 +94,9 @@
 
 	/** Video / reframed clips preview in the matching Studio format (usually 9:16). */
 	const previewFormat = $derived.by(() => {
-		if (isVideoSplitFamily(coerceTemplateId(slide.template))) return 'vertical' as const;
-		if (slide.mediaKind === 'video') {
+		const tid = coerceTemplateId(slide.template);
+		if (isVideoSplitFamily(tid) || isBrandStackFamily(tid)) return 'vertical' as const;
+		if (slide.mediaKind === 'video' || isVideoStoryFamily(tid)) {
 			const aspect =
 				parseReframeAspectFromSettingsKey(slide.reframeSettingsKey) ??
 				(slide.reframedPlaybackUrl ? '9:16' : null);
@@ -98,7 +105,10 @@
 		return 'feed' as const;
 	});
 	const canvasSize = $derived(
-		slide.mediaKind === 'video' || isVideoSplitFamily(coerceTemplateId(slide.template))
+		slide.mediaKind === 'video' ||
+			isVideoSplitFamily(coerceTemplateId(slide.template)) ||
+			isBrandStackFamily(coerceTemplateId(slide.template)) ||
+			isVideoStoryFamily(coerceTemplateId(slide.template))
 			? canvasSizeForStudioFormat(previewFormat)
 			: STUDIO_FEED_CANVAS,
 	);
@@ -151,20 +161,30 @@
 
 	const imageSrc = $derived(optimizeImageUrl(rawImageSrc, fetchW));
 
-	const videoSrc = $derived(
-		mediaKind === 'video' && playbackUrl ? playbackUrl : VIDEO_STORY_DEFAULTS.videoUrl,
+	const videoSrc = $derived.by(() => {
+		if (mediaKind === 'video' && playbackUrl) return playbackUrl;
+		// Poster-only still (capture covers / empty clip URL with thumb).
+		if (mediaKind === 'video' && mediaThumb && !playbackUrl) return '';
+		return VIDEO_STORY_DEFAULTS.videoUrl;
+	});
+	const videoPoster = $derived(
+		optimizeImageUrl(String(slide.mediaThumb ?? '').trim(), fetchW) ||
+			optimizeImageUrl(String(VIDEO_STORY_DEFAULTS.posterUrl ?? '').trim(), fetchW),
 	);
-	const videoPoster = $derived(optimizeImageUrl(String(slide.mediaThumb ?? '').trim(), fetchW));
 
 	const textCarouselBody = $derived.by(() => {
-		if (headline && body) return `${headline}\n\n${body}`;
-		return headline || body || TEXT_CAROUSEL_DEFAULTS.body;
+		const h = headline.trim();
+		const b = body.trim();
+		if (h && b) return `${h}\n\n${b}`;
+		return h || b || TEXT_CAROUSEL_DEFAULTS.body;
 	});
 
 	const whiteBody = $derived.by(() => {
-		if (headline && body) return `${headline}\n\n${body}`;
-		if (template === 'whiteMedia') return headline || body || WHITE_MEDIA_DEFAULTS.body;
-		return headline || body || WHITE_THREAD_DEFAULTS.body;
+		const h = headline.trim();
+		const b = body.trim();
+		if (h && b) return `${h}\n\n${b}`;
+		if (template === 'whiteMedia') return h || b || WHITE_MEDIA_DEFAULTS.body;
+		return h || b || WHITE_THREAD_DEFAULTS.body;
 	});
 
 	const needsMediaWait = $derived(
@@ -312,7 +332,8 @@
 			/>
 		{:else if isVideoSplitFamily(template)}
 			<VideoSplitTemplate
-				videoSrc={mediaUrl || VIDEO_SPLIT_DEFAULTS.videoUrl}
+				videoSrc={playbackUrl || (mediaThumb ? '' : VIDEO_SPLIT_DEFAULTS.videoUrl)}
+				posterSrc={mediaThumb || '/placeholders/carousel/video-template-poster.jpg'}
 				autoflipComposited={String(slide.reframeSettingsKey ?? '').includes('|saliency|')}
 				badgeLabel={VIDEO_SPLIT_DEFAULTS.badgeLabel}
 				w={CANVAS_W}
@@ -326,10 +347,18 @@
 				layout={videoLayoutForTemplate(template)}
 				headline={
 					template === 'videoFeature'
-						? headline || VIDEO_FEATURE_DEFAULTS.headline
+						? headline.trim() || VIDEO_FEATURE_DEFAULTS.headline
 						: template === 'videoSource'
-							? ensureFirstWordHighlight(headline || VIDEO_STORY_DEFAULTS.headline)
-							: headline || VIDEO_STORY_DEFAULTS.headline
+							? ensureFirstWordHighlight(headline.trim() || VIDEO_SOURCE_DEFAULTS.headline)
+							: template === 'videoHook'
+								? headline.trim() || VIDEO_HOOK_DEFAULTS.headline
+								: template === 'videoCreator'
+									? headline.trim() || VIDEO_CREATOR_DEFAULTS.headline
+									: template === 'videoText'
+										? headline.trim() || VIDEO_TEXT_DEFAULTS.headline
+										: template === 'videoPost'
+											? headline.trim() || VIDEO_POST_DEFAULTS.headline
+											: headline.trim() || VIDEO_STORY_DEFAULTS.headline
 				}
 				body={template === 'videoFeature' ? body || VIDEO_FEATURE_DEFAULTS.body : undefined}
 				watermark={
@@ -441,12 +470,29 @@
 			/>
 		{:else if template === 'tweet'}
 			<TweetTemplate
-				topText={headline === ' ' ? '' : headline}
-				bottomText={body}
+				topText={headline === ' ' ? TWEET_DEFAULTS.topText : headline}
+				bottomText={body.trim() || TWEET_DEFAULTS.bottomText}
 				canvasW={CANVAS_W}
 				canvasH={CANVAS_H}
 				{scale}
 				interactive={false}
+			/>
+		{:else if isBrandStackFamily(template)}
+			<BrandStackTemplate
+				headline={headline === ' ' ? BRAND_STACK_DEFAULTS.headline : headline}
+				watermark={BRAND_STACK_DEFAULTS.watermark}
+				brand={BRAND_STACK_DEFAULTS.brand}
+				topVideoSrc={playbackUrl || ''}
+				topImageSrc={!playbackUrl ? (mediaThumb || '/placeholders/carousel/video-template-poster.jpg') : ''}
+				bottomMediaSrc={BRAND_STACK_DEFAULTS.bottomMediaUrl}
+				w={CANVAS_W}
+				h={CANVAS_H}
+				{scale}
+				interactive={false}
+				previewMode={true}
+				videoMuted={previewMuted}
+				videoTrimStartSec={trimStart}
+				videoTrimEndSec={trimEnd}
 			/>
 		{:else}
 			<div class="blank-slide" style="width:{width}px;height:{previewH}px">

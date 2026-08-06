@@ -26,6 +26,7 @@
 		"clsx": "^2.1.1",
 		"dotenv-cli": "^11.0.0",
 		"lucide-svelte": "^1.0.1",
+		"playwright": "^1.62.1",
 		"shadcn-svelte": "^1.2.7",
 		"svelte": "^5.55.2",
 		"svelte-check": "^4.4.6",
