@@ -11,9 +11,18 @@
 		width?: number;
 		/** Slide ids currently loading stock media */
 		loadingSlideIds?: string[];
+		/** When false, BulkSlidePreview strips `[[…]]` word highlights */
+		textHighlightsEnabled?: boolean;
 	};
 
-	let { slides, activeSlideId, onselect, width = 200, loadingSlideIds = [] }: Props = $props();
+	let {
+		slides,
+		activeSlideId,
+		onselect,
+		width = 200,
+		loadingSlideIds = [],
+		textHighlightsEnabled = true,
+	}: Props = $props();
 
 	const previewWidth = $derived(width);
 	const loadingSet = $derived(new Set(loadingSlideIds));
@@ -272,6 +281,7 @@
 								}}
 								width={previewWidth}
 								mediaFetching={true}
+								{textHighlightsEnabled}
 							/>
 						{:else}
 							<BulkSlidePreview
@@ -280,6 +290,7 @@
 									videoMuted: si !== activeIdx || sl.videoMuted !== false,
 								}}
 								width={previewWidth}
+								{textHighlightsEnabled}
 							/>
 						{/if}
 					</div>

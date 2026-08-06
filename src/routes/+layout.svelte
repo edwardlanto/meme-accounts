@@ -46,6 +46,7 @@
 
 <svelte:head>
 	<title>Meme Accounts — Create &amp; Schedule Meme Posts Fast</title>
+	<link rel="icon" href="/logo/meme-accounts-logo.webp" type="image/webp" />
 </svelte:head>
 
 {@render children()}

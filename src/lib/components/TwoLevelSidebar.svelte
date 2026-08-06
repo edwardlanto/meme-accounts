@@ -71,9 +71,20 @@
 	style={`--ease:${softEase}`}
 	aria-label="Primary navigation"
 >
-	<!-- Header: collapse toggle + brand -->
+	<!-- Header: brand + collapse toggle -->
 	<div class="ssp-header">
-		<button
+		{#if !isCollapsed}
+			<a href="/dashboard" class="ssp-brand" title="Meme Accounts">
+				<img
+					src="/logo/meme-accounts-logo.webp"
+					alt="Meme Accounts"
+					class="ssp-brand-logo"
+					width="148"
+					height="22"
+				/>
+			</a>
+		{/if}
+		<!-- <button
 			type="button"
 			class="ssp-icon-btn"
 			onclick={toggleCollapse}
@@ -82,7 +93,7 @@
 			disabled={railOnly}
 		>
 			<PanelLeft size={18} />
-		</button>
+		</button> -->
 	</div>
 
 	<!-- Nav body -->
@@ -216,8 +227,27 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 2px 4px 8px;
+		padding: 2px 4px 10px;
 		min-height: 38px;
+	}
+	.ssp-brand {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		text-decoration: none;
+		line-height: 0;
+	}
+	.ssp-brand-logo {
+		display: block;
+		height: 22px;
+		width: auto;
+		max-width: 100%;
+		object-fit: contain;
+		object-position: left center;
+	}
+	:global(:root[data-theme='dark']) .ssp-brand-logo {
+		filter: invert(1);
 	}
 	.ssp-sidebar.collapsed .ssp-header {
 		justify-content: center;

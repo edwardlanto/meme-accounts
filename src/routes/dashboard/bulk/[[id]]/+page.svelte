@@ -102,6 +102,7 @@
 		Eraser,
 		Volume2,
 		VolumeX,
+		Highlighter,
 	} from 'lucide-svelte';
 
 	type SlidePopoverKind = 'intel' | 'reframe' | 'captions';
@@ -1300,6 +1301,7 @@
 					imageCount: 0,
 					audience: audiencePromptText(audienceId, audience) || 'general audience',
 					emotion: emotion || undefined,
+					autoHighlight: brandKit.textHighlightsEnabled !== false,
 				}),
 			});
 			const data = await res.json();
@@ -1390,6 +1392,11 @@
 		const ok = saveBrandKit(userId, brandKit);
 		brandSavedNote = ok ? 'Brand saved' : 'Could not save';
 		setTimeout(() => (brandSavedNote = ''), 2000);
+	}
+
+	function toggleWordHighlights() {
+		brandKit = { ...brandKit, textHighlightsEnabled: !brandKit.textHighlightsEnabled };
+		if (userId) saveBrandKit(userId, brandKit);
 	}
 
 	let brandLogoBusy = $state(false);
@@ -1725,6 +1732,19 @@
 					{/if}
 					Fill stock
 				</button>
+				<button
+					type="button"
+					class="btn-ghost sm"
+					class:btn-ghost-on={brandKit.textHighlightsEnabled}
+					onclick={toggleWordHighlights}
+					title={brandKit.textHighlightsEnabled
+						? 'Word highlights on — generate wraps key phrases; [[…]] shows colored accents'
+						: 'Word highlights off — headlines stay plain'}
+					aria-pressed={brandKit.textHighlightsEnabled}
+				>
+					<Highlighter size={13} />
+					Word highlights
+				</button>
 				<button type="button" class="btn-ghost sm" onclick={() => (pasteOpen = !pasteOpen)} disabled={stackLoading}>
 					<Type size={13} /> Paste ideas
 				</button>
@@ -1867,6 +1887,7 @@
 									activeSlideId={show.activeSlideId}
 									width={BULK_CAROUSEL_WIDTH}
 									loadingSlideIds={show.slides.filter((s) => s.mediaLoading).map((s) => s.id)}
+									textHighlightsEnabled={brandKit.textHighlightsEnabled}
 									onselect={(slideId) => selectSlide(show.id, slideId)}
 								/>
 							{/if}
@@ -1892,6 +1913,7 @@
 												width={BULK_FILMSTRIP_THUMB}
 												preferThumb={true}
 												mediaFetching={!!sl.mediaLoading}
+												textHighlightsEnabled={brandKit.textHighlightsEnabled}
 											/>
 											<span class="filmstrip-num">{si + 1}</span>
 											{#if sl.clipMeta && !sl.mediaLoading}

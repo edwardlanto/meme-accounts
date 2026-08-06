@@ -25,17 +25,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const parsed = await parseJsonBody(request, generateSlidesBodySchema, 64_000);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
-	const { topic, style, slideCount, imageCount, audience, emotion, deckCount } = parsed.data;
+	const { topic, style, slideCount, imageCount, audience, emotion, deckCount, autoHighlight } =
+		parsed.data;
 	const decksWanted = Math.max(1, Math.min(10, deckCount ?? 1));
+	const wantHighlights = autoHighlight === true;
 
 	if (!env.OPENROUTER_API_KEY) {
 		if (decksWanted > 1) {
 			return json({
-				decks: getDemoDecks(decksWanted, slideCount, imageCount),
+				decks: getDemoDecks(decksWanted, slideCount, imageCount, wantHighlights),
 				demo: true,
 			});
 		}
-		return json({ slides: getDemoSlides(slideCount, imageCount), demo: true });
+		return json({ slides: getDemoSlides(slideCount, imageCount, wantHighlights), demo: true });
 	}
 
 	const prompt =
@@ -67,10 +69,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
 		const parsedJson = JSON.parse(jsonStr);
 
-		const normalizeSlide = (s: any, i: number) => ({
+		const normalizeSlide = (s: any, i: number): GeneratedSlide => ({
 			id: String(s?.id ?? `slide_${i + 1}`),
-			type: s?.type ?? 'value',
-			layout: s?.layout ?? 'text-only',
+			type: (s?.type ?? 'value') as GeneratedSlide['type'],
+			layout: (s?.layout ?? 'text-only') as GeneratedSlide['layout'],
 			imageIndex: s?.imageIndex ?? null,
 			accentEmoji: s?.accentEmoji,
 			slideNumber: i + 1,
@@ -87,25 +89,136 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				: Array.isArray(parsedJson?.decks)
 					? parsedJson.decks
 					: [];
-			const decks = rawDecks.slice(0, decksWanted).map((d: any, di: number) => {
+			let decks = rawDecks.slice(0, decksWanted).map((d: any, di: number) => {
 				const slidesRaw = Array.isArray(d?.slides) ? d.slides : [];
 				return {
 					title: stripDashes(String(d?.title ?? d?.idea ?? `Idea ${di + 1}`)),
 					slides: slidesRaw.map((s: GeneratedSlide, i: number) => normalizeSlide(s, i)),
 				};
 			});
+			if (wantHighlights) {
+				decks = await highlightDeckNewsHeadlines(decks);
+			}
 			return json({ decks });
 		}
 
-		const slides: GeneratedSlide[] = Array.isArray(parsedJson) ? parsedJson : parsedJson?.slides ?? [];
-		return json({
-			slides: slides.map((s, i) => normalizeSlide(s, i)),
-		});
+		let slides: GeneratedSlide[] = (
+			Array.isArray(parsedJson) ? parsedJson : parsedJson?.slides ?? []
+		).map((s: GeneratedSlide, i: number) => normalizeSlide(s, i));
+		if (wantHighlights) {
+			slides = await highlightNewsHeadlines(slides);
+		}
+		return json({ slides });
 	} catch (err: any) {
 		console.error('[generate-slides]', err.message);
 		return json({ error: err.message }, { status: 500 });
 	}
 };
+
+/** Slide types that map to News in Bulk (`templateForSlideType`) — those parse `[[…]]`. */
+const NEWS_HEADLINE_TYPES = new Set(['hook', 'proof', 'cta']);
+
+function isNewsHeadlineSlide(slide: { type?: string; headline?: string }): boolean {
+	return NEWS_HEADLINE_TYPES.has(String(slide?.type ?? '').toLowerCase());
+}
+
+/**
+ * Second-pass LLM: wrap 1–3 key phrases in [[…]] on News-bound headlines.
+ * Falls back to plain text on failure.
+ */
+async function highlightNewsHeadlines(slides: GeneratedSlide[]): Promise<GeneratedSlide[]> {
+	const idxs: number[] = [];
+	const texts: string[] = [];
+	for (let i = 0; i < slides.length; i++) {
+		const s = slides[i]!;
+		const h = String(s.headline ?? '').trim();
+		if (!isNewsHeadlineSlide(s) || !h || h.includes('[[')) continue;
+		idxs.push(i);
+		texts.push(h);
+	}
+	if (!texts.length) return slides;
+
+	const marked = await batchAddHighlights(texts);
+	return slides.map((s, i) => {
+		const pos = idxs.indexOf(i);
+		if (pos < 0) return s;
+		const next = String(marked[pos] ?? s.headline).trim();
+		return next.includes('[[') ? { ...s, headline: next } : s;
+	});
+}
+
+async function highlightDeckNewsHeadlines<T extends { slides: GeneratedSlide[] }>(
+	decks: T[],
+): Promise<T[]> {
+	const flat: { deck: number; slide: number; text: string }[] = [];
+	for (let di = 0; di < decks.length; di++) {
+		const slides = decks[di]!.slides;
+		for (let si = 0; si < slides.length; si++) {
+			const s = slides[si]!;
+			const h = String(s.headline ?? '').trim();
+			if (!isNewsHeadlineSlide(s) || !h || h.includes('[[')) continue;
+			flat.push({ deck: di, slide: si, text: h });
+		}
+	}
+	if (!flat.length) return decks;
+
+	const marked = await batchAddHighlights(flat.map((f) => f.text));
+	return decks.map((deck, di) => ({
+		...deck,
+		slides: deck.slides.map((s, si) => {
+			const pos = flat.findIndex((f) => f.deck === di && f.slide === si);
+			if (pos < 0) return s;
+			const next = String(marked[pos] ?? s.headline).trim();
+			return next.includes('[[') ? { ...s, headline: next } : s;
+		}),
+	}));
+}
+
+async function batchAddHighlights(headlines: string[]): Promise<string[]> {
+	if (!env.OPENROUTER_API_KEY || !headlines.length) return headlines;
+
+	const system =
+		`You add emphasis markers to short Instagram News headlines. Output ONLY a JSON array of strings — one per input — with emphasis added. ` +
+		`Rules: wrap 1–3 short phrases per headline in [[double brackets]], e.g. [[key idea]] or [[33%]]. ` +
+		`Use ONLY plain [[phrase]] markers — never grad(, marker(, pattern(, or #hex: inside brackets. ` +
+		`Preserve wording exactly aside from adding brackets. No hashtags, emojis, or other markdown. No nested brackets.`;
+
+	const user = `Headlines:\n${JSON.stringify(headlines, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases.`;
+
+	try {
+		const res = await fetch(OPENROUTER_API, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+				'Content-Type': 'application/json',
+				'HTTP-Referer': 'https://carousel-studio.app',
+				'X-Title': 'Carousel Studio',
+			},
+			body: JSON.stringify({
+				model: 'anthropic/claude-sonnet-4.5',
+				messages: [
+					{ role: 'system', content: system },
+					{ role: 'user', content: user },
+				],
+				temperature: 0.35,
+				max_tokens: Math.min(2000, 80 * headlines.length + 200),
+			}),
+		});
+		if (!res.ok) return headlines;
+
+		const data = await res.json();
+		let content = String(data.choices?.[0]?.message?.content ?? '').trim();
+		content = content.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim();
+		const parsed = JSON.parse(content);
+		if (!Array.isArray(parsed) || parsed.length !== headlines.length) return headlines;
+		return parsed.map((x: unknown, i: number) => {
+			const next = String(x ?? '').trim();
+			return next.includes('[[') ? next : headlines[i]!;
+		});
+	} catch {
+		return headlines;
+	}
+}
 
 /**
  * Keep copy inside what the 1080x1350 canvas can render. Trims on a sentence
@@ -276,8 +389,13 @@ CRITICAL MULTI-DECK RULES:
 - NEVER use em dashes or en dashes.`;
 }
 
-function getDemoDecks(deckCount: number, slideCount: number, imageCount: number) {
-	const base = getDemoSlides(Math.max(slideCount, 3), imageCount);
+function getDemoDecks(
+	deckCount: number,
+	slideCount: number,
+	imageCount: number,
+	autoHighlight = false,
+) {
+	const base = getDemoSlides(Math.max(slideCount, 3), imageCount, autoHighlight);
 	const titles = [
 		'Gut mood connection',
 		'Fermented food basics',
@@ -295,19 +413,29 @@ function getDemoDecks(deckCount: number, slideCount: number, imageCount: number)
 		slides: base.slice(0, slideCount).map((s, si) => ({
 			...s,
 			id: `deck_${i + 1}_slide_${si + 1}`,
-			headline: si === 0 ? `${titles[i] ?? 'Idea'}` : s.headline,
+			headline:
+				si === 0
+					? autoHighlight
+						? `[[${titles[i] ?? 'Idea'}]]`
+						: `${titles[i] ?? 'Idea'}`
+					: s.headline,
 			slideNumber: si + 1,
 		})),
 	}));
 }
 
-function getDemoSlides(count: number, imageCount: number): GeneratedSlide[] {
+function getDemoSlides(
+	count: number,
+	imageCount: number,
+	autoHighlight = false,
+): GeneratedSlide[] {
 	const has = (n: number) => imageCount > n;
+	const hl = (plain: string, marked: string) => (autoHighlight ? marked : plain);
 	const all: GeneratedSlide[] = [
 		{
 			id: 'slide_1',
 			type: 'hook',
-			headline: 'Your audience is bored of you.',
+			headline: hl('Your audience is bored of you.', 'Your audience is [[bored]] of you.'),
 			subheadline: "Here's why - and how to fix it",
 			imageIndex: has(0) ? 0 : null,
 			layout: has(0) ? 'hero' : 'text-only',
@@ -343,7 +471,7 @@ function getDemoSlides(count: number, imageCount: number): GeneratedSlide[] {
 		{
 			id: 'slide_5',
 			type: 'proof',
-			headline: '"My reach tripled in 30 days"',
+			headline: hl('"My reach tripled in 30 days"', '"My reach [[tripled]] in 30 days"'),
 			body: 'after switching to this exact format.',
 			imageIndex: has(2) ? 2 : null,
 			layout: has(2) ? 'split-left' : 'quote',
@@ -361,7 +489,7 @@ function getDemoSlides(count: number, imageCount: number): GeneratedSlide[] {
 		{
 			id: 'slide_7',
 			type: 'proof',
-			headline: 'This works for any niche.',
+			headline: hl('This works for any niche.', 'This works for [[any niche]].'),
 			body: "Finance, fitness, food, fashion - the psychology of what makes people stop and read doesn't change.",
 			imageIndex: has(3) ? 3 : null,
 			layout: has(3) ? 'hero' : 'text-only',
@@ -370,7 +498,7 @@ function getDemoSlides(count: number, imageCount: number): GeneratedSlide[] {
 		{
 			id: 'slide_8',
 			type: 'cta',
-			headline: 'Save this. Use it tomorrow.',
+			headline: hl('Save this. Use it tomorrow.', '[[Save this]]. Use it tomorrow.'),
 			body: "If this helped, follow for one carousel framework every week - no theory, just what's working right now.",
 			accentEmoji: '🔖',
 			imageIndex: null,

@@ -46,8 +46,13 @@
 
 	<nav class="nav">
 		<a href="/" class="logo">
-			<span class="logo-mark">CS</span>
-			<span class="logo-text">Carousel<em>Studio</em></span>
+			<img
+				src="/logo/meme-accounts-logo.webp"
+				alt="Meme Accounts"
+				class="logo-img"
+				width="180"
+				height="28"
+			/>
 		</a>
 		<div class="nav-links">
 			<a href="/pricing">Pricing</a>
@@ -231,26 +236,12 @@
 		text-decoration: none;
 		color: inherit;
 	}
-	.logo-mark {
-		width: 32px;
-		height: 32px;
-		background: #080808;
-		color: #fff;
-		border-radius: 8px;
-		display: grid;
-		place-items: center;
-		font-family: var(--font-mono);
-		font-size: 11px;
-		font-weight: 700;
-	}
-	.logo-text {
-		font-family: var(--font-display);
-		font-size: 17px;
-		font-weight: 700;
-	}
-	.logo-text em {
-		font-style: italic;
-		color: var(--orange);
+	.logo-img {
+		display: block;
+		height: 28px;
+		width: auto;
+		max-width: min(200px, 52vw);
+		object-fit: contain;
 	}
 	.nav-links {
 		display: flex;

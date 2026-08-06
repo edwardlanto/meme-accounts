@@ -48,6 +48,7 @@
 		WHITE_THREAD_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
 	import { ensureFirstWordHighlight } from '$lib/video-clips/video-hook';
+	import { stripMarkup } from '$lib/highlight';
 	import { optimizeImageUrl, preloadImage } from '$lib/client/optimize-image-url';
 	import { Loader2 } from 'lucide-svelte';
 
@@ -80,6 +81,11 @@
 		mediaFetching?: boolean;
 		/** Prefer mediaThumb for small filmstrip previews */
 		preferThumb?: boolean;
+		/**
+		 * When false, strip `[[…]]` markup and skip first-word highlight injection
+		 * so News / video layouts render plain text.
+		 */
+		textHighlightsEnabled?: boolean;
 	};
 
 	let {
@@ -87,10 +93,15 @@
 		width = 96,
 		mediaFetching = false,
 		preferThumb = false,
+		textHighlightsEnabled = true,
 	}: Props = $props();
 
 	const slide = $derived(slideProp ?? createBlankSlide('news'));
 	const previewMuted = $derived(slide.videoMuted !== false);
+
+	function maybeStrip(text: string): string {
+		return textHighlightsEnabled ? text : stripMarkup(text);
+	}
 
 	/** Video / reframed clips preview in the matching Studio format (usually 9:16). */
 	const previewFormat = $derived.by(() => {
@@ -121,9 +132,8 @@
 	const headline = $derived(String(slide.headline ?? '').trim() || ' ');
 	const newsTemplateText = $derived.by(() => {
 		const raw = slide.clipMeta?.newsHeadline?.trim();
-		if (raw) return raw;
-		if (headline !== ' ') return headline;
-		return 'YOUR HEADLINE';
+		const text = raw || (headline !== ' ' ? headline : 'YOUR HEADLINE');
+		return maybeStrip(text);
 	});
 	const body = $derived(String(slide.body ?? '').trim());
 	const mediaUrl = $derived(String(slide.mediaUrl ?? '').trim());
@@ -347,20 +357,26 @@
 				layout={videoLayoutForTemplate(template)}
 				headline={
 					template === 'videoFeature'
-						? headline.trim() || VIDEO_FEATURE_DEFAULTS.headline
+						? maybeStrip(headline.trim() || VIDEO_FEATURE_DEFAULTS.headline)
 						: template === 'videoSource'
-							? ensureFirstWordHighlight(headline.trim() || VIDEO_SOURCE_DEFAULTS.headline)
+							? textHighlightsEnabled
+								? ensureFirstWordHighlight(headline.trim() || VIDEO_SOURCE_DEFAULTS.headline)
+								: stripMarkup(headline.trim() || VIDEO_SOURCE_DEFAULTS.headline)
 							: template === 'videoHook'
-								? headline.trim() || VIDEO_HOOK_DEFAULTS.headline
+								? maybeStrip(headline.trim() || VIDEO_HOOK_DEFAULTS.headline)
 								: template === 'videoCreator'
-									? headline.trim() || VIDEO_CREATOR_DEFAULTS.headline
+									? maybeStrip(headline.trim() || VIDEO_CREATOR_DEFAULTS.headline)
 									: template === 'videoText'
-										? headline.trim() || VIDEO_TEXT_DEFAULTS.headline
+										? maybeStrip(headline.trim() || VIDEO_TEXT_DEFAULTS.headline)
 										: template === 'videoPost'
-											? headline.trim() || VIDEO_POST_DEFAULTS.headline
-											: headline.trim() || VIDEO_STORY_DEFAULTS.headline
+											? maybeStrip(headline.trim() || VIDEO_POST_DEFAULTS.headline)
+											: maybeStrip(headline.trim() || VIDEO_STORY_DEFAULTS.headline)
 				}
-				body={template === 'videoFeature' ? body || VIDEO_FEATURE_DEFAULTS.body : undefined}
+				body={
+					template === 'videoFeature'
+						? maybeStrip(body || VIDEO_FEATURE_DEFAULTS.body)
+						: undefined
+				}
 				watermark={
 					template === 'videoHook' ||
 					template === 'videoCreator' ||

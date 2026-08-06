@@ -22,6 +22,11 @@ export type BrandKitSettings = {
 	captionColor: string;
 	/** New rows start with captions off unless true */
 	captionEnabledDefault: boolean;
+	/**
+	 * When true, Bulk previews show `[[…]]` word highlights on News headlines
+	 * (and other layouts that parse markup). Default on.
+	 */
+	textHighlightsEnabled: boolean;
 	cta: BrandCtaSettings;
 };
 
@@ -40,6 +45,8 @@ export const DEFAULT_BRAND_KIT: BrandKitSettings = {
 	captionColor: '#ffffff',
 	/** Captions off unless the user opts in (per slide / brand) */
 	captionEnabledDefault: false,
+	/** Word highlights on for News-style big text by default */
+	textHighlightsEnabled: true,
 	cta: { ...DEFAULT_BRAND_CTA },
 };
 
@@ -67,6 +74,7 @@ function normalizeKit(parsed: Partial<BrandKitSettings> | null | undefined, ctaF
 		captionFontSize: Number.isFinite(fontSize) && fontSize > 0 ? Math.round(fontSize) : DEFAULT_BRAND_KIT.captionFontSize,
 		captionColor: String(parsed?.captionColor ?? DEFAULT_BRAND_KIT.captionColor),
 		captionEnabledDefault: parsed?.captionEnabledDefault === true,
+		textHighlightsEnabled: parsed?.textHighlightsEnabled !== false,
 		cta: {
 			image: String(parsed?.cta?.image ?? ctaFallback.image),
 			headline: String(parsed?.cta?.headline ?? ctaFallback.headline),

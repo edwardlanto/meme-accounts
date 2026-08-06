@@ -264,8 +264,13 @@
 	<!-- NAV -->
 	<nav class="nav" class:scrolled={scrollY > 24}>
 		<a href="/" class="brand">
-			<span class="brand-mark"></span>
-			<span class="brand-name">Meme Accounts</span>
+			<img
+				src="/logo/meme-accounts-logo.webp"
+				alt="Meme Accounts"
+				class="brand-logo"
+				width="180"
+				height="28"
+			/>
 		</a>
 		<div class="nav-actions">
 			<a href="/pricing" class="btn btn-ghost">Pricing</a>
@@ -282,17 +287,13 @@
 		<div class="hero-glow" aria-hidden="true"></div>
 		<div class="hero-inner">
 			<div class="hero-app">
-				<div class="hero-icon" aria-hidden="true">
-					<svg viewBox="0 0 64 64" width="44" height="44" fill="none">
-						<rect x="14" y="10" width="36" height="44" rx="6" fill="#fff" opacity="0.18"/>
-						<rect x="10" y="14" width="36" height="44" rx="6" fill="#fff" opacity="0.55"/>
-						<rect x="6" y="18" width="36" height="44" rx="6" fill="#fff"/>
-						<circle cx="14" cy="28" r="3" fill="#0f0f10"/>
-						<rect x="22" y="26" width="14" height="3" rx="1.5" fill="#0f0f10"/>
-						<rect x="22" y="32" width="10" height="3" rx="1.5" fill="#0f0f10" opacity="0.5"/>
-					</svg>
-				</div>
-				<p class="hero-app-name">Meme Accounts</p>
+				<img
+					src="/logo/meme-accounts-logo.webp"
+					alt="Meme Accounts"
+					class="hero-logo"
+					width="280"
+					height="44"
+				/>
 			</div>
 			<h1 class="hero-title">Post memes on autopilot</h1>
 			<p class="hero-sub">Pick a template, connect your account, and let Meme Accounts build, schedule, and ship your daily posts — while you focus on the next viral idea.</p>
@@ -549,8 +550,13 @@
 		<div class="container footer-grid">
 			<div class="footer-brand">
 				<a href="/" class="brand">
-					<span class="brand-mark"></span>
-					<span class="brand-name">Meme Accounts</span>
+					<img
+						src="/logo/meme-accounts-logo.webp"
+						alt="Meme Accounts"
+						class="brand-logo"
+						width="180"
+						height="28"
+					/>
 				</a>
 				<p class="footer-tag">Create. Schedule. Grow. Built for meme pages.</p>
 			</div>
@@ -701,19 +707,12 @@
 		text-decoration: none;
 		color: inherit;
 	}
-	.brand-mark {
-		width: 28px;
+	.brand-logo {
+		display: block;
 		height: 28px;
-		border-radius: 8px;
-		background:
-			radial-gradient(circle at 30% 30%, #fff 0%, #fff 30%, transparent 31%) 0 0/100% 100% no-repeat,
-			conic-gradient(from 220deg, #1c1c1c, #3a3a3a, #1c1c1c);
-		box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 1px 2px rgba(0, 0, 0, 0.15);
-	}
-	.brand-name {
-		font-weight: 700;
-		font-size: 17px;
-		letter-spacing: -0.02em;
+		width: auto;
+		max-width: min(200px, 52vw);
+		object-fit: contain;
 	}
 
 	.nav-actions {
@@ -805,7 +804,7 @@
 		margin: 0 auto;
 	}
 
-	/* App icon block + brand name (above title) */
+	/* Brand wordmark above title */
 	.hero-app {
 		display: flex;
 		flex-direction: column;
@@ -813,39 +812,16 @@
 		gap: 12px;
 		margin-bottom: 36px;
 	}
-	.hero-icon {
-		width: 76px;
-		height: 76px;
-		border-radius: 18px;
-		background: linear-gradient(180deg, #1f1f22 0%, #0a0a0c 100%);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		box-shadow:
-			0 1px 0 rgba(255, 255, 255, 0.08) inset,
-			0 0 0 1px rgba(0, 0, 0, 0.5),
-			0 18px 40px -12px rgba(15, 15, 16, 0.45),
-			0 6px 14px -6px rgba(15, 15, 16, 0.3);
-		transform-origin: center;
-		animation: hero-icon-pop 1100ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-		will-change: transform, opacity;
-	}
-	.hero-app-name {
-		font-weight: 700;
-		font-size: 16px;
-		letter-spacing: -0.01em;
-		color: var(--ap-text);
-		margin: 0;
+	.hero-logo {
+		display: block;
+		height: 44px;
+		width: auto;
+		max-width: min(320px, 78vw);
+		object-fit: contain;
 		opacity: 0;
-		animation: hero-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 380ms both;
+		animation: hero-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
 	}
 
-	@keyframes hero-icon-pop {
-		0%   { opacity: 0; transform: scale(0.4) rotate(-14deg) translateY(8px); }
-		55%  { opacity: 1; transform: scale(1.08) rotate(3deg) translateY(0); }
-		78%  { transform: scale(0.97) rotate(-1deg); }
-		100% { opacity: 1; transform: scale(1) rotate(0deg); }
-	}
 	@keyframes hero-fade-up {
 		from { opacity: 0; transform: translateY(14px); }
 		to   { opacity: 1; transform: translateY(0); }

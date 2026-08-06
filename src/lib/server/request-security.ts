@@ -240,6 +240,8 @@ export const generateSlidesBodySchema = z.object({
 		(val) => (val === undefined || val === null ? 1 : Number(val)),
 		z.number().finite().int().min(1).max(10),
 	),
+	/** When true, wrap key phrases in news-bound headlines with [[…]] for accent color. */
+	autoHighlight: z.boolean().optional(),
 });
 
 export const hooksBodySchema = z.object({
