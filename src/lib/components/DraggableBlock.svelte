@@ -1,9 +1,10 @@
 <script lang="ts">
 	/**
 	 * Hold-to-drag wrapper for template text elements.
-	 * - Pointer down on markup text (`data-draggable-no-pan`, etc.) does not start a drag
-	 *   so the user can highlight; hold **Alt** while pressing to drag from inside text.
-	 * - Pointer down on chrome: hold (or small move) begins dragging dx/dy (template px).
+	 * - Drag on markup text → native highlight / selection (block does not steal the gesture).
+	 * - Hold still on text (~holdMs), then drag → move the block (when holdDragFromText).
+	 * - Alt+drag on text → move the block immediately.
+	 * - Pointer down on chrome / padding: small move or hold begins dragging dx/dy (template px).
 	 * - Optional center snap: when the block’s center nears `snapRoot`’s center, offsets lock
 	 *   and light crosshair guides appear.
 	 */
@@ -16,8 +17,8 @@
 		interactive?: boolean;
 		holdMs?: number;
 		/**
-		 * When true (default), pointer-down on markup text can still arm hold-to-drag /
-		 * nudge-drag. Pass false to require Alt+drag over selectable text.
+		 * When true (default), a still hold on markup text can start a block drag.
+		 * Quick drag on text always selects. Pass false to require Alt+drag over text.
 		 */
 		holdDragFromText?: boolean;
 		/** Stretch to parent box (needed when wrapping absolutely-positioned media). */
@@ -35,8 +36,8 @@
 		dy = 0,
 		scale = 1,
 		interactive = true,
-		holdMs = 180,
-		/** Default on: all templates share hold/nudge-to-drag from text. Pass false to force Alt-only. */
+		holdMs = 220,
+		/** Default on: still-hold on text can drag; never steal a quick selection drag. */
 		holdDragFromText = true,
 		fill = false,
 		snapToCenter = false,
@@ -54,12 +55,17 @@
 	let armed = false;
 	let pointerId = 0;
 	let holdTimer: any = null;
+	/** True when the gesture began on selectable / editable text (not chrome). */
+	let startedOnText = false;
+	/** Alt was held at pointer-down — allow immediate drag from text. */
+	let startedWithAlt = false;
 	let snapGuide = $state<null | { x?: number; y?: number }>(null);
 	let snappedAxisX = false;
 	let snappedAxisY = false;
 
 	const SNAP_IN_PX = 12;
 	const SNAP_OUT_PX = 20;
+	const NUDGE_PX = 6;
 
 	function beginDrag() {
 		dragging = true;
@@ -69,10 +75,16 @@
 		snapGuide = null;
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = null;
-		// Only capture once we commit to dragging, so clicks still focus editors.
+		// Only capture once we commit to dragging, so clicks / selection still work.
 		if (pointerId) {
 			try { root?.setPointerCapture(pointerId); } catch {}
 		}
+	}
+
+	function cancelArm() {
+		armed = false;
+		if (holdTimer) clearTimeout(holdTimer);
+		holdTimer = null;
 	}
 
 	function onPointerDown(e: PointerEvent) {
@@ -84,9 +96,10 @@
 		const onSelectableText = !!t?.closest?.(
 			'[data-draggable-no-pan],[contenteditable="true"],[data-text-selectable]',
 		);
-		// Let the inner markup layer own the gesture for selection/editing.
-		// Hold Alt while pressing to drag-reposition from inside text (default).
-		// Optional `holdDragFromText`: hold timer / small move can still start a block drag.
+		startedOnText = onSelectableText;
+		startedWithAlt = !!e.altKey;
+
+		// Text without Alt: either allow still-hold-to-drag, or leave the gesture to selection.
 		if (onSelectableText && !e.altKey && !holdDragFromText) return;
 
 		dragging = false;
@@ -100,6 +113,7 @@
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = setTimeout(() => {
 			if (!armed) return;
+			// Still-hold on text (or any chrome hold) → commit to block drag.
 			beginDrag();
 		}, holdMs);
 	}
@@ -111,8 +125,18 @@
 		const my = e.clientY;
 		const dpx = mx - downX;
 		const dpy = my - downY;
-		// Fast “nudge to drag” when the pointer started on chrome (not on markup text).
-		if (!dragging && armed && Math.abs(dpx) + Math.abs(dpy) > 6) beginDrag();
+		const moved = Math.abs(dpx) + Math.abs(dpy) > NUDGE_PX;
+
+		if (!dragging && armed && moved) {
+			// Chrome / Alt: nudge immediately into a block drag.
+			// Text without Alt: this is a highlight gesture — do not steal it.
+			if (!startedOnText || startedWithAlt) {
+				beginDrag();
+			} else {
+				cancelArm();
+				return;
+			}
+		}
 		if (!dragging) return;
 		const s = Math.max(0.0001, scale);
 		let nx = baseDx + dpx / s;
@@ -159,6 +183,8 @@
 		armed = false;
 		dragging = false;
 		pointerId = 0;
+		startedOnText = false;
+		startedWithAlt = false;
 		snapGuide = null;
 		snappedAxisX = false;
 		snappedAxisY = false;

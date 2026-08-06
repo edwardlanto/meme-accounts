@@ -15,6 +15,7 @@ import {
 	BRAND_STACK_DEFAULTS,
 	IMAGE_QUOTE_DEFAULTS,
 	NEWS_DEMO_IMAGE,
+	NEWS_DEFAULT_SUBTEXT,
 	NEWS_PLACEHOLDER_HEADLINE,
 	PHOTO_CAPTION_DEFAULTS,
 	TEXT_CAROUSEL_DEFAULTS,
@@ -61,6 +62,7 @@ export function createStarterPreviewSlide(studioId: TemplateId): BulkSlide {
 		return {
 			...slide,
 			headline: NEWS_PLACEHOLDER_HEADLINE,
+			body: NEWS_DEFAULT_SUBTEXT,
 			mediaUrl: NEWS_DEMO_IMAGE,
 			mediaKind: 'image',
 		};

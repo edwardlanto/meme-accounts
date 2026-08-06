@@ -310,7 +310,10 @@
 	);
 
 	const subtitleWords = $derived(
-		(watermark || 'Here is your subtitle').trim().split(/\s+/).filter(Boolean),
+		String(watermark ?? '')
+			.trim()
+			.split(/\s+/)
+			.filter(Boolean),
 	);
 
 	let blurBgVideoEl = $state<HTMLVideoElement | null>(null);
@@ -1060,9 +1063,9 @@
 									justify-content: center;
 								"
 							>
-								{#if (profileAvatar?.trim() || VIDEO_POST_DEFAULTS.avatarUrl)}
+								{#if profileAvatar?.trim()}
 									<img
-										src={profileAvatar?.trim() || VIDEO_POST_DEFAULTS.avatarUrl}
+										src={profileAvatar.trim()}
 										alt=""
 										style="width: 100%; height: 100%; object-fit: cover; display: block;"
 									/>
@@ -1104,7 +1107,7 @@
 												line-height: 1.15;
 											"
 										>
-											{profileName?.trim() || VIDEO_POST_DEFAULTS.name}
+											{profileName?.trim() ?? ''}
 										</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
@@ -1132,7 +1135,7 @@
 												line-height: 1.2;
 											"
 										>
-											{profileHandle?.trim() || VIDEO_POST_DEFAULTS.handle}
+											{profileHandle?.trim() ?? ''}
 										</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
@@ -1170,7 +1173,7 @@
 								<div style="text-align: left; width: 100%;">
 									<HighlightedText
 										as="div"
-										text={headline?.trim() || VIDEO_POST_DEFAULTS.headline}
+										text={headline?.trim() ?? ''}
 										parseHighlights={false}
 										defaultColor="#ffffff"
 										style="

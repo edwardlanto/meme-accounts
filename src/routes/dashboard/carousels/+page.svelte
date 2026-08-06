@@ -2,35 +2,211 @@
 	import { supabase } from '$lib/supabase';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { STARTER_TEMPLATES } from '$lib/templates';
 	import { stripMarkup } from '$lib/highlight';
 	import { coerceTemplateId, STUDIO_TEMPLATES } from '$lib/studio/template-ids';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
-	import StarterTemplateGrid from '$lib/components/templates/StarterTemplateGrid.svelte';
-	import { ImagePlus, Plus, Trash2, Edit2, Clock, CheckCircle, FileText, Loader, ArrowRight } from 'lucide-svelte';
+	import {
+		loadBulkHistory,
+		loadBulkWorkspace,
+		showsHaveContent,
+	} from '$lib/studio/bulk-workspace';
+	import {
+		ImagePlus,
+		Plus,
+		Trash2,
+		Edit2,
+		Clock,
+		CheckCircle,
+		FileText,
+		Loader,
+		Rows3,
+	} from 'lucide-svelte';
 
-	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte` (workspace autosave rows). */
+	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
-	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte` (saved templates). */
+	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
+
+	type BulkShowCard = {
+		id: string;
+		title: string;
+		slideCount: number;
+		headline: string;
+		thumb: string;
+		template: string;
+		fromVideoClips?: boolean;
+	};
+
+	type BulkWorkspaceCard = {
+		id: string;
+		title: string;
+		topic: string;
+		thumbnailUrl: string | null;
+		clipProjectId?: string | null;
+		fromVideoClips?: boolean;
+		showCount: number;
+		titles: string[];
+		updatedAt: string;
+		url: string;
+		shows: BulkShowCard[];
+	};
+
+	type ClipProjectCard = {
+		id: string;
+		title: string;
+		thumbnailUrl: string | null;
+		sourceTitle: string;
+		clipCount: number;
+		showCount: number;
+		summary: string;
+		updatedAt: string;
+		hasBulkShows: boolean;
+		url: string;
+		shows: BulkShowCard[];
+	};
 
 	let carousels: any[] = $state([]);
 	let studioDrafts = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
 	let studioSavedTemplates = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>([]);
-	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
-	/** Signed GET URLs for News Studio workspace draft card heroes (keeps PNG egress off Supabase). */
+	let bulkWorkspaces = $state<BulkWorkspaceCard[]>([]);
+	let clipProjects = $state<ClipProjectCard[]>([]);
 	let studioDraftThumbById = $state<Record<string, string>>({});
+	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
 	let loading = $state(true);
 	let creating = $state(false);
 	let createError = $state('');
 	let userId = $state('');
 	let mounted = $state(false);
-	onMount(() => { mounted = true; });
+	let filterTab = $state<'all' | 'draft' | 'published' | 'scheduled'>('all');
+	/** Multi-select for Studio drafts (bulk delete). */
+	let selectedDraftIds = $state<string[]>([]);
+	let bulkDeletingDrafts = $state(false);
+	/** Track hero URLs that failed to load so we fall back to text cards. */
+	let brokenDraftThumbIds = $state<Record<string, true>>({});
+	let brokenSavedThumbIds = $state<Record<string, true>>({});
+
+	/** Bulk stacks that are not YouTube-clip projects (those get their own section). */
+	const topicBulkWorkspaces = $derived(
+		bulkWorkspaces.filter((ws) => !ws.clipProjectId && !ws.fromVideoClips),
+	);
+
+	/** Prefer cloud bulk workspace when a clip project was already saved there. */
+	const orphanClipProjects = $derived(
+		(() => {
+			const linked = new Set(
+				bulkWorkspaces.map((ws) => String(ws.clipProjectId ?? '').trim()).filter(Boolean),
+			);
+			return clipProjects.filter((p) => !linked.has(p.id));
+		})(),
+	);
+
+	const clipShowCards = $derived(
+		(() => {
+			const orphans = orphanClipProjects;
+			const fromLinkedBulk = bulkWorkspaces
+				.filter((ws) => !!ws.clipProjectId || !!ws.fromVideoClips)
+				.flatMap((ws) => {
+					const shows = ws.shows?.length
+						? ws.shows
+						: ([
+								{
+									id: '',
+									title: ws.title || 'YouTube clips',
+									slideCount: 0,
+									headline: '',
+									thumb: String(ws.thumbnailUrl ?? ''),
+									template: 'news',
+								},
+							] as BulkShowCard[]);
+					return shows.map((show, i) => ({
+						projectId: ws.clipProjectId || ws.id,
+						workspaceId: ws.id,
+						projectTitle: ws.topic || ws.title || 'YouTube clips',
+						updatedAt: ws.updatedAt,
+						href: show.id
+							? `/dashboard/bulk/${ws.id}?show=${encodeURIComponent(show.id)}`
+							: `/dashboard/bulk/${ws.id}`,
+						pill: 'YouTube',
+						show: {
+							...show,
+							thumb: show.thumb || String(ws.thumbnailUrl ?? ''),
+						},
+						key: `yt-bulk-${ws.id}-${show.id || i}`,
+					}));
+				});
+
+			const fromOrphans = orphans.flatMap((project) => {
+				const shows = project.shows?.length
+					? project.shows
+					: ([
+							{
+								id: '',
+								title: project.title || 'YouTube clips',
+								slideCount: project.clipCount || 0,
+								headline: project.summary || '',
+								thumb: String(project.thumbnailUrl ?? ''),
+								template: 'news',
+							},
+						] as BulkShowCard[]);
+				return shows.map((show, i) => ({
+					projectId: project.id,
+					workspaceId: '' as string,
+					projectTitle: project.title || project.sourceTitle || 'YouTube clips',
+					updatedAt: project.updatedAt,
+					href: project.url,
+					pill: 'YouTube',
+					show: {
+						...show,
+						thumb: show.thumb || String(project.thumbnailUrl ?? ''),
+					},
+					key: `clip-${project.id}-${show.id || i}`,
+				}));
+			});
+
+			return [...fromLinkedBulk, ...fromOrphans];
+		})(),
+	);
+
+	const bulkShowCards = $derived(
+		topicBulkWorkspaces.flatMap((ws) => {
+			const shows = ws.shows?.length
+				? ws.shows
+				: ([
+						{
+							id: '',
+							title: ws.title || 'Bulk carousel',
+							slideCount: 0,
+							headline: '',
+							thumb: String(ws.thumbnailUrl ?? ''),
+							template: 'news',
+						},
+					] as BulkShowCard[]);
+			return shows.map((show) => ({
+				workspaceId: ws.id,
+				workspaceTopic: ws.topic || ws.title,
+				updatedAt: ws.updatedAt,
+				href: show.id
+					? `/dashboard/bulk/${ws.id}?show=${encodeURIComponent(show.id)}`
+					: `/dashboard/bulk/${ws.id}`,
+				show,
+			}));
+		}),
+	);
+
+	const libraryEmpty = $derived(
+		studioSavedTemplates.length === 0 &&
+			studioDrafts.length === 0 &&
+			carousels.length === 0 &&
+			bulkWorkspaces.length === 0 &&
+			clipProjects.length === 0,
+	);
 
 	function studioDraftTitle(d: { state?: Record<string, unknown> }): string {
 		const slides = d.state?.slides;
 		if (Array.isArray(slides) && slides.length) {
-			const t = stripMarkup(String(slides[0] ?? '')).trim().replace(/\s+/g, ' ');
+			const t = stripMarkup(String(slides[0] ?? ''))
+				.trim()
+				.replace(/\s+/g, ' ');
 			if (t) return t.length > 72 ? `${t.slice(0, 69)}…` : t;
 		}
 		const src = d.state?.source;
@@ -69,9 +245,7 @@
 		heroUrl: string;
 		slideCount: number;
 		slideHints: string[];
-		/** Filmstrip chips on light previews (tweet / light news) */
 		filmLight: boolean;
-		/** Saved slide PNG from Storage — already includes headline; don’t paint copy on top */
 		fullSlideRaster: boolean;
 	};
 
@@ -91,17 +265,16 @@
 		const pickHero = (key: string) => {
 			const u = String(bgMap[key]?.[0] ?? '').trim();
 			if (u.startsWith('http://') || u.startsWith('https://')) return u;
-			// Draft state embeds AI/uploads as data URLs — same-origin img supports these for thumbnails.
 			if (u.startsWith('data:image/') && u.length < 2_500_000) return u;
 			return '';
 		};
 
-		/** Prefer R2-signed hero (stored key in draft state); then legacy HTTPS URL; avoids Supabase CDN for PNGs when R2 is set up. */
 		const storagePreviewHero = (() => {
 			const id = String(d.id ?? '').trim();
+			if (id && brokenDraftThumbIds[id]) return '';
 			const signed = id ? (studioDraftThumbById[id] ?? '').trim() : '';
 			if (signed.startsWith('http://') || signed.startsWith('https://')) return signed;
-			const u = String((s as any).draftPreviewUrl ?? '').trim();
+			const u = String((s as Record<string, unknown>).draftPreviewUrl ?? '').trim();
 			return u.startsWith('http://') || u.startsWith('https://') ? u : '';
 		})();
 
@@ -138,13 +311,9 @@
 			const solid = String(strArr(s.newsSolidBgBySlide)[0] ?? '').trim();
 			bgSolid = solid || (heroUrl ? '#0a0a0a' : '#ffffff');
 			const tc = String(s.textColor ?? '').trim();
-			if (tc) {
-				textColor = tc;
-			} else if (heroUrl) {
-				textColor = '#ffffff';
-			} else {
-				textColor = isLightHex(bgSolid) ? '#0a0a0a' : '#f5f5f5';
-			}
+			if (tc) textColor = tc;
+			else if (heroUrl) textColor = '#ffffff';
+			else textColor = isLightHex(bgSolid) ? '#0a0a0a' : '#f5f5f5';
 		} else if (tpl === 'tweet') {
 			bgSolid = '#ffffff';
 			textColor = '#0a0a0a';
@@ -191,16 +360,13 @@
 		};
 	}
 
-	async function deleteStudioDraft(id: string) {
-		if (!confirm('Delete this studio draft? This cannot be undone.')) return;
-		// Best-effort: remove raster thumbnail from R2 (Studio saves `{userId}/{draftId}.png`).
+	async function deleteStudioDraft(id: string, opts?: { skipConfirm?: boolean }) {
+		if (!opts?.skipConfirm && !confirm('Delete this studio draft? This cannot be undone.')) return;
 		try {
 			const row = studioDrafts.find((x) => x.id === id);
-			const st = row?.state as any;
+			const st = row?.state as Record<string, unknown> | undefined;
 			const key =
-				String(st?.draftPreviewKey ?? '').trim() ||
-				String(st?.draftPreviewPath ?? '').trim() ||
-				`${userId}/${id}.png`;
+				String(st?.draftPreviewKey ?? '').trim() || String(st?.draftPreviewPath ?? '').trim();
 			if (key) await r2DeleteObject({ key });
 		} catch {
 			// ignore
@@ -216,49 +382,67 @@
 			return;
 		}
 		studioDrafts = studioDrafts.filter((x) => x.id !== id);
+		selectedDraftIds = selectedDraftIds.filter((x) => x !== id);
 		const nextThumb = { ...studioDraftThumbById };
 		delete nextThumb[id];
 		studioDraftThumbById = nextThumb;
+		if (brokenDraftThumbIds[id]) {
+			const nextBroken = { ...brokenDraftThumbIds };
+			delete nextBroken[id];
+			brokenDraftThumbIds = nextBroken;
+		}
 	}
 
-	async function deleteStudioSavedTemplate(id: string) {
-		if (!confirm('Delete this saved template? This cannot be undone.')) return;
-		// Best-effort: delete stored PNG first (ignore errors).
-		try {
-			const row = studioSavedTemplates.find((x) => x.id === id);
-			const s = row?.state as any;
-			const key =
-				String(s?.draftPreviewKey ?? '').trim() ||
-				String(s?.draftPreviewPath ?? '').trim() ||
-				`${userId}/templates/${id}.png`;
-			if (key) await r2DeleteObject({ key });
-		} catch {
-			// ignore
+	const allDraftsSelected = $derived(
+		studioDrafts.length > 0 && selectedDraftIds.length === studioDrafts.length,
+	);
+
+	function toggleDraftSelected(id: string) {
+		if (selectedDraftIds.includes(id)) {
+			selectedDraftIds = selectedDraftIds.filter((x) => x !== id);
+		} else {
+			selectedDraftIds = [...selectedDraftIds, id];
 		}
-		const { error } = await (supabase as any)
-			.from('drafts')
-			.delete()
-			.eq('id', id)
-			.eq('user_id', userId)
-			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
-		if (error) {
-			alert(error.message ?? 'Could not delete template');
+	}
+
+	function toggleSelectAllDrafts() {
+		if (allDraftsSelected) selectedDraftIds = [];
+		else selectedDraftIds = studioDrafts.map((d) => d.id);
+	}
+
+	async function deleteSelectedDrafts() {
+		const ids = [...selectedDraftIds];
+		if (!ids.length) return;
+		if (
+			!confirm(
+				`Delete ${ids.length} studio draft${ids.length === 1 ? '' : 's'}? This cannot be undone.`,
+			)
+		) {
 			return;
 		}
-		studioSavedTemplates = studioSavedTemplates.filter((x) => x.id !== id);
-		{
-			const next = { ...studioSavedTemplateThumbById };
-			delete next[id];
-			studioSavedTemplateThumbById = next;
+		bulkDeletingDrafts = true;
+		try {
+			for (const id of ids) {
+				await deleteStudioDraft(id, { skipConfirm: true });
+			}
+			selectedDraftIds = [];
+		} finally {
+			bulkDeletingDrafts = false;
 		}
 	}
 
 	onMount(async () => {
-		const { data: { user } } = await supabase.auth.getUser();
-		if (!user) { goto('/login'); return; }
+		mounted = true;
+		const {
+			data: { user },
+		} = await supabase.auth.getUser();
+		if (!user) {
+			goto('/login');
+			return;
+		}
 		userId = user.id;
 
-		const [carouselRes, draftRes, savedTplRes] = await Promise.all([
+		const [carouselRes, draftRes, savedTplRes, bulkRes, clipRes] = await Promise.all([
 			(supabase as any).from('carousels').select('*').order('updated_at', { ascending: false }),
 			(supabase as any)
 				.from('drafts')
@@ -273,46 +457,140 @@
 				.eq('user_id', user.id)
 				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
 				.order('updated_at', { ascending: false })
-				.limit(24),
+				.limit(48),
+			fetch('/api/bulk/workspaces')
+				.then(async (res) => (res.ok ? ((await res.json()) as { workspaces?: BulkWorkspaceCard[] }) : { workspaces: [] }))
+				.catch(() => ({ workspaces: [] as BulkWorkspaceCard[] })),
+			fetch('/api/videos/clip-projects')
+				.then(async (res) => (res.ok ? ((await res.json()) as { projects?: ClipProjectCard[] }) : { projects: [] }))
+				.catch(() => ({ projects: [] as ClipProjectCard[] })),
 		]);
 		carousels = carouselRes.data ?? [];
 		studioDrafts = draftRes.data ?? [];
 		studioSavedTemplates = savedTplRes.data ?? [];
-		await hydrateSavedTemplateThumbs();
-		await hydrateStudioDraftThumbs();
+		bulkWorkspaces = Array.isArray(bulkRes.workspaces) ? bulkRes.workspaces : [];
+		clipProjects = Array.isArray(clipRes.projects) ? clipRes.projects : [];
+
+		// One-time recovery: Bulk used to fail cloud save when `bulk_workspaces` was missing.
+		// Upload local draft + history so Carousels can show what was generated in this browser.
+		if (bulkWorkspaces.length === 0) {
+			await syncLocalBulkIntoCloud(user.id);
+			try {
+				const res = await fetch('/api/bulk/workspaces');
+				if (res.ok) {
+					const json = (await res.json()) as { workspaces?: BulkWorkspaceCard[] };
+					bulkWorkspaces = Array.isArray(json.workspaces) ? json.workspaces : [];
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+
+		// Promote orphan YouTube clip projects into bulk workspaces so they share the same library path.
+		await syncOrphanClipProjectsIntoCloud();
+		try {
+			const [bulkRefresh, clipRefresh] = await Promise.all([
+				fetch('/api/bulk/workspaces')
+					.then(async (res) =>
+						res.ok ? ((await res.json()) as { workspaces?: BulkWorkspaceCard[] }) : null,
+					)
+					.catch(() => null),
+				fetch('/api/videos/clip-projects')
+					.then(async (res) =>
+						res.ok ? ((await res.json()) as { projects?: ClipProjectCard[] }) : null,
+					)
+					.catch(() => null),
+			]);
+			if (bulkRefresh?.workspaces) bulkWorkspaces = bulkRefresh.workspaces;
+			if (clipRefresh?.projects) clipProjects = clipRefresh.projects;
+		} catch {
+			/* ignore */
+		}
+
+		await Promise.all([hydrateStudioDraftThumbs(), hydrateSavedTemplateThumbs()]);
 		loading = false;
 	});
 
-	function studioSavedTemplateName(row: { state?: Record<string, unknown> }): string {
-		const raw = String((row.state as any)?._templateName ?? '').trim();
-		return raw || 'Untitled template';
+	async function syncLocalBulkIntoCloud(uid: string) {
+		const history = loadBulkHistory(uid);
+		for (const entry of history) {
+			if (!showsHaveContent(entry.shows)) continue;
+			await postBulkWorkspace({
+				topic: entry.topic,
+				shows: entry.shows,
+				selectedShowId: entry.selectedShowId,
+			});
+		}
+		const local = loadBulkWorkspace(uid);
+		if (local && showsHaveContent(local.shows)) {
+			await postBulkWorkspace({
+				topic: local.topic,
+				shows: local.shows,
+				selectedShowId: local.selectedShowId,
+			});
+		}
 	}
 
-	async function hydrateStudioDraftThumbs() {
-		const rows = studioDrafts;
-		if (!userId || !rows.length) {
-			studioDraftThumbById = {};
-			return;
-		}
-		const next: Record<string, string> = {};
-		await Promise.all(
-			rows.map(async (row) => {
-				const id = String(row.id ?? '').trim();
-				if (!id) return;
-				const s = row.state as any;
-				const key =
-					String(s?.draftPreviewKey ?? '').trim() ||
-					String(s?.draftPreviewPath ?? '').trim() ||
-					`${userId}/${id}.png`;
-				try {
-					const { url } = await r2SignRead({ key });
-					next[id] = url;
-				} catch {
-					// No object yet or legacy draft — card falls back to `draftPreviewUrl` / inlined data URLs.
-				}
-			}),
+	async function syncOrphanClipProjectsIntoCloud() {
+		const linked = new Set(
+			bulkWorkspaces.map((ws) => String(ws.clipProjectId ?? '').trim()).filter(Boolean),
 		);
-		studioDraftThumbById = next;
+		for (const project of clipProjects) {
+			if (linked.has(project.id)) continue;
+			if (!project.hasBulkShows || !project.shows?.length) continue;
+			try {
+				const res = await fetch(`/api/videos/clip-projects/${project.id}`);
+				if (!res.ok) continue;
+				const json = (await res.json()) as {
+					project?: { bulkShows?: unknown[]; title?: string; source?: { title?: string } };
+				};
+				const shows = Array.isArray(json.project?.bulkShows) ? json.project!.bulkShows! : [];
+				if (!shows.length) continue;
+				await postBulkWorkspace({
+					topic: json.project?.title || json.project?.source?.title || project.title,
+					shows,
+					clipProjectId: project.id,
+				});
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
+	async function postBulkWorkspace(payload: {
+		topic?: string;
+		shows: unknown[];
+		selectedShowId?: string | null;
+		clipProjectId?: string | null;
+	}): Promise<string | null> {
+		try {
+			const res = await fetch('/api/bulk/workspaces', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
+			if (!res.ok) return null;
+			const json = (await res.json()) as { id?: string };
+			return json.id ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	async function deleteBulkWorkspace(id: string) {
+		if (!confirm('Delete this bulk generation? This cannot be undone.')) return;
+		try {
+			const res = await fetch(`/api/bulk/workspaces/${id}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error('Delete failed');
+			bulkWorkspaces = bulkWorkspaces.filter((w) => w.id !== id);
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'Could not delete');
+		}
+	}
+
+	function studioSavedTemplateName(row: { state?: Record<string, unknown> }): string {
+		const raw = String((row.state as Record<string, unknown> | undefined)?._templateName ?? '').trim();
+		return raw || 'Untitled carousel';
 	}
 
 	async function hydrateSavedTemplateThumbs() {
@@ -326,27 +604,31 @@
 			rows.map(async (row) => {
 				const id = String(row.id ?? '').trim();
 				if (!id) return;
-				const s = row.state as any;
+				const s = row.state as Record<string, unknown> | undefined;
 				const key =
-					String(s?.draftPreviewKey ?? '').trim() ||
-					String(s?.draftPreviewPath ?? '').trim() ||
-					`${userId}/templates/${id}.png`;
+					String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+				if (!key) return;
 				try {
 					const { url } = await r2SignRead({ key });
-					// Do not append query params — presigned URLs must match signing exactly or R2 returns SignatureDoesNotMatch.
-					next[id] = url;
+					if (url) next[id] = url;
 				} catch {
 					// ignore
 				}
 			}),
 		);
 		studioSavedTemplateThumbById = next;
+		brokenSavedThumbIds = {};
 	}
 
-	function studioSavedTemplatePreviewUrl(row: { state?: Record<string, unknown> }): { url: string; fullSlideRaster: boolean } {
-		const signed = studioSavedTemplateThumbById[String((row as any)?.id ?? '').trim()];
+	function studioSavedTemplatePreviewUrl(row: {
+		id?: string;
+		state?: Record<string, unknown>;
+	}): { url: string; fullSlideRaster: boolean } {
+		const id = String(row.id ?? '').trim();
+		if (id && brokenSavedThumbIds[id]) return { url: '', fullSlideRaster: false };
+		const signed = studioSavedTemplateThumbById[id];
 		if (signed) return { url: signed, fullSlideRaster: true };
-		const s = row.state as any;
+		const s = row.state as Record<string, unknown> | undefined;
 		const draftPreviewUrl = String(s?.draftPreviewUrl ?? '').trim();
 		if (draftPreviewUrl.startsWith('http://') || draftPreviewUrl.startsWith('https://')) {
 			return { url: draftPreviewUrl, fullSlideRaster: true };
@@ -358,48 +640,135 @@
 		return { url: '', fullSlideRaster: false };
 	}
 
+	async function deleteStudioSavedTemplate(id: string) {
+		if (!confirm('Delete this saved carousel? This cannot be undone.')) return;
+		try {
+			const row = studioSavedTemplates.find((x) => x.id === id);
+			const s = row?.state as Record<string, unknown> | undefined;
+			const key =
+				String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+			if (key) await r2DeleteObject({ key });
+		} catch {
+			// ignore
+		}
+		const { error } = await (supabase as any)
+			.from('drafts')
+			.delete()
+			.eq('id', id)
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+		if (error) {
+			alert(error.message ?? 'Could not delete');
+			return;
+		}
+		studioSavedTemplates = studioSavedTemplates.filter((x) => x.id !== id);
+		const next = { ...studioSavedTemplateThumbById };
+		delete next[id];
+		studioSavedTemplateThumbById = next;
+	}
+
+	async function hydrateStudioDraftThumbs() {
+		const rows = studioDrafts;
+		if (!userId || !rows.length) {
+			studioDraftThumbById = {};
+			return;
+		}
+		const next: Record<string, string> = {};
+		await Promise.all(
+			rows.map(async (row) => {
+				const id = String(row.id ?? '').trim();
+				if (!id) return;
+				const s = row.state as Record<string, unknown> | undefined;
+				// Only sign real preview keys — inventing `${userId}/${id}.png` yields 404 URLs
+				// that show as broken-image icons on every card.
+				const key =
+					String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+				if (!key) return;
+				try {
+					const { url } = await r2SignRead({ key });
+					if (url) next[id] = url;
+				} catch {
+					// ignore
+				}
+			}),
+		);
+		studioDraftThumbById = next;
+		brokenDraftThumbIds = {};
+	}
+
 	async function createNew() {
 		creating = true;
 		createError = '';
-		const { data, error } = await (supabase as any).from('carousels').insert({
-			user_id: userId,
-			title: 'Untitled carousel',
-			status: 'draft',
-			slides: JSON.stringify([
-				{ id: '1', text: 'Your hook here', type: 'hook', bg: '#0f172a', textColor: '#ffffff', align: 'center', bold: true, fontSize: 32 },
-				{ id: '2', text: 'Key insight or point', type: 'body', bg: '#111111', textColor: '#f8f8f8', align: 'center', bold: false, fontSize: 28 },
-				{ id: '3', text: 'Another key point', type: 'body', bg: '#111111', textColor: '#f8f8f8', align: 'center', bold: false, fontSize: 28 },
-			]),
-		}).select().single();
+		const { data, error } = await (supabase as any)
+			.from('carousels')
+			.insert({
+				user_id: userId,
+				title: 'Untitled carousel',
+				status: 'draft',
+				slides: JSON.stringify([
+					{
+						id: '1',
+						text: 'Your hook here',
+						type: 'hook',
+						bg: '#0f172a',
+						textColor: '#ffffff',
+						align: 'center',
+						bold: true,
+						fontSize: 32,
+					},
+					{
+						id: '2',
+						text: 'Key insight or point',
+						type: 'body',
+						bg: '#111111',
+						textColor: '#f8f8f8',
+						align: 'center',
+						bold: false,
+						fontSize: 28,
+					},
+					{
+						id: '3',
+						text: 'Another key point',
+						type: 'body',
+						bg: '#111111',
+						textColor: '#f8f8f8',
+						align: 'center',
+						bold: false,
+						fontSize: 28,
+					},
+				]),
+			})
+			.select()
+			.single();
 		creating = false;
-		if (error) { createError = error.message; return; }
+		if (error) {
+			createError = error.message;
+			return;
+		}
 		if (data) goto(`/dashboard/editor/${data.id}`);
 	}
 
 	async function deleteCarousel(id: string) {
 		if (!confirm('Delete this carousel?')) return;
 		await (supabase as any).from('carousels').delete().eq('id', id);
-		carousels = carousels.filter(c => c.id !== id);
+		carousels = carousels.filter((c) => c.id !== id);
 	}
 
-	const statusIcon: Record<string, any> = { draft: FileText, published: CheckCircle, scheduled: Clock };
-	const statusColor: Record<string, string> = {
-		draft: 'text-white/30',
-		published: 'text-cyan-400',
-		scheduled: 'text-violet-400',
+	const statusIcon: Record<string, typeof FileText> = {
+		draft: FileText,
+		published: CheckCircle,
+		scheduled: Clock,
 	};
 
-	let filterTab = $state<'all' | 'draft' | 'published' | 'scheduled'>('all');
-
 	const filteredCarousels = $derived(
-		filterTab === 'all' ? carousels : carousels.filter(c => c.status === filterTab)
+		filterTab === 'all' ? carousels : carousels.filter((c) => c.status === filterTab),
 	);
 
 	const counts = $derived({
 		all: carousels.length,
-		draft: carousels.filter(c => c.status === 'draft').length,
-		published: carousels.filter(c => c.status === 'published').length,
-		scheduled: carousels.filter(c => c.status === 'scheduled').length,
+		draft: carousels.filter((c) => c.status === 'draft').length,
+		published: carousels.filter((c) => c.status === 'published').length,
+		scheduled: carousels.filter((c) => c.status === 'scheduled').length,
 	});
 
 	function timeAgo(dateStr: string): string {
@@ -412,55 +781,193 @@
 		if (h < 24) return `${h}h ago`;
 		return `${Math.floor(h / 24)}d ago`;
 	}
+
+	function parseSlides(c: { slides?: unknown }): any[] {
+		try {
+			const raw = c.slides;
+			return JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw ?? []));
+		} catch {
+			return [];
+		}
+	}
 </script>
 
 <div class="page-wrap" class:mounted>
-
-	<!-- ── Hero header ─────────────────────────────────────────────────────── -->
 	<header class="page-hero">
 		<div class="page-hero-text">
-			<div class="page-eyebrow">
-				<span class="page-eyebrow-dot"></span>
-				<span>Library</span>
-			</div>
 			<h1 class="page-title">Carousels</h1>
-			<p class="page-sub">Pick a template to start, or jump back into a saved layout or studio draft.</p>
+			<p class="page-sub">Bulk generations, YouTube clips, Studio drafts, and named saves — open one to keep editing.</p>
 		</div>
-		<button onclick={createNew} disabled={creating} class="create-btn">
-			{#if creating}<Loader size={14} class="spin" />{:else}<Plus size={15} />{/if}
-			New carousel
-		</button>
+		<div class="hero-actions">
+			<a href="/dashboard/templates" class="ghost-btn">Browse templates</a>
+			<a href="/dashboard/bulk" class="create-btn"><Plus size={15} /> New from Bulk</a>
+		</div>
 	</header>
 
 	{#if createError}
-		<div style="margin-bottom:1rem;padding:0.75rem 1rem;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);font-size:0.8125rem;color:#f87171;">
-			⚠ {createError}
+		<div class="error-banner">⚠ {createError}</div>
+	{/if}
+
+	{#if loading}
+		<div class="carousel-grid" style="margin-bottom: 28px;">
+			{#each Array(6) as _}
+				<div class="skeleton-card"></div>
+			{/each}
+		</div>
+	{:else if libraryEmpty}
+		<div class="empty-state reveal" style="--d:0.08s">
+			<div class="empty-icon"><ImagePlus size={22} /></div>
+			<h3 class="empty-title">No carousels yet</h3>
+			<p class="empty-desc">
+				Generate in Bulk, clip a YouTube video, or edit in Studio — all autosave here. Use Save template for a named Studio copy.
+			</p>
+			<div class="empty-actions">
+				<a href="/dashboard/bulk" class="empty-cta"><Rows3 size={14} /> Open Bulk</a>
+				<a href="/dashboard/videos" class="ghost-btn">Clip YouTube</a>
+				<a href="/dashboard/studio?template=news" class="ghost-btn">Open Studio</a>
+			</div>
 		</div>
 	{/if}
 
-	<!-- ── Starter Templates ───────────────────────────────────────────────── -->
-	<section class="templates-section reveal" style="--d:0.05s">
-		<div class="section-head">
-			<h2 class="section-title">Start from a template</h2>
-			<p class="section-sub">Hand‑crafted layouts that open straight into Studio — {STARTER_TEMPLATES.length} templates.</p>
-		</div>
+	{#if clipShowCards.length > 0}
+		<section class="studio-drafts-block reveal" style="--d:0.02s">
+			<div class="studio-drafts-head">
+				<h2 class="studio-drafts-title">From YouTube clips</h2>
+				<p class="studio-drafts-sub">
+					Carousels built from long-video clip finder. Open one to edit captions, reframe, and export.
+				</p>
+			</div>
+			<div class="carousel-grid studio-drafts-grid">
+				{#each clipShowCards as card, i (card.key)}
+					{@const title = card.show.title || card.show.headline || 'Untitled clip'}
+					{@const headline = card.show.headline || title}
+					<div class="carousel-card reveal group studio-draft-card" style="--d:{0.06 + i * 0.03}s">
+						<a href={card.href} class="card-preview studio-draft-card-preview" style="background-color: #0a0a0a;">
+							{#if card.show.thumb}
+								<img
+									src={card.show.thumb}
+									alt=""
+									class="studio-draft-bg-img studio-draft-bg-img--full-slide"
+									referrerpolicy="no-referrer"
+									loading="lazy"
+									draggable="false"
+								/>
+							{:else}
+								<p class="card-preview-text studio-draft-preview-headline" style="color: #f5f5f5">
+									{headline}
+								</p>
+							{/if}
+						</a>
+						{#if card.show.slideCount}
+							<div class="slide-count">{card.show.slideCount} slides</div>
+						{/if}
+						<div class="studio-draft-template-pill">{card.pill}</div>
+						<div class="card-footer">
+							<div class="card-info">
+								<p class="card-title-text">{title}</p>
+								<p class="card-time">
+									{card.projectTitle ? `${card.projectTitle.slice(0, 42)}${card.projectTitle.length > 42 ? '…' : ''} · ` : ''}{timeAgo(card.updatedAt)}
+								</p>
+							</div>
+							<div class="card-actions">
+								<a href={card.href} class="card-action card-action--edit" title="Open clip carousel">
+									<Edit2 size={11} />
+								</a>
+								{#if card.workspaceId}
+									<button
+										type="button"
+										class="card-action card-action--delete"
+										title="Delete from library"
+										onclick={() => void deleteBulkWorkspace(card.workspaceId)}
+									>
+										<Trash2 size={11} />
+									</button>
+								{/if}
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
 
-		<StarterTemplateGrid templates={STARTER_TEMPLATES} />
-	</section>
+	{#if bulkShowCards.length > 0}
+		<section class="studio-drafts-block reveal" style="--d:0.04s">
+			<div class="studio-drafts-head">
+				<h2 class="studio-drafts-title">From Bulk</h2>
+				<p class="studio-drafts-sub">
+					Carousels generated in the Bulk editor. Open one to keep editing the full stack.
+				</p>
+			</div>
+			<div class="carousel-grid studio-drafts-grid">
+				{#each bulkShowCards as card, i (`${card.workspaceId}-${card.show.id || i}`)}
+					{@const title = card.show.title || card.show.headline || 'Untitled carousel'}
+					{@const headline = card.show.headline || title}
+					<div class="carousel-card reveal group studio-draft-card" style="--d:{0.08 + i * 0.03}s">
+						<a href={card.href} class="card-preview studio-draft-card-preview" style="background-color: #0a0a0a;">
+							{#if card.show.thumb}
+								<img
+									src={card.show.thumb}
+									alt=""
+									class="studio-draft-bg-img studio-draft-bg-img--full-slide"
+									referrerpolicy="no-referrer"
+									loading="lazy"
+									draggable="false"
+								/>
+							{:else}
+								<p class="card-preview-text studio-draft-preview-headline" style="color: #f5f5f5">
+									{headline}
+								</p>
+							{/if}
+						</a>
+						{#if card.show.slideCount}
+							<div class="slide-count">{card.show.slideCount} slides</div>
+						{/if}
+						<div class="studio-draft-template-pill">Bulk</div>
+						<div class="card-footer">
+							<div class="card-info">
+								<p class="card-title-text">{title}</p>
+								<p class="card-time">
+									{card.workspaceTopic ? `${card.workspaceTopic.slice(0, 42)}${card.workspaceTopic.length > 42 ? '…' : ''} · ` : ''}{timeAgo(card.updatedAt)}
+								</p>
+							</div>
+							<div class="card-actions">
+								<a href={card.href} class="card-action card-action--edit" title="Open in Bulk">
+									<Edit2 size={11} />
+								</a>
+								<button
+									type="button"
+									class="card-action card-action--delete"
+									title="Delete bulk generation"
+									onclick={() => void deleteBulkWorkspace(card.workspaceId)}
+								>
+									<Trash2 size={11} />
+								</button>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
 
 	{#if studioSavedTemplates.length > 0}
-		<section class="saved-templates-block reveal" style="--d:0.18s">
-			<div class="saved-templates-head">
-				<h2 class="saved-templates-title">Saved Studio templates</h2>
-				<p class="saved-templates-sub">
-					Layouts and copy you saved from News Studio open as a new session. Thumbnails show the saved first slide PNG when available.
+		<section class="studio-drafts-block reveal" style="--d:0.06s">
+			<div class="studio-drafts-head">
+				<h2 class="studio-drafts-title">Saved from Studio</h2>
+				<p class="studio-drafts-sub">
+					Carousels you saved with Save template. Thumbnails show the first slide when available.
 				</p>
 			</div>
 			<div class="saved-templates-grid">
 				{#each studioSavedTemplates as row, i (row.id)}
 					{@const pv = studioSavedTemplatePreviewUrl(row)}
-					<div class="saved-template-tile reveal group" style="--d:{0.22 + i * 0.04}s">
-						<a class="saved-template-link" href="/dashboard/studio?saved={row.id}" aria-label="Open saved template">
+					<div class="saved-template-tile reveal group" style="--d:{0.1 + i * 0.03}s">
+						<a
+							class="saved-template-link"
+							href="/dashboard/studio?saved={row.id}"
+							aria-label="Open {studioSavedTemplateName(row)}"
+						>
 							{#if pv.url}
 								<img
 									src={pv.url}
@@ -480,8 +987,8 @@
 						<button
 							type="button"
 							class="saved-template-del"
-							title="Delete template"
-							aria-label="Delete template"
+							title="Delete"
+							aria-label="Delete"
 							onclick={() => void deleteStudioSavedTemplate(row.id)}
 						>
 							<Trash2 size={12} />
@@ -493,30 +1000,60 @@
 	{/if}
 
 	{#if studioDrafts.length > 0}
-		<section class="studio-drafts-block reveal" style="--d:0.24s">
+		<section class="studio-drafts-block reveal" style="--d:0.08s">
 			<div class="studio-drafts-head">
-				<h2 class="studio-drafts-title">Studio drafts</h2>
-				<p class="studio-drafts-sub">
-					Workspace saves from News Studio — same card layout as your carousels. Open to edit, or delete when you no longer need a snapshot.
-				</p>
+				<div class="studio-drafts-head-row">
+					<div>
+						<h2 class="studio-drafts-title">Studio drafts</h2>
+						<p class="studio-drafts-sub">
+							Workspace saves from Studio. Open to edit, or select several to delete.
+						</p>
+					</div>
+					<div class="draft-select-bar">
+						<button type="button" class="draft-select-all" onclick={toggleSelectAllDrafts}>
+							<span class="draft-select-box" class:draft-select-box--on={allDraftsSelected} aria-hidden="true"></span>
+							{allDraftsSelected ? 'Deselect all' : 'Select all'}
+						</button>
+						{#if selectedDraftIds.length > 0}
+							<button
+								type="button"
+								class="draft-bulk-delete"
+								disabled={bulkDeletingDrafts}
+								onclick={() => void deleteSelectedDrafts()}
+							>
+								{#if bulkDeletingDrafts}
+									<Loader size={13} class="spin" />
+								{:else}
+									<Trash2 size={13} />
+								{/if}
+								Delete {selectedDraftIds.length}
+							</button>
+						{/if}
+					</div>
+				</div>
 			</div>
 			<div class="carousel-grid studio-drafts-grid">
-				{#each studioDrafts as d, i}
+				{#each studioDrafts as d, i (d.id)}
 					{@const pv = studioDraftPreview(d)}
+					{@const isSelected = selectedDraftIds.includes(d.id)}
 					<div
 						class="carousel-card reveal group studio-draft-card"
-						style="--card-bg: {pv.bgSolid}; --card-color: {pv.textColor}; --d:{0.28 + i * 0.04}s"
+						class:studio-draft-card--selected={isSelected}
+						style="--card-bg: {pv.bgSolid}; --card-color: {pv.textColor}; --d:{0.12 + i * 0.04}s"
 					>
+						<label class="draft-check">
+							<input
+								type="checkbox"
+								checked={isSelected}
+								onchange={() => toggleDraftSelected(d.id)}
+								onclick={(e) => e.stopPropagation()}
+							/>
+							<span class="sr-only">Select draft</span>
+						</label>
 						<a
 							href="/dashboard/studio?draft={d.id}"
 							class="card-preview studio-draft-card-preview"
-							style={
-								pv.heroUrl
-									? pv.fullSlideRaster
-										? `background-color: ${pv.bgSolid};`
-										: ''
-									: `background-color: ${pv.bgSolid};`
-							}
+							style={pv.heroUrl && !pv.fullSlideRaster ? '' : `background-color: ${pv.bgSolid};`}
 						>
 							{#if pv.heroUrl}
 								<img
@@ -525,13 +1062,18 @@
 									class="studio-draft-bg-img"
 									class:studio-draft-bg-img--full-slide={pv.fullSlideRaster}
 									referrerpolicy="no-referrer"
+									loading="lazy"
+									draggable="false"
+									onerror={() => {
+										brokenDraftThumbIds = { ...brokenDraftThumbIds, [d.id]: true };
+									}}
 								/>
 								{#if !pv.fullSlideRaster}
-									<div class="studio-draft-bg-scrim" aria-hidden="true"></div>
+									<div class="studio-draft-bg-scrim"></div>
 								{/if}
 							{/if}
-							{#if !pv.fullSlideRaster}
-								<p class="card-preview-text studio-draft-preview-headline" style="color: {pv.textColor};">
+							{#if !pv.fullSlideRaster || !pv.heroUrl}
+								<p class="card-preview-text studio-draft-preview-headline" style="color: {pv.textColor}">
 									{pv.headline}
 								</p>
 							{/if}
@@ -540,28 +1082,30 @@
 								class:studio-draft-filmstrip--light={pv.filmLight}
 								aria-hidden="true"
 							>
-								{#each pv.slideHints as hint, i}
+								{#each pv.slideHints as hint, hi}
 									<div
 										class="studio-draft-film-cell"
-										class:studio-draft-film-cell--on={i === 0}
-										title="Slide {i + 1}"
+										class:studio-draft-film-cell--on={hi === 0}
+										title="Slide {hi + 1}"
 									>
 										<span class="studio-draft-film-hint">{hint}</span>
 									</div>
 								{/each}
 							</div>
 						</a>
-
 						<div class="slide-count">{pv.slideCount} slides</div>
 						<div class="studio-draft-template-pill">{pv.templateLabel}</div>
-
 						<div class="card-footer">
 							<div class="card-info">
 								<p class="card-title-text">{studioDraftTitle(d)}</p>
 								<p class="card-time">Updated {timeAgo(d.updated_at)}</p>
 							</div>
 							<div class="card-actions">
-								<a href="/dashboard/studio?draft={d.id}" class="card-action card-action--edit" title="Open in Studio">
+								<a
+									href="/dashboard/studio?draft={d.id}"
+									class="card-action card-action--edit"
+									title="Open in Studio"
+								>
 									<Edit2 size={11} />
 								</a>
 								<button
@@ -579,19 +1123,91 @@
 			</div>
 		</section>
 	{/if}
+
+	{#if !loading && carousels.length > 0}
+	<section class="library-block reveal" style="--d:0.16s">
+		<div class="library-header">
+			<h2 class="library-title">Editor carousels</h2>
+			<div class="filter-tabs">
+				{#each [
+					{ id: 'all', label: 'All', count: counts.all },
+					{ id: 'draft', label: 'Drafts', count: counts.draft },
+					{ id: 'published', label: 'Published', count: counts.published },
+					{ id: 'scheduled', label: 'Scheduled', count: counts.scheduled },
+				] as t}
+					<button
+						type="button"
+						class="filter-tab"
+						class:filter-tab--on={filterTab === t.id}
+						onclick={() => (filterTab = t.id as typeof filterTab)}
+					>
+						{t.label}
+						{#if t.count > 0}<span class="filter-count">{t.count}</span>{/if}
+					</button>
+				{/each}
+			</div>
+		</div>
+
+		{#if filteredCarousels.length === 0}
+			<div class="empty-state">
+				<div class="empty-icon"><FileText size={22} /></div>
+				<h3 class="empty-title">No {filterTab} carousels</h3>
+				<p class="empty-desc">You don't have any {filterTab} carousels yet.</p>
+			</div>
+		{:else}
+			<div class="carousel-grid">
+				{#each filteredCarousels as c (c.id)}
+					{@const slides = parseSlides(c)}
+					{@const firstSlide = slides[0]}
+					<div
+						class="carousel-card group"
+						style="--card-bg: {firstSlide?.bg ?? '#111111'}; --card-color: {firstSlide?.textColor ?? '#ffffff'}"
+					>
+						<a href="/dashboard/editor/{c.id}" class="card-preview">
+							<p class="card-preview-text">{firstSlide?.text || 'Untitled'}</p>
+						</a>
+						<div class="slide-count">{slides.length} slides</div>
+						<div class="card-status status-{c.status}">
+							<svelte:component this={statusIcon[c.status] ?? FileText} size={9} />
+							{c.status}
+						</div>
+						<div class="card-footer">
+							<div class="card-info">
+								<p class="card-title-text">{c.title}</p>
+								<p class="card-time">{timeAgo(c.updated_at ?? c.created_at)}</p>
+							</div>
+							<div class="card-actions">
+								<a href="/dashboard/editor/{c.id}" class="card-action card-action--edit">
+									<Edit2 size={11} />
+								</a>
+								<button
+									type="button"
+									class="card-action card-action--delete"
+									onclick={() => void deleteCarousel(c.id)}
+								>
+									<Trash2 size={11} />
+								</button>
+							</div>
+						</div>
+					</div>
+				{/each}
+				<button type="button" onclick={createNew} disabled={creating} class="new-card-btn">
+					<div class="new-card-icon"><Plus size={18} /></div>
+					<span class="new-card-label">New carousel</span>
+				</button>
+			</div>
+		{/if}
+	</section>
+	{/if}
 </div>
 
 <style>
-	/* ─── Tokens (homepage palette) ────────────────────────── */
-	:root:not([data-theme="dark"]) {
-		--ap-text:   #0a0a0a;
+	:root:not([data-theme='dark']) {
+		--ap-text: #0a0a0a;
 		--ap-text-2: rgba(10, 10, 10, 0.62);
 		--ap-text-3: rgba(10, 10, 10, 0.42);
-		--ap-line:   rgba(10, 10, 10, 0.08);
-		--ap-line-2: rgba(10, 10, 10, 0.16);
-		--ap-soft:   #f6f5f1;
-		--ap-bg:     #ffffff;
-
+		--ap-soft: #f6f5f1;
+		--ap-bg: #ffffff;
 		--panel-bg: #ffffff;
 		--panel-bg-2: #fafafa;
 		--panel-border: rgba(10, 10, 10, 0.08);
@@ -599,19 +1215,15 @@
 		--t-strong: var(--ap-text);
 		--t: var(--ap-text-2);
 		--t-muted: var(--ap-text-3);
-
-		--shadow-soft: 0 1px 2px rgba(10, 10, 10, 0.04), 0 8px 22px -10px rgba(10, 10, 10, 0.10);
-		--shadow-pop:  0 18px 40px -16px rgba(10, 10, 10, 0.18), 0 6px 14px -8px rgba(10, 10, 10, 0.12);
+		--shadow-soft: 0 1px 2px rgba(10, 10, 10, 0.04), 0 8px 22px -10px rgba(10, 10, 10, 0.1);
+		--shadow-pop: 0 18px 40px -16px rgba(10, 10, 10, 0.18), 0 6px 14px -8px rgba(10, 10, 10, 0.12);
 	}
-	:root[data-theme="dark"] {
-		--ap-text:   #f5f5f5;
+	:root[data-theme='dark'] {
+		--ap-text: #f5f5f5;
 		--ap-text-2: rgba(245, 245, 245, 0.66);
 		--ap-text-3: rgba(245, 245, 245, 0.42);
-		--ap-line:   rgba(255, 255, 255, 0.07);
-		--ap-line-2: rgba(255, 255, 255, 0.14);
-		--ap-soft:   #161616;
-		--ap-bg:     #0a0a0a;
-
+		--ap-soft: #161616;
+		--ap-bg: #0a0a0a;
 		--panel-bg: rgba(255, 255, 255, 0.025);
 		--panel-bg-2: rgba(255, 255, 255, 0.045);
 		--panel-border: rgba(255, 255, 255, 0.07);
@@ -619,9 +1231,8 @@
 		--t-strong: var(--ap-text);
 		--t: var(--ap-text-2);
 		--t-muted: var(--ap-text-3);
-
 		--shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 28px -16px rgba(0, 0, 0, 0.55);
-		--shadow-pop:  0 18px 40px -18px rgba(0, 0, 0, 0.55);
+		--shadow-pop: 0 18px 40px -18px rgba(0, 0, 0, 0.55);
 	}
 
 	.page-wrap {
@@ -629,25 +1240,19 @@
 		max-width: 1560px;
 		margin: 0 auto;
 		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
-		letter-spacing: -0.01em;
-		-webkit-font-smoothing: antialiased;
 	}
-
-	/* ─── Reveal animation ─────────────────────────────────── */
 	.reveal {
 		opacity: 0;
 		transform: translateY(14px);
 		transition:
 			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s),
 			transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
-		will-change: opacity, transform;
 	}
 	.page-wrap.mounted .reveal {
 		opacity: 1;
-		transform: translateY(0);
+		transform: none;
 	}
 
-	/* ─── Hero header ──────────────────────────────────────── */
 	.page-hero {
 		display: flex;
 		align-items: flex-end;
@@ -655,14 +1260,12 @@
 		gap: 24px;
 		flex-wrap: wrap;
 		margin-bottom: 36px;
-		opacity: 0;
-		transform: translateY(10px);
-		animation: cs-hero-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.04s both;
 	}
-	@keyframes cs-hero-in {
-		to { opacity: 1; transform: translateY(0); }
+	.page-hero-text {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 	}
-	.page-hero-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 	.page-eyebrow {
 		display: inline-flex;
 		align-items: center;
@@ -679,14 +1282,13 @@
 		text-transform: uppercase;
 	}
 	.page-eyebrow-dot {
-		width: 6px; height: 6px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
 		background: #34d399;
 		box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
 	}
-
 	.page-title {
-		font-family: 'Satoshi', sans-serif;
 		font-size: clamp(28px, 3.4vw, 42px);
 		font-weight: 800;
 		letter-spacing: -0.025em;
@@ -694,65 +1296,87 @@
 		margin: 0;
 		line-height: 1.05;
 	}
-	.page-sub   {
+	.page-sub {
 		font-size: 14px;
 		line-height: 1.55;
 		color: var(--t);
 		margin: 0;
 		max-width: 60ch;
 	}
-	.create-btn {
-		display: inline-flex; align-items: center; gap: 8px;
-		padding: 12px 20px; border-radius: 999px; border: 1px solid var(--ap-text);
-		background: var(--ap-text); color: var(--ap-bg);
+	.hero-actions {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.create-btn,
+	.ghost-btn,
+	.empty-cta {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 20px;
+		border-radius: 999px;
 		font-family: inherit;
-		font-size: 13.5px; font-weight: 700; cursor: pointer;
-		letter-spacing: -0.005em;
-		transition: transform 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
-		flex-shrink: 0;
+		font-size: 13.5px;
+		font-weight: 700;
+		cursor: pointer;
+		text-decoration: none;
 		white-space: nowrap;
+		transition:
+			transform 0.22s ease,
+			box-shadow 0.22s ease;
 	}
-	.create-btn:hover:not(:disabled) {
-		transform: translateY(-1px);
-		box-shadow: 0 12px 28px -12px color-mix(in oklab, var(--ap-text) 50%, transparent);
+	.create-btn,
+	.empty-cta {
+		border: 1px solid var(--ap-text);
+		background: var(--ap-text);
+		color: var(--ap-bg);
 	}
-	.create-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-	.spin { animation: spin 0.8s linear infinite; }
-	@keyframes spin { to { transform: rotate(360deg); } }
-
-	/* ─── Section heads ────────────────────────────────────── */
-	.section-head { margin-bottom: 16px; }
-	.section-title {
-		font-family: 'Satoshi', sans-serif;
-		font-size: 18px;
-		font-weight: 800;
-		letter-spacing: -0.02em;
+	.ghost-btn {
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
 		color: var(--t-strong);
-		margin: 0 0 4px;
 	}
-	.section-sub {
-		font-size: 13px;
-		line-height: 1.5;
-		color: var(--t);
-		margin: 0;
-		max-width: 56rem;
+	.create-btn:hover:not(:disabled),
+	.ghost-btn:hover,
+	.empty-cta:hover {
+		transform: translateY(-1px);
+		box-shadow: var(--shadow-soft);
+	}
+	.create-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.spin {
+		animation: spin 0.8s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.error-banner {
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		border-radius: 10px;
+		background: rgba(239, 68, 68, 0.08);
+		border: 1px solid rgba(239, 68, 68, 0.2);
+		font-size: 0.8125rem;
+		color: #f87171;
 	}
 
-	/* ─── Templates section ────────────────────────────────── */
-	.templates-section { margin-bottom: 32px; }
-
-	/* ─── Studio workspace drafts ──────────────────────────── */
-	.studio-drafts-block {
-		margin-bottom: 24px;
+	.studio-drafts-block,
+	.library-block {
+		margin-bottom: 28px;
 		padding: 24px 26px 22px;
 		border-radius: 22px;
 		border: 1px solid var(--panel-border);
 		background: var(--panel-bg);
 		box-shadow: var(--shadow-soft);
 	}
-	.studio-drafts-head { margin-bottom: 14px; }
-	.studio-drafts-title {
-		font-family: 'Satoshi', sans-serif;
+	.studio-drafts-title,
+	.library-title {
 		font-size: 18px;
 		font-weight: 800;
 		letter-spacing: -0.02em;
@@ -764,34 +1388,116 @@
 		line-height: 1.5;
 		color: var(--t);
 		margin: 0;
-		max-width: 56rem;
 	}
-	.studio-drafts-grid { margin-top: 12px; }
-
-	/* ─── Saved Studio templates ───────────────────────────── */
-	.saved-templates-block {
-		margin-bottom: 24px;
-		padding: 24px 26px 22px;
-		border-radius: 22px;
+	.studio-drafts-head {
+		margin-bottom: 14px;
+	}
+	.studio-drafts-head-row {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+		flex-wrap: wrap;
+	}
+	.draft-select-bar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-shrink: 0;
+	}
+	.draft-select-all {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		height: 34px;
+		padding: 0 12px;
+		border-radius: 10px;
 		border: 1px solid var(--panel-border);
-		background: var(--panel-bg);
-		box-shadow: var(--shadow-soft);
-	}
-	.saved-templates-head { margin-bottom: 14px; }
-	.saved-templates-title {
-		font-family: 'Satoshi', sans-serif;
-		font-size: 18px;
-		font-weight: 800;
-		letter-spacing: -0.02em;
+		background: #fff;
+		font-size: 12px;
+		font-weight: 650;
 		color: var(--t-strong);
-		margin: 0 0 4px;
+		cursor: pointer;
 	}
-	.saved-templates-sub {
-		font-size: 13px;
-		line-height: 1.5;
-		color: var(--t);
+	.draft-select-all:hover {
+		border-color: var(--panel-border-hover);
+	}
+	.draft-select-box {
+		width: 14px;
+		height: 14px;
+		border-radius: 4px;
+		border: 1.5px solid #c4c4c4;
+		background: #fff;
+		box-sizing: border-box;
+	}
+	.draft-select-box--on {
+		border-color: #111;
+		background: #111;
+		box-shadow: inset 0 0 0 2px #fff;
+	}
+	.draft-bulk-delete {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 34px;
+		padding: 0 12px;
+		border-radius: 10px;
+		border: 1px solid #fecaca;
+		background: #fef2f2;
+		color: #b91c1c;
+		font-size: 12px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.draft-bulk-delete:hover:not(:disabled) {
+		background: #fee2e2;
+	}
+	.draft-bulk-delete:disabled {
+		opacity: 0.65;
+		cursor: wait;
+	}
+	.draft-check {
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		z-index: 5;
+		width: 22px;
+		height: 22px;
+		display: grid;
+		place-items: center;
+		border-radius: 7px;
+		background: rgba(255, 255, 255, 0.92);
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+		cursor: pointer;
+	}
+	.draft-check input {
+		width: 14px;
+		height: 14px;
 		margin: 0;
-		max-width: 56rem;
+		accent-color: #111;
+		cursor: pointer;
+	}
+	.studio-draft-card {
+		position: relative;
+	}
+	.studio-draft-card--selected {
+		outline: 2px solid #111;
+		outline-offset: 2px;
+	}
+	.studio-drafts-grid .slide-count {
+		left: 2.55rem;
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 	.saved-templates-grid {
 		margin-top: 14px;
@@ -810,8 +1516,7 @@
 		transition:
 			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
 			border-color 0.25s ease,
-			box-shadow 0.32s ease,
-			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
+			box-shadow 0.32s ease;
 	}
 	.saved-template-tile:hover {
 		transform: translateY(-3px);
@@ -830,7 +1535,6 @@
 		object-fit: cover;
 		display: block;
 	}
-	/* First-slide PNGs should be shown whole (contain) to match Studio expectations */
 	.saved-template-img--full {
 		object-fit: contain;
 		background: rgba(0, 0, 0, 0.35);
@@ -843,10 +1547,8 @@
 		justify-content: center;
 		padding: 1rem;
 		color: var(--t-muted);
-		font-family: 'Satoshi', sans-serif;
 		font-size: 0.7rem;
 		text-align: center;
-		background: color-mix(in oklab, var(--panel-bg) 70%, transparent);
 	}
 	.saved-template-empty-text {
 		display: -webkit-box;
@@ -871,7 +1573,10 @@
 		justify-content: center;
 		opacity: 0;
 		transform: translateY(-2px);
-		transition: opacity 0.15s, transform 0.15s, background 0.15s;
+		transition:
+			opacity 0.15s,
+			transform 0.15s,
+			background 0.15s;
 		cursor: pointer;
 	}
 	.saved-template-tile:hover .saved-template-del {
@@ -881,10 +1586,176 @@
 	.saved-template-del:hover {
 		background: rgba(239, 68, 68, 0.55);
 	}
+	.library-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		flex-wrap: wrap;
+		margin-bottom: 16px;
+	}
+	.filter-tabs {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.filter-tab {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		border-radius: 999px;
+		border: 1px solid var(--panel-border);
+		background: transparent;
+		color: var(--t);
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		font-family: inherit;
+	}
+	.filter-tab--on {
+		background: var(--ap-text);
+		color: var(--ap-bg);
+		border-color: var(--ap-text);
+	}
+	.filter-count {
+		font-size: 10px;
+		opacity: 0.7;
+	}
+
+	.carousel-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+		gap: 14px;
+	}
+	.carousel-card {
+		position: relative;
+		border-radius: 18px;
+		overflow: hidden;
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
+		box-shadow: var(--shadow-soft);
+		transition:
+			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			box-shadow 0.32s ease,
+			border-color 0.25s ease;
+	}
+	.carousel-card:hover {
+		transform: translateY(-3px);
+		border-color: var(--panel-border-hover);
+		box-shadow: var(--shadow-pop);
+	}
+	.card-preview {
+		display: block;
+		aspect-ratio: 4 / 5;
+		background: var(--card-bg, #111);
+		padding: 1.1rem;
+		text-decoration: none;
+		position: relative;
+		overflow: hidden;
+	}
+	.card-preview-text {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 700;
+		line-height: 1.25;
+		color: var(--card-color, #fff);
+		display: -webkit-box;
+		line-clamp: 5;
+		-webkit-line-clamp: 5;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.slide-count,
+	.card-status,
+	.studio-draft-template-pill {
+		position: absolute;
+		z-index: 3;
+		font-size: 10px;
+		font-weight: 700;
+		padding: 4px 8px;
+		border-radius: 999px;
+		backdrop-filter: blur(8px);
+	}
+	.slide-count {
+		top: 0.6rem;
+		left: 0.6rem;
+		background: rgba(0, 0, 0, 0.45);
+		color: #fff;
+	}
+	.card-status {
+		top: 0.6rem;
+		right: 0.6rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		background: rgba(0, 0, 0, 0.45);
+		color: #fff;
+		text-transform: capitalize;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+	.carousel-card:hover .card-status {
+		opacity: 1;
+	}
+	.studio-draft-template-pill {
+		top: 0.6rem;
+		right: 0.6rem;
+		background: rgba(0, 0, 0, 0.45);
+		color: #fff;
+	}
+	.card-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 12px 14px;
+		border-top: 1px solid var(--panel-border);
+	}
+	.card-title-text {
+		margin: 0;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--t-strong);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 160px;
+	}
+	.card-time {
+		margin: 2px 0 0;
+		font-size: 11px;
+		color: var(--t-muted);
+	}
+	.card-actions {
+		display: flex;
+		gap: 6px;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+	.carousel-card:hover .card-actions {
+		opacity: 1;
+	}
+	.card-action {
+		width: 28px;
+		height: 28px;
+		border-radius: 8px;
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg-2);
+		color: var(--t);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		text-decoration: none;
+	}
+	.card-action--delete:hover {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+	}
 
 	.studio-draft-card-preview {
 		position: relative;
-		overflow: hidden;
 	}
 	.studio-draft-bg-img {
 		position: absolute;
@@ -892,16 +1763,14 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		object-position: center;
 	}
-	/* Saved PNG is already the full composed slide — show it whole (no crop) like Studio; letterbox if aspect differs slightly */
 	.studio-draft-bg-img--full-slide {
 		object-fit: contain;
 	}
 	.studio-draft-bg-scrim {
 		position: absolute;
 		inset: 0;
-		background: linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.55) 100%);
+		background: linear-gradient(to bottom, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.55));
 		pointer-events: none;
 	}
 	.studio-draft-preview-headline {
@@ -931,7 +1800,6 @@
 		border: 1px solid rgba(255, 255, 255, 0.22);
 		font-size: 8px;
 		font-weight: 700;
-		letter-spacing: 0.02em;
 		color: rgba(255, 255, 255, 0.9);
 	}
 	.studio-draft-filmstrip--light .studio-draft-film-cell {
@@ -944,196 +1812,89 @@
 		border-color: rgba(232, 255, 72, 0.45);
 		color: #eab308;
 	}
-	.studio-draft-filmstrip--light .studio-draft-film-cell--on {
-		background: rgba(124, 58, 237, 0.12);
-		border-color: rgba(124, 58, 237, 0.35);
-		color: #6d28d9;
-	}
-	.studio-draft-template-pill {
-		position: absolute;
-		top: 0.5rem;
-		left: 0.5rem;
-		z-index: 3;
-		padding: 2px 8px;
-		border-radius: 999px;
-		background: rgba(0, 0, 0, 0.55);
-		color: rgba(255, 255, 255, 0.92);
-		font-size: 0.58rem;
-		font-family: 'Satoshi', sans-serif;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		backdrop-filter: blur(4px);
-		max-width: calc(100% - 5rem);
+	.studio-draft-film-hint {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		padding: 0 2px;
 	}
 
-	/* ─── Library header (legacy, retained) ────────────────── */
-	.library-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-	.library-title  { font-family: 'Satoshi', sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; color: var(--t-strong); margin: 0; }
-
-	/* Filter tabs */
-	.filter-tabs {
-		display: flex; gap: 0.25rem; padding: 0.3rem;
-		background: var(--panel-bg); border: 1px solid var(--panel-border);
-		border-radius: 10px;
-	}
-	.filter-tab {
-		display: inline-flex; align-items: center; gap: 0.4rem;
-		padding: 0.35rem 0.8rem; border-radius: 7px; border: none;
-		background: transparent; color: var(--t-muted);
-		font-family: 'Satoshi', sans-serif; font-size: 0.78rem; font-weight: 500;
-		cursor: pointer; transition: all 0.12s;
-	}
-	.filter-tab:hover { color: var(--t-strong); }
-	.filter-tab--on { color: var(--t-strong); background: var(--panel-bg-2); }
-	.filter-count {
-		display: inline-flex; align-items: center; justify-content: center;
-		width: 18px; height: 18px; border-radius: 5px;
-		background: var(--panel-bg-2); font-size: 0.65rem;
-		font-family: 'Satoshi', sans-serif; color: var(--t);
-	}
-	.filter-tab--on .filter-count { background: rgba(232,255,72,0.15); color: #E8FF48; }
-
-	/* ─── Carousel grid ────────────────────────────────────── */
-	.carousel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
 	.skeleton-card {
-		aspect-ratio: 4/5; border-radius: 18px;
-		background: var(--panel-bg);
-		animation: pulse 1.5s ease-in-out infinite;
-	}
-	@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
-
-	/* Carousel card */
-	.carousel-card {
-		position: relative; border-radius: 18px; overflow: hidden;
+		aspect-ratio: 4 / 5;
+		border-radius: 18px;
+		background: var(--panel-bg-2);
 		border: 1px solid var(--panel-border);
-		background: var(--card-bg, #111);
-		box-shadow: var(--shadow-soft);
-		transition:
-			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-			border-color 0.25s ease,
-			box-shadow 0.32s ease,
-			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s);
+		animation: pulse 1.2s ease-in-out infinite;
 	}
-	.carousel-card:hover {
-		transform: translateY(-3px);
-		border-color: var(--panel-border-hover);
-		box-shadow: var(--shadow-pop);
+	@keyframes pulse {
+		50% {
+			opacity: 0.55;
+		}
 	}
-
-	.card-preview {
-		display: flex; align-items: center; justify-content: center;
-		padding: 1.5rem; aspect-ratio: 4/5;
-		text-decoration: none; cursor: pointer;
-	}
-	.card-preview-text {
-		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-weight: 700; text-align: center;
-		line-height: 1.25; color: var(--card-color, #fff);
-		font-size: clamp(10px, 1.8vw, 16px);
-		display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
-	}
-
-	.slide-count {
-		position: absolute; top: 0.5rem; right: 0.5rem;
-		padding: 2px 7px; border-radius: 5px;
-		background: rgba(0,0,0,0.65); color: rgba(255,255,255,0.45);
-		font-size: 0.6rem; font-family: 'Satoshi', sans-serif;
-		backdrop-filter: blur(4px);
-	}
-
-	.card-status {
-		position: absolute; top: 0.5rem; left: 0.5rem;
-		display: inline-flex; align-items: center; gap: 0.25rem;
-		padding: 2px 7px; border-radius: 5px;
-		font-size: 0.6rem; font-family: 'Satoshi', sans-serif; font-weight: 700;
-		text-transform: capitalize; backdrop-filter: blur(4px);
-		opacity: 0; transition: opacity 0.2s;
-	}
-	.carousel-card:hover .card-status { opacity: 1; }
-	.status-draft     { background: color-mix(in oklab, var(--app-text) 8%, transparent); color: var(--t); }
-	.status-published { background: rgba(6,182,212,0.2); color: #06b6d4; border: 1px solid rgba(6,182,212,0.3); }
-	.status-scheduled { background: rgba(139,92,246,0.2); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.3); }
-
-	.card-footer {
-		position: absolute; bottom: 0; left: 0; right: 0;
-		padding: 0.75rem; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-		display: flex; align-items: flex-end; justify-content: space-between; gap: 0.5rem;
-	}
-	.card-info { flex: 1; min-width: 0; }
-	.card-title-text { font-size: 0.78rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.card-time        { font-size: 0.6rem; color: var(--t-muted); font-family: 'Satoshi', sans-serif; margin: 0; }
-
-	.card-actions { display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.2s; }
-	.carousel-card:hover .card-actions { opacity: 1; }
-	.card-action {
-		display: flex; align-items: center; justify-content: center;
-		width: 26px; height: 26px; border-radius: 6px; border: none; cursor: pointer;
-		text-decoration: none; transition: background 0.15s;
-	}
-	.card-action--edit   { background: rgba(139,92,246,0.2); color: #a78bfa; }
-	.card-action--edit:hover { background: rgba(139,92,246,0.4); }
-	.card-action--delete { background: rgba(239,68,68,0.2); color: #f87171; }
-	.card-action--delete:hover { background: rgba(239,68,68,0.4); }
-
-	/* New card button */
-	.new-card-btn {
-		aspect-ratio: 4/5; border-radius: 16px;
-		border: 2px dashed var(--panel-border);
-		background: transparent;
-		display: flex; flex-direction: column; align-items: center; justify-content: center;
-		gap: 0.6rem; cursor: pointer; transition: all 0.2s; color: var(--t-muted);
-	}
-	.new-card-btn:hover { border-color: rgba(232,255,72,0.3); color: #E8FF48; background: rgba(232,255,72,0.03); }
-	.new-card-icon {
-		width: 40px; height: 40px; border-radius: 11px;
-		border: 2px solid currentColor;
-		display: flex; align-items: center; justify-content: center;
-		transition: transform 0.2s;
-	}
-	.new-card-btn:hover .new-card-icon { transform: scale(1.1); }
-	.new-card-label { font-size: 0.72rem; font-family: 'Satoshi', sans-serif; }
-
-	/* Empty states */
 	.empty-state {
-		display: flex; flex-direction: column; align-items: center; text-align: center;
-		padding: 4rem 2rem; gap: 0.75rem;
+		text-align: center;
+		padding: 48px 20px;
 	}
 	.empty-icon {
-		width: 56px; height: 56px; border-radius: 16px;
-		background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.15);
-		display: flex; align-items: center; justify-content: center;
-		color: rgba(139,92,246,0.7); margin-bottom: 0.5rem;
+		width: 48px;
+		height: 48px;
+		margin: 0 auto 12px;
+		border-radius: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--panel-bg-2);
+		color: var(--t-muted);
 	}
-	.empty-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
-	.empty-desc  { font-size: 0.8125rem; color: var(--t-muted); margin: 0; max-width: 280px; }
-	.empty-cta {
-		display: inline-flex; align-items: center; gap: 0.4rem;
-		padding: 0.6rem 1.2rem; border-radius: 10px; border: none;
-		background: linear-gradient(135deg, #7c3aed, #06b6d4);
-		color: #fff; font-size: 0.8125rem; font-weight: 600; cursor: pointer;
-		font-family: 'Satoshi', sans-serif; margin-top: 0.5rem;
-		transition: opacity 0.15s, transform 0.15s;
+	.empty-title {
+		margin: 0 0 6px;
+		font-size: 16px;
+		font-weight: 800;
+		color: var(--t-strong);
 	}
-	:root:not([data-theme="dark"]) .empty-cta { color: #ffffff; }
-	.empty-cta:hover { opacity: 0.9; transform: translateY(-1px); }
-
-	/* ─── Responsive ───────────────────────────────────────── */
-	@media (max-width: 720px) {
-		.page-wrap { padding: 22px 18px 48px; }
-		.page-hero { margin-bottom: 24px; }
-		.create-btn { padding: 11px 16px; font-size: 13px; }
-		.studio-drafts-block, .saved-templates-block { padding: 18px 18px 16px; border-radius: 18px; }
+	.empty-desc {
+		margin: 0 0 16px;
+		font-size: 13px;
+		color: var(--t);
 	}
-
-	/* ─── Reduced motion ───────────────────────────────────── */
-	@media (prefers-reduced-motion: reduce) {
-		.reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
-		.page-hero { animation: none; opacity: 1; transform: none; }
-		.saved-template-tile, .carousel-card {
-			transition: border-color 0.2s, box-shadow 0.2s;
-		}
+	.empty-actions {
+		display: flex;
+		gap: 10px;
+		justify-content: center;
+		flex-wrap: wrap;
+	}
+	.new-card-btn {
+		border-radius: 18px;
+		border: 1.5px dashed var(--panel-border-hover);
+		background: transparent;
+		min-height: 280px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		cursor: pointer;
+		color: var(--t);
+		font-family: inherit;
+		transition:
+			border-color 0.2s,
+			background 0.2s;
+	}
+	.new-card-btn:hover {
+		border-color: var(--ap-text);
+		background: var(--panel-bg-2);
+	}
+	.new-card-icon {
+		width: 40px;
+		height: 40px;
+		border-radius: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--panel-bg-2);
+	}
+	.new-card-label {
+		font-size: 13px;
+		font-weight: 700;
 	}
 </style>

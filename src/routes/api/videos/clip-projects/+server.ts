@@ -5,8 +5,9 @@ import { parseJsonBody } from '$lib/server/request-security';
 import {
 	listVideoClipProjects,
 	saveVideoClipProject,
-	getVideoClipProject,
 } from '$lib/server/video-clip-projects';
+import type { BulkShow } from '$lib/studio/bulk-to-studio';
+import type { VideoClip } from '$lib/video-clips/types';
 
 const upsertSchema = z.object({
 	id: z.string().uuid().optional(),
@@ -20,20 +21,64 @@ const upsertSchema = z.object({
 	bulkShows: z.unknown().optional(),
 });
 
+function safeListThumb(raw: unknown, fallback = ''): string {
+	const candidates = [String(raw ?? '').trim(), String(fallback ?? '').trim()];
+	for (const thumb of candidates) {
+		if (!thumb || thumb.startsWith('blob:') || thumb.length >= 2000) continue;
+		if (/\.(mp4|webm|mov)(\?|$)/i.test(thumb)) continue;
+		if (/youtube\.com\/embed|youtu\.be\//i.test(thumb)) continue;
+		return thumb;
+	}
+	return '';
+}
+
 export const GET: RequestHandler = async ({ locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
-	const projects = await listVideoClipProjects(user.id, 12);
+	const projects = await listVideoClipProjects(user.id, 48);
 	return json({
-		projects: projects.map((p) => ({
-			id: p.id,
-			title: p.title,
-			thumbnailUrl: p.thumbnail_url,
-			clipCount: Array.isArray(p.clips) ? p.clips.length : 0,
-			summary: p.summary,
-			updatedAt: p.updated_at,
-			hasBulkShows: !!p.bulk_shows,
-		})),
+		projects: projects.map((p) => {
+			const bulkShows = Array.isArray(p.bulk_shows) ? (p.bulk_shows as BulkShow[]) : [];
+			const clips = (Array.isArray(p.clips) ? p.clips : []) as VideoClip[];
+			const projectThumb = safeListThumb(p.thumbnail_url, p.source?.thumbnailUrl);
+			const shows =
+				bulkShows.length > 0
+					? bulkShows.slice(0, 24).map((s) => {
+							const slides = Array.isArray(s.slides) ? s.slides : [];
+							const first = slides[0];
+							return {
+								id: s.id,
+								title: String(s.title ?? '').trim() || 'Untitled',
+								slideCount: Math.max(1, slides.length),
+								headline: String(first?.headline ?? '').trim(),
+								thumb: safeListThumb(first?.mediaThumb || first?.mediaUrl, projectThumb),
+								template: String(first?.template ?? 'news'),
+							};
+						})
+					: clips.slice(0, 24).map((c, i) => ({
+							id: String(c.id ?? `clip-${i}`),
+							title:
+								String(c.newsHeadline ?? c.videoHook ?? c.title ?? '').trim() ||
+								`Clip ${i + 1}`,
+							slideCount: 1,
+							headline: String(c.newsHeadline ?? c.hook ?? '').trim(),
+							thumb: safeListThumb(c.thumbnailUrl, projectThumb),
+							template: 'news',
+						}));
+			return {
+				id: p.id,
+				title: p.title || p.source?.title || 'YouTube clips',
+				thumbnailUrl: projectThumb || p.thumbnail_url,
+				sourceTitle: p.source?.title ?? '',
+				clipCount: clips.length,
+				showCount: shows.length,
+				summary: p.summary,
+				updatedAt: p.updated_at,
+				hasBulkShows: bulkShows.length > 0,
+				url: `/dashboard/bulk?project=${encodeURIComponent(p.id)}`,
+				shows,
+			};
+		}),
 	});
 };
 

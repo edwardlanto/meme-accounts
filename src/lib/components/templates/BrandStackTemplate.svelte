@@ -138,7 +138,8 @@
 	});
 
 	const brandParts = $derived.by(() => {
-		const raw = String(brand ?? '').trim() || BRAND_STACK_DEFAULTS.brand;
+		const raw = String(brand ?? '').trim();
+		if (!raw) return { green: '', white: '' };
 		const idx = raw.toLowerCase().indexOf('rumble');
 		if (idx === -1) return { green: '', white: raw };
 		return {

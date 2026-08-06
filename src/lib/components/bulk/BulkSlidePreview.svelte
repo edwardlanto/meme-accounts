@@ -23,6 +23,7 @@
 		BRAND_STACK_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
 		NEWS_DEFAULT_SOURCE,
+		NEWS_DEFAULT_SOURCE_LOGO,
 		PHOTO_CAPTION_DEFAULTS,
 		PHOTO_TOPIC_DEFAULTS,
 		PHOTO_TOPIC_BODY_STYLE,
@@ -86,6 +87,8 @@
 		 * so News / video layouts render plain text.
 		 */
 		textHighlightsEnabled?: boolean;
+		/** News source logo (brand kit or site default). */
+		sourceLogoSrc?: string;
 	};
 
 	let {
@@ -94,6 +97,7 @@
 		mediaFetching = false,
 		preferThumb = false,
 		textHighlightsEnabled = true,
+		sourceLogoSrc = NEWS_DEFAULT_SOURCE_LOGO,
 	}: Props = $props();
 
 	const slide = $derived(slideProp ?? createBlankSlide('news'));
@@ -465,6 +469,9 @@
 				text={newsTemplateText}
 				subtext={body}
 				source={NEWS_DEFAULT_SOURCE}
+				sourceLogoSrc={String(sourceLogoSrc ?? '').trim() || NEWS_DEFAULT_SOURCE_LOGO}
+				sourceLabelMode="logo"
+				sourceLogoWidth={160}
 				backgroundImage={mediaKind !== 'video' ? imageSrc : ''}
 				backgroundVideo={mediaKind === 'video' ? playbackUrl : ''}
 				videoMuted={previewMuted}

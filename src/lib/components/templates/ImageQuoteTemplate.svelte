@@ -159,6 +159,22 @@
 		>
 			<!-- Top image — fills leftover space after the quote panel -->
 			<div
+				data-text-selectable={interactive ? 'articleImage' : undefined}
+				role={interactive ? 'button' : undefined}
+				tabindex={interactive ? 0 : undefined}
+				aria-label={interactive ? 'Quote image' : undefined}
+				onclick={(e) => {
+					if (!interactive || !onTextSelect) return;
+					e.stopPropagation();
+					onTextSelect('articleImage', e.currentTarget as HTMLElement);
+				}}
+				onkeydown={(e) => {
+					if (!interactive || !onTextSelect) return;
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						onTextSelect('articleImage', e.currentTarget as HTMLElement);
+					}
+				}}
 				style="
 					flex: 1 1 {preferredTopH}px;
 					min-height: {BASE_H - maxBottomH}px;
@@ -167,18 +183,23 @@
 					position: relative;
 					overflow: hidden;
 					background: #111;
+					cursor: {interactive && onTextSelect ? 'pointer' : 'default'};
+					outline: {selectedText === 'articleImage' ? '3px solid rgba(167,139,250,0.85)' : 'none'};
+					outline-offset: -3px;
 				"
 			>
 				{#if image}
 					<img
 						src={image}
 						alt=""
+						draggable="false"
 						style="
 							width: 100%;
 							height: 100%;
 							object-fit: cover;
 							object-position: center top;
 							display: block;
+							pointer-events: none;
 						"
 					/>
 				{/if}
@@ -296,9 +317,11 @@
 											font-family: Impact, 'Arial Black', sans-serif;
 											line-height: 1;
 											display: inline-block;
+											min-height: 1em;
+											min-width: {footerLeft ? '0' : '0.6em'};
 										"
 									>
-										{footerLeft || '$'}
+										{footerLeft}
 									</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>
@@ -339,9 +362,11 @@
 											text-align: left;
 											white-space: pre-line;
 											display: inline-block;
+											min-height: 1.2em;
+											min-width: {footerRight ? '0' : '4em'};
 										"
 									>
-										{footerRight || 'OPERATOR\nNOTES'}
+										{footerRight}
 									</span>
 								{/snippet}
 							</CanvasMarkupTextBlock>

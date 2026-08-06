@@ -62,6 +62,14 @@
 	let editTextColor = $state<string | null>(null);
 	let editTypography = $state<TypographySnapshot | null>(null);
 
+	/** Parent cleared the field (toolbar delete) — leave inline edit so display shows empty. */
+	$effect(() => {
+		if (editing && String(value ?? '') === '') {
+			editing = false;
+			editTypography = null;
+		}
+	});
+
 	function wrapRectAsAnchor(rect: DOMRect): HTMLElement {
 		const ghost = document.createElement('div');
 		(ghost as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect =

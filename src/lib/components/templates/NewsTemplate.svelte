@@ -89,6 +89,10 @@
 		sourceLabelMode?: 'text' | 'logo';
 		/** Max width in px for the source logo (aspect ratio preserved). Default 260. */
 		sourceLogoWidth?: number;
+		/** Replace / clear the News source logo image. */
+		onSourceLogoChange?: (src: string) => void;
+		/** Fired when the user resizes the source logo from the canvas tools. */
+		onSourceLogoWidthChange?: (width: number) => void;
 		highlightColor?: string;
 		/** Default look for bare `[[phrase]]` (solid / gradient / pattern). Falls back to `highlightColor`. */
 		highlightDefaults?: HighlightDefaults;
@@ -196,6 +200,8 @@
 		sourceLogoSrc = '',
 		sourceLabelMode = 'text',
 		sourceLogoWidth = 260,
+		onSourceLogoChange,
+		onSourceLogoWidthChange,
 		highlightColor = '#F5A623',
 		highlightDefaults,
 		textColor = templateTheme === 'light' ? '#0a0a0a' : '#FFFFFF',
@@ -491,6 +497,61 @@
 		if (textMoved) return;
 		e.stopPropagation();
 		if (sourceEl) onTextSelect?.('source', sourceEl);
+	}
+
+	let sourceLogoFileEl = $state<HTMLInputElement | null>(null);
+	let sourceLogoToolbarOpen = $state(false);
+	let sourceLogoRemovingBg = $state(false);
+
+	function openSourceLogoPicker() {
+		if (!interactive) return;
+		sourceLogoToolbarOpen = false;
+		sourceLogoFileEl?.click();
+	}
+
+	function onSourceLogoFile(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		(e.target as HTMLInputElement).value = '';
+		if (!file?.type.startsWith('image/')) return;
+		const reader = new FileReader();
+		reader.onload = () => onSourceLogoChange?.(String(reader.result ?? ''));
+		reader.readAsDataURL(file);
+	}
+
+	function bumpSourceLogoWidth(delta: number) {
+		const next = Math.round(Math.max(80, Math.min(400, (Number(sourceLogoWidth) || 260) + delta)));
+		onSourceLogoWidthChange?.(next);
+	}
+
+	async function removeSourceLogoBg() {
+		if (!interactive || sourceLogoRemovingBg) return;
+		const src = String(resolveSrc?.(sourceLogoSrc) || sourceLogoSrc || '').trim();
+		if (!src || src.startsWith('r2:')) {
+			alert('Logo is still loading — try again in a moment');
+			return;
+		}
+		sourceLogoRemovingBg = true;
+		try {
+			const out = await removeBackground(src);
+			onSourceLogoChange?.(out);
+		} catch (err: unknown) {
+			alert(err instanceof Error ? err.message : 'Background removal failed');
+		} finally {
+			sourceLogoRemovingBg = false;
+		}
+	}
+
+	function clearSourceLogo() {
+		onSourceLogoChange?.('');
+		sourceLogoToolbarOpen = false;
+	}
+
+	function onSourceLogoDblClick(e: MouseEvent) {
+		if (!interactive || sourceLabelMode !== 'logo') return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (sourceEl) onTextSelect?.('source', sourceEl);
+		openSourceLogoPicker();
 	}
 
 	// Whether there's any background media (image or video)
@@ -2273,6 +2334,13 @@
 							onChange={(x, y) => onTextOffsetChange?.('source', { x, y })}
 						>
 							{#snippet children()}
+								<input
+									bind:this={sourceLogoFileEl}
+									type="file"
+									accept="image/*"
+									style="display:none"
+									onchange={onSourceLogoFile}
+								/>
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									data-news-block="source"
@@ -2280,10 +2348,11 @@
 									style="
 										position: relative;
 										display: flex; align-items: center;
-										gap: 18px;
+										gap: {sourceLabelMode === 'logo' ? '0' : '18px'};
 										overflow: visible;
+										{sourceLabelMode === 'logo' ? 'width: fit-content; max-width: 100%;' : 'width: 100%;'}
 										{interactive ? 'cursor: grab;' : ''}
-										{selectedText === 'source' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.55); border-radius: 6px; padding: 4px;' : ''}
+										{selectedText === 'source' && sourceLabelMode === 'text' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.55); border-radius: 6px; padding: 4px;' : ''}
 									"
 									onmouseenter={() => (hoveringSource = true)}
 									onmouseleave={() => (hoveringSource = false)}
@@ -2292,7 +2361,7 @@
 										selectSource(e);
 									}}
 								>
-									{#if interactive && hoveringSource && selectedText !== 'source'}
+									{#if interactive && hoveringSource && selectedText !== 'source' && sourceLabelMode === 'text'}
 										<div style="
 											position: absolute;
 											inset: -6px;
@@ -2301,37 +2370,171 @@
 											pointer-events: none;
 										"></div>
 									{/if}
-									<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+									{#if sourceLabelMode === 'text'}
+										<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+									{/if}
 									<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 									<span
 										bind:this={sourceEl}
-										data-text-selectable="source"
+										data-text-selectable={sourceLabelMode === 'text' ? 'source' : undefined}
 										onclick={selectSource}
+										ondblclick={onSourceLogoDblClick}
 										onkeydown={(e) => { if (e.key === 'Enter') selectSource(e as any); }}
 										role={interactive ? 'button' : undefined}
 										tabindex={interactive ? 0 : undefined}
+										title={interactive && sourceLabelMode === 'logo' ? 'Drag to move · Double-click to replace logo' : undefined}
 										style="
 											{sourceCss}
 											white-space: nowrap;
 											overflow: visible;
-											{interactive ? 'cursor: pointer; user-select: text !important; -webkit-user-select: text !important;' : ''}
+											{interactive && sourceLabelMode === 'text' ? 'cursor: pointer; user-select: text !important; -webkit-user-select: text !important;' : ''}
+											{interactive && sourceLabelMode === 'logo' ? 'cursor: grab; user-select: none;' : ''}
 										"
 									>
 										{#if sourceLabelMode === 'logo' && sourceLogoSrc}
-											<img
-												src={sourceLogoSrc}
-												alt=""
-												draggable="false"
-												style="
-													display: block;
-													max-width: {Math.max(40, sourceLogoWidth)}px;
-													max-height: 52px;
-													width: auto;
-													height: auto;
-													object-fit: contain;
-													filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18));
-												"
-											/>
+											{@const logoSrc = resolveSrc?.(sourceLogoSrc) || sourceLogoSrc}
+											{@const logoSelected = selectedText === 'source' || sourceLogoToolbarOpen}
+											{#snippet sourceLogoTrigger({ props }: { props: Record<string, unknown> })}
+												{@const triggerProps = props as Record<string, unknown> & {
+													onclick?: (e: MouseEvent) => void;
+												}}
+												<!-- svelte-ignore a11y_no_static_element_interactions -->
+												<div
+													{...triggerProps}
+													style="
+														position: relative;
+														display: inline-flex;
+														align-items: center;
+														justify-content: center;
+														padding: 6px;
+														border-radius: 10px;
+														box-sizing: border-box;
+														{logoSelected ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.65);' : ''}
+														{interactive && hoveringSource && selectedText !== 'source' && !sourceLogoToolbarOpen ? 'outline: 2px dashed rgba(255,255,255,0.35); outline-offset: 2px;' : ''}
+													"
+													onclick={(e) => {
+														if (textMoved) return;
+														selectSource(e);
+														triggerProps.onclick?.(e);
+													}}
+													ondblclick={onSourceLogoDblClick}
+												>
+													<img
+														src={logoSrc}
+														alt=""
+														draggable="false"
+														style="
+															display: block;
+															max-width: {Math.max(40, sourceLogoWidth)}px;
+															max-height: 52px;
+															width: auto;
+															height: auto;
+															object-fit: contain;
+															pointer-events: none;
+															filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18)){templateTheme === 'dark' ? ' brightness(0) invert(1)' : ''};
+														"
+													/>
+													{#if sourceLogoRemovingBg}
+														<div
+															style="
+																position: absolute; inset: 0;
+																border-radius: 10px;
+																background: rgba(0,0,0,0.45);
+																display: flex; align-items: center; justify-content: center;
+															"
+															role="status"
+															aria-label="Removing background"
+														>
+															<ClassicLoader size="sm" />
+														</div>
+													{/if}
+												</div>
+											{/snippet}
+											{#if interactive}
+												<Popover bind:open={sourceLogoToolbarOpen}>
+													<PopoverTrigger
+														openOnHover={true}
+														openDelay={0}
+														closeDelay={280}
+														child={sourceLogoTrigger}
+													/>
+													<PopoverContent
+														side="top"
+														sideOffset={10}
+														align="center"
+														trapFocus={false}
+														class="border-border bg-popover/95 text-foreground z-[60] !flex !w-max max-w-[calc(100vw-2rem)] !flex-row flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border p-2 shadow-lg ring-1 ring-border/40 backdrop-blur-md !gap-1.5 !p-2 [&_svg]:shrink-0 [&_svg]:text-foreground"
+													>
+														<Button
+															variant="ghost"
+															size="icon"
+															class="h-11 w-11 shrink-0 rounded-full"
+															onclick={openSourceLogoPicker}
+															title="Replace logo"
+															aria-label="Replace logo"
+														>
+															<Pencil size={20} class="text-foreground" strokeWidth={2} />
+														</Button>
+														<Button
+															variant="ghost"
+															size="icon"
+															class="h-11 w-11 shrink-0 rounded-full"
+															onclick={() => bumpSourceLogoWidth(-20)}
+															title="Smaller"
+															aria-label="Make logo smaller"
+														>
+															<Minus size={20} strokeWidth={2} />
+														</Button>
+														<Button
+															variant="ghost"
+															size="icon"
+															class="h-11 w-11 shrink-0 rounded-full"
+															onclick={() => bumpSourceLogoWidth(20)}
+															title="Larger"
+															aria-label="Make logo larger"
+														>
+															<Plus size={20} strokeWidth={2} />
+														</Button>
+														<Button
+															variant="ghost"
+															size="icon"
+															class="h-11 w-11 shrink-0 rounded-full"
+															onclick={() => void removeSourceLogoBg()}
+															title="Remove background"
+															aria-label="Remove background"
+															disabled={sourceLogoRemovingBg}
+														>
+															<Eraser size={20} strokeWidth={2} />
+														</Button>
+														<Button
+															variant="ghost"
+															size="icon"
+															class="h-11 w-11 shrink-0 rounded-full text-destructive"
+															onclick={clearSourceLogo}
+															title="Remove logo"
+															aria-label="Remove logo"
+														>
+															<Trash2 size={20} strokeWidth={2} />
+														</Button>
+													</PopoverContent>
+												</Popover>
+											{:else}
+												<img
+													src={logoSrc}
+													alt=""
+													draggable="false"
+													style="
+														display: block;
+														max-width: {Math.max(40, sourceLogoWidth)}px;
+														max-height: 52px;
+														width: auto;
+														height: auto;
+														object-fit: contain;
+														pointer-events: none;
+														filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18)){templateTheme === 'dark' ? ' brightness(0) invert(1)' : ''};
+													"
+												/>
+											{/if}
 										{:else if sourceLabelMode === 'text' && source}
 											{#if sourceStyle.fontFamily}
 												{source}
@@ -2340,7 +2543,9 @@
 											{/if}
 										{/if}
 									</span>
-									<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+									{#if sourceLabelMode === 'text'}
+										<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+									{/if}
 								</div>
 							{/snippet}
 						</DraggableBlock>
@@ -2404,6 +2609,7 @@
 					<div
 						data-news-block="headline"
 						style="position: relative; overflow: visible; {interactive ? 'cursor: grab;' : ''}"
+						title={interactive ? 'Drag text to highlight · Hold still then drag to move · Alt+drag to move' : undefined}
 						onmouseenter={() => (hoveringText = true)}
 						onmouseleave={() => (hoveringText = false)}
 					>
@@ -2453,7 +2659,7 @@
 						{selectedText === 'headline' && !(interactive && editing)
 							? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 4px;'
 							: ''}
-						{interactive ? 'user-select: text !important; -webkit-user-select: text !important;' : ''}
+						{interactive ? 'cursor: text; user-select: text !important; -webkit-user-select: text !important;' : ''}
 					"
 				>
 					{#each segments as seg}

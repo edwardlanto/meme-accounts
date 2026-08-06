@@ -4,7 +4,7 @@
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
 	import ClassicLoader from '$lib/components/ClassicLoader.svelte';
-	import { Pencil, Trash2, Eraser, Minus, Plus } from 'lucide-svelte';
+	import { Pencil, Trash2, Eraser, Minus, Plus, X } from 'lucide-svelte';
 
 	interface Props {
 		overlay: Overlay;
@@ -47,6 +47,7 @@
 	let ovLastMy = 0;
 	let removingBg = $state(false);
 	let fileEl = $state<HTMLInputElement | null>(null);
+	let colorEl = $state<HTMLInputElement | null>(null);
 	let imgBroken = $state(false);
 
 	const showChrome = $derived(popoverOpen || active || hovered);
@@ -100,13 +101,16 @@
 		const ov = overlays.find((o) => o.id === overlay.id);
 		if (!ov) return;
 
+		const pad = Math.max(0, Math.min(PADDING_MAX, Number(ov.padding) || 0));
+
 		if (overlayAction === 'drag') {
-			const nx = Math.max(0, Math.min(W - ov.w, ov.x + dx));
-			const ny = Math.max(0, Math.min(H - ov.h, ov.y + dy));
+			// Keep the padded outer box inside the canvas; x/y stay the image origin.
+			const nx = Math.max(pad, Math.min(W - ov.w - pad, ov.x + dx));
+			const ny = Math.max(pad, Math.min(H - ov.h - pad, ov.y + dy));
 			apply(overlays.map((o) => (o.id === overlay.id ? { ...o, x: nx, y: ny } : o)));
 		} else if (overlayAction === 'resize') {
 			const aspect = ov.w / Math.max(1, ov.h);
-			const newW = Math.max(60, Math.min(W - ov.x, ov.w + dx));
+			const newW = Math.max(60, Math.min(W - ov.x - pad, ov.w + dx));
 			const newH = newW / aspect;
 			apply(overlays.map((o) => (o.id === overlay.id ? { ...o, w: newW, h: newH } : o)));
 		}
@@ -160,19 +164,70 @@
 		reader.readAsDataURL(f);
 	}
 
-	const radiusCap = $derived(Math.min(overlay.w, overlay.h) / 2);
+	const PADDING_MAX = 240;
+	const PADDING_STEP = 4;
+
+	const paddingPx = $derived.by(() => {
+		const raw = Number(overlay.padding);
+		const p = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+		return Math.min(p, PADDING_MAX);
+	});
+
+	/** Outer box including background padding (image stays `overlay.w` × `overlay.h`). */
+	const outerW = $derived(overlay.w + paddingPx * 2);
+	const outerH = $derived(overlay.h + paddingPx * 2);
+	const outerX = $derived(overlay.x - paddingPx);
+	const outerY = $derived(overlay.y - paddingPx);
+
+	const radiusCap = $derived(Math.min(outerW, outerH) / 2);
 	const borderRadiusPx = $derived.by(() => {
 		const raw = Number(overlay.borderRadius);
 		const r = Number.isFinite(raw) ? Math.max(0, raw) : 0;
 		return Math.min(r, radiusCap);
 	});
 
+	const bgColor = $derived.by(() => {
+		const raw = String(overlay.bgColor ?? '').trim();
+		if (!raw || raw === 'transparent' || raw === 'none') return '';
+		return raw;
+	});
+	const hasBgColor = $derived(!!bgColor);
+	const fillBackground = $derived.by(() => {
+		if (hasBgColor) return bgColor;
+		if (imgBroken || !displaySrc) return 'rgba(0,0,0,0.25)';
+		return 'transparent';
+	});
+
 	function bumpBorderRadius(delta: number) {
 		const ov = overlays.find((o) => o.id === overlay.id);
 		if (!ov) return;
-		const cap = Math.min(ov.w, ov.h) / 2;
+		const pad = Math.max(0, Math.min(PADDING_MAX, Number(ov.padding) || 0));
+		const cap = Math.min(ov.w + pad * 2, ov.h + pad * 2) / 2;
 		const cur = Math.max(0, Math.min(cap, Number(ov.borderRadius) || 0));
 		patch({ borderRadius: Math.max(0, Math.min(cap, cur + delta)) });
+	}
+
+	function bumpPadding(delta: number) {
+		const ov = overlays.find((o) => o.id === overlay.id);
+		if (!ov) return;
+		const cur = Math.max(0, Math.min(PADDING_MAX, Number(ov.padding) || 0));
+		const next = Math.max(0, Math.min(PADDING_MAX, cur + delta));
+		if (next === cur) return;
+		// Keep the image centered visually while the background grows/shrinks outward.
+		patch({ padding: next });
+	}
+
+	function openBgColorPicker() {
+		colorEl?.click();
+	}
+
+	function clearBgColor() {
+		patch({ bgColor: undefined });
+	}
+
+	function onNativeColorInput(e: Event) {
+		const v = (e.target as HTMLInputElement).value;
+		if (v) patch({ bgColor: v });
 	}
 </script>
 
@@ -183,6 +238,15 @@
 	class="hidden"
 	aria-hidden="true"
 	onchange={onStickerFile}
+/>
+<input
+	bind:this={colorEl}
+	type="color"
+	value={hasBgColor ? bgColor : '#FFFFFF'}
+	class="pointer-events-none fixed h-px w-px opacity-0"
+	aria-hidden="true"
+	tabindex={-1}
+	oninput={onNativeColorInput}
 />
 
 {#snippet stickerTrigger({ props }: { props: Record<string, unknown> })}
@@ -195,8 +259,8 @@
 		{...triggerProps}
 		style="
 			position: absolute;
-			left: {overlay.x}px; top: {overlay.y}px;
-			width: {overlay.w}px; height: {overlay.h}px;
+			left: {outerX}px; top: {outerY}px;
+			width: {outerW}px; height: {outerH}px;
 			z-index: {active || hovered || popoverOpen ? 90 : 55};
 			pointer-events: auto;
 			cursor: {active && overlayAction === 'drag' ? 'grabbing' : interactive ? 'grab' : 'default'};
@@ -231,8 +295,10 @@
 				position: relative;
 				width: 100%; height: 100%;
 				overflow: hidden;
+				box-sizing: border-box;
 				border-radius: {borderRadiusPx}px;
-				background: {imgBroken || !displaySrc ? 'rgba(0,0,0,0.25)' : 'transparent'};
+				background: {fillBackground};
+				padding: {paddingPx}px;
 			"
 		>
 			{#if displaySrc && !imgBroken}
@@ -374,6 +440,71 @@
 					onclick={() => bumpBorderRadius(6)}
 					title="More rounded corners"
 					aria-label="Increase corner radius"
+				>
+					<Plus size={16} class="text-foreground" strokeWidth={2} />
+				</Button>
+			</div>
+			<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1">
+				<Button
+					variant="ghost"
+					size="icon"
+					class="h-11 w-11 shrink-0 rounded-full"
+					type="button"
+					onclick={openBgColorPicker}
+					title="Background color"
+					aria-label="Background color"
+				>
+					<span
+						class="border-foreground/25 ring-foreground/15 box-border block h-[22px] w-[22px] rounded-md border-2 shadow-sm ring-1"
+						style="background: {hasBgColor
+							? bgColor
+							: 'linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), linear-gradient(135deg, rgba(0,0,0,0.10), rgba(0,0,0,0.02))'};"
+					></span>
+				</Button>
+				{#if hasBgColor}
+					<Button
+						variant="ghost"
+						size="icon"
+						class="h-8 w-8 shrink-0 rounded-full"
+						type="button"
+						onclick={clearBgColor}
+						title="Clear background color"
+						aria-label="Clear background color"
+					>
+						<X size={14} class="text-foreground" strokeWidth={2} />
+					</Button>
+				{/if}
+			</div>
+			<div
+				class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2"
+				role="group"
+				aria-label="Background padding in pixels"
+				title="Background padding"
+			>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="h-8 w-8 shrink-0 rounded-full"
+					type="button"
+					disabled={paddingPx <= 0}
+					onclick={() => bumpPadding(-PADDING_STEP)}
+					title="Less padding"
+					aria-label="Decrease background padding"
+				>
+					<Minus size={16} class="text-foreground" strokeWidth={2} />
+				</Button>
+				<span class="min-w-[1.75rem] text-center text-xs font-bold tabular-nums text-foreground"
+					>{Math.round(paddingPx)}</span
+				>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="h-8 w-8 shrink-0 rounded-full"
+					type="button"
+					disabled={paddingPx >= PADDING_MAX}
+					onclick={() => bumpPadding(PADDING_STEP)}
+					title="More padding"
+					aria-label="Increase background padding"
 				>
 					<Plus size={16} class="text-foreground" strokeWidth={2} />
 				</Button>

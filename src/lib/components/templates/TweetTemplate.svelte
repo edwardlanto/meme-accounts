@@ -152,13 +152,11 @@ let {
 }: TweetProps = $props();
 
 	const topTextDisplay = $derived(stripMarkup(topText));
-	const bottomTextDisplay = $derived(
-		stripMarkup(bottomText).trim() || TWEET_DEFAULTS.bottomText,
-	);
-	const topNameDisplay = $derived(String(topName ?? '').trim() || TWEET_DEFAULTS.topName);
-	const topHandleDisplay = $derived(String(topHandle ?? '').trim() || TWEET_DEFAULTS.topHandle);
-	const bottomNameDisplay = $derived(String(bottomName ?? '').trim() || TWEET_DEFAULTS.bottomName);
-	const bottomHandleDisplay = $derived(String(bottomHandle ?? '').trim() || TWEET_DEFAULTS.bottomHandle);
+	const bottomTextDisplay = $derived(stripMarkup(bottomText));
+	const topNameDisplay = $derived(String(topName ?? ''));
+	const topHandleDisplay = $derived(String(topHandle ?? ''));
+	const bottomNameDisplay = $derived(String(bottomName ?? ''));
+	const bottomHandleDisplay = $derived(String(bottomHandle ?? ''));
 
 	const topEditable = $derived(!!interactive && typeof onTopTextChange === 'function');
 	const bottomEditable = $derived(!!interactive && typeof onBottomTextChange === 'function');

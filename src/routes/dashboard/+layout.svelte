@@ -8,6 +8,7 @@
 		Rows3,
 		Video,
 		Grid3x3,
+		LayoutTemplate,
 	} from 'lucide-svelte';
 	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
 
@@ -18,6 +19,7 @@
 			label: 'Create',
 			items: [
 				{ href: '/dashboard',              label: 'Overview',     icon: LayoutDashboard },
+				{ href: '/dashboard/templates',    label: 'Templates',    icon: LayoutTemplate },
 				{ href: '/dashboard/carousels',    label: 'Carousels',    icon: ImagePlus },
 				{ href: '/dashboard/grid',         label: 'Grid',         icon: Grid3x3 },
 				{ href: '/dashboard/bulk',         label: 'Bulk',         icon: Rows3 },

@@ -4,7 +4,16 @@ import { GENERATED_DEMO_POSTS as D } from './generated-demo-posts';
 /** Demo headline when opening News (real story fetch replaces this). */
 export const NEWS_PLACEHOLDER_HEADLINE = D.news.headline;
 
+/** Supporting paragraph under the News headline (matches bulk-generated decks). */
+export const NEWS_DEFAULT_SUBTEXT =
+	typeof D.news.body === 'string' && D.news.body.trim()
+		? D.news.body
+		: 'The largest AI check ever written — and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.';
+
 export const NEWS_DEFAULT_SOURCE = D.news.source;
+
+/** Site wordmark used as the default News source logo when brand kit has none. */
+export const NEWS_DEFAULT_SOURCE_LOGO = '/logo/meme-accounts-logo.webp';
 
 /** Default News badge / canvas geometry (matches initial studio state). */
 export const NEWS_DEFAULT_LAYOUT = {

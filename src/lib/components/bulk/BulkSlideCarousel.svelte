@@ -13,6 +13,8 @@
 		loadingSlideIds?: string[];
 		/** When false, BulkSlidePreview strips `[[…]]` word highlights */
 		textHighlightsEnabled?: boolean;
+		/** News source logo URL from brand kit */
+		sourceLogoSrc?: string;
 	};
 
 	let {
@@ -22,6 +24,7 @@
 		width = 200,
 		loadingSlideIds = [],
 		textHighlightsEnabled = true,
+		sourceLogoSrc,
 	}: Props = $props();
 
 	const previewWidth = $derived(width);
@@ -282,6 +285,7 @@
 								width={previewWidth}
 								mediaFetching={true}
 								{textHighlightsEnabled}
+								{sourceLogoSrc}
 							/>
 						{:else}
 							<BulkSlidePreview
@@ -291,6 +295,7 @@
 								}}
 								width={previewWidth}
 								{textHighlightsEnabled}
+								{sourceLogoSrc}
 							/>
 						{/if}
 					</div>

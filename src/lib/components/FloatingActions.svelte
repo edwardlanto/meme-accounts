@@ -164,7 +164,7 @@
 								{/if}
 							</button>
 							<p class="text-[10px] leading-snug text-[rgba(10,10,10,0.38)]">
-								Shows up under Carousels → Saved Studio templates.
+								Shows up under Carousels. Studio also autosaves drafts as you edit.
 							</p>
 						</div>
 					</div>

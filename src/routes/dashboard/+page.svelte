@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
-		ArrowRight, ImagePlus, Sparkles, Layers, BarChart3, Trash2, ArrowUpRight, Rows3, Video
+		ArrowRight, ImagePlus, Sparkles, Layers, BarChart3, Trash2, ArrowUpRight, Rows3, Video, LayoutTemplate
 	} from 'lucide-svelte';
 
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
@@ -19,7 +19,8 @@
 
 	const primaryCards = [
 		{ href: '/dashboard/branding',       icon: Sparkles,  label: 'Generate Image', sub: 'Branding generator',  accent: '#7c3aed', tint: '#f3e8ff' },
-		{ href: '/dashboard/carousels',      icon: ImagePlus, label: 'Carousels', sub: 'Templates & layouts', accent: '#0891b2', tint: '#cffafe' },
+		{ href: '/dashboard/templates',      icon: LayoutTemplate, label: 'Templates', sub: 'Layouts & starters', accent: '#0891b2', tint: '#cffafe' },
+		{ href: '/dashboard/carousels',      icon: ImagePlus, label: 'Carousels', sub: 'Your generated posts', accent: '#0284c7', tint: '#e0f2fe' },
 		{ href: '/dashboard/bulk',           icon: Rows3,     label: 'Bulk',     sub: 'Edit slideshows + clips', accent: '#0f766e', tint: '#ccfbf1' },
 		{ href: '/dashboard/videos',         icon: Video,     label: 'Videos',   sub: 'Paste link → find clips', accent: '#e11d48', tint: '#ffe4e6' },
 		{ href: '/dashboard/studio?template=news', icon: Layers, label: 'News Studio', sub: 'News → post', accent: '#ea580c', tint: '#ffedd5' },

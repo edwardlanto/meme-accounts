@@ -248,7 +248,11 @@
 		{#if deleteOnly && onDelete}
 			<button
 				type="button"
-				onclick={() => onDelete()}
+				onpointerdown={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					onDelete();
+				}}
 				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted mx-auto"
 				title="Delete"
 				aria-label="Delete"
@@ -772,7 +776,11 @@
 			<div class="w-px h-6 shrink-0 ftb-div"></div>
 			<button
 				type="button"
-				onclick={() => onDelete()}
+				onpointerdown={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					onDelete();
+				}}
 				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted"
 				title="Delete"
 				aria-label="Delete"

@@ -75,18 +75,12 @@
 		bodyStyle.fontSize ?? (previewMode ? (isMedia ? 15 : 16) : isMedia ? 42 : 44),
 	);
 	const gapBody = $derived(previewMode ? (isMedia ? 14 : 16) : isMedia ? 36 : 40);
-	const nameDisplay = $derived(String(name ?? '').trim() || (isMedia ? WHITE_MEDIA_DEFAULTS.name : WHITE_THREAD_DEFAULTS.name));
-	const handleDisplay = $derived(
-		String(handle ?? '').trim() || (isMedia ? WHITE_MEDIA_DEFAULTS.handle : WHITE_THREAD_DEFAULTS.handle),
-	);
-	const bodyDisplay = $derived(
-		String(text ?? '').trim() || (isMedia ? WHITE_MEDIA_DEFAULTS.body : WHITE_THREAD_DEFAULTS.body),
-	);
-	const avatarSrc = $derived(
-		String(avatar ?? '').trim() ||
-			(isMedia ? WHITE_MEDIA_DEFAULTS.avatarUrl : WHITE_THREAD_DEFAULTS.avatarUrl),
-	);
-	const mediaSrc = $derived(String(mediaImage ?? '').trim() || WHITE_MEDIA_DEFAULTS.imageUrl);
+	const nameDisplay = $derived(String(name ?? ''));
+	const handleDisplay = $derived(String(handle ?? ''));
+	const bodyDisplay = $derived(String(text ?? ''));
+	const avatarSrc = $derived(String(avatar ?? '').trim());
+	const mediaSrc = $derived(String(mediaImage ?? '').trim());
+	const mediaSelected = $derived(selectedText === 'articleImage');
 
 	function initialsFromName(n: string): string {
 		const parts = n.trim().split(/\s+/).filter(Boolean);
@@ -342,6 +336,7 @@
 
 			{#if isMedia}
 				<div
+					data-text-selectable={interactive ? 'articleImage' : undefined}
 					style="
 						margin-top: {previewMode ? 4 : 8}px;
 						width: 100%;
@@ -352,9 +347,13 @@
 						overflow: hidden;
 						background: #f0f3f4;
 						align-self: stretch;
+						cursor: {interactive && onTextSelect ? 'pointer' : 'default'};
+						outline: {mediaSelected ? '3px solid rgba(167,139,250,0.85)' : 'none'};
+						outline-offset: -3px;
 					"
 					role={interactive ? 'button' : undefined}
 					tabindex={interactive ? 0 : undefined}
+					aria-label={interactive ? 'Post media' : undefined}
 					onclick={(e) => {
 						if (!interactive || !onTextSelect) return;
 						e.stopPropagation();
@@ -368,19 +367,21 @@
 						}
 					}}
 				>
-					<img
-						src={mediaSrc}
-						alt=""
-						draggable="false"
-						style="
-							width: 100%;
-							height: 100%;
-							object-fit: cover;
-							object-position: center;
-							display: block;
-							pointer-events: none;
-						"
-					/>
+					{#if mediaSrc}
+						<img
+							src={mediaSrc}
+							alt=""
+							draggable="false"
+							style="
+								width: 100%;
+								height: 100%;
+								object-fit: cover;
+								object-position: center;
+								display: block;
+								pointer-events: none;
+							"
+						/>
+					{/if}
 				</div>
 			{/if}
 		</div>

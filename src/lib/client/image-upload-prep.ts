@@ -31,7 +31,7 @@ export async function prepareImageForUpload(
 	try {
 		bitmap = await createImageBitmap(file);
 	} catch {
-		throw new Error('Could not read this image — try JPEG or PNG');
+		throw new Error('Could not read this image — try another WebP, JPEG, or PNG');
 	}
 
 	const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height, 1));

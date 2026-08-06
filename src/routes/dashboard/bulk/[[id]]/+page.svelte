@@ -478,10 +478,13 @@
 				...s,
 				slides: (s.slides ?? []).map((sl) => ({ ...sl })),
 			}));
+			const showParam = $page.url.searchParams.get('show');
 			selectedShowId =
-				cloud.selectedShowId && shows.some((s) => s.id === cloud.selectedShowId)
-					? cloud.selectedShowId
-					: shows[0]?.id ?? null;
+				showParam && shows.some((s) => s.id === showParam)
+					? showParam
+					: cloud.selectedShowId && shows.some((s) => s.id === cloud.selectedShowId)
+						? cloud.selectedShowId
+						: shows[0]?.id ?? null;
 			if (cloud.topic?.trim()) topic = cloud.topic;
 			if (cloud.clipProjectId) clipProjectId = cloud.clipProjectId;
 			touchBulkWorkspaceSession(user.id);
@@ -858,9 +861,23 @@
 		shows = incoming;
 		selectedShowId = incoming[0]?.id ?? null;
 		clipHandoff = null;
+		cloudWorkspaceId = null;
 		if (clipProjectId) scheduleClipProjectSave();
 		workspaceHydrated = true;
 		void persistBulkWorkspace();
+		// Same as topic generate: land clip carousels in Library / Carousels immediately.
+		if (userId && showsHaveContent(incoming)) {
+			void saveShowsToCloud(incoming)
+				.then(async (id) => {
+					if (!id) return;
+					cloudWorkspaceId = id;
+					void refreshLibrary();
+					if ($page.params.id !== id) {
+						await goto(`/dashboard/bulk/${id}`, { replaceState: true, noScroll: true });
+					}
+				})
+				.catch(() => {});
+		}
 	}
 
 	async function applyScenePhoto(showId: string, slideId: string) {
@@ -1356,14 +1373,19 @@
 			}
 			await persistBulkWorkspace();
 			try {
-				const id = await saveShowsToCloud(newShows);
+				// Prefer post-stock `shows` so thumbs land in the cloud library / Carousels.
+				const id = await saveShowsToCloud(shows);
 				if (id) {
 					cloudWorkspaceId = id;
 					void refreshLibrary();
 					await goto(`/dashboard/bulk/${id}`, { replaceState: true, noScroll: true });
+				} else {
+					generateError =
+						'Generated locally, but cloud save failed — check Carousels after fixing bulk_workspaces, or use Save in the Bulk library.';
 				}
-			} catch {
-				/* local stack still usable */
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : 'Cloud save failed';
+				generateError = `Generated locally, but not saved to Carousels: ${msg}`;
 			}
 		} catch (e: any) {
 			generateError = e?.message || 'Failed to generate ideas';
@@ -1888,6 +1910,7 @@
 									width={BULK_CAROUSEL_WIDTH}
 									loadingSlideIds={show.slides.filter((s) => s.mediaLoading).map((s) => s.id)}
 									textHighlightsEnabled={brandKit.textHighlightsEnabled}
+									sourceLogoSrc={brandKit.logoUrl || undefined}
 									onselect={(slideId) => selectSlide(show.id, slideId)}
 								/>
 							{/if}
@@ -1914,6 +1937,7 @@
 												preferThumb={true}
 												mediaFetching={!!sl.mediaLoading}
 												textHighlightsEnabled={brandKit.textHighlightsEnabled}
+												sourceLogoSrc={brandKit.logoUrl || undefined}
 											/>
 											<span class="filmstrip-num">{si + 1}</span>
 											{#if sl.clipMeta && !sl.mediaLoading}

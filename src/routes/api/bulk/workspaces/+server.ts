@@ -22,20 +22,57 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-	const rows = await listBulkWorkspaces(user.id, 24);
+	const rows = await listBulkWorkspaces(user.id, 48);
 	return json({
-		workspaces: rows.map((r) => ({
-			id: r.id,
-			title: r.title,
-			topic: r.topic,
-			thumbnailUrl: r.thumbnail_url,
-			showCount: Array.isArray(r.shows) ? r.shows.length : 0,
-			titles: Array.isArray(r.shows)
-				? (r.shows as BulkShow[]).slice(0, 4).map((s) => s.title || 'Untitled')
-				: [],
-			updatedAt: r.updated_at,
-			url: `/dashboard/bulk/${r.id}`,
-		})),
+		workspaces: rows.map((r) => {
+			const shows = Array.isArray(r.shows) ? (r.shows as BulkShow[]) : [];
+			const workspaceThumb = String(r.thumbnail_url ?? '').trim();
+			const safeWorkspaceThumb =
+				workspaceThumb &&
+				!workspaceThumb.startsWith('blob:') &&
+				workspaceThumb.length < 2000 &&
+				!/\.(mp4|webm|mov)(\?|$)/i.test(workspaceThumb)
+					? workspaceThumb
+					: '';
+			return {
+				id: r.id,
+				title: r.title,
+				topic: r.topic,
+				thumbnailUrl: r.thumbnail_url,
+				clipProjectId: r.clip_project_id,
+				fromVideoClips: shows.some((s) => !!s.fromVideoClips) || !!r.clip_project_id,
+				showCount: shows.length,
+				titles: shows.slice(0, 4).map((s) => s.title || 'Untitled'),
+				updatedAt: r.updated_at,
+				url: `/dashboard/bulk/${r.id}`,
+				shows: shows.slice(0, 24).map((s) => {
+					const slides = Array.isArray(s.slides) ? s.slides : [];
+					const first = slides[0];
+					const candidates = [
+						String(first?.mediaThumb ?? '').trim(),
+						String(first?.mediaUrl ?? '').trim(),
+						safeWorkspaceThumb,
+					];
+					let safeThumb = '';
+					for (const thumb of candidates) {
+						if (!thumb || thumb.startsWith('blob:') || thumb.length >= 2000) continue;
+						if (/\.(mp4|webm|mov)(\?|$)/i.test(thumb)) continue;
+						if (/youtube\.com\/embed|youtu\.be\//i.test(thumb)) continue;
+						safeThumb = thumb;
+						break;
+					}
+					return {
+						id: s.id,
+						title: String(s.title ?? '').trim() || 'Untitled',
+						slideCount: Math.max(1, slides.length),
+						headline: String(first?.headline ?? '').trim(),
+						thumb: safeThumb,
+						template: String(first?.template ?? 'news'),
+						fromVideoClips: !!s.fromVideoClips,
+					};
+				}),
+			};
+		}),
 	});
 };
 

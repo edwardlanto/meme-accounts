@@ -14,6 +14,10 @@ export interface Overlay {
 	h: number;    // height in template px
 	/** Image sticker overlays: corner radius in template px (clamped to half the shorter side). */
 	borderRadius?: number;
+	/** Solid fill behind the image (hex). Omit / empty = transparent. */
+	bgColor?: string;
+	/** Extra background margin around the image (template px). Expands outward; image size stays `w`×`h`. */
+	padding?: number;
 }
 
 /** Draggable text overlay placed on top of a slide */
