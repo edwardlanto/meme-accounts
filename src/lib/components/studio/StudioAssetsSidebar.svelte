@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { prepareImageForUpload } from '$lib/client/image-upload-prep';
-	import { ImagePlus, Loader, Pencil, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
+	import { Film, ImagePlus, Loader, Pencil, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
 
 	type StudioAsset = {
 		id: string;
@@ -30,6 +30,15 @@
 		photographerUrl: string;
 	};
 
+	type PexelsVideo = {
+		id: number;
+		url: string;
+		thumb: string;
+		alt: string;
+		photographer: string;
+		duration: number;
+	};
+
 	let {
 		userId = '',
 		collapsed = $bindable(false),
@@ -37,6 +46,7 @@
 		onUseAsBottomBackground,
 		onAddAsSticker,
 		onUseUnsplashBackground,
+		onUsePexelsVideo,
 	}: {
 		userId?: string;
 		collapsed?: boolean;
@@ -48,9 +58,16 @@
 			downloadLocation: string;
 			photographer: string;
 		}) => void | Promise<void>;
+		onUsePexelsVideo?: (video: {
+			url: string;
+			thumb: string;
+			photographer: string;
+			duration: number;
+		}) => void | Promise<void>;
 	} = $props();
 
 	let tab = $state<'library' | 'unsplash' | 'pexels'>('library');
+	let pexelsKind = $state<'photos' | 'videos'>('photos');
 
 	let assets = $state<StudioAsset[]>([]);
 	let loading = $state(false);
@@ -76,6 +93,7 @@
 
 	let pexelsQuery = $state('');
 	let pexelsPhotos = $state<PexelsPhoto[]>([]);
+	let pexelsVideos = $state<PexelsVideo[]>([]);
 	let pexelsLoading = $state(false);
 	let pexelsError = $state('');
 	let pexelsApplyingId = $state<number | null>(null);
@@ -310,61 +328,105 @@
 			pexelsError = 'Enter a search term';
 			return;
 		}
-		
-		// If no page specified, start fresh from page 1
+
 		const isNewSearch = pageToFetch === null;
 		const targetPage = pageToFetch ?? 1;
-		
+		const searchingVideos = pexelsKind === 'videos';
+
 		if (isNewSearch) {
 			pexelsPage = 1;
 			pexelsPhotos = [];
+			pexelsVideos = [];
 		}
-		
+
 		pexelsLoading = true;
 		pexelsError = '';
 		pexelsSearched = true;
-		
+
 		try {
-			console.log(`[Pexels] Fetching page ${targetPage} for query: ${q}`);
-			const res = await fetch(`/api/pexels/search?query=${encodeURIComponent(q)}&per_page=15&page=${targetPage}`);
+			const endpoint = searchingVideos
+				? `/api/pexels/videos?query=${encodeURIComponent(q)}&per_page=10&page=${targetPage}&orientation=portrait`
+				: `/api/pexels/search?query=${encodeURIComponent(q)}&per_page=15&page=${targetPage}`;
+			const res = await fetch(endpoint);
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok) throw new Error(data?.error ?? `Search failed (${res.status})`);
-			
-			console.log(`[Pexels] Received ${data.photos?.length ?? 0} photos, total pages: ${data.totalPages}, current page: ${data.page}`);
-			
-			const newPhotos = Array.isArray(data.photos) ? data.photos : [];
-			
-			// For new search, replace. For load more, append
-			if (isNewSearch) {
-				pexelsPhotos = newPhotos;
-				pexelsPage = 1;
+
+			if (searchingVideos) {
+				const newVideos = (Array.isArray(data.videos) ? data.videos : [])
+					.map((v: any) => ({
+						id: Number(v?.id ?? 0),
+						url: String(v?.url ?? ''),
+						thumb: String(v?.thumb ?? ''),
+						alt: String(v?.alt ?? 'Video'),
+						photographer: String(v?.photographer ?? 'Unknown'),
+						duration: Number(v?.duration ?? 0) || 0,
+					}))
+					.filter((v: PexelsVideo) => v.id && v.url);
+
+				if (isNewSearch) {
+					pexelsVideos = newVideos;
+					pexelsPage = 1;
+				} else {
+					pexelsVideos = [...pexelsVideos, ...newVideos];
+					pexelsPage = targetPage;
+				}
+
+				const total = Number(data?.total ?? 0) || 0;
+				const perPage = 10;
+				pexelsTotalPages = Number(data?.totalPages ?? Math.max(1, Math.ceil(total / perPage))) || 1;
+				pexelsHasMore =
+					newVideos.length >= perPage &&
+					(total > 0 ? pexelsPage * perPage < total : newVideos.length >= perPage);
+
+				if (!pexelsVideos.length && isNewSearch) {
+					pexelsError = 'No videos found — try another keyword';
+				}
 			} else {
-				pexelsPhotos = [...pexelsPhotos, ...newPhotos];
-				pexelsPage = targetPage;
-			}
-			
-			pexelsTotalPages = Number(data?.totalPages ?? 1);
-			pexelsHasMore = pexelsPage < pexelsTotalPages && newPhotos.length > 0;
-			
-			console.log(`[Pexels] Current state - page: ${pexelsPage}, total photos: ${pexelsPhotos.length}, hasMore: ${pexelsHasMore}`);
-			
-			if (!pexelsPhotos.length && isNewSearch) {
-				pexelsError = 'No photos found — try another keyword';
+				const newPhotos = Array.isArray(data.photos) ? data.photos : [];
+
+				if (isNewSearch) {
+					pexelsPhotos = newPhotos;
+					pexelsPage = 1;
+				} else {
+					pexelsPhotos = [...pexelsPhotos, ...newPhotos];
+					pexelsPage = targetPage;
+				}
+
+				pexelsTotalPages = Number(data?.totalPages ?? 1);
+				pexelsHasMore = pexelsPage < pexelsTotalPages && newPhotos.length > 0;
+
+				if (!pexelsPhotos.length && isNewSearch) {
+					pexelsError = 'No photos found — try another keyword';
+				}
 			}
 		} catch (e: unknown) {
 			console.error('[Pexels] Search error:', e);
-			if (isNewSearch) pexelsPhotos = [];
+			if (isNewSearch) {
+				pexelsPhotos = [];
+				pexelsVideos = [];
+			}
 			pexelsError = e instanceof Error ? e.message : 'Pexels search failed';
 		} finally {
 			pexelsLoading = false;
 		}
 	}
-	
+
 	async function loadMorePexels() {
 		if (!pexelsHasMore || pexelsLoading) return;
-		const nextPage = pexelsPage + 1;
-		console.log(`[Pexels] Loading more, fetching page ${nextPage}`);
-		await searchPexels(nextPage);
+		await searchPexels(pexelsPage + 1);
+	}
+
+	function switchPexelsKind(kind: 'photos' | 'videos') {
+		if (pexelsKind === kind) return;
+		pexelsKind = kind;
+		pexelsPhotos = [];
+		pexelsVideos = [];
+		pexelsSearched = false;
+		pexelsError = '';
+		pexelsPage = 1;
+		pexelsHasMore = true;
+		pexelsTotalPages = 1;
+		if (pexelsQuery.trim()) void searchPexels();
 	}
 
 	async function applyPexels(photo: PexelsPhoto) {
@@ -374,7 +436,7 @@
 		try {
 			await onUseUnsplashBackground({
 				url: photo.regular,
-				downloadLocation: '', // Pexels doesn't require download tracking
+				downloadLocation: '',
 				photographer: photo.photographer,
 			});
 		} catch (e: unknown) {
@@ -384,10 +446,34 @@
 		}
 	}
 
+	async function applyPexelsVideo(video: PexelsVideo) {
+		if (!onUsePexelsVideo) return;
+		pexelsApplyingId = video.id;
+		pexelsError = '';
+		try {
+			await onUsePexelsVideo({
+				url: video.url,
+				thumb: video.thumb,
+				photographer: video.photographer,
+				duration: video.duration,
+			});
+		} catch (e: unknown) {
+			pexelsError = e instanceof Error ? e.message : 'Could not apply video';
+		} finally {
+			pexelsApplyingId = null;
+		}
+	}
+
+	function formatDuration(sec: number): string {
+		const s = Math.max(0, Math.round(sec));
+		const m = Math.floor(s / 60);
+		const r = s % 60;
+		return `${m}:${String(r).padStart(2, '0')}`;
+	}
+
 	function expandPexelsImage(photo: PexelsPhoto, e: MouseEvent) {
 		e.stopPropagation();
 		e.preventDefault();
-		// Open the original high-res image in a new tab
 		window.open(photo.original || photo.regular, '_blank', 'noopener,noreferrer');
 	}
 </script>
@@ -511,6 +597,28 @@
 				</button>
 			</form>
 		{:else if tab === 'pexels'}
+			<div class="pexels-kind" role="tablist" aria-label="Pexels media type">
+				<button
+					type="button"
+					role="tab"
+					class="pexels-kind-btn"
+					class:pexels-kind-btn--on={pexelsKind === 'photos'}
+					aria-selected={pexelsKind === 'photos'}
+					onclick={() => switchPexelsKind('photos')}
+				>
+					Photos
+				</button>
+				<button
+					type="button"
+					role="tab"
+					class="pexels-kind-btn"
+					class:pexels-kind-btn--on={pexelsKind === 'videos'}
+					aria-selected={pexelsKind === 'videos'}
+					onclick={() => switchPexelsKind('videos')}
+				>
+					Videos
+				</button>
+			</div>
 			<form
 				class="assets-search assets-search--pexels"
 				onsubmit={(e) => {
@@ -522,7 +630,7 @@
 				<input
 					type="search"
 					bind:value={pexelsQuery}
-					placeholder="Search Pexels…"
+					placeholder={pexelsKind === 'videos' ? 'Search Pexels videos…' : 'Search Pexels photos…'}
 					class="assets-search-input"
 				/>
 				<button type="submit" class="assets-search-go" disabled={pexelsLoading}>
@@ -756,22 +864,93 @@
 		{/if}
 	{:else if tab === 'pexels'}
 		<div class="assets-drop">
-			{#if pexelsLoading}
+			{#if pexelsLoading && !(pexelsKind === 'videos' ? pexelsVideos.length : pexelsPhotos.length)}
 				<div class="assets-empty">
 					<Loader size={18} class="animate-spin opacity-50" />
-					<p>Searching Pexels…</p>
+					<p>{pexelsKind === 'videos' ? 'Searching Pexels videos…' : 'Searching Pexels…'}</p>
 				</div>
 			{:else if !pexelsSearched}
 				<div class="assets-empty">
-					<div class="assets-empty-icon"><Search size={18} /></div>
-					<p>Search stock photos</p>
-					<span>Find a photo, then tap it to set as the slide background</span>
+					<div class="assets-empty-icon">
+						{#if pexelsKind === 'videos'}
+							<Film size={18} />
+						{:else}
+							<Search size={18} />
+						{/if}
+					</div>
+					<p>{pexelsKind === 'videos' ? 'Search stock videos' : 'Search stock photos'}</p>
+					<span>
+						{pexelsKind === 'videos'
+							? 'Find a clip, then tap it to set as the slide background'
+							: 'Find a photo, then tap it to set as the slide background'}
+					</span>
 				</div>
-			{:else if !pexelsPhotos.length}
+			{:else if pexelsKind === 'videos' ? !pexelsVideos.length : !pexelsPhotos.length}
 				<div class="assets-empty">
 					<p>No results</p>
 					<span>Try a different keyword</span>
 				</div>
+			{:else if pexelsKind === 'videos'}
+				<ul class="unsplash-grid">
+					{#each pexelsVideos as video (video.id)}
+						<li>
+							<div
+								class="unsplash-card pexels-card pexels-video-card"
+								class:unsplash-card--loading={pexelsApplyingId === video.id}
+								title={`Video by ${video.photographer} on Pexels`}
+							>
+								<button
+									type="button"
+									class="unsplash-card-action"
+									disabled={pexelsApplyingId === video.id || !onUsePexelsVideo}
+									onclick={() => void applyPexelsVideo(video)}
+								>
+									{#if video.thumb}
+										<img src={video.thumb} alt={video.alt} loading="lazy" />
+									{:else}
+										<div class="pexels-video-fallback"><Film size={18} /></div>
+									{/if}
+									<span class="pexels-video-badge" aria-hidden="true">
+										<Film size={10} />
+										{formatDuration(video.duration)}
+									</span>
+								</button>
+								{#if pexelsApplyingId === video.id}
+									<div class="asset-busy"><Loader size={14} class="animate-spin" /></div>
+								{:else}
+									<span class="unsplash-credit">
+										{video.photographer}
+										· Video BG
+									</span>
+								{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+
+				{#if pexelsHasMore}
+					<div class="unsplash-load-more">
+						<button
+							type="button"
+							class="load-more-btn"
+							disabled={pexelsLoading}
+							onclick={() => void loadMorePexels()}
+						>
+							{#if pexelsLoading}
+								<Loader size={14} class="animate-spin" />
+								<span>Loading page {pexelsPage + 1}…</span>
+							{:else}
+								<span>Load More (Page {pexelsPage + 1})</span>
+								<span class="load-more-count">{pexelsVideos.length} videos • {pexelsPage} of {pexelsTotalPages}</span>
+							{/if}
+						</button>
+					</div>
+				{/if}
+
+				<p class="unsplash-note">
+					Videos via
+					<a href="https://www.pexels.com/videos/" target="_blank" rel="noopener noreferrer">Pexels</a>
+				</p>
 			{:else}
 				<ul class="unsplash-grid">
 					{#each pexelsPhotos as photo (photo.id)}
@@ -814,7 +993,7 @@
 						</li>
 					{/each}
 				</ul>
-				
+
 				{#if pexelsHasMore}
 					<div class="unsplash-load-more">
 						<button
@@ -833,7 +1012,7 @@
 						</button>
 					</div>
 				{/if}
-				
+
 				<p class="unsplash-note">
 					Photos via
 					<a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
@@ -978,6 +1157,58 @@
 	}
 	.assets-search--pexels {
 		padding-right: 0;
+	}
+	.pexels-kind {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		padding: 3px;
+		margin-bottom: 8px;
+		border-radius: 10px;
+		background: #f0f0f0;
+	}
+	.pexels-kind-btn {
+		height: 26px;
+		border: none;
+		border-radius: 8px;
+		background: transparent;
+		color: #777;
+		font-size: 11px;
+		font-weight: 650;
+		cursor: pointer;
+		transition: background 120ms ease, color 120ms ease;
+	}
+	.pexels-kind-btn--on {
+		background: #fff;
+		color: #111;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	}
+	.pexels-video-card .unsplash-card-action {
+		position: relative;
+	}
+	.pexels-video-badge {
+		position: absolute;
+		left: 6px;
+		bottom: 6px;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 7px;
+		border-radius: 999px;
+		background: rgba(0, 0, 0, 0.72);
+		color: #fff;
+		font-size: 10px;
+		font-weight: 650;
+		letter-spacing: 0.02em;
+		pointer-events: none;
+	}
+	.pexels-video-fallback {
+		width: 100%;
+		aspect-ratio: 3 / 4;
+		display: grid;
+		place-items: center;
+		background: #1a1a1a;
+		color: rgba(255, 255, 255, 0.45);
 	}
 	.assets-search-icon {
 		position: absolute;

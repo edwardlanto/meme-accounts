@@ -5,16 +5,13 @@
 	let scrollY = $state(0);
 	let counted = $state(false);
 
-	/** Phone marquee — replace with your own image/video assets when ready. */
-	const phoneMarqueePlaceholder = '/placeholders/marquee/news-template-placeholder.png';
-	const phoneScreens = [phoneMarqueePlaceholder];
-
-	const phoneLabels = [
-		{ tint: '#FFB4A2', tag: 'Carousel' },
-		{ tint: '#B5E48C', tag: 'Reel' },
-		{ tint: '#A0C4FF', tag: 'Story' },
-		{ tint: '#FFC8DD', tag: 'Post' },
-		{ tint: '#FFD6A5', tag: 'Schedule' },
+	/** Phone marquee — product screen shots scrolling through the hero. */
+	const phoneScreens = [
+		{ src: '/placeholders/marquee/slide-1.png', tint: '#FFB4A2', tag: 'Carousel' },
+		{ src: '/placeholders/marquee/slide-2.png', tint: '#B5E48C', tag: 'Reel' },
+		{ src: '/placeholders/marquee/slide-3.png', tint: '#A0C4FF', tag: 'Story' },
+		{ src: '/placeholders/marquee/slide-4.png', tint: '#FFC8DD', tag: 'Post' },
+		{ src: '/placeholders/marquee/slide-5.png', tint: '#FFD6A5', tag: 'Schedule' },
 	];
 
 	/** Platforms Meme Accounts publishes to — shown as a trust/connector strip. */
@@ -324,59 +321,28 @@
 			</div>
 		</div>
 
-		<!-- Product preview mockup -->
-		<div class="preview-stage reveal">
-			<div class="preview-frame">
-				<div class="preview-topbar">
-					<span class="preview-dot" style="background:#ff5f57"></span>
-					<span class="preview-dot" style="background:#febc2e"></span>
-					<span class="preview-dot" style="background:#28c840"></span>
-					<span class="preview-url">memeaccounts.com/studio</span>
-				</div>
-				<div class="preview-body">
-					<div class="preview-sidebar">
-						<div class="pv-side-item pv-active">Templates</div>
-						<div class="pv-side-item">Bulk Create</div>
-						<div class="pv-side-item">Schedule</div>
-						<div class="pv-side-item">Studio</div>
-						<div class="pv-side-item">Analytics</div>
-					</div>
-					<div class="preview-canvas">
-						<div class="pv-card" style="background:#7B2D26">
-							<span class="pv-tag">Carousel · 6 slides</span>
-						</div>
-						<div class="pv-card" style="background:#3D6B8C">
-							<span class="pv-tag">News frame</span>
-						</div>
-						<div class="pv-card" style="background:#D67862">
-							<span class="pv-tag">Viral hook</span>
-						</div>
-						<div class="pv-queue">
-							<div class="pv-queue-h">Scheduled — this week</div>
-							<div class="pv-queue-row"><span class="pv-dot" style="background:#E8FF48"></span>Mon 9:00 AM · Carousel</div>
-							<div class="pv-queue-row"><span class="pv-dot" style="background:#A0C4FF"></span>Wed 6:30 PM · Story</div>
-							<div class="pv-queue-row"><span class="pv-dot" style="background:#FFC8DD"></span>Fri 8:00 AM · Reel</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
 
-		<!-- Phone marquee -->
-		<div class="phone-stage">
-			<div class="phone-track">
-				{#each [...phoneLabels, ...phoneLabels] as p, i}
-					<div class="phone" style="--tint:{p.tint}; --i:{i}">
-						<div class="phone-frame">
-							<div class="phone-notch"></div>
-							<div class="phone-screen" style="background:{p.tint}">
-								<img src={phoneScreens[i % phoneScreens.length]} alt="" />
-								<div class="phone-overlay">
-									<div class="phone-pill">{p.tag}</div>
+		<!-- Phone marquee — two identical tracks for a seamless infinite loop -->
+		<div class="phone-stage" aria-hidden="true">
+			<div class="phone-stage-glow"></div>
+			<div class="phone-marquee">
+				{#each [0, 1] as copy (copy)}
+					<div class="phone-track">
+						{#each phoneScreens as p, i (copy + '-' + i)}
+							<div class="phone" style="--tint:{p.tint}">
+								<span class="phone-aura"></span>
+								<div class="phone-frame">
+									<div class="phone-notch"></div>
+									<div class="phone-screen">
+										<img src={p.src} alt="" draggable="false" />
+										<div class="phone-overlay">
+											<div class="phone-pill">{p.tag}</div>
+										</div>
+									</div>
+									<div class="phone-bar"></div>
 								</div>
 							</div>
-							<div class="phone-bar"></div>
-						</div>
+						{/each}
 					</div>
 				{/each}
 			</div>
@@ -1072,45 +1038,131 @@
 
 	/* ─── phone marquee ───────────────────────────────────── */
 	.phone-stage {
+		--phone-gap: 28px;
+		--phone-duration: 42s;
+		position: relative;
 		margin-top: 64px;
-		padding: 20px 0;
-		mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
-		-webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+		padding: 36px 0 28px;
+		overflow: hidden;
+		mask-image: linear-gradient(
+			90deg,
+			transparent 0%,
+			#000 6%,
+			#000 94%,
+			transparent 100%
+		);
+		-webkit-mask-image: linear-gradient(
+			90deg,
+			transparent 0%,
+			#000 6%,
+			#000 94%,
+			transparent 100%
+		);
+	}
+	.phone-stage-glow {
+		position: absolute;
+		left: 50%;
+		bottom: 8%;
+		width: min(920px, 90%);
+		height: 48%;
+		transform: translateX(-50%);
+		background:
+			radial-gradient(ellipse at 50% 80%, rgba(255, 180, 162, 0.22), transparent 58%),
+			radial-gradient(ellipse at 28% 70%, rgba(160, 196, 255, 0.18), transparent 55%),
+			radial-gradient(ellipse at 72% 70%, rgba(181, 228, 140, 0.16), transparent 55%);
+		filter: blur(28px);
+		pointer-events: none;
+		z-index: 0;
+	}
+	.phone-marquee {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		width: max-content;
+		gap: var(--phone-gap);
 	}
 	.phone-track {
 		display: flex;
-		gap: 28px;
+		flex-shrink: 0;
+		align-items: flex-end;
+		gap: var(--phone-gap);
 		width: max-content;
-		animation: phone-scroll 38s linear infinite;
-		padding: 0 14px;
+		animation: phone-scroll var(--phone-duration) linear infinite;
+		will-change: transform;
 	}
 	@keyframes phone-scroll {
-		0%   { transform: translateX(0); }
-		100% { transform: translateX(-50%); }
+		from { transform: translate3d(0, 0, 0); }
+		to   { transform: translate3d(calc(-100% - var(--phone-gap)), 0, 0); }
 	}
-	.phone-stage:hover .phone-track { animation-play-state: paused; }
+	.phone-stage:hover .phone-track {
+		animation-play-state: paused;
+	}
 
 	.phone {
+		position: relative;
 		flex: 0 0 auto;
-		transform: translateY(calc(sin(var(--i) * 1.1) * 12px));
-		transition: transform 0.4s ease;
+		transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 	}
-	.phone:nth-child(odd)  { transform: translateY(8px); }
-	.phone:nth-child(even) { transform: translateY(-8px); }
-	.phone:hover { transform: translateY(-14px) scale(1.02); }
+	.phone:nth-child(5n + 1) { transform: translateY(8px); }
+	.phone:nth-child(5n + 2) { transform: translateY(-7px); }
+	.phone:nth-child(5n + 3) { transform: translateY(11px); }
+	.phone:nth-child(5n + 4) { transform: translateY(-5px); }
+	.phone:nth-child(5n + 5) { transform: translateY(6px); }
+	.phone:hover {
+		transform: translateY(-12px) scale(1.025);
+		z-index: 2;
+	}
+
+	.phone-aura {
+		position: absolute;
+		left: 50%;
+		top: 18%;
+		width: 78%;
+		height: 72%;
+		transform: translateX(-50%);
+		border-radius: 50%;
+		background: radial-gradient(
+			ellipse at center,
+			color-mix(in oklab, var(--tint) 55%, transparent) 0%,
+			color-mix(in oklab, var(--tint) 18%, transparent) 42%,
+			transparent 72%
+		);
+		filter: blur(22px);
+		opacity: 0.9;
+		pointer-events: none;
+		z-index: 0;
+		transition: opacity 0.45s ease, filter 0.45s ease;
+	}
+	.phone:hover .phone-aura {
+		opacity: 1;
+		filter: blur(26px);
+	}
 
 	.phone-frame {
 		position: relative;
+		z-index: 1;
 		width: 220px;
 		height: 460px;
 		background: #0f0f10;
 		border-radius: 38px;
 		padding: 10px;
 		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.16) inset,
+			0 0 0 1px rgba(0, 0, 0, 0.22),
+			0 28px 56px -22px rgba(15, 15, 16, 0.4),
+			0 14px 28px -14px rgba(15, 15, 16, 0.28),
+			0 0 36px -6px color-mix(in oklab, var(--tint) 42%, transparent),
+			0 18px 48px -18px color-mix(in oklab, var(--tint) 28%, transparent);
+		transition: box-shadow 0.45s ease;
+	}
+	.phone:hover .phone-frame {
+		box-shadow:
 			0 1px 0 rgba(255, 255, 255, 0.18) inset,
-			0 0 0 1px rgba(0, 0, 0, 0.2),
-			0 30px 60px -20px rgba(15, 15, 16, 0.35),
-			0 12px 24px -10px rgba(15, 15, 16, 0.25);
+			0 0 0 1px rgba(0, 0, 0, 0.22),
+			0 34px 64px -20px rgba(15, 15, 16, 0.42),
+			0 16px 32px -12px rgba(15, 15, 16, 0.3),
+			0 0 52px -4px color-mix(in oklab, var(--tint) 58%, transparent),
+			0 22px 56px -16px color-mix(in oklab, var(--tint) 38%, transparent);
 	}
 	.phone-notch {
 		position: absolute;
@@ -1127,15 +1179,13 @@
 		height: 100%;
 		border-radius: 30px;
 		overflow: hidden;
-		background: var(--tint);
+		background: color-mix(in oklab, var(--tint) 35%, #1a1a1c);
 	}
 	.phone-screen img {
 		width: 100%;
 		height: 100%;
-		object-fit: contain;
+		object-fit: cover;
 		display: block;
-		mix-blend-mode: luminosity;
-		opacity: 0.92;
 	}
 	.phone-overlay {
 		position: absolute;
@@ -1144,7 +1194,8 @@
 		flex-direction: column;
 		justify-content: flex-end;
 		padding: 18px;
-		background: linear-gradient(180deg, transparent 50%, rgba(0, 0, 0, 0.35) 100%);
+		background: linear-gradient(180deg, transparent 52%, rgba(0, 0, 0, 0.38) 100%);
+		pointer-events: none;
 	}
 	.phone-pill {
 		align-self: flex-start;
@@ -1749,5 +1800,12 @@
 	@media (prefers-reduced-motion: reduce) {
 		.reveal { opacity: 1; transform: none; transition: none; }
 		.phone-track { animation: none; }
+		.phone-marquee {
+			justify-content: center;
+			width: 100%;
+			overflow: hidden;
+		}
+		.phone-track:last-child { display: none; }
+		.phone-aura { opacity: 0.55; }
 	}
 </style>

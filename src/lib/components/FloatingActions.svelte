@@ -15,7 +15,10 @@
 		onExportZip?: () => void | Promise<void>;
 		exportingZip?: boolean;
 		onBurnMusicClick?: () => void | Promise<void>;
-		onSaveTemplate?: () => void | Promise<void>;
+		/** Save current layout as a named reusable template. */
+		onSaveTemplate?: (name: string) => void | Promise<void>;
+		/** Prefill for the save-template name field when the popover opens. */
+		defaultTemplateName?: string;
 	}
 
 	let {
@@ -31,12 +34,17 @@
 		exportingZip = false,
 		onBurnMusicClick = undefined,
 		onSaveTemplate = undefined,
+		defaultTemplateName = '',
 	} = ($props() as $$Props);
 
 	interface SlideMusicSettings { song: string; seconds: number; }
 
 	let showMusicPanel = $state(false);
 	let showPostPanel = $state(false);
+	let showSavePanel = $state(false);
+	let saveTemplateName = $state('');
+	let saveTemplateSaving = $state(false);
+	let saveTemplateError = $state('');
 	let selectedPlatforms = $state<string[]>([]);
 	let scheduleDate = $state('');
 	let scheduleTime = $state('');
@@ -68,12 +76,42 @@
 		if (onPost) { await onPost(); return; }
 		await goto(postUrl);
 	}
+
+	function openSavePanel() {
+		showSavePanel = !showSavePanel;
+		showPostPanel = false;
+		showMusicPanel = false;
+		saveTemplateError = '';
+		if (showSavePanel && !saveTemplateName.trim()) {
+			saveTemplateName = defaultTemplateName.trim() || 'My carousel layout';
+		}
+	}
+
+	function closeSavePanel() {
+		showSavePanel = false;
+		saveTemplateError = '';
+	}
+
+	async function confirmSaveTemplate() {
+		if (!onSaveTemplate || saveTemplateSaving) return;
+		const name = saveTemplateName.trim() || defaultTemplateName.trim() || 'My carousel layout';
+		saveTemplateSaving = true;
+		saveTemplateError = '';
+		try {
+			await onSaveTemplate(name);
+			closeSavePanel();
+		} catch (e: unknown) {
+			saveTemplateError = e instanceof Error ? e.message : 'Save failed — try again.';
+		} finally {
+			saveTemplateSaving = false;
+		}
+	}
 </script>
 
 {#if hasSlides}
 	<div
-		class="flex flex-row items-end gap-2 {inline
-			? 'w-full flex-wrap justify-end'
+		class="flex flex-row flex-nowrap items-end gap-2 {inline
+			? 'w-full justify-end'
 			: 'fixed'}"
 		style={inline
 			? ''
@@ -81,15 +119,67 @@
 	>
 		<!-- Save template -->
 		{#if typeof onSaveTemplate === 'function'}
-			<button
-				type="button"
-				onclick={() => void onSaveTemplate?.()}
-				class="fa-btn"
-				title="Save current layout as a reusable template"
-			>
-				<Bookmark size={13} />
-				Save template
-			</button>
+			<div class="relative">
+				{#if showSavePanel}
+					<div class="panel absolute bottom-full mb-2 right-0 w-[300px] overflow-hidden z-10">
+						<div class="panel-header">
+							<div class="flex items-center gap-2">
+								<Bookmark size={13} class="text-[#7c3aed]" />
+								<span class="panel-title">Save template</span>
+							</div>
+							<button type="button" onclick={closeSavePanel} class="panel-close" aria-label="Close">
+								<X size={11} />
+							</button>
+						</div>
+						<div class="p-4 flex flex-col gap-3">
+							<div>
+								<p class="panel-label">Template name</p>
+								<input
+									type="text"
+									bind:value={saveTemplateName}
+									placeholder="My carousel layout"
+									class="panel-input"
+									disabled={saveTemplateSaving}
+									onkeydown={(e) => {
+										if (e.key === 'Enter') void confirmSaveTemplate();
+										if (e.key === 'Escape') closeSavePanel();
+									}}
+								/>
+							</div>
+							{#if saveTemplateError}
+								<p class="text-[11px] leading-snug text-red-600/90">{saveTemplateError}</p>
+							{/if}
+							<button
+								type="button"
+								class="panel-save-btn"
+								disabled={saveTemplateSaving}
+								onclick={() => void confirmSaveTemplate()}
+							>
+								{#if saveTemplateSaving}
+									<LoaderCircle size={13} class="animate-spin" />
+									Saving…
+								{:else}
+									<Bookmark size={13} />
+									Save &amp; open Carousels
+								{/if}
+							</button>
+							<p class="text-[10px] leading-snug text-[rgba(10,10,10,0.38)]">
+								Shows up under Carousels → Saved Studio templates.
+							</p>
+						</div>
+					</div>
+				{/if}
+				<button
+					type="button"
+					onclick={openSavePanel}
+					class="fa-btn"
+					class:fa-btn--active={showSavePanel}
+					title="Save current layout as a reusable template"
+				>
+					<Bookmark size={13} />
+					Save template
+				</button>
+			</div>
 		{/if}
 
 		<!-- POST -->
@@ -227,6 +317,7 @@
 					if (onBurnMusicClick) { await onBurnMusicClick(); return; }
 					showMusicPanel = !showMusicPanel;
 					showPostPanel = false;
+					showSavePanel = false;
 				}}
 				class="fa-btn"
 				class:fa-btn--active={showMusicPanel && !onBurnMusicClick}
@@ -381,6 +472,34 @@
 		color: rgba(10, 10, 10, 0.35);
 		background: rgba(10, 10, 10, 0.04);
 		border: 1px solid rgba(10, 10, 10, 0.08);
+		cursor: not-allowed;
+	}
+
+	.panel-save-btn {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 10px 14px;
+		border-radius: 11px;
+		font-size: 12.5px;
+		font-weight: 600;
+		font-family: inherit;
+		color: #fff;
+		background: #0f0f10;
+		border: 1px solid transparent;
+		cursor: pointer;
+		transition: background 140ms ease, transform 140ms ease;
+	}
+	.panel-save-btn:hover:not(:disabled) {
+		background: #2a2a2e;
+	}
+	.panel-save-btn:active:not(:disabled) {
+		transform: scale(0.98);
+	}
+	.panel-save-btn:disabled {
+		opacity: 0.55;
 		cursor: not-allowed;
 	}
 

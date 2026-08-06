@@ -55,6 +55,8 @@
 		previewMode?: boolean;
 		/** Visual layout — story / fit / blur / hook / creator / text / source / feature / post */
 		layout?: 'story' | 'fit' | 'blur' | 'hook' | 'creator' | 'text' | 'source' | 'feature' | 'post';
+		/** Double-click video/media frame to open BG tools. */
+		onBackgroundDblClick?: (detail: { clientX: number; clientY: number }) => void;
 	}
 
 	let {
@@ -94,6 +96,7 @@
 		onVideoDuration,
 		previewMode = false,
 		layout = 'story',
+		onBackgroundDblClick,
 	}: Props = $props();
 
 	const isHookLayout = $derived(layout === 'hook');
@@ -167,6 +170,7 @@
 
 	const trimmedVideo = $derived((videoSrc && videoSrc.trim()) || '');
 	const posterSrc = $derived((videoPoster && videoPoster.trim()) || '');
+	// Prefer explicit video; fall back to demo clip unless the user set a still/poster only.
 	const resolvedVideo = $derived(trimmedVideo || (!posterSrc ? DEFAULT_VIDEO : ''));
 
 	let storyVideoEl = $state<HTMLVideoElement | null>(null);
@@ -214,6 +218,13 @@
 		if (!interactive || !onTextSelect) return;
 		e.stopPropagation();
 		onTextSelect('videoStoryMedia', e.currentTarget as HTMLElement);
+	}
+
+	function onMediaFrameDblClick(e: MouseEvent) {
+		if (!interactive || !onBackgroundDblClick) return;
+		e.stopPropagation();
+		e.preventDefault();
+		onBackgroundDblClick({ clientX: e.clientX, clientY: e.clientY });
 	}
 
 	function onStoryVideoMeta(e: Event) {
@@ -393,9 +404,11 @@
 				role="presentation"
 				data-text-selectable="videoStoryMedia"
 				onclick={onMediaFrameClick}
+				ondblclick={onMediaFrameDblClick}
 				onpointermove={moveMediaResize}
 				onpointerup={endMediaResize}
 				onpointercancel={endMediaResize}
+				title={interactive && onBackgroundDblClick ? 'Double-click for BG tools' : undefined}
 				style="
 					position: relative;
 					width: {mediaStretch * 100}%;
@@ -835,8 +848,8 @@
 						flex: 1;
 						min-height: 0;
 						display: flex;
-						align-items: flex-end;
-						justify-content: center;
+						align-items: stretch;
+						justify-content: stretch;
 						padding-top: {previewMode ? '8px' : '16px'};
 					"
 				>
@@ -844,15 +857,15 @@
 						style="
 							position: relative;
 							width: 100%;
-							aspect-ratio: 16 / 10;
-							max-height: {previewMode ? '46%' : '42%'};
+							height: 100%;
+							min-height: {previewMode ? '72px' : '240px'};
 							border-radius: {previewMode ? '14px' : '28px'};
 							overflow: hidden;
 							background: #111;
 							box-shadow: 0 18px 48px rgba(0,0,0,0.45);
 						"
 					>
-						{@render draggableMedia('cover')}
+						{@render draggableMedia('contain')}
 					</div>
 				</div>
 			</div>

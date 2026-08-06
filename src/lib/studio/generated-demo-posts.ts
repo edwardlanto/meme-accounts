@@ -10,11 +10,11 @@ export const GENERATED_DEMO_POSTS = {
 		imageUrl: "/templates/demos/news.jpg",
 	},
 	"image-quote": {
-		body: "THE COMPANIES WINNING THE NEXT DECADE\nAREN'T THE ONES WITH THE MOST DATA.\nTHEY'RE THE ONES THAT SHIP WHILE\nEVERYONE ELSE IS STILL IN A MEETING.",
+		body: "THE COMPANIES WINNING THE NEXT DECADE AREN'T THE ONES WITH THE MOST DATA.\n\nTHEY'RE THE ONES THAT SHIP WHILE EVERYONE ELSE IS STILL IN A MEETING.",
 		footerLeft: "$",
 		footerRight: "OPERATOR\nNOTES",
 		imageUrl: "/templates/demos/image-quote.jpg",
-		topRatio: 0.54,
+		topRatio: 0.46,
 	},
 	"tweet": {
 		topName: "Priya · Ops",

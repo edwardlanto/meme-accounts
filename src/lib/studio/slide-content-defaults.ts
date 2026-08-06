@@ -25,6 +25,8 @@ export const NEWS_DEFAULT_LAYOUT = {
 };
 
 export const NEWS_DEMO_IMAGE = D.news.imageUrl;
+/** Default News canvas media — looping demo clip (preferred over {@link NEWS_DEMO_IMAGE}). */
+export const NEWS_DEMO_VIDEO = '/videos/demos/founder-talk.mp4';
 
 export const TWEET_DEFAULTS = {
 	topName: D.tweet.topName,
@@ -98,7 +100,7 @@ export const IMAGE_QUOTE_DEFAULTS = {
 	topRatio: D['image-quote'].topRatio,
 } as const;
 
-/** Black full-bleed carousel: centered profile + gold hook + white body. */
+/** Black full-bleed carousel: left-aligned profile + gold hook + white body. */
 export const BLACK_TEXT_CAROUSEL_DEFAULTS = {
 	name: D['black-text'].name,
 	handle: D['black-text'].handle,

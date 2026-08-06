@@ -4,15 +4,11 @@ import type { TemplateId } from '$lib/studio/template-ids';
 
 /** Layout ids used by the Videos workflow picker (maps to Studio video templates). */
 export type VideoLayoutId =
-	| 'story'
-	| 'fit'
 	| 'blur'
 	| 'hook'
 	| 'creator'
 	| 'text'
-	| 'source'
-	| 'feature'
-	| 'post';
+	| 'source';
 
 export interface StarterTemplate {
 	id: string;
@@ -105,19 +101,6 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		badgeColor: 'text-sky-300',
 	},
 	{
-		id: 'video-feature',
-		studioId: 'videoFeature',
-		layoutId: 'feature',
-		name: 'Feature card',
-		description: 'Headline + body with teal highlights and a rounded media card',
-		href: '/dashboard/studio?template=feature',
-		previewBg: '/placeholders/carousel/feature-card-cover.png',
-		previewText: '',
-		previewSource: '',
-		badge: 'Video',
-		badgeColor: 'text-teal-400',
-	},
-	{
 		id: 'video-source',
 		studioId: 'videoSource',
 		layoutId: 'source',
@@ -170,19 +153,6 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		badgeColor: 'text-fuchsia-400',
 	},
 	{
-		id: 'video-fit',
-		studioId: 'videoFit',
-		layoutId: 'fit',
-		name: 'Fit video',
-		description: 'Full-frame clip with minimal chrome — great for reframed vertical footage',
-		href: '/dashboard/studio?template=fit',
-		previewBg: '/placeholders/carousel/fit-video-cover.png',
-		previewText: '',
-		previewSource: '',
-		badge: 'Video',
-		badgeColor: 'text-fuchsia-400',
-	},
-	{
 		id: 'video-split',
 		studioId: 'videoSplit',
 		name: 'Multi split',
@@ -209,32 +179,6 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		badgeColor: 'text-fuchsia-400',
 	},
 	{
-		id: 'video-story',
-		studioId: 'videoStory',
-		layoutId: 'story',
-		name: 'Video story',
-		description: 'Bold headline + vertical video — Shorts, Reels, TikTok',
-		href: '/dashboard/studio?template=video',
-		previewBg: '/placeholders/carousel/video-story-cover.png',
-		previewText: '',
-		previewSource: '',
-		badge: 'Video',
-		badgeColor: 'text-fuchsia-400',
-	},
-	{
-		id: 'video-post',
-		studioId: 'videoPost',
-		layoutId: 'post',
-		name: 'Clip post',
-		description: 'Profile + casual hook above a letterboxed landscape clip',
-		href: '/dashboard/studio?template=clip',
-		previewBg: '/placeholders/carousel/clip-post-cover.png',
-		previewText: '',
-		previewSource: '',
-		badge: 'Video',
-		badgeColor: 'text-fuchsia-400',
-	},
-	{
 		id: 'brand-stack',
 		studioId: 'brandStack',
 		name: 'Brand stack',
@@ -245,18 +189,6 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		previewSource: '',
 		badge: 'Video',
 		badgeColor: 'text-fuchsia-400',
-	},
-	{
-		id: 'photo-caption',
-		studioId: 'photoCaption',
-		name: 'Photo caption',
-		description: 'Full-bleed photo with a dark top gradient and left-aligned story copy',
-		href: '/dashboard/studio?template=caption',
-		previewBg: '/placeholders/carousel/photo-caption-cover.png',
-		previewText: '',
-		previewSource: '',
-		badge: 'Photo',
-		badgeColor: 'text-orange-300',
 	},
 	{
 		id: 'white-thread',
@@ -303,7 +235,7 @@ export function layoutIdForStudioId(studioId: TemplateId): VideoLayoutId | undef
 }
 
 export function studioIdForLayoutId(layoutId: VideoLayoutId): TemplateId {
-	return VIDEO_LAYOUT_TEMPLATES.find((l) => l.id === layoutId)?.studioId ?? 'videoFit';
+	return VIDEO_LAYOUT_TEMPLATES.find((l) => l.id === layoutId)?.studioId ?? 'videoHook';
 }
 
 export function starterHoverClass(id: string): string {

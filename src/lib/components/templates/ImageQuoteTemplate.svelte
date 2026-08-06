@@ -13,8 +13,8 @@
 		footerRight?: string;
 		onFooterLeftChange?: (v: string) => void;
 		onFooterRightChange?: (v: string) => void;
-		// Style
-		topRatio?: number; // portion of height reserved for image (0..1)
+		/** Preferred image height fraction (0–1). Bottom panel grows with copy and can push this down. */
+		topRatio?: number;
 		bgColor?: string;
 		textColor?: string;
 		templateTheme?: 'light' | 'dark';
@@ -35,13 +35,13 @@
 
 	let {
 		image = '/templates/image-quote/demo-bg.png',
-		text = "IF YOU STILL THINK THE U.S. IS\nFIGHTING IRAN OVER NUCLEAR\nWEAPONS, YOU'VE BEEN FED\nPROPAGANDA. THE U.S. IS\nFIGHTING CHINA. HERE'S THEIR\nSTRATEGY:",
+		text = "THE COMPANIES WINNING THE NEXT DECADE AREN'T THE ONES WITH THE MOST DATA.\n\nTHEY'RE THE ONES THAT SHIP WHILE EVERYONE ELSE IS STILL IN A MEETING.",
 		highlightColor = '#F5A623',
 		footerLeft = '$',
-		footerRight = 'WEALTHY\nSETUP',
+		footerRight = 'OPERATOR\nNOTES',
 		onFooterLeftChange,
 		onFooterRightChange,
-		topRatio = 0.54,
+		topRatio = 0.48,
 		bgColor = '',
 		textColor = '',
 		templateTheme = 'dark',
@@ -88,13 +88,37 @@
 	const letterInsetX = $derived((W - BASE_W * layoutScale) / 2);
 	const letterInsetY = $derived((H - BASE_H * layoutScale) / 2);
 	const dragScale = $derived(scale * layoutScale);
-	const topH = $derived(Math.round(BASE_H * Math.min(0.75, Math.max(0.35, topRatio))));
-	const bottomH = $derived(BASE_H - topH);
-	const quoteSize = $derived(headlineStyle.fontSize ?? 72);
 
-	function splitLines(v: string) {
-		return (v || '').split('\n').map((x) => x.trim()).filter(Boolean);
-	}
+	/** Soft-wrap copy: collapse single newlines so CSS wraps; keep paragraph breaks. */
+	const displayText = $derived(
+		String(text ?? '')
+			.replace(/\r\n/g, '\n')
+			.replace(/[ \t]+\n/g, '\n')
+			.replace(/\n{3,}/g, '\n\n')
+			.replace(/([^\n])\n(?!\n)/g, '$1 ')
+			.replace(/[ \t]{2,}/g, ' ')
+			.trim(),
+	);
+
+	const plainLen = $derived(displayText.replace(/\s+/g, ' ').length);
+
+	/** Auto size so the black panel can wrap the quote without overflowing into the photo. */
+	const autoQuoteSize = $derived.by(() => {
+		const n = plainLen;
+		if (n <= 70) return 68;
+		if (n <= 110) return 58;
+		if (n <= 160) return 50;
+		if (n <= 220) return 44;
+		return 38;
+	});
+	const quoteSize = $derived(headlineStyle.fontSize ?? autoQuoteSize);
+
+	const preferredTopH = $derived(
+		Math.round(BASE_H * Math.min(0.72, Math.max(0.28, Number(topRatio) || 0.48))),
+	);
+	/** Bottom never smaller than footer+padding; never taller than ~62% so photo still shows. */
+	const maxBottomH = $derived(Math.round(BASE_H * 0.62));
+	const minBottomH = $derived(Math.round(BASE_H * 0.32));
 </script>
 
 <div
@@ -133,148 +157,198 @@
 				overflow: hidden;
 			"
 		>
-		<!-- Top image -->
-		<div style="height: {topH}px; width: 100%; position: relative; overflow: hidden; background: #111;">
-			{#if image}
-				<img
-					src={image}
-					alt=""
-					style="
-						width: 100%;
-						height: 100%;
-						object-fit: cover;
-						object-position: center top;
-						display: block;
-					"
-				/>
-			{/if}
-		</div>
-
-		<!-- Bottom quote block -->
-		<div
-			style="
-				height: {bottomH}px;
-				width: 100%;
-				background: {baseBg};
-				display: flex;
-				flex-direction: column;
-				justify-content: center;
-				align-items: center;
-				padding: 56px 72px 72px;
-				box-sizing: border-box;
-				gap: 36px;
-			"
-		>
-			<DraggableBlock
-				dx={textOffsets.headline?.x ?? 0}
-				dy={textOffsets.headline?.y ?? 0}
-				{interactive}
-				scale={dragScale}
-				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
-			>
-				{#snippet children()}
-					<CanvasMarkupTextBlock
-						value={text}
-						{interactive}
-						defaultColor={highlightColor}
-						selected={selectedText === 'headline'}
-						rows={6}
-						uppercase={true}
-						ariaLabel="Quote text"
-						fontFamily={headlineStyle.fontFamily ?? 'Impact'}
-						fontSize={quoteSize}
-						{showToolbar}
-						onTextChange={onTextChange}
-						onTextSelect={onTextSelect}
-						onHeadlineRangeSelect={onHeadlineRangeSelect}
-					>
-						{#snippet display()}
-							<div style="display:flex;flex-direction:column;gap:6px;width:100%;">
-								{#each splitLines(text) as line, i (i)}
-									<HighlightedText
-										as="div"
-										text={line}
-										defaultColor={highlightColor}
-										style="color: {baseText}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.05; font-size: {quoteSize}px; text-align: center; font-family: Impact, 'Arial Black', sans-serif; {quoteTypeCss}"
-									/>
-								{/each}
-							</div>
-						{/snippet}
-					</CanvasMarkupTextBlock>
-				{/snippet}
-			</DraggableBlock>
-
-			<!-- Footer -->
+			<!-- Top image — fills leftover space after the quote panel -->
 			<div
 				style="
-					display:flex;
-					align-items:center;
-					justify-content:center;
-					gap: 12px;
-					opacity: 0.95;
+					flex: 1 1 {preferredTopH}px;
+					min-height: {BASE_H - maxBottomH}px;
+					max-height: {BASE_H - minBottomH}px;
+					width: 100%;
+					position: relative;
+					overflow: hidden;
+					background: #111;
+				"
+			>
+				{#if image}
+					<img
+						src={image}
+						alt=""
+						style="
+							width: 100%;
+							height: 100%;
+							object-fit: cover;
+							object-position: center top;
+							display: block;
+						"
+					/>
+				{/if}
+			</div>
+
+			<!-- Black quote panel — always wraps text + logo -->
+			<div
+				class="iq-quote-panel"
+				style="
+					flex: 0 1 auto;
+					min-height: {minBottomH}px;
+					max-height: {maxBottomH}px;
+					width: 100%;
+					background: {baseBg};
+					display: flex;
+					flex-direction: column;
+					justify-content: space-between;
+					align-items: stretch;
+					padding: 48px 64px 56px;
+					box-sizing: border-box;
+					gap: 28px;
+					overflow: hidden;
 				"
 			>
 				<DraggableBlock
-					dx={textOffsets.imageQuoteFooterLeft?.x ?? 0}
-					dy={textOffsets.imageQuoteFooterLeft?.y ?? 0}
+					dx={textOffsets.headline?.x ?? 0}
+					dy={textOffsets.headline?.y ?? 0}
 					{interactive}
 					scale={dragScale}
-					onChange={(x, y) => onTextOffsetChange?.('imageQuoteFooterLeft', { x, y })}
+					onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 				>
 					{#snippet children()}
 						<CanvasMarkupTextBlock
-							value={footerLeft}
+							value={text}
 							{interactive}
-							rows={1}
-							{showToolbar}
-							toolbarKind="imageQuoteFooterLeft"
-							selected={selectedText === 'imageQuoteFooterLeft'}
-							ariaLabel="Footer left"
+							defaultColor={highlightColor}
+							selected={selectedText === 'headline'}
+							rows={6}
+							uppercase={true}
+							ariaLabel="Quote text"
 							fontFamily={headlineStyle.fontFamily ?? 'Impact'}
-							fontSize={40}
-							onTextChange={onFooterLeftChange}
+							fontSize={quoteSize}
+							{showToolbar}
+							onTextChange={onTextChange}
 							onTextSelect={onTextSelect}
+							onHeadlineRangeSelect={onHeadlineRangeSelect}
 						>
 							{#snippet display()}
-								<span style="font-size: 40px; font-weight: 900; color: {baseText}; font-family: Impact, 'Arial Black', sans-serif; line-height: 1;">
-									{footerLeft}
-								</span>
+								<HighlightedText
+									as="div"
+									text={displayText}
+									defaultColor={highlightColor}
+									style="
+										color: {baseText};
+										font-weight: 900;
+										text-transform: uppercase;
+										letter-spacing: 0.01em;
+										line-height: 1.12;
+										font-size: {quoteSize}px;
+										text-align: center;
+										font-family: Impact, 'Arial Black', sans-serif;
+										white-space: pre-wrap;
+										overflow-wrap: break-word;
+										word-break: normal;
+										hyphens: none;
+										width: 100%;
+										{quoteTypeCss}
+									"
+								/>
 							{/snippet}
 						</CanvasMarkupTextBlock>
 					{/snippet}
 				</DraggableBlock>
 
-				<DraggableBlock
-					dx={textOffsets.imageQuoteFooterRight?.x ?? 0}
-					dy={textOffsets.imageQuoteFooterRight?.y ?? 0}
-					{interactive}
-					scale={dragScale}
-					onChange={(x, y) => onTextOffsetChange?.('imageQuoteFooterRight', { x, y })}
+				<!-- Footer / logo — always reserved -->
+				<div
+					class="iq-footer"
+					style="
+						display: flex;
+						align-items: center;
+						justify-content: center;
+						gap: 14px;
+						flex-shrink: 0;
+						padding-top: 8px;
+						opacity: 1;
+					"
 				>
-					{#snippet children()}
-						<CanvasMarkupTextBlock
-							value={footerRight}
-							{interactive}
-							rows={2}
-							{showToolbar}
-							toolbarKind="imageQuoteFooterRight"
-							selected={selectedText === 'imageQuoteFooterRight'}
-							ariaLabel="Footer right"
-							fontFamily="Satoshi"
-							fontSize={18}
-							onTextChange={onFooterRightChange}
-							onTextSelect={onTextSelect}
-						>
-							{#snippet display()}
-								<span style="font-size: 18px; font-weight: 800; color: {baseText}; letter-spacing: 0.14em; font-family: 'Satoshi', system-ui, sans-serif; text-transform: uppercase; line-height: 1.15; text-align: left; white-space: pre-line;">
-									{footerRight}
-								</span>
-							{/snippet}
-						</CanvasMarkupTextBlock>
-					{/snippet}
-				</DraggableBlock>
+					<DraggableBlock
+						dx={textOffsets.imageQuoteFooterLeft?.x ?? 0}
+						dy={textOffsets.imageQuoteFooterLeft?.y ?? 0}
+						{interactive}
+						scale={dragScale}
+						onChange={(x, y) => onTextOffsetChange?.('imageQuoteFooterLeft', { x, y })}
+					>
+						{#snippet children()}
+							<CanvasMarkupTextBlock
+								value={footerLeft}
+								{interactive}
+								rows={1}
+								{showToolbar}
+								toolbarKind="imageQuoteFooterLeft"
+								selected={selectedText === 'imageQuoteFooterLeft'}
+								ariaLabel="Footer left"
+								fontFamily={headlineStyle.fontFamily ?? 'Impact'}
+								fontSize={44}
+								onTextChange={onFooterLeftChange}
+								onTextSelect={onTextSelect}
+							>
+								{#snippet display()}
+									<span
+										style="
+											font-size: 44px;
+											font-weight: 900;
+											color: {baseText};
+											font-family: Impact, 'Arial Black', sans-serif;
+											line-height: 1;
+											display: inline-block;
+										"
+									>
+										{footerLeft || '$'}
+									</span>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						{/snippet}
+					</DraggableBlock>
+
+					<DraggableBlock
+						dx={textOffsets.imageQuoteFooterRight?.x ?? 0}
+						dy={textOffsets.imageQuoteFooterRight?.y ?? 0}
+						{interactive}
+						scale={dragScale}
+						onChange={(x, y) => onTextOffsetChange?.('imageQuoteFooterRight', { x, y })}
+					>
+						{#snippet children()}
+							<CanvasMarkupTextBlock
+								value={footerRight}
+								{interactive}
+								rows={2}
+								{showToolbar}
+								toolbarKind="imageQuoteFooterRight"
+								selected={selectedText === 'imageQuoteFooterRight'}
+								ariaLabel="Footer right"
+								fontFamily="Satoshi"
+								fontSize={22}
+								onTextChange={onFooterRightChange}
+								onTextSelect={onTextSelect}
+							>
+								{#snippet display()}
+									<span
+										style="
+											font-size: 22px;
+											font-weight: 800;
+											color: {baseText};
+											letter-spacing: 0.16em;
+											font-family: 'Satoshi', system-ui, sans-serif;
+											text-transform: uppercase;
+											line-height: 1.2;
+											text-align: left;
+											white-space: pre-line;
+											display: inline-block;
+										"
+									>
+										{footerRight || 'OPERATOR\nNOTES'}
+									</span>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						{/snippet}
+					</DraggableBlock>
+				</div>
 			</div>
-		</div>
 		</div>
 	</div>
 </div>

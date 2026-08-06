@@ -19,7 +19,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	if (!query) return json({ error: 'Missing query' }, { status: 400 });
 
 	const page = Math.max(1, Math.min(30, Number(url.searchParams.get('page') ?? 1) || 1));
-	const perPage = Math.max(1, Math.min(10, Number(url.searchParams.get('per_page') ?? 5) || 5));
+	const perPage = Math.max(1, Math.min(15, Number(url.searchParams.get('per_page') ?? 10) || 10));
 	const orientation = url.searchParams.get('orientation') || 'portrait';
 
 	const endpoint = new URL('https://api.pexels.com/videos/search');
@@ -74,6 +74,10 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			videos,
 			total: Number(data?.total_results ?? videos.length) || 0,
 			page,
+			totalPages: Math.max(
+				1,
+				Math.ceil((Number(data?.total_results ?? videos.length) || videos.length) / perPage),
+			),
 		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : 'Pexels video request failed';

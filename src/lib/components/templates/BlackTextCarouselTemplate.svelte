@@ -89,7 +89,7 @@
 			fontSize: s.fontSize ?? 46,
 			fontWeight: s.fontWeight ?? 700,
 			lineHeight: s.lineHeight ?? 1.28,
-			align: s.align ?? 'center',
+			align: s.align ?? 'left',
 		} satisfies TextStyle;
 	});
 
@@ -102,7 +102,7 @@
 			fontSize: s.fontSize ?? 36,
 			fontWeight: s.fontWeight ?? 400,
 			lineHeight: s.lineHeight ?? 1.5,
-			align: s.align ?? 'center',
+			align: s.align ?? 'left',
 		} satisfies TextStyle;
 	});
 
@@ -121,7 +121,7 @@
 		if (s.color) bits.push(`color: ${s.color};`);
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
-		bits.push(`text-align: ${s.align ?? 'center'};`);
+		bits.push(`text-align: ${s.align ?? 'left'};`);
 		appendTextShadowCss(bits, s);
 		return bits.join(' ');
 	}
@@ -201,7 +201,7 @@
 					inset: 0;
 					display: flex;
 					flex-direction: column;
-					align-items: center;
+					align-items: stretch;
 					justify-content: center;
 					box-sizing: border-box;
 					padding: 88px 72px 120px;
@@ -216,7 +216,7 @@
 					onChange={(x, y) => onTextOffsetChange?.('blackTextProfile', { x, y })}
 				>
 					{#snippet children()}
-						<div style="display: flex; flex-direction: column; align-items: center; gap: 18px; margin-bottom: 56px; flex-shrink: 0; width: 100%;">
+						<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 18px; margin-bottom: 56px; flex-shrink: 0; width: 100%;">
 							<div
 								style="
 									width: 108px;
@@ -242,8 +242,8 @@
 									</span>
 								{/if}
 							</div>
-							<div style="min-width: 0; text-align: center;">
-								<div style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;">
+							<div style="min-width: 0; text-align: left; width: 100%;">
+								<div style="display: flex; align-items: center; justify-content: flex-start; gap: 10px; flex-wrap: wrap;">
 									<span style="font-size: 38px; font-weight: 700; color: #fff; letter-spacing: -0.02em;">
 										{name}
 									</span>
@@ -266,7 +266,7 @@
 					{/snippet}
 				</DraggableBlock>
 
-				<div style="flex: 0 1 auto; display: flex; flex-direction: column; align-items: center; gap: 36px; min-height: 0; width: 100%;">
+				<div style="flex: 0 1 auto; display: flex; flex-direction: column; align-items: stretch; gap: 36px; min-height: 0; width: 100%;">
 					<DraggableBlock
 						dx={textOffsets.blackTextHeadline?.x ?? 0}
 						dy={textOffsets.blackTextHeadline?.y ?? 0}
@@ -292,7 +292,7 @@
 							>
 								{#snippet display()}
 									<div
-										style="margin: 0; text-align: {mergedHeadlineStyle.align ?? 'center'}; word-break: break-word; white-space: pre-wrap; {headlineCss}"
+										style="margin: 0; text-align: {mergedHeadlineStyle.align ?? 'left'}; word-break: break-word; white-space: pre-wrap; {headlineCss}"
 									>
 										{headlineDisplay}
 									</div>
@@ -327,7 +327,7 @@
 							>
 								{#snippet display()}
 									<div
-										style="margin: 0; text-align: {mergedBodyStyle.align ?? 'center'}; word-break: break-word; white-space: pre-wrap; {bodyCss}"
+										style="margin: 0; text-align: {mergedBodyStyle.align ?? 'left'}; word-break: break-word; white-space: pre-wrap; {bodyCss}"
 									>
 										{bodyDisplay}
 									</div>

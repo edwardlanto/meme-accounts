@@ -15,8 +15,7 @@
 	let { templates = STARTER_TEMPLATES }: Props = $props();
 
 	let gridEl = $state<HTMLDivElement | null>(null);
-	let templateCols = $state(5);
-	let templateCardW = $state(220);
+	let templateCols = $state(4);
 
 	let uiTheme = $state<'light' | 'dark'>('light');
 
@@ -35,14 +34,8 @@
 		const el = gridEl;
 		if (!el) return () => themeObs.disconnect();
 
-		const GAP = 16;
-		const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
 		const compute = (w: number) => {
-			const cols = w >= 1560 ? 6 : w >= 1240 ? 5 : w >= 980 ? 4 : w >= 720 ? 3 : 2;
-			templateCols = cols;
-			const card = (w - GAP * (cols - 1)) / cols;
-			templateCardW = Math.round(clamp(card, 180, 260));
+			templateCols = w >= 980 ? 4 : w >= 720 ? 3 : 2;
 		};
 
 		const ro = new ResizeObserver((entries) => {
@@ -58,16 +51,12 @@
 			ro.disconnect();
 		};
 	});
-
-	function previewHeight(cardW: number): number {
-		return Math.round(cardW * (1350 / 1080));
-	}
 </script>
 
 <div
 	bind:this={gridEl}
 	class="templates-grid"
-	style="--cols:{templateCols}; --cardw:{templateCardW}px;"
+	style="--cols:{templateCols};"
 >
 	{#each templates as tmpl, i (tmpl.id)}
 		<a
@@ -75,10 +64,7 @@
 			class="tmpl-card group flex flex-col rounded-2xl overflow-hidden shrink-0 {starterHoverClass(tmpl.id)}"
 			style="width: 100%; --d:{0.06 + i * 0.04}s"
 		>
-			<div
-				class="tmpl-preview"
-				style="height: {previewHeight(templateCardW)}px;"
-			>
+			<div class="tmpl-preview">
 				{#if tmpl.id === 'empty'}
 					<div
 						class="blank-preview"
@@ -121,7 +107,7 @@
 <style>
 	.templates-grid {
 		display: grid;
-		grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
+		grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
 		gap: 16px;
 		align-items: start;
 	}
@@ -144,24 +130,22 @@
 		box-shadow: var(--shadow-pop);
 	}
 
+	/* Covers are captured at 1080×1350 (4:5) — match that so nothing crops. */
 	.tmpl-preview {
 		width: 100%;
+		aspect-ratio: 4 / 5;
 		overflow: hidden;
 		flex-shrink: 0;
 		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: center;
 		background: #0a0a0c;
 	}
 
 	.preview-img {
-		position: absolute;
-		inset: 0;
-		height: 100%;
+		display: block;
 		width: 100%;
-		object-fit: cover;
-		object-position: top center;
+		height: 100%;
+		object-fit: contain;
+		object-position: center;
 		pointer-events: none;
 		user-select: none;
 	}

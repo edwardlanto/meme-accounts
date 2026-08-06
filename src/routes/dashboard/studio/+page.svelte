@@ -96,7 +96,7 @@ import JSZip from 'jszip';
 		NEWS_PLACEHOLDER_HEADLINE,
 		NEWS_DEFAULT_SOURCE,
 		NEWS_DEFAULT_LAYOUT,
-		NEWS_DEMO_IMAGE,
+		NEWS_DEMO_VIDEO,
 		TWEET_DEFAULTS,
 		ARTICLE_DEFAULT_BODY,
 		ARTICLE_DEFAULT_SWIPE,
@@ -308,6 +308,52 @@ import JSZip from 'jszip';
 	let lastTemplateUsed = $state<TemplateId>('news');
 	const activeTemplate = $derived(coerceTemplateId(slideTemplates[activeSlide]));
 
+	function defaultDemoVideoForTemplate(t: TemplateId): string {
+		switch (t) {
+			case 'videoFeature':
+				return VIDEO_FEATURE_DEFAULTS.videoUrl;
+			case 'videoHook':
+				return VIDEO_HOOK_DEFAULTS.videoUrl;
+			case 'videoCreator':
+				return VIDEO_CREATOR_DEFAULTS.videoUrl;
+			case 'videoText':
+				return VIDEO_TEXT_DEFAULTS.videoUrl;
+			case 'videoSource':
+				return VIDEO_SOURCE_DEFAULTS.videoUrl;
+			case 'videoPost':
+				return VIDEO_POST_DEFAULTS.videoUrl;
+			case 'videoSplit':
+				return VIDEO_SPLIT_DEFAULTS.videoUrl;
+			case 'brandStack':
+				return BRAND_STACK_DEFAULTS.topVideoUrl;
+			default:
+				return VIDEO_STORY_DEFAULTS.videoUrl;
+		}
+	}
+
+	function defaultDemoPosterForTemplate(t: TemplateId): string {
+		switch (t) {
+			case 'videoFeature':
+				return VIDEO_FEATURE_DEFAULTS.posterUrl;
+			case 'videoHook':
+				return VIDEO_HOOK_DEFAULTS.posterUrl;
+			case 'videoCreator':
+				return VIDEO_CREATOR_DEFAULTS.posterUrl;
+			case 'videoText':
+				return VIDEO_TEXT_DEFAULTS.posterUrl;
+			case 'videoSource':
+				return VIDEO_SOURCE_DEFAULTS.posterUrl;
+			case 'videoPost':
+				return VIDEO_POST_DEFAULTS.posterUrl;
+			case 'videoSplit':
+				return VIDEO_SPLIT_DEFAULTS.posterUrl;
+			case 'brandStack':
+				return BRAND_STACK_DEFAULTS.posterUrl;
+			default:
+				return VIDEO_STORY_DEFAULTS.posterUrl;
+		}
+	}
+
 	function ensureTemplateDefaultsForSlide(t: TemplateId, idx: number) {
 		// Seed template-specific copy so switching templates from a blank canvas doesn’t look “broken”.
 		// Only fills when the target field is empty.
@@ -315,12 +361,26 @@ import JSZip from 'jszip';
 			if (!String(slides[idx] ?? '').trim()) {
 				slides = slides.map((x, i) => (i === idx ? NEWS_PLACEHOLDER_HEADLINE : x));
 			}
+			const newsVids = bgVideosByTemplate.news ?? [];
 			const newsImgs = bgImagesByTemplate.news ?? [];
-			if (!String(newsImgs[idx] ?? '').trim()) {
-				const next = Array.from({ length: Math.max(newsImgs.length, idx + 1, slides.length) }, (_, i) =>
-					String(newsImgs[i] ?? '').trim() ? String(newsImgs[i]) : i === idx ? NEWS_DEMO_IMAGE : '',
+			const hasVid = String(newsVids[idx] ?? '').trim();
+			const hasImg = String(newsImgs[idx] ?? '').trim();
+			if (!hasVid && !hasImg) {
+				const nextVids = Array.from(
+					{ length: Math.max(newsVids.length, idx + 1, slides.length) },
+					(_, i) =>
+						String(newsVids[i] ?? '').trim()
+							? String(newsVids[i])
+							: i === idx
+								? NEWS_DEMO_VIDEO
+								: '',
 				);
-				bgImagesByTemplate = { ...bgImagesByTemplate, news: next };
+				const nextImgs = Array.from(
+					{ length: Math.max(newsImgs.length, idx + 1, slides.length) },
+					(_, i) => (i === idx ? '' : String(newsImgs[i] ?? '')),
+				);
+				bgVideosByTemplate = { ...bgVideosByTemplate, news: nextVids };
+				bgImagesByTemplate = { ...bgImagesByTemplate, news: nextImgs };
 			}
 			return;
 		}
@@ -438,7 +498,12 @@ import JSZip from 'jszip';
 						  t === 'videoFeature'
 						? ''
 						: VIDEO_STORY_DEFAULTS.watermark;
-			if (!String(videoStoryHeadlineBySlide[idx] ?? '').trim()) {
+			const curHeadline = String(videoStoryHeadlineBySlide[idx] ?? '').trim();
+			// `applyBlankCanvas` used to pre-seed the shared story headline — replace that
+			// stale default when opening a template-specific starter.
+			const staleSharedHeadline =
+				curHeadline === VIDEO_STORY_DEFAULTS.headline && t !== 'videoStory' && t !== 'videoFit' && t !== 'videoBlur';
+			if (!curHeadline || staleSharedHeadline) {
 				videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, i) =>
 					i === idx ? defaultHeadline : x,
 				);
@@ -474,10 +539,27 @@ import JSZip from 'jszip';
 					);
 				}
 			}
-			if (t === 'videoFeature' && !String(blackTextBodyBySlide[idx] ?? '').trim()) {
-				blackTextBodyBySlide = blackTextBodyBySlide.map((x, i) =>
-					i === idx ? VIDEO_FEATURE_DEFAULTS.body : x,
+			if (t === 'videoFeature') {
+				const curBody = String(blackTextBodyBySlide[idx] ?? '').trim();
+				const staleBlackTextBody = curBody === BLACK_TEXT_CAROUSEL_DEFAULTS.body;
+				if (!curBody || staleBlackTextBody) {
+					blackTextBodyBySlide = blackTextBodyBySlide.map((x, i) =>
+						i === idx ? VIDEO_FEATURE_DEFAULTS.body : x,
+					);
+				}
+			}
+			const vids = bgVideosByTemplate[t] ?? [];
+			if (!String(vids[idx] ?? '').trim()) {
+				const next = Array.from(
+					{ length: Math.max(vids.length, idx + 1, slides.length) },
+					(_, i) =>
+						String(vids[i] ?? '').trim()
+							? String(vids[i])
+							: i === idx
+								? defaultDemoVideoForTemplate(t)
+								: '',
 				);
+				bgVideosByTemplate = { ...bgVideosByTemplate, [t]: next };
 			}
 			return;
 		}
@@ -643,7 +725,7 @@ import JSZip from 'jszip';
 					(bgVideosByTemplate.videoSource ?? [])[idx] ||
 					(bgVideosByTemplate.videoFeature ?? [])[idx] ||
 					(bgVideosByTemplate.videoPost ?? [])[idx] ||
-					VIDEO_STORY_DEFAULTS.videoUrl;
+					defaultDemoVideoForTemplate(t);
 				row[idx] = sibling;
 				bgVideosByTemplate = { ...bgVideosByTemplate, [t]: row };
 			}
@@ -711,11 +793,36 @@ import JSZip from 'jszip';
 		if (t === 'news' && !opts?.skipNewsSeed) seedNewsStarterPlaceholderLayout();
 		if (t === 'news') {
 			const n = slides.length;
-			const prev = bgImagesByTemplate.news ?? [];
-			const row = Array.from({ length: n }, (_, i) =>
-				String(prev[i] ?? '').trim() ? String(prev[i]) : NEWS_DEMO_IMAGE,
-			);
-			bgImagesByTemplate = { ...bgImagesByTemplate, news: row };
+			const prevVids = bgVideosByTemplate.news ?? [];
+			const prevImgs = bgImagesByTemplate.news ?? [];
+			const vidRow = Array.from({ length: n }, (_, i) => {
+				const v = String(prevVids[i] ?? '').trim();
+				if (v) return v;
+				const img = String(prevImgs[i] ?? '').trim();
+				// Keep an existing custom image; otherwise seed the demo video.
+				return img ? '' : NEWS_DEMO_VIDEO;
+			});
+			const imgRow = Array.from({ length: n }, (_, i) => {
+				if (String(vidRow[i] ?? '').trim()) return '';
+				return String(prevImgs[i] ?? '').trim() || '';
+			});
+			bgVideosByTemplate = { ...bgVideosByTemplate, news: vidRow };
+			bgImagesByTemplate = { ...bgImagesByTemplate, news: imgRow };
+		}
+		if (isVideoStoryFamily(t)) {
+			const n = slides.length;
+			const prev = bgVideosByTemplate[t] ?? [];
+			const row = Array.from({ length: n }, (_, i) => {
+				const cur = String(prev[i] ?? '').trim();
+				if (cur) return cur;
+				return (
+					String((bgVideosByTemplate.videoStory ?? [])[i] ?? '').trim() ||
+					String((bgVideosByTemplate.videoFit ?? [])[i] ?? '').trim() ||
+					String((bgVideosByTemplate.videoFeature ?? [])[i] ?? '').trim() ||
+					defaultDemoVideoForTemplate(t)
+				);
+			});
+			bgVideosByTemplate = { ...bgVideosByTemplate, [t]: row };
 		}
 		if (isVideoSplitFamily(t)) {
 			formatId = 'vertical';
@@ -1563,12 +1670,21 @@ import JSZip from 'jszip';
 	/** Fixed slot count — never splice items in/out or the dock width jiggles on boot/template change. */
 	const dockItems = $derived.by(() => {
 		const newsOrBlank = activeTemplate === 'news' || activeTemplate === 'blank';
+		const canBgTools =
+			newsOrBlank ||
+			isVideoStoryFamily(activeTemplate) ||
+			isPhotoStoryFamily(activeTemplate) ||
+			activeTemplate === 'imageQuote' ||
+			activeTemplate === 'blackText' ||
+			activeTemplate === 'brandStack' ||
+			activeTemplate === 'whiteMedia' ||
+			activeTemplate === 'article';
 		return [
 			{
 				icon: Wallpaper,
 				label: 'BG tools',
-				onClick: newsOrBlank ? openNewsBgToolbarFromDock : undefined,
-				disabled: !newsOrBlank,
+				onClick: canBgTools ? openNewsBgToolbarFromDock : undefined,
+				disabled: !canBgTools,
 			},
 			{ icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !effectiveBackgroundVideo },
 			{ icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !effectiveBackgroundVideo },
@@ -1940,7 +2056,7 @@ import JSZip from 'jszip';
 	// Background media — per template, per slide (keep EVERYTHING independent).
 	let bgImagesByTemplate = $state<Record<TemplateId, string[]>>({
 		blank: emptySlides(() => ''),
-		news: emptySlides(() => NEWS_DEMO_IMAGE),
+		news: emptySlides(() => ''),
 		tweet: emptySlides(() => TWEET_DEFAULTS.topImage),
 		article: emptySlides(() => ''),
 		textCarousel: emptySlides(() => ''),
@@ -1964,7 +2080,7 @@ import JSZip from 'jszip';
 	});
 	let bgVideosByTemplate = $state<Record<TemplateId, string[]>>({
 		blank: emptySlides(() => ''),
-		news: emptySlides(() => ''),
+		news: emptySlides(() => NEWS_DEMO_VIDEO),
 		tweet: emptySlides(() => ''),
 		article: emptySlides(() => ''),
 		textCarousel: emptySlides(() => ''),
@@ -3121,11 +3237,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return oldIndices.map((i) => (i < arr.length ? arr[i] : fallback));
 	}
 
-	/** Remove the current slide (dock). Minimum one slide remains. */
-	function deleteActiveSlide() {
+	/** Remove a slide by index (filmstrip / dock). Minimum one slide remains. */
+	function deleteSlideAt(del: number) {
 		const n = slides.length;
 		if (n <= 1) return;
-		const del = activeSlide;
+		if (del < 0 || del >= n) return;
 		const cur = activeSlide;
 		const keep = slides.map((_, i) => i).filter((i) => i !== del);
 		let nextActive = 0;
@@ -3160,9 +3276,19 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			]),
 		) as unknown) as Record<TemplateId, ScopedHistory[]>;
 
+		if (musicPickerForSlide === del) musicPickerForSlide = null;
+		else if (musicPickerForSlide != null && musicPickerForSlide > del) {
+			musicPickerForSlide = musicPickerForSlide - 1;
+		}
+
 		showVideoTrim = false;
 		videoSeekSec = NaN;
 		closeToolbar();
+	}
+
+	/** Remove the current slide (dock). */
+	function deleteActiveSlide() {
+		deleteSlideAt(activeSlide);
 	}
 
 	// Filmstrip DnD (dnd-kit). Keep a temporary visual order while dragging
@@ -4454,8 +4580,24 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			whiteThread: [''],
 			whiteMedia: [WHITE_MEDIA_DEFAULTS.imageUrl],
 			imageQuote: [IMAGE_QUOTE_DEFAULTS.imageUrl],
+			news: [''],
+			tweet: [TWEET_DEFAULTS.topImage],
 		};
-		bgVideosByTemplate = emptyMediaUrls();
+		bgVideosByTemplate = {
+			...emptyMediaUrls(),
+			news: [NEWS_DEMO_VIDEO],
+			videoStory: [VIDEO_STORY_DEFAULTS.videoUrl],
+			videoFit: [VIDEO_STORY_DEFAULTS.videoUrl],
+			videoSplit: [VIDEO_SPLIT_DEFAULTS.videoUrl],
+			videoBlur: [VIDEO_STORY_DEFAULTS.videoUrl],
+			videoHook: [VIDEO_HOOK_DEFAULTS.videoUrl],
+			videoCreator: [VIDEO_CREATOR_DEFAULTS.videoUrl],
+			videoText: [VIDEO_TEXT_DEFAULTS.videoUrl],
+			videoSource: [VIDEO_SOURCE_DEFAULTS.videoUrl],
+			videoFeature: [VIDEO_FEATURE_DEFAULTS.videoUrl],
+			videoPost: [VIDEO_POST_DEFAULTS.videoUrl],
+			brandStack: [BRAND_STACK_DEFAULTS.topVideoUrl],
+		};
 		generatingImagesByTemplate = {
 			blank: [false],
 			news: [false],
@@ -4588,13 +4730,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		textCarouselAvatarImageBySlide = [''];
 		textCarouselAvatarInnerBgBySlide = [''];
 		textCarouselAvatarLabelBySlide = [''];
-		imageQuoteTextBySlide = [''];
-		imageQuoteFooterLeftBySlide = [''];
-		imageQuoteFooterRightBySlide = [''];
-		videoStoryHeadlineBySlide = [VIDEO_STORY_DEFAULTS.headline];
-		videoStoryWatermarkBySlide = [VIDEO_STORY_DEFAULTS.watermark];
-		blackTextHeadlineBySlide = [BLACK_TEXT_CAROUSEL_DEFAULTS.headline];
-		blackTextBodyBySlide = [BLACK_TEXT_CAROUSEL_DEFAULTS.body];
+		imageQuoteTextBySlide = [IMAGE_QUOTE_DEFAULTS.body];
+		imageQuoteFooterLeftBySlide = [IMAGE_QUOTE_DEFAULTS.footerLeft];
+		imageQuoteFooterRightBySlide = [IMAGE_QUOTE_DEFAULTS.footerRight];
+		videoStoryHeadlineBySlide = [''];
+		videoStoryWatermarkBySlide = [''];
+		blackTextHeadlineBySlide = [''];
+		blackTextBodyBySlide = [''];
 		videoSplitCompositedBySlide = [false];
 
 		textOffsetsBySlide = [{}];
@@ -4666,13 +4808,24 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
 		shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
 		shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
-		// Demo cover image (SoftBank / generated demos) — blank canvas wiped this to ''.
-		const prevNews = bgImagesByTemplate.news ?? [];
+		// Demo cover clip — blank canvas wiped media to ''.
+		const prevVids = bgVideosByTemplate.news ?? [];
+		const prevImgs = bgImagesByTemplate.news ?? [];
+		bgVideosByTemplate = {
+			...bgVideosByTemplate,
+			news: Array.from({ length: n }, (_, i) => {
+				const v = String(prevVids[i] ?? '').trim();
+				if (v) return v;
+				const img = String(prevImgs[i] ?? '').trim();
+				return img ? '' : NEWS_DEMO_VIDEO;
+			}),
+		};
 		bgImagesByTemplate = {
 			...bgImagesByTemplate,
-			news: Array.from({ length: n }, (_, i) =>
-				String(prevNews[i] ?? '').trim() ? String(prevNews[i]) : NEWS_DEMO_IMAGE,
-			),
+			news: Array.from({ length: n }, (_, i) => {
+				if (String((bgVideosByTemplate.news ?? [])[i] ?? '').trim()) return '';
+				return String(prevImgs[i] ?? '').trim() || '';
+			}),
 		};
 		applyNewsSeedBackgroundLayout();
 	}
@@ -4806,9 +4959,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		});
 	}
 
-	async function saveStudioTemplateNamed() {
-		if (!userId) return;
-		const name = studioTemplateName.trim() || `Studio template ${new Date().toLocaleDateString()}`;
+	async function saveStudioTemplateNamed(nameOverride?: string) {
+		if (!userId) throw new Error('Sign in to save a template.');
+		const name =
+			(nameOverride ?? studioTemplateName).trim() ||
+			`Studio template ${new Date().toLocaleDateString()}`;
+		studioTemplateName = name;
 		studioTemplateSaving = true;
 		studioTemplateFeedback = '';
 
@@ -4818,24 +4974,23 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		let previewPng: string | null = null;
 		if (!exportRef) {
 			studioTemplateSaving = false;
-			studioTemplateFeedback =
-				'Canvas is not ready to export yet — wait for the preview to finish loading, then try again.';
-			return;
+			throw new Error(
+				'Canvas is not ready to export yet — wait for the preview to finish loading, then try again.',
+			);
 		}
 		try {
 			const n = await exportAllSlidesToDraft();
 			previewPng = n > 0 ? (exportedSlides[0] ?? null) : null;
 			if (!previewPng) {
 				studioTemplateSaving = false;
-				studioTemplateFeedback =
-					'Could not capture a preview image. Add content to the canvas or try Export once, then save again.';
-				return;
+				throw new Error(
+					'Could not capture a preview image. Add content to the canvas or try Export once, then save again.',
+				);
 			}
 		} catch (e: unknown) {
 			studioTemplateSaving = false;
-			studioTemplateFeedback =
-				e instanceof Error ? e.message : 'Preview export failed — try again after the canvas finishes loading.';
-			return;
+			if (e instanceof Error) throw e;
+			throw new Error('Preview export failed — try again after the canvas finishes loading.');
 		}
 
 		await materializeBlobUrlsForDraftSave();
@@ -4847,8 +5002,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}).select('id').single();
 		if (error) {
 			studioTemplateSaving = false;
-			studioTemplateFeedback = error.message ?? 'Save failed';
-			return;
+			throw new Error(error.message ?? 'Save failed');
 		}
 		const templateId = String(data?.id ?? '').trim();
 
@@ -4900,11 +5054,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			}
 		}
 		studioTemplateSaving = false;
-		studioTemplateFeedback =
-			`Saved. Find it under Carousels → “Saved Studio templates”.${r2Note}`;
-		// Keep the panel open so the user can see the success message (and any errors).
-		// showSaveTemplatePanel = false;
-		// studioTemplateName = '';
+		studioTemplateFeedback = `Saved.${r2Note}`;
+		showSaveTemplatePanel = false;
+		await goto('/dashboard/carousels');
 	}
 
 	function extFromMime(mime: string): string {
@@ -7362,6 +7514,31 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
+	/** Apply a Pexels stock video as the active slide background. */
+	async function applyPexelsVideoAsBackground(video: {
+		url: string;
+		thumb?: string;
+		photographer?: string;
+		duration?: number;
+	}) {
+		const src = String(video?.url ?? '').trim();
+		if (!src) throw new Error('Video URL missing');
+		if (activeTemplate === 'news' || activeTemplate === 'blank') applyNewsSeedBackgroundLayout();
+		setSlideVideo(activeSlide, src, activeTemplate);
+		const dur = Number(video?.duration ?? 0);
+		if (Number.isFinite(dur) && dur > 0) {
+			videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) =>
+				idx === activeSlide ? dur : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0),
+			);
+			videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) =>
+				idx === activeSlide ? dur : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0),
+			);
+		}
+		if (video.photographer) {
+			console.info(`[pexels] Video by ${video.photographer} on Pexels`);
+		}
+	}
+
 	/** Add a saved library asset as an image sticker on the active slide. */
 	async function applyAssetAsSticker(r2Ref: string) {
 		const ref = String(r2Ref ?? '').trim();
@@ -7446,7 +7623,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		newsBgToolbarPoint = null;
 	}
 
-	/** Open Cut out / Replace toolbar — use dock “BG” instead of tapping the canvas (tap would fight drag-pan). */
+	/** Open Cut out / Replace toolbar at a canvas point (double-click) or dock “BG tools”. */
+	function openBgToolbarAt(clientX: number, clientY: number) {
+		closeToolbar();
+		newsBgToolbarPoint = { x: clientX, y: clientY };
+	}
+
 	function openNewsBgToolbarFromDock() {
 		closeToolbar();
 		const root =
@@ -7455,9 +7637,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				: null;
 		const r = root?.getBoundingClientRect();
 		if (r && r.width > 4 && r.height > 4) {
-			newsBgToolbarPoint = { x: r.left + r.width * 0.5, y: r.top + Math.min(r.height * 0.28, 220) };
+			openBgToolbarAt(r.left + r.width * 0.5, r.top + Math.min(r.height * 0.28, 220));
 		} else if (typeof window !== 'undefined') {
-			newsBgToolbarPoint = { x: window.innerWidth * 0.55, y: 200 };
+			openBgToolbarAt(window.innerWidth * 0.55, 200);
 		}
 	}
 
@@ -8373,6 +8555,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						interactive={canvasInteractive}
 						overlays={canvasOverlays}
 						resolveSrc={resolveMediaUrl}
+						onBackgroundDblClick={(d) => {
+							if (!canvasInteractive) return;
+							openBgToolbarAt(d.clientX, d.clientY);
+						}}
 						onOverlaysChange={(o) => {
 							if (!canvasInteractive) return;
 							setSlideOverlays(paintSlide, o, 'blank');
@@ -8516,6 +8702,10 @@ showSubjectCutout={canvasShowCutout}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
 					headlineSelectionRestoreNonce={headlineSelectionRestoreNonce}
 					headlineSelectionRestoreRange={headlineRange}
+					onBackgroundDblClick={(d) => {
+						if (!canvasInteractive) return;
+						openBgToolbarAt(d.clientX, d.clientY);
+					}}
 				/>
 				<!-- Shared text overlay layer (sits above the template) -->
 				<StudioTextOverlays
@@ -9019,6 +9209,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					profileAvatar={textCarouselAvatarImageBySlide[paintSlide] ??
 						(previewTemplate === 'videoPost' ? VIDEO_POST_DEFAULTS.avatarUrl : '')}
 					videoSrc={canvasBackgroundVideo}
+					videoPoster={
+						canvasBackgroundVideo.trim()
+							? canvasBackgroundImage.trim() ||
+								(isVideoStoryFamily(previewTemplate)
+									? defaultDemoPosterForTemplate(previewTemplate)
+									: '')
+							: canvasBackgroundImage.trim()
+					}
 					videoMuted={canvasVideoMuted}
 					videoVolume={canvasVideoVolume}
 					videoSeekSec={videoSeekSec}
@@ -9104,6 +9302,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					}}
 					onTextSelect={onTextSelect}
 					onHeadlineRangeSelect={onHeadlineRangeSelect}
+					onBackgroundDblClick={(d) => {
+						if (!canvasInteractive) return;
+						openBgToolbarAt(d.clientX, d.clientY);
+					}}
 					showToolbar={false}
 				/>
 				<StudioImageStickers
@@ -9523,8 +9725,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				onDragOver={filmstripOver}
 				onDragEnd={endFilmstripDrag}
 			>
-				<div class="filmstrip-row mx-auto flex max-w-full items-end gap-2 px-1 pb-1">
-				<!-- pt reserves room for corner badges; overflow-x clips y too, so badges must sit inside the pad -->
+				<div class="filmstrip-row relative z-20 mx-auto flex max-w-full items-end gap-2 px-1 pb-1">
 				<div class="filmstrip-scroll no-scrollbar flex min-w-0 flex-1 items-end gap-2 overflow-x-auto">
 				{#each dndItems as item, i (item.id)}
 					{@const tplate = slideTemplates[item.slideIndex] ?? 'news'}
@@ -9543,7 +9744,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						!studioRevealReady ||
 						filmstripLoading ||
 						item.loading ||
-						(!isPlaceholder && !rasterThumb && filmstripPreviewInFlight)}
+						(!isPlaceholder && !item.vid && !rasterThumb && filmstripPreviewInFlight)}
 					{@const sortable = useSortable({
 						id: item.id,
 						get index() { return i; },
@@ -9551,18 +9752,18 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					})}
 					<div
 						{@attach sortable.ref}
-						{@attach sortable.handleRef}
 						use:registerFilmstripSortable={sortable}
-						class="filmstrip-cell relative flex-shrink-0 flex flex-col items-center gap-1 group cursor-grab active:cursor-grabbing"
+						class="filmstrip-cell relative flex-shrink-0 flex flex-col items-center gap-1 group"
 						style="
 							opacity: {sortable.isDragging.current ? 0.65 : 1};
-							touch-action: none;
+							z-index: {sortable.isDragging.current ? 5 : 1};
 						"
 					>
 						<button
 							type="button"
+							{@attach sortable.handleRef}
 							onclick={() => selectContentSlide(item.slideIndex)}
-							class="filmstrip-thumb w-16 h-20 rounded-lg overflow-hidden border-2 transition-colors relative
+							class="filmstrip-thumb w-16 h-20 rounded-lg overflow-hidden border-2 transition-colors relative cursor-grab active:cursor-grabbing
 								{!editingBrandCta && activeSlide === item.slideIndex ? 'border-white/70 shadow-[0_0_0_1px_rgba(255,255,255,0.15)]' : (isPlaceholder && !showThumbSkeleton ? 'border-white/[0.08] border-dashed' : 'border-white/[0.06] group-hover:border-white/25')}"
 							aria-label={`Focus slide ${i + 1}`}
 							style="touch-action: none; background: var(--app-surface-3);"
@@ -9573,6 +9774,20 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									<div class="absolute inset-0 flex items-center justify-center text-white/15">
 										<span class="text-[10px] font-mono">#{i + 1}</span>
 									</div>
+								{:else if item.vid}
+									<video
+										src={item.vid}
+										class="absolute inset-0 h-full w-full object-cover pointer-events-none"
+										autoplay
+										muted
+										loop
+										playsinline
+										disablepictureinpicture
+										aria-hidden="true"
+										onloadeddata={(e) => {
+											void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
+										}}
+									></video>
 								{:else if rasterThumb}
 									<img
 										src={rasterThumb}
@@ -9580,10 +9795,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										class="w-full h-full object-cover"
 										draggable="false"
 									/>
-								{:else if item.vid}
-									<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
-										<Play size={14} class="text-cyan-400 opacity-80" fill="currentColor" />
-									</div>
 								{:else if item.img}
 									<img
 										src={item.img}
@@ -9602,7 +9813,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									></div>
 								{/if}
 
-								{#if !showThumbSkeleton && !isPlaceholder && !rasterThumb}
+								{#if !showThumbSkeleton && !isPlaceholder && !rasterThumb && !item.vid}
 									<div
 										class="absolute inset-0 flex items-end p-1.5 bg-gradient-to-t to-transparent {tplate === 'tweet' && item.img
 											? 'from-black/55 via-black/20'
@@ -9617,7 +9828,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									</div>
 								{/if}
 
-								{#if isVideo && !showThumbSkeleton}
+								{#if isVideo && !showThumbSkeleton && !item.vid}
 									<div
 										class="absolute top-0.5 left-0.5 flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-cyan-400/30"
 										title={hasMusic ? `Video · ${item.music?.name}` : 'Video'}
@@ -9630,6 +9841,24 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{/if}
 						</button>
 
+							{#if !filmstripLoading && slides.length > 1}
+								<button
+									type="button"
+									data-filmstrip-delete
+									onclick={(e) => {
+										e.stopPropagation();
+										e.preventDefault();
+										musicPickerForSlide = null;
+										deleteSlideAt(item.slideIndex);
+									}}
+									title="Delete slide"
+									aria-label={`Delete slide ${i + 1}`}
+									class="filmstrip-corner-btn filmstrip-delete-btn absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center border border-white/15 bg-black/80 text-white/80 hover:bg-red-500 hover:border-red-400 hover:text-white transition-all z-20 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+								>
+									<Trash2 size={10} />
+								</button>
+							{/if}
+
 							{#if !isPlaceholder && !filmstripLoading}
 								<button
 									type="button"
@@ -9637,10 +9866,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									onclick={(e) => { e.stopPropagation(); musicPickerForSlide = musicPickerForSlide === item.slideIndex ? null : item.slideIndex; }}
 									title={hasMusic ? `Change music: ${item.music?.name}` : 'Add music — publishes as video'}
 									aria-label={`Choose music for slide ${i + 1}`}
-									class="filmstrip-corner-btn absolute top-0 right-0 w-5 h-5 rounded-full flex items-center justify-center border transition-all z-[2]
+									class="filmstrip-corner-btn filmstrip-music-btn absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center border transition-all z-20
 										{hasMusic
 											? 'bg-orange-500/90 border-orange-400 text-white shadow-lg shadow-orange-500/30'
-											: 'bg-[#1a1a1a] border-white/10 text-white/40 hover:text-orange-400 hover:border-orange-400/50 opacity-0 group-hover:opacity-100 focus:opacity-100'}"
+											: 'bg-black/80 border-white/10 text-white/40 hover:text-orange-400 hover:border-orange-400/50 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}"
 								>
 									<Flame size={10} fill={hasMusic ? 'currentColor' : 'none'} />
 								</button>
@@ -9863,15 +10092,21 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											<div class="absolute inset-0 flex items-center justify-center text-white/15">
 												<span class="text-[10px] font-mono">…</span>
 											</div>
+										{:else if di.vid}
+											<video
+												src={di.vid}
+												class="absolute inset-0 h-full w-full object-cover pointer-events-none"
+												autoplay
+												muted
+												loop
+												playsinline
+												aria-hidden="true"
+											></video>
 										{:else if dragRaster}
 											<img src={dragRaster} alt="" class="w-full h-full object-cover" draggable="false" />
 										{:else if filmstripPreviewInFlight}
 											<div class="absolute inset-0 flex items-center justify-center bg-[#111]">
 												<Loader size={12} class="animate-spin text-violet-400 opacity-50" />
-											</div>
-										{:else if di.vid}
-											<div class="absolute inset-0 bg-cyan-950/60 flex items-center justify-center">
-												<Play size={14} class="text-cyan-400 opacity-80" fill="currentColor" />
 											</div>
 										{:else if di.img}
 											<img
@@ -10731,36 +10966,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		</div>
 	</div>
 
-	<!-- ── Right rail: actions float above the assets panel ────────────────── -->
+	<!-- ── Right rail: assets panel ─────────────────────────────────────────── -->
 	<div class="studio-right-rail flex min-h-0 shrink-0 flex-col" class:is-collapsed={assetsCollapsed}>
-		<div class="studio-rail-actions">
-			<FloatingActions
-				{...({
-					slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
-					inline: true,
-					posting: exportingAll,
-					exportingZip: exporting,
-					onExportZip: () => void exportPng(),
-					onBurnMusicClick: () => void navigateToBurnMusicPage(),
-					onSaveTemplate: () => {
-						showSaveTemplatePanel = true;
-						studioTemplateFeedback = '';
-						if (!studioTemplateName.trim()) {
-							studioTemplateName = `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`;
-						}
-					},
-					onPost: async () => {
-						const n = await exportAllSlidesToDraft();
-						if (!n) {
-							alert('Could not export slides to PNG, so nothing was sent to the scheduler.\n\nFix the background media (CORS/video) and try Post again.');
-							return;
-						}
-						await goto('/dashboard/post-scheduler?from=studio&exported=1');
-					},
-				} as any)}
-			/>
-		</div>
-
 		<StudioAssetsSidebar
 			{userId}
 			bind:collapsed={assetsCollapsed}
@@ -10772,8 +10979,34 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			}
 			onAddAsSticker={(ref) => void applyAssetAsSticker(ref)}
 			onUseUnsplashBackground={(photo) => applyUnsplashAsBackground(photo)}
+			onUsePexelsVideo={(video) => applyPexelsVideoAsBackground(video)}
 		/>
 	</div>
+
+	<!-- Save / Post / Burn / Export — one row, floating bottom-right above the assets rail -->
+	<FloatingActions
+		{...({
+			slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
+			inline: false,
+			rightOffsetPx: assetsCollapsed ? 68 : 288,
+			bottomOffsetPx: 24,
+			zIndex: 55,
+			posting: exportingAll,
+			exportingZip: exporting,
+			onExportZip: () => void exportPng(),
+			onBurnMusicClick: () => void navigateToBurnMusicPage(),
+			onSaveTemplate: (name: string) => saveStudioTemplateNamed(name),
+			defaultTemplateName: `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`,
+			onPost: async () => {
+				const n = await exportAllSlidesToDraft();
+				if (!n) {
+					alert('Could not export slides to PNG, so nothing was sent to the scheduler.\n\nFix the background media (CORS/video) and try Post again.');
+					return;
+				}
+				await goto('/dashboard/post-scheduler?from=studio&exported=1');
+			},
+		} as any)}
+	/>
 
 </div>
 
@@ -10859,7 +11092,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	</div>
 {/if}
 
-<!-- News: use dock “BG tools” to open; canvas is for drag-pan only -->
+<!-- Double-click canvas/video or dock “BG tools” to open -->
 <NewsBackgroundToolbar
 	anchor={newsBgToolbarAnchor}
 	showCutout={previewTemplate === 'news' &&
@@ -10869,11 +11102,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	aiDisabled={!!(generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide]}
 	onCutOut={() => void cutOutSubject(paintSlide)}
 	onReplace={() => newsBgToolbarMediaInput?.click()}
-	onApplySolid={(hex) => {
-		pushUndo(previewTemplate, paintSlide);
-		applyTemplateSolidBg(hex, paintSlide, previewTemplate);
-		closeNewsBgToolbar();
-	}}
+	onApplySolid={
+		previewTemplate === 'news' || previewTemplate === 'blank'
+			? (hex) => {
+					pushUndo(previewTemplate, paintSlide);
+					applyTemplateSolidBg(hex, paintSlide, previewTemplate);
+					closeNewsBgToolbar();
+				}
+			: undefined
+	}
 	solidPresets={NEWS_SOLID_PRESETS}
 	onClose={closeNewsBgToolbar}
 />
@@ -11264,13 +11501,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	.studio-right-rail.is-collapsed {
 		width: 52px;
 	}
-	.studio-rail-actions {
-		display: flex;
-		justify-content: flex-end;
-		padding: 0.6rem 0.6rem 0.35rem;
-		border-left: 1px solid var(--app-border);
-		background: var(--app-surface);
-	}
 
 	.studio-dock-row {
 		min-height: 56px;
@@ -11281,20 +11511,23 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		min-height: calc(5rem + 0.25rem + 14px + 0.25rem + 0.5rem);
 		flex-shrink: 0;
 		box-sizing: border-box;
+		/* Stay above the prompt chrome / canvas overflow so corner hits register */
+		isolation: isolate;
 	}
 
 	.filmstrip-scroll {
-		padding-top: 0.5rem;
-		/* Keep corner buttons (music) inside the scrollport so overflow-x doesn't clip them */
+		padding-top: 0.25rem;
+		/* Corner controls sit inset on the thumb so overflow-x won't clip them */
 	}
 
 	/* Filmstrip: fixed thumb + label rows so Hook / Follow / Add bottoms align */
 	.filmstrip-cell {
 		width: 4rem; /* w-16 */
 		overflow: visible;
+		position: relative;
 	}
 	.filmstrip-corner-btn {
-		transform: translate(35%, -35%);
+		pointer-events: auto;
 	}
 	.filmstrip-thumb {
 		width: 4rem;

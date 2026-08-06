@@ -156,6 +156,8 @@
 		/** Parent bumps after applying `[[...]]` markup so we can re-select the same plain range. */
 		headlineSelectionRestoreNonce?: number;
 		headlineSelectionRestoreRange?: { start: number; end: number } | null;
+		/** Double-click empty canvas / background to open BG tools (replace, solid, AI). */
+		onBackgroundDblClick?: (detail: { clientX: number; clientY: number }) => void;
 	}
 
 	let {
@@ -243,6 +245,7 @@
 		onHeadlineRangeSelect,
 		headlineSelectionRestoreNonce = 0,
 		headlineSelectionRestoreRange = null,
+		onBackgroundDblClick,
 	}: Props = $props();
 
 	const isLight = $derived(templateTheme === 'light');
@@ -1405,6 +1408,13 @@
 		bgDragging = false;
 	}
 
+	function bgLayerDblClick(e: MouseEvent) {
+		if (!interactive || !onBackgroundDblClick) return;
+		e.stopPropagation();
+		e.preventDefault();
+		onBackgroundDblClick({ clientX: e.clientX, clientY: e.clientY });
+	}
+
 	// ── Pattern rendering helpers ──────────────────────────────────────────
 	function patternStyle(patternImage: string | undefined): string {
 		if (!patternImage) return '';
@@ -1600,20 +1610,23 @@
 			{/if}
 		{/if}
 
-		<!-- Background pan capture (sits above bg, below text z-10 and circle z-20) -->
-		{#if interactive && hasBg}
+		<!-- Background pan + double-click for BG tools (above bg, below text/circle) -->
+		{#if interactive && (hasBg || onBackgroundDblClick)}
 			<div
 				style="
 					position: absolute; inset: 0; z-index: 2;
-					cursor: {bgPanCursor};
+					cursor: {hasBg ? bgPanCursor : 'default'};
 					touch-action: none;
 				"
-				title="Drag empty canvas to pan · Alt+drag anywhere to pan · Alt+scroll to zoom"
-				onpointerdown={bgPointerDown}
-				onpointermove={bgPointerMove}
-				onpointerup={bgPointerUp}
-				onpointercancel={bgPointerCancel}
-				onlostpointercapture={bgLostPointerCapture}
+				title={hasBg
+					? 'Drag to pan · Double-click for BG tools · Alt+drag anywhere · Alt+scroll to zoom'
+					: 'Double-click for BG tools'}
+				onpointerdown={hasBg ? bgPointerDown : undefined}
+				onpointermove={hasBg ? bgPointerMove : undefined}
+				onpointerup={hasBg ? bgPointerUp : undefined}
+				onpointercancel={hasBg ? bgPointerCancel : undefined}
+				onlostpointercapture={hasBg ? bgLostPointerCapture : undefined}
+				ondblclick={bgLayerDblClick}
 				role="presentation"
 			></div>
 		{/if}
