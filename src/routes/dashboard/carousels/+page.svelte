@@ -85,8 +85,6 @@
 	let studioDraftThumbById = $state<Record<string, string>>({});
 	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
 	let loading = $state(true);
-	let creating = $state(false);
-	let createError = $state('');
 	let userId = $state('');
 	let mounted = $state(false);
 	let filterTab = $state<'all' | 'draft' | 'published' | 'scheduled'>('all');
@@ -1105,58 +1103,6 @@
 		brokenDraftThumbIds = {};
 	}
 
-	async function createNew() {
-		creating = true;
-		createError = '';
-		const { data, error } = await (supabase as any)
-			.from('carousels')
-			.insert({
-				user_id: userId,
-				title: 'Untitled carousel',
-				status: 'draft',
-				slides: JSON.stringify([
-					{
-						id: '1',
-						text: 'Your hook here',
-						type: 'hook',
-						bg: '#0f172a',
-						textColor: '#ffffff',
-						align: 'center',
-						bold: true,
-						fontSize: 32,
-					},
-					{
-						id: '2',
-						text: 'Key insight or point',
-						type: 'body',
-						bg: '#111111',
-						textColor: '#f8f8f8',
-						align: 'center',
-						bold: false,
-						fontSize: 28,
-					},
-					{
-						id: '3',
-						text: 'Another key point',
-						type: 'body',
-						bg: '#111111',
-						textColor: '#f8f8f8',
-						align: 'center',
-						bold: false,
-						fontSize: 28,
-					},
-				]),
-			})
-			.select()
-			.single();
-		creating = false;
-		if (error) {
-			createError = error.message;
-			return;
-		}
-		if (data) goto(`/dashboard/editor/${data.id}`);
-	}
-
 	async function deleteCarousel(id: string) {
 		if (!confirm('Delete this carousel?')) return;
 		await (supabase as any).from('carousels').delete().eq('id', id);
@@ -1212,10 +1158,6 @@
 			<a href="/dashboard/bulk" class="ma-btn ma-btn-primary"><Plus size={15} /> New from Bulk</a>
 		</div>
 	</header>
-
-	{#if createError}
-		<div class="error-banner">⚠ {createError}</div>
-	{/if}
 
 	{#if loading}
 		<div class="carousel-grid" style="margin-bottom: 28px;">
@@ -1706,10 +1648,6 @@
 						</div>
 					</div>
 				{/each}
-				<button type="button" onclick={createNew} disabled={creating} class="new-card-btn">
-					<div class="new-card-icon"><Plus size={18} /></div>
-					<span class="new-card-label">New carousel</span>
-				</button>
 			</div>
 		{/if}
 	</section>
@@ -1831,15 +1769,6 @@
 		to {
 			transform: rotate(360deg);
 		}
-	}
-	.error-banner {
-		margin-bottom: 1rem;
-		padding: 0.75rem 1rem;
-		border-radius: 10px;
-		background: rgba(239, 68, 68, 0.08);
-		border: 1px solid rgba(239, 68, 68, 0.2);
-		font-size: 0.8125rem;
-		color: #f87171;
 	}
 
 	.studio-drafts-block,
@@ -2334,40 +2263,6 @@
 		gap: 10px;
 		justify-content: center;
 		flex-wrap: wrap;
-	}
-	.new-card-btn {
-		border-radius: 18px;
-		border: 1.5px dashed var(--panel-border-hover);
-		background: transparent;
-		min-height: 280px;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 10px;
-		cursor: pointer;
-		color: var(--t);
-		font-family: inherit;
-		transition:
-			border-color 0.2s,
-			background 0.2s;
-	}
-	.new-card-btn:hover {
-		border-color: var(--ap-text);
-		background: var(--panel-bg-2);
-	}
-	.new-card-icon {
-		width: 40px;
-		height: 40px;
-		border-radius: 12px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--panel-bg-2);
-	}
-	.new-card-label {
-		font-size: 13px;
-		font-weight: 700;
 	}
 
 	/* —— YouTube clips: dense, grouped library —— */

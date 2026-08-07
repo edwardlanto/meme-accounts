@@ -45,7 +45,8 @@
 	}
 
 	$effect(() => {
-		if (railOnly) isCollapsed = true;
+		// Editor keeps a compact rail; everywhere else stay expanded with labels.
+		isCollapsed = railOnly;
 	});
 </script>
 

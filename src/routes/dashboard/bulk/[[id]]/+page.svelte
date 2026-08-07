@@ -57,13 +57,11 @@
 		mapPool,
 	} from '$lib/studio/bulk-stock';
 	import { STUDIO_TEMPLATES, coerceTemplateId, isVideoSplitFamily, type TemplateId } from '$lib/studio/template-ids';
-	import { GOOGLE_FONTS } from '$lib/fonts';
 	import { CAPTION_TEMPLATES } from '$lib/video-clips/caption-templates';
 	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
 	import BulkSlidePreview from '$lib/components/bulk/BulkSlidePreview.svelte';
 	import BulkSlideCarousel from '$lib/components/bulk/BulkSlideCarousel.svelte';
 	import BulkPopover from '$lib/components/bulk/BulkPopover.svelte';
-	import BulkClipImportDialog from '$lib/components/bulk/BulkClipImportDialog.svelte';
 	import { r2SignRead } from '$lib/r2Client';
 	import { formatTimestamp } from '$lib/video-clips/export-clip';
 	import {
@@ -84,21 +82,15 @@
 		ChevronDown,
 		Loader2,
 		Layers,
-		Palette,
 		ArrowRight,
-		Save,
 		Type,
 		Captions,
 		Image,
 		X,
 		Crop,
-		Video,
 		Download,
 		BarChart3,
 		Info,
-		History,
-		FolderOpen,
-		Clock,
 		Eraser,
 		Volume2,
 		VolumeX,
@@ -128,7 +120,6 @@
 	let userId = $state('');
 	let brandKit = $state<BrandKitSettings>({ ...DEFAULT_BRAND_KIT, cta: { ...DEFAULT_BRAND_KIT.cta } });
 	let brandSavedNote = $state('');
-	let showBrandPanel = $state(false);
 
 	let topic = $state('');
 	let audienceId = $state<string>('');
@@ -136,9 +127,9 @@
 	let style = $state<'dark' | 'bold' | 'editorial' | 'minimal'>('bold');
 	let emotion = $state<BulkEmotionId>('');
 	/** Number of separate slideshows / ideas */
-	let ideaCount = $state(5);
+	let ideaCount = $state(1);
 	/** Slides inside each slideshow */
-	let slidesPerShow = $state(3);
+	let slidesPerShow = $state(1);
 	let autoStock = $state(true);
 	let stockFilling = $state(false);
 	let stockNote = $state('');
@@ -156,7 +147,6 @@
 	/** Cloud row currently open at /dashboard/bulk/[id] */
 	let cloudWorkspaceId = $state<string | null>(null);
 	let clipHandoff = $state<BulkClipHandoff | null>(null);
-	let clipImportOpen = $state(false);
 	let slidePopover = $state<{ showId: string; slideId: string; kind: SlidePopoverKind } | null>(null);
 	let autoReframe = $state<AutoReframeOptions>({ ...DEFAULT_AUTO_REFRAME, enabled: true });
 	let pyautoflipReady = $state(false);
@@ -280,7 +270,6 @@
 
 	async function finishWorkspaceHydrate(opts?: { skeletonCount?: number; resumeUrl?: boolean }) {
 		workspaceHydrated = true;
-		void refreshLibrary();
 		const holdMs = opts?.skeletonCount != null && opts.skeletonCount > 0 ? 280 : 160;
 		await new Promise((r) => setTimeout(r, holdMs));
 		// Filmstrips / focus can shove the window mid-page — pin to top after reveal.
@@ -375,11 +364,10 @@
 			if (showsHaveContent(shows)) {
 				const id = await saveShowsToCloud(shows, { updateId: cloudWorkspaceId });
 				if (id) cloudWorkspaceId = id;
-				await refreshLibrary();
 			}
 			if (userId) clearBulkWorkspace(userId);
 			const caps = captionDefaultsFromKit(brandKit);
-			const blank = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, 3);
+			const blank = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, slidesPerShow);
 			workspaceAutosaveReady = false;
 			workspaceRevealReady = false;
 			shows = [blank];
@@ -388,8 +376,6 @@
 			cloudWorkspaceId = null;
 			clipProjectId = null;
 			libraryOpen = false;
-			libraryNote = 'Saved previous work to library — starting fresh';
-			setTimeout(() => (libraryNote = ''), 2800);
 			await goto('/dashboard/bulk', { replaceState: true, noScroll: true });
 			await new Promise((r) => setTimeout(r, 180));
 			workspaceRevealReady = true;
@@ -449,133 +435,146 @@
 			/* ignore */
 		}
 
-		const {
-			data: { user },
-		} = await supabase.auth.getUser();
-		if (!user) {
-			goto('/login');
-			return;
-		}
-		userId = user.id;
-		brandKit = loadBrandKit(user.id);
-		const caps = captionDefaultsFromKit(brandKit);
-		const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
-
 		try {
-			const res = await fetch('/api/videos/tools');
-			if (res.ok) {
-				const t = (await res.json()) as { pyautoflip?: boolean; ffmpeg?: boolean };
-				pyautoflipReady = !!t.pyautoflip;
-				ffmpegReady = !!t.ffmpeg;
+			const {
+				data: { user },
+			} = await supabase.auth.getUser();
+			if (!user) {
+				goto('/login');
+				return;
 			}
-		} catch {
-			/* ignore */
-		}
+			userId = user.id;
+			brandKit = loadBrandKit(user.id);
+			const caps = captionDefaultsFromKit(brandKit);
+			const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
 
-		const cloud = data.cloudWorkspace;
-		if (cloud?.shows?.length) {
-			cloudWorkspaceId = cloud.id;
-			shows = cloud.shows.map((s) => ({
-				...s,
-				slides: (s.slides ?? []).map((sl) => ({ ...sl })),
-			}));
-			const showParam = $page.url.searchParams.get('show');
-			selectedShowId =
-				showParam && shows.some((s) => s.id === showParam)
-					? showParam
-					: cloud.selectedShowId && shows.some((s) => s.id === cloud.selectedShowId)
-						? cloud.selectedShowId
-						: shows[0]?.id ?? null;
-			if (cloud.topic?.trim()) topic = cloud.topic;
-			if (cloud.clipProjectId) clipProjectId = cloud.clipProjectId;
-			touchBulkWorkspaceSession(user.id);
-			void persistBulkWorkspace();
-			await finishWorkspaceHydrate({ skeletonCount: shows.length, resumeUrl: true });
-			return;
-		}
-
-		const pendingImport = takeClipImportResult();
-		if (pendingImport) {
-			onClipImportComplete(pendingImport);
-			touchBulkWorkspaceSession(user.id);
-			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
-			return;
-		}
-
-		const projectParam = $page.url.searchParams.get('project');
-		if (projectParam) {
-			await loadClipProject(projectParam);
-			touchBulkWorkspaceSession(user.id);
-			await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
-			return;
-		}
-
-		const from = $page.url.searchParams.get('from');
-		const handoff = from === 'clip' ? takeBulkClipHandoff() ?? peekBulkClipHandoff() : null;
-
-		if (handoff?.clips?.length) {
-			const newShows: BulkShow[] = handoff.clips.map((item, index) => {
-				const slide = {
-					...slideFromClipHandoffItem(item, defaultTpl, caps),
-					sourceR2Key: item.sourceR2Key || handoff.sourceR2Key,
-					// Never fall back to the shared video poster — that made every scene photo identical.
-					mediaThumb: item.thumbnailUrl || '',
-				};
-				return {
-					id: crypto.randomUUID(),
-					title: slide.headline || handoff.sourceTitle || `Clip ${index + 1}`,
-					slides: [slide],
-					activeSlideId: slide.id,
-					fromVideoClips: true,
-					clipSummary: index === 0 ? '' : '',
-				};
-			});
-			shows = newShows;
-			selectedShowId = newShows[0]?.id ?? null;
-			touchBulkWorkspaceSession(user.id);
-			void persistBulkWorkspace();
-			await finishWorkspaceHydrate({ skeletonCount: newShows.length, resumeUrl: true });
-			return;
-		}
-
-		const saved = loadBulkWorkspace(user.id);
-		// Bare /dashboard/bulk → placeholders. Resume only with ?resume=1 (Studio / F5 mid-edit).
-		const wantResume = $page.url.searchParams.get('resume') === '1';
-		if (wantResume && saved?.shows?.length) {
-			shows = saved.shows;
-			selectedShowId =
-				saved.selectedShowId && saved.shows.some((s) => s.id === saved.selectedShowId)
-					? saved.selectedShowId
-					: saved.shows[0]?.id ?? null;
-			if (saved.topic?.trim()) topic = saved.topic;
-			if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
-			touchBulkWorkspaceSession(user.id);
-			await finishWorkspaceHydrate({ skeletonCount: saved.shows.length, resumeUrl: true });
-			return;
-		}
-
-		if (saved?.shows?.length) {
 			try {
-				await archiveBulkShowsToHistory(user.id, {
-					shows: saved.shows,
-					selectedShowId: saved.selectedShowId,
-					topic: saved.topic,
-				});
-				libraryNote = 'Previous draft moved to Library — starting fresh';
-				setTimeout(() => (libraryNote = ''), 3200);
+				const res = await fetch('/api/videos/tools');
+				if (res.ok) {
+					const t = (await res.json()) as { pyautoflip?: boolean; ffmpeg?: boolean };
+					pyautoflipReady = !!t.pyautoflip;
+					ffmpegReady = !!t.ffmpeg;
+				}
 			} catch {
 				/* ignore */
 			}
-			clearBulkWorkspace(user.id);
+
+			const cloud = data.cloudWorkspace;
+			if (cloud?.shows?.length) {
+				cloudWorkspaceId = cloud.id;
+				shows = cloud.shows.map((s) => ({
+					...s,
+					slides: (s.slides ?? []).map((sl) => ({ ...sl })),
+				}));
+				const showParam = $page.url.searchParams.get('show');
+				selectedShowId =
+					showParam && shows.some((s) => s.id === showParam)
+						? showParam
+						: cloud.selectedShowId && shows.some((s) => s.id === cloud.selectedShowId)
+							? cloud.selectedShowId
+							: shows[0]?.id ?? null;
+				if (cloud.topic?.trim()) topic = cloud.topic;
+				if (cloud.clipProjectId) clipProjectId = cloud.clipProjectId;
+				touchBulkWorkspaceSession(user.id);
+				void persistBulkWorkspace();
+				await finishWorkspaceHydrate({ skeletonCount: shows.length, resumeUrl: true });
+				return;
+			}
+
+			const pendingImport = takeClipImportResult();
+			if (pendingImport) {
+				onClipImportComplete(pendingImport);
+				touchBulkWorkspaceSession(user.id);
+				await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
+				return;
+			}
+
+			const projectParam = $page.url.searchParams.get('project');
+			if (projectParam) {
+				await loadClipProject(projectParam);
+				touchBulkWorkspaceSession(user.id);
+				await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
+				return;
+			}
+
+			const from = $page.url.searchParams.get('from');
+			const handoff = from === 'clip' ? takeBulkClipHandoff() ?? peekBulkClipHandoff() : null;
+
+			if (handoff?.clips?.length) {
+				const newShows: BulkShow[] = handoff.clips.map((item, index) => {
+					const slide = {
+						...slideFromClipHandoffItem(item, defaultTpl, caps),
+						sourceR2Key: item.sourceR2Key || handoff.sourceR2Key,
+						// Never fall back to the shared video poster — that made every scene photo identical.
+						mediaThumb: item.thumbnailUrl || '',
+					};
+					return {
+						id: crypto.randomUUID(),
+						title: slide.headline || handoff.sourceTitle || `Clip ${index + 1}`,
+						slides: [slide],
+						activeSlideId: slide.id,
+						fromVideoClips: true,
+						clipSummary: index === 0 ? '' : '',
+					};
+				});
+				shows = newShows;
+				selectedShowId = newShows[0]?.id ?? null;
+				touchBulkWorkspaceSession(user.id);
+				void persistBulkWorkspace();
+				await finishWorkspaceHydrate({ skeletonCount: newShows.length, resumeUrl: true });
+				return;
+			}
+
+			const saved = loadBulkWorkspace(user.id);
+			// Bare /dashboard/bulk → placeholders. Resume only with ?resume=1 (Studio / F5 mid-edit).
+			const wantResume = $page.url.searchParams.get('resume') === '1';
+			if (wantResume && saved?.shows?.length) {
+				shows = saved.shows;
+				selectedShowId =
+					saved.selectedShowId && saved.shows.some((s) => s.id === saved.selectedShowId)
+						? saved.selectedShowId
+						: saved.shows[0]?.id ?? null;
+				if (saved.topic?.trim()) topic = saved.topic;
+				if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
+				touchBulkWorkspaceSession(user.id);
+				await finishWorkspaceHydrate({ skeletonCount: saved.shows.length, resumeUrl: true });
+				return;
+			}
+
+			if (saved?.shows?.length) {
+				// Don't block first paint — archiving large media can take a long time.
+				void archiveBulkShowsToHistory(user.id, {
+					shows: saved.shows,
+					selectedShowId: saved.selectedShowId,
+					topic: saved.topic,
+				}).catch(() => {});
+				clearBulkWorkspace(user.id);
+			}
+
+			const show = createBlankShow(defaultTpl, caps, slidesPerShow);
+			shows = [show];
+			selectedShowId = show.id;
+			await finishWorkspaceHydrate({ skeletonCount: 1 });
+		} catch (e) {
+			console.warn('[bulk] hydrate failed', e);
+			if (!workspaceHydrated) {
+				try {
+					const caps = captionDefaultsFromKit(brandKit);
+					const blank = createBlankShow(
+						coerceTemplateId(brandKit.defaultTemplateId),
+						caps,
+						slidesPerShow,
+					);
+					if (!shows.length) {
+						shows = [blank];
+						selectedShowId = blank.id;
+					}
+				} catch {
+					/* ignore */
+				}
+				await finishWorkspaceHydrate({ skeletonCount: Math.max(1, shows.length) });
+			}
 		}
-
-		const show = createBlankShow(defaultTpl, caps, 3);
-		shows = [show];
-		selectedShowId = show.id;
-		await finishWorkspaceHydrate({ skeletonCount: 1 });
-
-		const importParam = $page.url.searchParams.get('import');
-		if (importParam === 'clips') clipImportOpen = true;
 	});
 
 	function scheduleBulkWorkspaceSave() {
@@ -1514,104 +1513,7 @@
 		<div class="bulk-header-text">
 			<h1>Bulk editor</h1>
 		</div>
-		<div class="bulk-header-actions">
-			<button type="button" class="btn-ghost" onclick={() => (clipImportOpen = true)}>
-				<Video size={15} />
-				Import clips
-			</button>
-			<button type="button" class="btn-ghost" onclick={() => (showBrandPanel = !showBrandPanel)}>
-				<Palette size={15} />
-				Brand
-			</button>
-			<!-- <button type="button" class="btn-primary" onclick={openInStudio} disabled={!selectedShow}>
-				Studio
-				<ArrowRight size={15} />
-			</button> -->
-		</div>
 	</header>
-
-	{#if brandSavedNote}
-		<p class="saved-toast" role="status">{brandSavedNote}</p>
-	{/if}
-
-	{#if showBrandPanel}
-		<section class="brand-panel" aria-label="Brand settings">
-			<div class="brand-grid">
-				<label class="field">
-					<span>Logo URL</span>
-					<input bind:value={brandKit.logoUrl} placeholder="https://…" />
-				</label>
-				<label class="field">
-					<span>Upload logo</span>
-					<input
-						type="file"
-						accept="image/*"
-						disabled={brandLogoBusy}
-						onchange={(e) => void onBrandLogoFile(e)}
-					/>
-				</label>
-				<label class="field">
-					<span>CTA image URL</span>
-					<input
-						value={brandKit.cta.image}
-						placeholder="https://…"
-						oninput={(e) => {
-							brandKit = {
-								...brandKit,
-								cta: { ...brandKit.cta, image: (e.currentTarget as HTMLInputElement).value },
-							};
-						}}
-					/>
-				</label>
-				<label class="field">
-					<span>Upload CTA image</span>
-					<input
-						type="file"
-						accept="image/*"
-						disabled={brandLogoBusy}
-						onchange={(e) => void onBrandCtaImageFile(e)}
-					/>
-				</label>
-				<label class="field">
-					<span>Primary</span>
-					<input type="color" bind:value={brandKit.primaryColor} />
-				</label>
-				<label class="field">
-					<span>Accent</span>
-					<input type="color" bind:value={brandKit.accentColor} />
-				</label>
-				<label class="field">
-					<span>Headline font</span>
-					<select bind:value={brandKit.headlineFont}>
-						{#each GOOGLE_FONTS as f}
-							<option value={f.family}>{f.family}</option>
-						{/each}
-					</select>
-				</label>
-				<label class="field">
-					<span>Default template</span>
-					<select bind:value={brandKit.defaultTemplateId}>
-						{#each STUDIO_TEMPLATES as t}
-							<option value={t.id}>{t.label}</option>
-						{/each}
-					</select>
-				</label>
-				<label class="field">
-					<span>Caption size</span>
-					<input type="number" min="16" max="64" bind:value={brandKit.captionFontSize} />
-				</label>
-				<label class="field check">
-					<span>Captions on by default</span>
-					<input type="checkbox" bind:checked={brandKit.captionEnabledDefault} />
-				</label>
-			</div>
-			<div class="brand-actions">
-				<button type="button" class="btn-primary" onclick={saveBrand}>
-					<Save size={14} /> Save brand
-				</button>
-			</div>
-		</section>
-	{/if}
 
 	<section class="generate-bar" aria-label="Generate ideas">
 		<label class="field grow">
@@ -1659,16 +1561,19 @@
 		</label>
 		<label class="field count">
 			<span>Slides/show ({slidesPerShow})</span>
-			<input type="range" min="3" max="8" bind:value={slidesPerShow} />
+			<input type="range" min="1" max="8" bind:value={slidesPerShow} />
 		</label>
-		<label class="append-toggle" title="Only image & video templates">
+		<label
+			class="append-toggle"
+			title="Automatically fill Unsplash/Pexels media on image & video templates after generate"
+		>
 			<input type="checkbox" bind:checked={autoStock} />
 			Auto stock
 		</label>
 		<div class="generate-bar-tail">
 			<button
 				type="button"
-				class="btn-primary generate-btn"
+				class="ma-btn ma-btn-primary generate-btn"
 				onclick={() => void generateIdeas()}
 				disabled={generating || !topic.trim()}
 			>
@@ -1688,11 +1593,6 @@
 	{#if stockNote}
 		<p class="stock-note" role="status">{stockNote}</p>
 	{/if}
-	{#if libraryNote && !libraryOpen}
-		<p class="stock-note" role="status">{libraryNote}</p>
-	{/if}
-
-	<BulkClipImportDialog bind:open={clipImportOpen} userId={userId} oncomplete={onClipImportComplete} />
 
 	<section class="stack-wrap" aria-label="Slideshow stack">
 		<div class="rows-toolbar">
@@ -1712,26 +1612,10 @@
 			<div class="rows-toolbar-actions">
 				<button
 					type="button"
-					class="btn-ghost sm"
-					class:btn-ghost-on={libraryOpen}
-					onclick={() => {
-						libraryOpen = !libraryOpen;
-						if (libraryOpen) void refreshLibrary();
-					}}
-					title="Your saved carousel stacks"
-				>
-					<History size={13} />
-					Library
-					{#if libraryEntries.length}
-						<span class="history-badge">{libraryEntries.length}</span>
-					{/if}
-				</button>
-				<button
-					type="button"
-					class="btn-ghost sm"
+					class="ma-btn ma-btn-ghost ma-btn-sm"
 					onclick={() => void clearAndStartFresh()}
 					disabled={libraryBusy || stackLoading}
-					title="Save current work to Library and start a blank stack"
+					title="Clear the current stack and start blank"
 				>
 					{#if libraryBusy}
 						<Loader2 size={13} class="spin" />
@@ -1740,15 +1624,12 @@
 					{/if}
 					Clear &amp; fresh
 				</button>
-				<button type="button" class="btn-ghost sm" onclick={() => (clipImportOpen = true)}>
-					<Video size={13} />
-					Import clips
-				</button>
 				<button
 					type="button"
-					class="btn-ghost sm"
+					class="ma-btn ma-btn-ghost ma-btn-sm"
 					onclick={() => void fillStockForShows(undefined, { force: true })}
 					disabled={stockFilling || stackLoading}
+					title="Fill Unsplash/Pexels media on image & video slides"
 				>
 					{#if stockFilling}
 						<Loader2 size={13} class="spin" />
@@ -1775,96 +1656,19 @@
 						class="shrink-0"
 					/>
 				</label>
-				<button type="button" class="btn-ghost sm" onclick={() => (pasteOpen = !pasteOpen)} disabled={stackLoading}>
+				<button type="button" class="ma-btn ma-btn-ghost ma-btn-sm" onclick={() => (pasteOpen = !pasteOpen)} disabled={stackLoading}>
 					<Type size={13} /> Paste ideas
 				</button>
-				<button type="button" class="btn-ghost sm" onclick={addShow} disabled={stackLoading}>
+				<button type="button" class="ma-btn ma-btn-ghost ma-btn-sm" onclick={addShow} disabled={stackLoading}>
 					<Plus size={13} /> Add slideshow
 				</button>
 			</div>
 		</div>
 
-		{#if libraryOpen}
-			<div class="history-panel" transition:fly={{ y: -8, duration: 220 }}>
-				<div class="history-panel-head">
-					<div class="history-panel-title">
-						<FolderOpen size={15} />
-						<span>Your library</span>
-					</div>
-					<div class="history-panel-actions">
-						<button
-							type="button"
-							class="btn-ghost sm"
-							onclick={() => void saveCurrentToLibrary()}
-							disabled={libraryBusy || !showsHaveContent(shows)}
-						>
-							{#if libraryBusy}
-								<Loader2 size={13} class="spin" />
-							{:else}
-								<Save size={13} />
-							{/if}
-							Save current
-						</button>
-						<button type="button" class="icon-btn" aria-label="Close" onclick={() => (libraryOpen = false)}>
-							<X size={14} />
-						</button>
-					</div>
-				</div>
-				{#if libraryNote}
-					<p class="history-note" role="status">{libraryNote}</p>
-				{/if}
-				{#if !libraryEntries.length}
-					<p class="history-empty">
-						Saved stacks appear here. Use Save current, Clear &amp; fresh, or Generate again — each gets a private
-						URL only you can open.
-					</p>
-				{:else}
-					<ul class="history-list">
-						{#each libraryEntries as entry (entry.id)}
-							<li class="history-item">
-								<a
-									class="history-card"
-									class:history-card-on={entry.id === cloudWorkspaceId}
-									href={entry.url}
-									onclick={() => (libraryOpen = false)}
-								>
-									<div class="history-thumb-wrap">
-										{#if entry.thumbnailUrl}
-											<img class="history-thumb" src={entry.thumbnailUrl} alt="" loading="lazy" />
-										{:else}
-											<span class="history-thumb history-thumb-empty"><Layers size={18} /></span>
-										{/if}
-									</div>
-									<div class="history-meta">
-										<span class="history-topic">{entry.topic || entry.title || entry.titles[0] || 'Untitled'}</span>
-										<span class="history-sub">
-											<Clock size={11} />
-											{formatHistoryWhen(entry.updatedAt)}
-											· {entry.showCount} slideshow{entry.showCount === 1 ? '' : 's'}
-										</span>
-										<span class="history-titles">{entry.url}</span>
-									</div>
-								</a>
-								<button
-									type="button"
-									class="icon-btn danger history-delete"
-									title="Delete from library"
-									aria-label="Delete from library"
-									onclick={() => void deleteLibraryEntry(entry.id)}
-								>
-									<Trash2 size={13} />
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
-		{/if}
-
 		{#if pasteOpen}
 			<div class="paste-box">
 				<textarea bind:value={pasteText} rows="3" placeholder="One idea title per line…"></textarea>
-				<button type="button" class="btn-primary sm" onclick={() => void applyPasteLines()}>Apply lines</button>
+				<button type="button" class="ma-btn ma-btn-primary ma-btn-sm" onclick={() => void applyPasteLines()}>Apply lines</button>
 			</div>
 		{/if}
 
@@ -1955,16 +1759,7 @@
 											{/if}
 										</button>
 									{/each}
-								</div>
-								<button
-									type="button"
-									class="filmstrip-add-fab"
-									title="Add slide"
-									aria-label="Add slide"
-									onclick={() => addSlideToShow(show.id)}
-								>
-									<Plus size={16} strokeWidth={2.5} />
-								</button>
+									</div>
 							</div>
 							{/if}
 						</div>
@@ -2109,24 +1904,6 @@
 											<VolumeX size={14} />
 											Sound
 											<span class="menu-pill muted">off</span>
-										{/if}
-									</button>
-								{/if}
-								{#if templateUsesStockMedia(slide.template)}
-									<button
-										type="button"
-										class="menu-item"
-										disabled={slide.mediaLoading}
-										onclick={() => void fillStockForSlide(show.id, slide.id)}
-									>
-										{#if slide.mediaLoading}
-											<Loader2 size={14} class="spin" />
-										{:else}
-											<Image size={14} />
-										{/if}
-										Stock
-										{#if slide.mediaUrl}
-											<span class="menu-pill">set</span>
 										{/if}
 									</button>
 								{/if}
@@ -2309,7 +2086,7 @@
 					<div class="reframe-pop-actions">
 						<button
 							type="button"
-							class="btn-primary sm"
+							class="ma-btn ma-btn-primary ma-btn-sm"
 							disabled={popSlide.reframeBusy || !pyautoflipReady}
 							onclick={() => void reframeBulkSlide(popShow.id, popSlide.id)}
 						>
@@ -2324,7 +2101,7 @@
 						{#if popShow.fromVideoClips}
 							<button
 								type="button"
-								class="btn-ghost sm"
+								class="ma-btn ma-btn-ghost ma-btn-sm"
 								disabled={!pyautoflipReady}
 								onclick={() => void reframeAllBulkSlides(popShow.id)}
 							>
@@ -2454,9 +2231,6 @@
 								/>
 							</label>
 						</div>
-						<button type="button" class="btn-ghost sm" onclick={() => saveCaptionAsBrand(popSlide)}>
-							Save as brand defaults
-						</button>
 					{/if}
 				</div>
 			{/if}
@@ -2871,6 +2645,8 @@
 		flex-shrink: 0;
 		min-width: 7.35rem;
 		white-space: nowrap;
+		padding: 9px 18px;
+		font-size: 13px;
 	}
 	.generate-bar .append-toggle {
 		flex-shrink: 0;
@@ -2971,11 +2747,6 @@
 		display: flex;
 		gap: 0.35rem;
 		flex-wrap: wrap;
-	}
-	.btn-ghost-on {
-		border-color: color-mix(in oklab, var(--app-text) 28%, var(--bulk-border));
-		background: color-mix(in oklab, var(--app-text) 6%, transparent);
-		color: var(--app-text);
 	}
 	.hl-toggle {
 		display: inline-flex;
@@ -3457,35 +3228,6 @@
 	}
 	.remove-slide {
 		margin-left: 0.15rem;
-	}
-	.btn-primary,
-	.btn-ghost {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.35rem;
-		border-radius: 7px;
-		font-size: 0.8125rem;
-		font-weight: 550;
-		padding: 0.5rem 0.75rem;
-		cursor: pointer;
-		border: 1px solid transparent;
-	}
-	.btn-primary {
-		background: var(--app-text);
-		color: var(--app-surface);
-	}
-	.btn-primary:disabled {
-		opacity: 0.45;
-	}
-	.btn-ghost {
-		background: transparent;
-		border-color: var(--bulk-border);
-		color: var(--app-text-2);
-	}
-	.sm {
-		padding: 0.35rem 0.55rem;
-		font-size: 0.75rem;
 	}
 	:global(.spin) {
 		animation: spin 0.8s linear infinite;

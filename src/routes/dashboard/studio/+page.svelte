@@ -165,7 +165,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, Layers, ListOrdered,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2, PanelBottom
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -1270,9 +1270,13 @@ import JSZip from 'jszip';
 					topAvatarImage: string;
 					topAvatarInnerBg: string;
 					topAvatarLabel: string;
+					topAvatarRingColor: string;
+					topAvatarRingWidth: number;
 					bottomAvatarImage: string;
 					bottomAvatarInnerBg: string;
 					bottomAvatarLabel: string;
+					bottomAvatarRingColor: string;
+					bottomAvatarRingWidth: number;
 					styles: Partial<Record<TextElementKind, TextStyle>>;
 					offsets: Record<string, { x: number; y: number }>;
 				};
@@ -1287,6 +1291,8 @@ import JSZip from 'jszip';
 					avatarImage: string;
 					avatarInnerBg: string;
 					avatarLabel: string;
+					avatarRingColor: string;
+					avatarRingWidth: number;
 					image: string;
 					styles: Partial<Record<TextElementKind, TextStyle>>;
 					offsets: Record<string, { x: number; y: number }>;
@@ -1366,9 +1372,13 @@ import JSZip from 'jszip';
 					topAvatarImage: tweetTopAvatarImageBySlide[slide] ?? '',
 					topAvatarInnerBg: tweetTopAvatarInnerBgBySlide[slide] ?? '',
 					topAvatarLabel: tweetTopAvatarLabelBySlide[slide] ?? '',
+					topAvatarRingColor: tweetTopAvatarRingColorBySlide[slide] ?? defaultAvatarRingColor,
+					topAvatarRingWidth: tweetTopAvatarRingWidthBySlide[slide] ?? defaultTweetAvatarRingWidth,
 					bottomAvatarImage: tweetBottomAvatarImageBySlide[slide] ?? '',
 					bottomAvatarInnerBg: tweetBottomAvatarInnerBgBySlide[slide] ?? '',
 					bottomAvatarLabel: tweetBottomAvatarLabelBySlide[slide] ?? '',
+					bottomAvatarRingColor: tweetBottomAvatarRingColorBySlide[slide] ?? defaultAvatarRingColor,
+					bottomAvatarRingWidth: tweetBottomAvatarRingWidthBySlide[slide] ?? defaultTweetAvatarRingWidth,
 					styles,
 					offsets,
 				},
@@ -1385,6 +1395,8 @@ import JSZip from 'jszip';
 					avatarImage: textCarouselAvatarImageBySlide[slide] ?? '',
 					avatarInnerBg: textCarouselAvatarInnerBgBySlide[slide] ?? '',
 					avatarLabel: textCarouselAvatarLabelBySlide[slide] ?? '',
+					avatarRingColor: textCarouselAvatarRingColorBySlide[slide] ?? defaultAvatarRingColor,
+					avatarRingWidth: textCarouselAvatarRingWidthBySlide[slide] ?? defaultTextCarouselRingWidth,
 					image: (bgImagesByTemplate[template] ?? [])[slide] ?? '',
 					styles,
 					offsets,
@@ -1523,9 +1535,13 @@ import JSZip from 'jszip';
 			tweetTopAvatarImageBySlide = tweetTopAvatarImageBySlide.map((x, idx) => (idx === i ? (d.topAvatarImage ?? '') : x));
 			tweetTopAvatarInnerBgBySlide = tweetTopAvatarInnerBgBySlide.map((x, idx) => (idx === i ? (d.topAvatarInnerBg ?? '') : x));
 			tweetTopAvatarLabelBySlide = tweetTopAvatarLabelBySlide.map((x, idx) => (idx === i ? (d.topAvatarLabel ?? '') : x));
+			tweetTopAvatarRingColorBySlide = tweetTopAvatarRingColorBySlide.map((x, idx) => (idx === i ? (d.topAvatarRingColor ?? defaultAvatarRingColor) : x));
+			tweetTopAvatarRingWidthBySlide = tweetTopAvatarRingWidthBySlide.map((x, idx) => (idx === i ? (d.topAvatarRingWidth ?? defaultTweetAvatarRingWidth) : x));
 			tweetBottomAvatarImageBySlide = tweetBottomAvatarImageBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarImage ?? '') : x));
 			tweetBottomAvatarInnerBgBySlide = tweetBottomAvatarInnerBgBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarInnerBg ?? '') : x));
 			tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarLabel ?? '') : x));
+			tweetBottomAvatarRingColorBySlide = tweetBottomAvatarRingColorBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarRingColor ?? defaultAvatarRingColor) : x));
+			tweetBottomAvatarRingWidthBySlide = tweetBottomAvatarRingWidthBySlide.map((x, idx) => (idx === i ? (d.bottomAvatarRingWidth ?? defaultTweetAvatarRingWidth) : x));
 			return;
 		}
 		if (t === 'textCarousel' || t === 'whiteThread' || t === 'whiteMedia') {
@@ -1547,6 +1563,12 @@ import JSZip from 'jszip';
 			);
 			textCarouselAvatarLabelBySlide = textCarouselAvatarLabelBySlide.map((x, idx) =>
 				idx === i ? (d.avatarLabel ?? '') : x,
+			);
+			textCarouselAvatarRingColorBySlide = textCarouselAvatarRingColorBySlide.map((x, idx) =>
+				idx === i ? (d.avatarRingColor ?? defaultAvatarRingColor) : x,
+			);
+			textCarouselAvatarRingWidthBySlide = textCarouselAvatarRingWidthBySlide.map((x, idx) =>
+				idx === i ? (d.avatarRingWidth ?? defaultTextCarouselRingWidth) : x,
 			);
 			if (t === 'whiteMedia' || t === 'whiteThread') {
 				bgImagesByTemplate = {
@@ -1742,17 +1764,17 @@ import JSZip from 'jszip';
 				onClick: canBgTools ? openNewsBgToolbarFromDock : undefined,
 				disabled: !canBgTools,
 			},
-			{ icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !effectiveBackgroundVideo },
+			// { icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !effectiveBackgroundVideo },
 			{ icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !effectiveBackgroundVideo },
-			{
-				icon: Sparkles,
-				label: 'AI',
-				onClick: newsOrBlank
-					? undefined
-					: () => void generateBackground(activeSlide, undefined, activeTemplate),
-				disabled:
-					newsOrBlank || !!(generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide],
-			},
+			// {
+			// 	icon: Sparkles,
+			// 	label: 'AI',
+			// 	onClick: newsOrBlank
+			// 		? undefined
+			// 		: () => void generateBackground(activeSlide, undefined, activeTemplate),
+			// 	disabled:
+			// 		newsOrBlank || !!(generatingImagesByTemplate[activeTemplate] ?? [])[activeSlide],
+			// },
 			{
 				icon: Circle,
 				label: 'Shape',
@@ -1850,9 +1872,13 @@ import JSZip from 'jszip';
 			tweetTopAvatarImageBySlide = tweetTopAvatarImageBySlide.map((x, idx) => (idx === i ? '' : x));
 			tweetTopAvatarInnerBgBySlide = tweetTopAvatarInnerBgBySlide.map((x, idx) => (idx === i ? '' : x));
 			tweetTopAvatarLabelBySlide = tweetTopAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetTopAvatarRingColorBySlide = tweetTopAvatarRingColorBySlide.map((x, idx) => (idx === i ? '#c9b97a' : x));
+			tweetTopAvatarRingWidthBySlide = tweetTopAvatarRingWidthBySlide.map((x, idx) => (idx === i ? 4 : x));
 			tweetBottomAvatarImageBySlide = tweetBottomAvatarImageBySlide.map((x, idx) => (idx === i ? '' : x));
 			tweetBottomAvatarInnerBgBySlide = tweetBottomAvatarInnerBgBySlide.map((x, idx) => (idx === i ? '' : x));
 			tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
+			tweetBottomAvatarRingColorBySlide = tweetBottomAvatarRingColorBySlide.map((x, idx) => (idx === i ? '#c9b97a' : x));
+			tweetBottomAvatarRingWidthBySlide = tweetBottomAvatarRingWidthBySlide.map((x, idx) => (idx === i ? 4 : x));
 		} else if (t === 'article') {
 			articleTextBySlide = articleTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_BODY : x));
 			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_SWIPE : x));
@@ -1864,6 +1890,8 @@ import JSZip from 'jszip';
 			textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, idx) => (idx === i ? '' : x));
 			textCarouselAvatarInnerBgBySlide = textCarouselAvatarInnerBgBySlide.map((x, idx) => (idx === i ? '' : x));
 			textCarouselAvatarLabelBySlide = textCarouselAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
+			textCarouselAvatarRingColorBySlide = textCarouselAvatarRingColorBySlide.map((x, idx) => (idx === i ? '#c9b97a' : x));
+			textCarouselAvatarRingWidthBySlide = textCarouselAvatarRingWidthBySlide.map((x, idx) => (idx === i ? 5 : x));
 		} else if (isWhitePostFamily(t)) {
 			const defaults = t === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS : WHITE_THREAD_DEFAULTS;
 			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) =>
@@ -2820,6 +2848,9 @@ import JSZip from 'jszip';
 	const canvasSolidHex = $derived(canvasBgDark ? '#000000' : '#ffffff');
 
 	const textCarouselDefaultAvatarBg = $derived(canvasBgDark ? '#0a0a0a' : '#ffffff');
+	const defaultAvatarRingColor = '#c9b97a';
+	const defaultTweetAvatarRingWidth = 4;
+	const defaultTextCarouselRingWidth = 5;
 
 	function setCanvasBackgroundDark(dark: boolean) {
 		if (canvasBgDark === dark) return;
@@ -3249,9 +3280,13 @@ import JSZip from 'jszip';
 		tweetTopAvatarImageBySlide = [...tweetTopAvatarImageBySlide, tweetTopAvatarImageBySlide[tweetTopAvatarImageBySlide.length - 1] ?? ''];
 		tweetTopAvatarInnerBgBySlide = [...tweetTopAvatarInnerBgBySlide, tweetTopAvatarInnerBgBySlide[tweetTopAvatarInnerBgBySlide.length - 1] ?? ''];
 		tweetTopAvatarLabelBySlide = [...tweetTopAvatarLabelBySlide, tweetTopAvatarLabelBySlide[tweetTopAvatarLabelBySlide.length - 1] ?? ''];
+		tweetTopAvatarRingColorBySlide = [...tweetTopAvatarRingColorBySlide, tweetTopAvatarRingColorBySlide[tweetTopAvatarRingColorBySlide.length - 1] ?? '#c9b97a'];
+		tweetTopAvatarRingWidthBySlide = [...tweetTopAvatarRingWidthBySlide, tweetTopAvatarRingWidthBySlide[tweetTopAvatarRingWidthBySlide.length - 1] ?? 4];
 		tweetBottomAvatarImageBySlide = [...tweetBottomAvatarImageBySlide, tweetBottomAvatarImageBySlide[tweetBottomAvatarImageBySlide.length - 1] ?? ''];
 		tweetBottomAvatarInnerBgBySlide = [...tweetBottomAvatarInnerBgBySlide, tweetBottomAvatarInnerBgBySlide[tweetBottomAvatarInnerBgBySlide.length - 1] ?? ''];
 		tweetBottomAvatarLabelBySlide = [...tweetBottomAvatarLabelBySlide, tweetBottomAvatarLabelBySlide[tweetBottomAvatarLabelBySlide.length - 1] ?? ''];
+		tweetBottomAvatarRingColorBySlide = [...tweetBottomAvatarRingColorBySlide, tweetBottomAvatarRingColorBySlide[tweetBottomAvatarRingColorBySlide.length - 1] ?? '#c9b97a'];
+		tweetBottomAvatarRingWidthBySlide = [...tweetBottomAvatarRingWidthBySlide, tweetBottomAvatarRingWidthBySlide[tweetBottomAvatarRingWidthBySlide.length - 1] ?? 4];
 		articleTextBySlide = [...articleTextBySlide, articleTextBySlide[articleTextBySlide.length - 1] ?? ''];
 		newsSubtextBySlide = [...newsSubtextBySlide, ''];
 		textCarouselTextBySlide = [...textCarouselTextBySlide, textCarouselTextBySlide[textCarouselTextBySlide.length - 1] ?? ''];
@@ -3269,6 +3304,14 @@ import JSZip from 'jszip';
 		textCarouselAvatarLabelBySlide = [
 			...textCarouselAvatarLabelBySlide,
 			textCarouselAvatarLabelBySlide[textCarouselAvatarLabelBySlide.length - 1] ?? '',
+		];
+		textCarouselAvatarRingColorBySlide = [
+			...textCarouselAvatarRingColorBySlide,
+			textCarouselAvatarRingColorBySlide[textCarouselAvatarRingColorBySlide.length - 1] ?? '#c9b97a',
+		];
+		textCarouselAvatarRingWidthBySlide = [
+			...textCarouselAvatarRingWidthBySlide,
+			textCarouselAvatarRingWidthBySlide[textCarouselAvatarRingWidthBySlide.length - 1] ?? 5,
 		];
 		imageQuoteFooterLeftBySlide = [...imageQuoteFooterLeftBySlide, imageQuoteFooterLeftBySlide[imageQuoteFooterLeftBySlide.length - 1] ?? IMAGE_QUOTE_DEFAULTS.footerLeft];
 		imageQuoteFooterRightBySlide = [...imageQuoteFooterRightBySlide, imageQuoteFooterRightBySlide[imageQuoteFooterRightBySlide.length - 1] ?? IMAGE_QUOTE_DEFAULTS.footerRight];
@@ -3419,9 +3462,13 @@ import JSZip from 'jszip';
 	let tweetTopAvatarImageBySlide = $state<string[]>(emptySlides(() => ''));
 	let tweetTopAvatarInnerBgBySlide = $state<string[]>(emptySlides(() => ''));
 	let tweetTopAvatarLabelBySlide = $state<string[]>(emptySlides(() => ''));
+	let tweetTopAvatarRingColorBySlide = $state<string[]>(emptySlides(() => '#c9b97a'));
+	let tweetTopAvatarRingWidthBySlide = $state<number[]>(emptySlides(() => 4));
 	let tweetBottomAvatarImageBySlide = $state<string[]>(emptySlides(() => ''));
 	let tweetBottomAvatarInnerBgBySlide = $state<string[]>(emptySlides(() => ''));
 	let tweetBottomAvatarLabelBySlide = $state<string[]>(emptySlides(() => ''));
+	let tweetBottomAvatarRingColorBySlide = $state<string[]>(emptySlides(() => '#c9b97a'));
+	let tweetBottomAvatarRingWidthBySlide = $state<number[]>(emptySlides(() => 4));
 	let articleTextBySlide = $state<string[]>(
 		emptySlides(
 			() =>
@@ -3441,6 +3488,8 @@ import JSZip from 'jszip';
 	let textCarouselAvatarImageBySlide = $state<string[]>(emptySlides(() => ''));
 	let textCarouselAvatarInnerBgBySlide = $state<string[]>(emptySlides(() => ''));
 	let textCarouselAvatarLabelBySlide = $state<string[]>(emptySlides(() => ''));
+	let textCarouselAvatarRingColorBySlide = $state<string[]>(emptySlides(() => '#c9b97a'));
+	let textCarouselAvatarRingWidthBySlide = $state<number[]>(emptySlides(() => 5));
 	let imageQuoteFooterLeftBySlide = $state<string[]>(emptySlides(() => IMAGE_QUOTE_DEFAULTS.footerLeft));
 	let imageQuoteFooterRightBySlide = $state<string[]>(emptySlides(() => IMAGE_QUOTE_DEFAULTS.footerRight));
 
@@ -3461,6 +3510,7 @@ import JSZip from 'jszip';
 	let filmStripTopPctByTemplate = $state<Record<TemplateId, number[]>>(emptyFilmStripMap('top'));
 	let filmStripBottomPctByTemplate = $state<Record<TemplateId, number[]>>(emptyFilmStripMap('bottom'));
 	let filmStripPopoverOpen = $state(false);
+	let bottomShadowPopoverOpen = $state(false);
 
 	const activeFilmStrip = $derived.by(() => {
 		const t = activeTemplate;
@@ -3627,9 +3677,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		tweetTopAvatarImageBySlide = pickOr(tweetTopAvatarImageBySlide, '');
 		tweetTopAvatarInnerBgBySlide = pickOr(tweetTopAvatarInnerBgBySlide, '');
 		tweetTopAvatarLabelBySlide = pickOr(tweetTopAvatarLabelBySlide, '');
+		tweetTopAvatarRingColorBySlide = pickOr(tweetTopAvatarRingColorBySlide, '#c9b97a');
+		tweetTopAvatarRingWidthBySlide = pickOr(tweetTopAvatarRingWidthBySlide, 4);
 		tweetBottomAvatarImageBySlide = pickOr(tweetBottomAvatarImageBySlide, '');
 		tweetBottomAvatarInnerBgBySlide = pickOr(tweetBottomAvatarInnerBgBySlide, '');
 		tweetBottomAvatarLabelBySlide = pickOr(tweetBottomAvatarLabelBySlide, '');
+		tweetBottomAvatarRingColorBySlide = pickOr(tweetBottomAvatarRingColorBySlide, '#c9b97a');
+		tweetBottomAvatarRingWidthBySlide = pickOr(tweetBottomAvatarRingWidthBySlide, 4);
 		articleTextBySlide = pickOr(articleTextBySlide, '');
 		newsSubtextBySlide = pickOr(newsSubtextBySlide, '');
 		textCarouselTextBySlide = pickOr(textCarouselTextBySlide, '');
@@ -3639,6 +3693,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		textCarouselAvatarImageBySlide = pickOr(textCarouselAvatarImageBySlide, '');
 		textCarouselAvatarInnerBgBySlide = pickOr(textCarouselAvatarInnerBgBySlide, '');
 		textCarouselAvatarLabelBySlide = pickOr(textCarouselAvatarLabelBySlide, '');
+		textCarouselAvatarRingColorBySlide = pickOr(textCarouselAvatarRingColorBySlide, '#c9b97a');
+		textCarouselAvatarRingWidthBySlide = pickOr(textCarouselAvatarRingWidthBySlide, 5);
 		imageQuoteFooterLeftBySlide = pickOr(imageQuoteFooterLeftBySlide, IMAGE_QUOTE_DEFAULTS.footerLeft);
 		imageQuoteFooterRightBySlide = pickOr(imageQuoteFooterRightBySlide, IMAGE_QUOTE_DEFAULTS.footerRight);
 		filmStripTopPctByTemplate = Object.fromEntries(
@@ -3926,8 +3982,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (!hasRangeSelection) return false;
 		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
 		if (!range) return false;
-		if (previewTemplate !== 'news') return false;
-		if (selectedText !== 'headline' && selectedText !== 'textOverlay') return false;
+		if (!studioMarkupFieldActive()) return false;
 		const raw = toolbarHighlightableRaw();
 		if (!raw) return false;
 		const base = getActiveStyleForSelection().color ?? textColor;
@@ -3938,7 +3993,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const toolbarFloatingStyle = $derived.by(() => {
 		const base = getActiveStyleForSelection();
 		if (!hasRangeSelection || toolbarTextColorMixed) return base;
-		if (previewTemplate !== 'news' || (selectedText !== 'headline' && selectedText !== 'textOverlay')) return base;
+		if (!studioMarkupFieldActive()) return base;
 		const raw = toolbarHighlightableRaw();
 		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
 		if (!raw || !range || range.end <= range.start) return base;
@@ -4022,6 +4077,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			const next = applyHighlight(current, start, end, spec);
 			setActiveSlideText(next);
 			if (newsHeadlineLive !== null) newsHeadlineLive = next;
+		} else if (selectedText === 'newsSubtext') {
+			const current = newsSubtextBySlide[activeSlide] ?? '';
+			newsSubtextBySlide = newsSubtextBySlide.map((x, i) =>
+				i === activeSlide ? applyHighlight(current, start, end, spec) : x,
+			);
 		} else if (selectedText === 'articleBody') {
 			const current = articleTextBySlide[activeSlide] ?? '';
 			articleTextBySlide = articleTextBySlide.map((x, i) => i === activeSlide ? applyHighlight(current, start, end, spec) : x);
@@ -4044,6 +4104,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			const i = paintSlide;
 			const current = videoStoryWatermarkBySlide[i] ?? '';
 			videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, j) =>
+				j === i ? applyHighlight(current, start, end, spec) : x,
+			);
+		} else if (selectedText === 'brandStackBrand') {
+			const i = paintSlide;
+			const current = brandStackBrandBySlide[i] ?? '';
+			brandStackBrandBySlide = brandStackBrandBySlide.map((x, j) =>
 				j === i ? applyHighlight(current, start, end, spec) : x,
 			);
 		} else if (selectedText === 'blackTextHeadline') {
@@ -4596,20 +4662,22 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function studioMarkupFieldActive(): boolean {
 		if (!studioTextHighlightsEnabled) return false;
-		if (
-			previewTemplate === 'news' &&
-			(selectedText === 'headline' ||
-				(selectedText === 'textOverlay' && !!selectedTextOverlayId))
-		) {
-			return true;
-		}
-		if (
-			(isPhotoStoryFamily(previewTemplate) || previewTemplate === 'blackText') &&
-			(selectedText === 'blackTextHeadline' || selectedText === 'blackTextBody')
-		) {
-			return true;
-		}
-		return false;
+		const k = selectedText;
+		if (!k) return false;
+		if (k === 'textOverlay') return !!selectedTextOverlayId;
+		return (
+			k === 'headline' ||
+			k === 'newsSubtext' ||
+			k === 'articleBody' ||
+			k === 'textCarouselBody' ||
+			k === 'tweetTopText' ||
+			k === 'tweetBottomText' ||
+			k === 'videoStoryHeadline' ||
+			k === 'videoStoryWatermark' ||
+			k === 'brandStackBrand' ||
+			k === 'blackTextHeadline' ||
+			k === 'blackTextBody'
+		);
 	}
 
 	/** Full-canvas loading overlay: variant pass, paint flush, bg gen, or media apply/load. */
@@ -4863,6 +4931,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray((s as any).tweetTopAvatarLabelBySlide)) {
 			tweetTopAvatarLabelBySlide = (s as any).tweetTopAvatarLabelBySlide.map((x: unknown) => String(x ?? ''));
 		}
+		if (Array.isArray((s as any).tweetTopAvatarRingColorBySlide)) {
+			tweetTopAvatarRingColorBySlide = (s as any).tweetTopAvatarRingColorBySlide.map((x: unknown) => String(x ?? '#c9b97a'));
+		}
+		if (Array.isArray((s as any).tweetTopAvatarRingWidthBySlide)) {
+			tweetTopAvatarRingWidthBySlide = (s as any).tweetTopAvatarRingWidthBySlide.map((x: unknown) => Number(x) || 4);
+		}
 		if (Array.isArray((s as any).tweetBottomAvatarImageBySlide)) {
 			tweetBottomAvatarImageBySlide = (s as any).tweetBottomAvatarImageBySlide.map((x: unknown) => String(x ?? ''));
 		}
@@ -4871,6 +4945,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 		if (Array.isArray((s as any).tweetBottomAvatarLabelBySlide)) {
 			tweetBottomAvatarLabelBySlide = (s as any).tweetBottomAvatarLabelBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).tweetBottomAvatarRingColorBySlide)) {
+			tweetBottomAvatarRingColorBySlide = (s as any).tweetBottomAvatarRingColorBySlide.map((x: unknown) => String(x ?? '#c9b97a'));
+		}
+		if (Array.isArray((s as any).tweetBottomAvatarRingWidthBySlide)) {
+			tweetBottomAvatarRingWidthBySlide = (s as any).tweetBottomAvatarRingWidthBySlide.map((x: unknown) => Number(x) || 4);
 		}
 		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
 		if (Array.isArray((s as any).newsSubtextBySlide)) {
@@ -4914,6 +4994,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 		if (Array.isArray((s as any).textCarouselAvatarLabelBySlide)) {
 			textCarouselAvatarLabelBySlide = (s as any).textCarouselAvatarLabelBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).textCarouselAvatarRingColorBySlide)) {
+			textCarouselAvatarRingColorBySlide = (s as any).textCarouselAvatarRingColorBySlide.map((x: unknown) => String(x ?? '#c9b97a'));
+		}
+		if (Array.isArray((s as any).textCarouselAvatarRingWidthBySlide)) {
+			textCarouselAvatarRingWidthBySlide = (s as any).textCarouselAvatarRingWidthBySlide.map((x: unknown) => Number(x) || 5);
 		}
 		if (Array.isArray(s.imageQuoteFooterLeftBySlide)) imageQuoteFooterLeftBySlide = s.imageQuoteFooterLeftBySlide;
 		if (Array.isArray(s.imageQuoteFooterRightBySlide)) imageQuoteFooterRightBySlide = s.imageQuoteFooterRightBySlide;
@@ -5279,9 +5365,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		tweetTopAvatarImageBySlide = [''];
 		tweetTopAvatarInnerBgBySlide = [''];
 		tweetTopAvatarLabelBySlide = [''];
+		tweetTopAvatarRingColorBySlide = ['#c9b97a'];
+		tweetTopAvatarRingWidthBySlide = [4];
 		tweetBottomAvatarImageBySlide = [''];
 		tweetBottomAvatarInnerBgBySlide = [''];
 		tweetBottomAvatarLabelBySlide = [''];
+		tweetBottomAvatarRingColorBySlide = ['#c9b97a'];
+		tweetBottomAvatarRingWidthBySlide = [4];
 		articleTextBySlide = [''];
 		newsSubtextBySlide = [''];
 		articleSwipeTextBySlide = [''];
@@ -5292,6 +5382,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		textCarouselAvatarImageBySlide = [''];
 		textCarouselAvatarInnerBgBySlide = [''];
 		textCarouselAvatarLabelBySlide = [''];
+		textCarouselAvatarRingColorBySlide = ['#c9b97a'];
+		textCarouselAvatarRingWidthBySlide = [5];
 		imageQuoteTextBySlide = [IMAGE_QUOTE_DEFAULTS.body];
 		imageQuoteFooterLeftBySlide = [IMAGE_QUOTE_DEFAULTS.footerLeft];
 		imageQuoteFooterRightBySlide = [IMAGE_QUOTE_DEFAULTS.footerRight];
@@ -5848,9 +5940,13 @@ tweetTopImagePanYBySlide,
 			tweetTopAvatarImageBySlide: tweetTopAvatarImageBySlide.map(pruneMediaUrl),
 			tweetTopAvatarInnerBgBySlide,
 			tweetTopAvatarLabelBySlide,
+			tweetTopAvatarRingColorBySlide,
+			tweetTopAvatarRingWidthBySlide,
 			tweetBottomAvatarImageBySlide: tweetBottomAvatarImageBySlide.map(pruneMediaUrl),
 			tweetBottomAvatarInnerBgBySlide,
 			tweetBottomAvatarLabelBySlide,
+			tweetBottomAvatarRingColorBySlide,
+			tweetBottomAvatarRingWidthBySlide,
 			articleTextBySlide,
 			newsSubtextBySlide,
 			textCarouselTextBySlide,
@@ -5866,6 +5962,8 @@ tweetTopImagePanYBySlide,
 			textCarouselAvatarImageBySlide: textCarouselAvatarImageBySlide.map(pruneMediaUrl),
 			textCarouselAvatarInnerBgBySlide,
 			textCarouselAvatarLabelBySlide,
+			textCarouselAvatarRingColorBySlide,
+			textCarouselAvatarRingWidthBySlide,
 			imageQuoteFooterLeftBySlide,
 			imageQuoteFooterRightBySlide,
 			filmStripTopPctByTemplate,
@@ -7759,6 +7857,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (tweetTopAvatarLabelBySlide.length !== n) {
 			tweetTopAvatarLabelBySlide = Array.from({ length: n }, (_, i) => tweetTopAvatarLabelBySlide[i] ?? '');
 		}
+		if (tweetTopAvatarRingColorBySlide.length !== n) {
+			tweetTopAvatarRingColorBySlide = Array.from({ length: n }, (_, i) => tweetTopAvatarRingColorBySlide[i] ?? '#c9b97a');
+		}
+		if (tweetTopAvatarRingWidthBySlide.length !== n) {
+			tweetTopAvatarRingWidthBySlide = Array.from({ length: n }, (_, i) => tweetTopAvatarRingWidthBySlide[i] ?? 4);
+		}
 		if (tweetBottomAvatarImageBySlide.length !== n) {
 			tweetBottomAvatarImageBySlide = Array.from({ length: n }, (_, i) => tweetBottomAvatarImageBySlide[i] ?? '');
 		}
@@ -7767,6 +7871,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 		if (tweetBottomAvatarLabelBySlide.length !== n) {
 			tweetBottomAvatarLabelBySlide = Array.from({ length: n }, (_, i) => tweetBottomAvatarLabelBySlide[i] ?? '');
+		}
+		if (tweetBottomAvatarRingColorBySlide.length !== n) {
+			tweetBottomAvatarRingColorBySlide = Array.from({ length: n }, (_, i) => tweetBottomAvatarRingColorBySlide[i] ?? '#c9b97a');
+		}
+		if (tweetBottomAvatarRingWidthBySlide.length !== n) {
+			tweetBottomAvatarRingWidthBySlide = Array.from({ length: n }, (_, i) => tweetBottomAvatarRingWidthBySlide[i] ?? 4);
 		}
 		if (articleTextBySlide.length !== n) {
 			articleTextBySlide = Array.from({ length: n }, (_, i) => articleTextBySlide[i] ?? '');
@@ -7794,6 +7904,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 		if (textCarouselAvatarLabelBySlide.length !== n) {
 			textCarouselAvatarLabelBySlide = Array.from({ length: n }, (_, i) => textCarouselAvatarLabelBySlide[i] ?? '');
+		}
+		if (textCarouselAvatarRingColorBySlide.length !== n) {
+			textCarouselAvatarRingColorBySlide = Array.from({ length: n }, (_, i) => textCarouselAvatarRingColorBySlide[i] ?? '#c9b97a');
+		}
+		if (textCarouselAvatarRingWidthBySlide.length !== n) {
+			textCarouselAvatarRingWidthBySlide = Array.from({ length: n }, (_, i) => textCarouselAvatarRingWidthBySlide[i] ?? 5);
 		}
 		if (imageQuoteFooterLeftBySlide.length !== n) {
 			imageQuoteFooterLeftBySlide = Array.from({ length: n }, (_, i) => imageQuoteFooterLeftBySlide[i] ?? IMAGE_QUOTE_DEFAULTS.footerLeft);
@@ -9154,7 +9270,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		<!-- Editor dock + format dock — fixed height so boot never reflows the row -->
 		<div
-			class="studio-dock-row relative z-30 flex w-full max-w-full shrink-0 flex-nowrap items-center justify-center gap-3 overflow-x-auto px-1 py-1"
+			class="studio-dock-row relative z-30 flex w-full max-w-full shrink-0 flex-nowrap items-center justify-center gap-3 px-1 py-1"
 		>
 			<!-- Hidden picker for dock “Image” (image stickers / logos) — must stay in DOM for bind:this -->
 			<input
@@ -9269,6 +9385,64 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</PopoverContent>
 				</Popover>
 			{/if}
+			<Popover bind:open={bottomShadowPopoverOpen}>
+				<PopoverTrigger
+					class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.7)] shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.05)] backdrop-blur-[14px] transition-colors hover:bg-white hover:text-[#111]"
+					title="Bottom shadow height and darkness"
+					aria-label="Bottom shadow"
+				>
+					<PanelBottom size={15} strokeWidth={1.8} />
+					<span class="hidden sm:inline">Shadow</span>
+				</PopoverTrigger>
+				<PopoverContent
+					side="bottom"
+					sideOffset={10}
+					align="center"
+					portalProps={{ to: 'body' }}
+					class="z-[400] w-[260px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+				>
+					<div class="mb-3 flex items-center justify-between gap-2">
+						<p class="text-[12px] font-semibold tracking-tight">Bottom shadow</p>
+						<button
+							type="button"
+							class="text-[10px] font-medium text-[#888] hover:text-[#111]"
+							onclick={() => {
+								shadowHeight = 75;
+								shadowStrength = 1;
+							}}
+						>
+							Reset
+						</button>
+					</div>
+					<label class="mb-1 flex items-center justify-between text-[11px] font-medium text-[#555]">
+						<span>Height</span>
+						<span class="tabular-nums text-[#111]">{Math.round(shadowHeight)}%</span>
+					</label>
+					<Slider
+						type="single"
+						bind:value={shadowHeight}
+						min={0}
+						max={100}
+						step={1}
+						class="mb-3.5 min-w-0"
+					/>
+					<label class="mb-1 flex items-center justify-between text-[11px] font-medium text-[#555]">
+						<span>Darkness</span>
+						<span class="tabular-nums text-[#111]">{Math.round(shadowStrength * 100)}%</span>
+					</label>
+					<Slider
+						type="single"
+						bind:value={shadowStrength}
+						min={0}
+						max={1}
+						step={0.05}
+						class="min-w-0"
+					/>
+					<p class="mt-3 text-[10px] leading-snug text-[#999]">
+						Gradient fade from the bottom of the canvas. Used most on News layouts.
+					</p>
+				</PopoverContent>
+			</Popover>
 			</div>
 			{#if !studioRevealReady}
 				<div class="studio-dock-skel" aria-hidden="true">
@@ -9624,9 +9798,13 @@ showSubjectCutout={canvasShowCutout}
 					topAvatar={tweetTopAvatarImageBySlide[paintSlide] ?? ''}
 					topAvatarInnerBg={tweetTopAvatarInnerBgBySlide[paintSlide] ?? ''}
 					topAvatarLabel={tweetTopAvatarLabelBySlide[paintSlide] ?? ''}
+					topAvatarRingColor={tweetTopAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
+					topAvatarRingWidth={tweetTopAvatarRingWidthBySlide[paintSlide] ?? defaultTweetAvatarRingWidth}
 					bottomAvatar={tweetBottomAvatarImageBySlide[paintSlide] ?? ''}
 					bottomAvatarInnerBg={tweetBottomAvatarInnerBgBySlide[paintSlide] ?? ''}
 					bottomAvatarLabel={tweetBottomAvatarLabelBySlide[paintSlide] ?? ''}
+					bottomAvatarRingColor={tweetBottomAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
+					bottomAvatarRingWidth={tweetBottomAvatarRingWidthBySlide[paintSlide] ?? defaultTweetAvatarRingWidth}
 topImage={(bgImagesByTemplate.tweet ?? [])[paintSlide] || '/templates/tweet/demo-bg.jpg'}
 onTopImageChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideImage(paintSlide, v, 'tweet'); }}
 topVideo={(bgVideosByTemplate.tweet ?? [])[paintSlide] ?? ''}
@@ -9689,6 +9867,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					avatar={textCarouselAvatarImageBySlide[paintSlide] ?? ''}
 					avatarInnerBg={textCarouselAvatarInnerBgBySlide[paintSlide] ?? ''}
 					avatarLabel={textCarouselAvatarLabelBySlide[paintSlide] ?? ''}
+					ringColor={textCarouselAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
+					ringWidth={textCarouselAvatarRingWidthBySlide[paintSlide] ?? defaultTextCarouselRingWidth}
 					onNameChange={(v) => { if (!canvasInteractive) return; pushUndo('textCarousel', paintSlide); textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) => i === paintSlide ? v : x); }}
 					onHandleChange={(v) => { if (!canvasInteractive) return; pushUndo('textCarousel', paintSlide); textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) => i === paintSlide ? v : x); }}
 					scale={previewScale}
@@ -11611,25 +11791,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 													/>
 													<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{canvasSourceStyle.fontSize ?? 34}px</span>
 												</div>
-												<div class="flex min-w-0 items-center gap-2">
-													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Style</Label>
-													<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
-														<Button
-															type="button"
-															variant={(canvasSourceStyle.italic ?? true) ? 'secondary' : 'ghost'}
-															size="sm"
-															class="h-6 rounded-md px-2.5 text-[10px] font-semibold italic"
-															onclick={() => patchNewsSourceStyle({ italic: true })}
-														>Italic</Button>
-														<Button
-															type="button"
-															variant={canvasSourceStyle.italic === false ? 'secondary' : 'ghost'}
-															size="sm"
-															class="h-6 rounded-md px-2.5 text-[10px] font-semibold"
-															onclick={() => patchNewsSourceStyle({ italic: false })}
-														>Regular</Button>
-													</div>
-												</div>
 											</div>
 										{:else}
 											<div class="flex items-center gap-2">
@@ -11775,24 +11936,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										{/if}
 									</div>
 								{/if}
-
-								<!-- Bottom shadow -->
-								<div class="pt-3.5 border-t border-[#f2f2f2]">
-									<div class="mb-2.5 flex items-center justify-between">
-										<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Bottom Shadow</Label>
-										<Button type="button" variant="ghost" size="sm" class="h-auto p-0 text-[9px] text-[#bbb] hover:text-[#555]" onclick={() => { shadowHeight = 75; shadowStrength = 1; }}>Reset</Button>
-									</div>
-									<div class="mb-2 flex min-w-0 items-center gap-2">
-										<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Height</span>
-										<Slider type="single" bind:value={shadowHeight} min={0} max={100} step={1} class="min-w-0 flex-1" />
-										<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{shadowHeight}%</span>
-									</div>
-									<div class="flex min-w-0 items-center gap-2">
-										<span class="w-10 shrink-0 text-[9px] text-[#b0b0b0]">Darkness</span>
-										<Slider type="single" bind:value={shadowStrength} min={0} max={1} step={0.05} class="min-w-0 flex-1" />
-										<span class="w-8 shrink-0 text-right text-[9px] text-[#b0b0b0]">{Math.round(shadowStrength * 100)}%</span>
-									</div>
-								</div>
 
 								<!-- Background (non-news) -->
 								{#if activeTemplate !== 'news'}
@@ -12057,6 +12200,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	label={textCarouselAvatarLabelBySlide[paintSlide] ?? ''}
 	nameFallback={textCarouselNameBySlide[paintSlide] ?? ''}
 	defaultInnerBg={textCarouselDefaultAvatarBg}
+	ringColor={textCarouselAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
+	ringWidth={textCarouselAvatarRingWidthBySlide[paintSlide] ?? defaultTextCarouselRingWidth}
+	defaultRingColor={defaultAvatarRingColor}
 	onImageFile={(dataUrl) => {
 		if (!canvasInteractive) return;
 		pushUndo('textCarousel', paintSlide);
@@ -12090,6 +12236,16 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		pushUndo('textCarousel', paintSlide);
 		textCarouselAvatarLabelBySlide = textCarouselAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
 	}}
+	onRingColor={(hex) => {
+		if (!canvasInteractive) return;
+		pushUndo('textCarousel', paintSlide);
+		textCarouselAvatarRingColorBySlide = textCarouselAvatarRingColorBySlide.map((x, i) => (i === paintSlide ? hex : x));
+	}}
+	onRingWidth={(px) => {
+		if (!canvasInteractive) return;
+		pushUndo('textCarousel', paintSlide);
+		textCarouselAvatarRingWidthBySlide = textCarouselAvatarRingWidthBySlide.map((x, i) => (i === paintSlide ? px : x));
+	}}
 	onClose={closeToolbar}
 />
 
@@ -12101,6 +12257,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	label={tweetTopAvatarLabelBySlide[paintSlide] ?? ''}
 	nameFallback={tweetTopNameBySlide[paintSlide] ?? ''}
 	defaultInnerBg={textCarouselDefaultAvatarBg}
+	ringColor={tweetTopAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
+	ringWidth={tweetTopAvatarRingWidthBySlide[paintSlide] ?? defaultTweetAvatarRingWidth}
+	defaultRingColor={defaultAvatarRingColor}
 	onImageFile={(dataUrl) => {
 		if (!canvasInteractive) return;
 		pushUndo('tweet', paintSlide);
@@ -12132,6 +12291,16 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		pushUndo('tweet', paintSlide);
 		tweetTopAvatarLabelBySlide = tweetTopAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
 	}}
+	onRingColor={(hex) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetTopAvatarRingColorBySlide = tweetTopAvatarRingColorBySlide.map((x, i) => (i === paintSlide ? hex : x));
+	}}
+	onRingWidth={(px) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetTopAvatarRingWidthBySlide = tweetTopAvatarRingWidthBySlide.map((x, i) => (i === paintSlide ? px : x));
+	}}
 	onClose={closeToolbar}
 />
 <TextCarouselAvatarToolbar
@@ -12141,6 +12310,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	label={tweetBottomAvatarLabelBySlide[paintSlide] ?? ''}
 	nameFallback={tweetBottomNameBySlide[paintSlide] ?? ''}
 	defaultInnerBg={textCarouselDefaultAvatarBg}
+	ringColor={tweetBottomAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
+	ringWidth={tweetBottomAvatarRingWidthBySlide[paintSlide] ?? defaultTweetAvatarRingWidth}
+	defaultRingColor={defaultAvatarRingColor}
 	onImageFile={(dataUrl) => {
 		if (!canvasInteractive) return;
 		pushUndo('tweet', paintSlide);
@@ -12171,6 +12343,16 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		if (!canvasInteractive) return;
 		pushUndo('tweet', paintSlide);
 		tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
+	}}
+	onRingColor={(hex) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetBottomAvatarRingColorBySlide = tweetBottomAvatarRingColorBySlide.map((x, i) => (i === paintSlide ? hex : x));
+	}}
+	onRingWidth={(px) => {
+		if (!canvasInteractive) return;
+		pushUndo('tweet', paintSlide);
+		tweetBottomAvatarRingWidthBySlide = tweetBottomAvatarRingWidthBySlide.map((x, i) => (i === paintSlide ? px : x));
 	}}
 	onClose={closeToolbar}
 />
@@ -12249,6 +12431,16 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	:global([data-studio-canvas-root] ::-moz-selection) {
 		background: rgba(255, 235, 59, 0.55);
 		color: inherit;
+	}
+	/* Canvas uses purple selection rings — kill the global lime :focus-visible double box. */
+	:global([data-studio-canvas-root] :focus-visible) {
+		outline: none !important;
+		box-shadow: none;
+	}
+	:global([data-studio-canvas-root] [contenteditable='true']:focus),
+	:global([data-studio-canvas-root] [contenteditable='true']:focus-visible) {
+		outline: none !important;
+		box-shadow: none;
 	}
 
 	/* ─── Studio left panel — light theme makeover ──────────────────

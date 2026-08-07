@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ImagePlus, X, Palette, Trash2 } from 'lucide-svelte';
+	import { ImagePlus, X, Palette, Trash2, Circle } from 'lucide-svelte';
 
 	type Props = {
 		anchor: DOMRect | null;
@@ -9,11 +9,16 @@
 		/** Shown when label is empty — derived name for initials hint */
 		nameFallback: string;
 		defaultInnerBg: string;
+		ringColor: string;
+		ringWidth: number;
+		defaultRingColor?: string;
 		onImageFile: (dataUrl: string) => void;
 		onClearImage: () => void;
 		onInnerBg: (hex: string) => void;
 		onClearInnerBg: () => void;
 		onLabel: (value: string) => void;
+		onRingColor: (hex: string) => void;
+		onRingWidth: (px: number) => void;
 		onClose: () => void;
 	};
 
@@ -24,18 +29,23 @@
 		label,
 		nameFallback,
 		defaultInnerBg,
+		ringColor,
+		ringWidth,
+		defaultRingColor = '#c9b97a',
 		onImageFile,
 		onClearImage,
 		onInnerBg,
 		onClearInnerBg,
 		onLabel,
+		onRingColor,
+		onRingWidth,
 		onClose,
 	}: Props = $props();
 
 	let fileInput = $state<HTMLInputElement | null>(null);
 
-	/** Horizontal toolbar — wider than the old card; matches floating text chrome. */
-	const TOOLBAR_W = 560;
+	/** Horizontal toolbar — wider to fit ring controls. */
+	const TOOLBAR_W = 720;
 	const TOOLBAR_H = 44;
 
 	const pos = $derived.by(() => {
@@ -83,12 +93,13 @@
 		return () => document.removeEventListener('mousedown', handleDocumentClick);
 	});
 
-	const canvasBgActive = $derived(!innerBg.trim());
 	const labelTitle = $derived(
 		'Text inside the circle when no photo is set. Empty → use initials from the name (' +
 			(initialsHint(nameFallback) || '…') +
 			').',
 	);
+
+	const ringPx = $derived(Math.max(0, Math.min(24, Math.round(Number(ringWidth) || 0))));
 </script>
 
 {#if pos.show}
@@ -151,6 +162,45 @@
 				aria-label="Circle fill color"
 			/>
 		</span>
+
+		<div class="w-px h-6 shrink-0 avatar-tb-div"></div>
+
+		<span
+			class="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 avatar-tb-btn"
+			title="Ring border color"
+		>
+			<Circle size={13} class="avatar-tb-muted shrink-0" />
+			<input
+				type="color"
+				value={ringColor.trim() ? ringColor : defaultRingColor}
+				class="h-8 w-9 cursor-pointer rounded-md border p-0"
+				style="border-color: var(--app-border); background: var(--app-surface-3);"
+				oninput={(e) => onRingColor((e.target as HTMLInputElement).value)}
+				aria-label="Ring border color"
+			/>
+		</span>
+
+		<label class="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-1.5" title="Ring border thickness (px)">
+			<span class="font-mono text-[9px] uppercase tracking-wider avatar-tb-muted">Ring</span>
+			<input
+				type="number"
+				min="0"
+				max="24"
+				step="1"
+				value={ringPx}
+				class="avatar-tb-input h-8 w-12 rounded-md border px-1.5 text-xs tabular-nums outline-none"
+				style="
+					border-color: var(--app-border);
+					background: var(--app-surface-3);
+					color: var(--app-text);
+				"
+				oninput={(e) => {
+					const n = Number((e.target as HTMLInputElement).value);
+					onRingWidth(Number.isFinite(n) ? Math.max(0, Math.min(24, Math.round(n))) : 0);
+				}}
+				aria-label="Ring border thickness in pixels"
+			/>
+		</label>
 
 		<div class="w-px h-6 shrink-0 avatar-tb-div"></div>
 

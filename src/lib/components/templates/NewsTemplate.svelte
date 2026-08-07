@@ -627,6 +627,10 @@
 		parseHighlightMarkup(String(text ?? '').replace(/\n+$/g, ''), highlightParseDefaults),
 	);
 	let segments = $derived(segmentText(parsed));
+	let subtextParsed = $derived(
+		parseHighlightMarkup(String(subtext ?? ''), highlightParseDefaults),
+	);
+	let subtextSegments = $derived(segmentText(subtextParsed));
 
 	let fontSize = $derived(
 		parsed.plain.length < 60  ? 108
@@ -2818,7 +2822,7 @@
 					</div>
 				{/if}
 
-				{#if selectedText === 'headline' && interactive}
+				{#if selectedText === 'headline' && interactive && !editing}
 					<div aria-hidden="true" style={inkRingStyle(headlineInkBox)}></div>
 				{/if}
 			</div>
@@ -2869,7 +2873,7 @@
 							pointer-events: {interactive && editingSubtext ? 'none' : 'auto'};
 							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
 						"
-					>{String(subtext ?? '').trim()}</p>
+					>{#each subtextSegments as seg}{#if seg.highlighted}{#if seg.markerBg}<span style="background:{seg.markerBg};color:{textColor};padding:0.08em 0.16em;border-radius:0.14em;box-decoration-break:clone;-webkit-box-decoration-break:clone;">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">{seg.text}</span>{:else}<span style="color:{seg.color};">{seg.text}</span>{/if}{:else}{seg.text}{/if}{/each}</p>
 					{#if editingSubtext && interactive}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
@@ -2897,7 +2901,7 @@
 							"
 						></div>
 					{/if}
-					{#if selectedText === 'newsSubtext' && interactive}
+					{#if selectedText === 'newsSubtext' && interactive && !editingSubtext}
 						<div aria-hidden="true" style={inkRingStyle(subtextInkBox)}></div>
 					{/if}
 				</div>

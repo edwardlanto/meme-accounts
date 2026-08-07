@@ -103,7 +103,7 @@
 	.shell {
 		display: flex;
 		height: 100vh;
-		background: var(--app-bg);
+		background: var(--app-surface);
 		overflow: hidden;
 	}
 

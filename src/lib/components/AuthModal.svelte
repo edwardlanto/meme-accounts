@@ -289,7 +289,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: 16px;
-		background: rgba(15, 12, 18, 0.45);
+		background: rgba(15, 15, 16, 0.42);
 		backdrop-filter: blur(10px);
 		animation: fadeIn 0.18s ease;
 	}
@@ -308,13 +308,13 @@
 		overflow: auto;
 		padding: 28px 24px 22px;
 		border-radius: 18px;
-		background: #fffaf7;
-		border: 1px solid rgba(28, 16, 24, 0.1);
-		color: #1c1018;
+		background: #ffffff;
+		border: 1px solid rgba(15, 15, 16, 0.1);
+		color: #0f0f10;
 		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 		box-shadow:
 			0 1px 0 rgba(255, 255, 255, 0.7) inset,
-			0 24px 64px rgba(28, 16, 24, 0.18);
+			0 24px 64px rgba(15, 15, 16, 0.16);
 		animation: popIn 0.2s ease;
 	}
 	@keyframes popIn {
@@ -339,25 +339,25 @@
 		border: none;
 		border-radius: 10px;
 		background: transparent;
-		color: rgba(28, 16, 24, 0.45);
+		color: rgba(15, 15, 16, 0.45);
 		cursor: pointer;
 	}
 	.auth-close:hover {
-		background: rgba(28, 16, 24, 0.06);
-		color: #1c1018;
+		background: rgba(15, 15, 16, 0.05);
+		color: #0f0f10;
 	}
 	.form-title {
 		margin: 0 0 6px;
 		font-size: 28px;
 		font-weight: 700;
 		letter-spacing: -0.03em;
-		color: #1c1018;
+		color: #0f0f10;
 	}
 	.form-sub {
 		margin: 0 0 18px;
 		font-size: 14px;
 		line-height: 1.45;
-		color: rgba(28, 16, 24, 0.58);
+		color: #5b5b62;
 	}
 	.oauth-btn {
 		display: flex;
@@ -368,18 +368,18 @@
 		height: 48px;
 		padding: 0 16px;
 		background: #fff;
-		border: 1px solid rgba(28, 16, 24, 0.14);
-		border-radius: 10px;
-		color: #1c1018;
+		border: 1px solid rgba(15, 15, 16, 0.14);
+		border-radius: 999px;
+		color: #0f0f10;
 		font: inherit;
 		font-size: 14px;
 		font-weight: 600;
 		cursor: pointer;
-		box-shadow: 0 1px 2px rgba(28, 16, 24, 0.04);
+		box-shadow: 0 1px 2px rgba(15, 15, 16, 0.04);
 	}
 	.oauth-btn:hover {
-		background: #fff;
-		border-color: rgba(28, 16, 24, 0.22);
+		background: #f6f7f9;
+		border-color: rgba(15, 15, 16, 0.22);
 	}
 	.divider {
 		position: relative;
@@ -393,15 +393,15 @@
 		position: absolute;
 		inset: 50% 0 auto;
 		height: 1px;
-		background: rgba(28, 16, 24, 0.1);
+		background: rgba(15, 15, 16, 0.1);
 	}
 	.divider-text {
 		position: relative;
 		z-index: 1;
 		padding: 0 12px;
-		background: #fffaf7;
+		background: #ffffff;
 		font-size: 13px;
-		color: rgba(28, 16, 24, 0.45);
+		color: #9a9aa1;
 	}
 	.error-toast {
 		display: flex;
@@ -419,10 +419,10 @@
 		padding: 10px 12px;
 		margin-bottom: 12px;
 		border-radius: 10px;
-		background: rgba(252, 105, 255, 0.1);
-		border: 1px solid rgba(252, 105, 255, 0.28);
+		background: rgba(123, 241, 168, 0.14);
+		border: 1px solid rgba(123, 241, 168, 0.4);
 		font-size: 13px;
-		color: #9d174d;
+		color: #0f0f10;
 	}
 	.form {
 		display: flex;
@@ -435,19 +435,19 @@
 		padding: 0 14px;
 		box-sizing: border-box;
 		background: #fff;
-		border: 1px solid rgba(28, 16, 24, 0.14);
-		border-radius: 10px;
-		color: #1c1018;
+		border: 1px solid rgba(15, 15, 16, 0.14);
+		border-radius: 12px;
+		color: #0f0f10;
 		font: inherit;
 		font-size: 14px;
 		outline: none;
 	}
 	.input:focus {
-		border-color: #fc69ff;
-		box-shadow: 0 0 0 3px rgba(252, 105, 255, 0.18);
+		border-color: #7bf1a8;
+		box-shadow: 0 0 0 3px rgba(123, 241, 168, 0.28);
 	}
 	.input::placeholder {
-		color: rgba(28, 16, 24, 0.4);
+		color: #9a9aa1;
 	}
 	.submit-btn {
 		display: inline-flex;
@@ -456,17 +456,21 @@
 		gap: 8px;
 		height: 50px;
 		margin-top: 6px;
-		border: none;
-		border-radius: 10px;
-		background: #fc69ff;
-		color: #1a0a1c;
+		border: 1px solid #7bf1a8;
+		border-radius: 999px;
+		background: #7bf1a8;
+		color: #0f0f10;
 		font: inherit;
 		font-size: 15px;
 		font-weight: 700;
 		cursor: pointer;
+		transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 	}
 	.submit-btn:hover:not(:disabled) {
-		filter: brightness(1.03);
+		background: #a7f7c6;
+		border-color: #a7f7c6;
+		transform: translateY(-1px);
+		box-shadow: 0 8px 24px rgba(123, 241, 168, 0.35);
 	}
 	.submit-btn:disabled {
 		opacity: 0.55;
@@ -476,8 +480,8 @@
 		width: 14px;
 		height: 14px;
 		border-radius: 50%;
-		border: 2px solid rgba(26, 10, 28, 0.28);
-		border-top-color: #1a0a1c;
+		border: 2px solid rgba(15, 15, 16, 0.22);
+		border-top-color: #0f0f10;
 		animation: spin 0.7s linear infinite;
 	}
 	@keyframes spin {
@@ -489,20 +493,20 @@
 		margin: 14px 0 0;
 		text-align: center;
 		font-size: 14px;
-		color: rgba(28, 16, 24, 0.62);
+		color: #5b5b62;
 	}
 	.terms-note {
 		margin: 12px 0 0;
 		text-align: center;
 		font-size: 12px;
 		line-height: 1.5;
-		color: rgba(28, 16, 24, 0.48);
+		color: #9a9aa1;
 	}
 	.text-btn {
 		background: none;
 		border: none;
 		padding: 0;
-		color: #1c1018;
+		color: #0f0f10;
 		font: inherit;
 		font-size: inherit;
 		text-decoration: underline;
@@ -511,11 +515,11 @@
 	}
 	.text-btn.strong {
 		font-weight: 700;
-		color: #d946ef;
+		color: #0f0f10;
 		text-decoration: none;
 	}
 	a.text-btn {
-		color: #1c1018;
+		color: #0f0f10;
 	}
 	.marketing-opt {
 		display: flex;
@@ -523,22 +527,22 @@
 		align-items: center;
 		padding: 11px 12px;
 		margin-bottom: 12px;
-		border-radius: 10px;
-		border: 1px solid rgba(28, 16, 24, 0.1);
-		background: rgba(252, 105, 255, 0.06);
+		border-radius: 12px;
+		border: 1px solid rgba(15, 15, 16, 0.1);
+		background: #f6f7f9;
 		cursor: pointer;
 	}
 	.marketing-check {
 		flex-shrink: 0;
 		width: 16px;
 		height: 16px;
-		accent-color: #fc69ff;
+		accent-color: #7bf1a8;
 	}
 	.marketing-copy {
 		font-size: 13px;
 		font-weight: 550;
 		line-height: 1.25;
-		color: #1c1018;
+		color: #0f0f10;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -558,17 +562,17 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: #d946ef;
-		background: rgba(252, 105, 255, 0.12);
-		border: 1px solid rgba(252, 105, 255, 0.28);
+		color: #0f0f10;
+		background: rgba(123, 241, 168, 0.22);
+		border: 1px solid rgba(123, 241, 168, 0.45);
 	}
 	.success-body {
 		margin: 0;
 		font-size: 14px;
 		line-height: 1.55;
-		color: rgba(28, 16, 24, 0.72);
+		color: #5b5b62;
 	}
 	.success-body :global(strong) {
-		color: #1c1018;
+		color: #0f0f10;
 	}
 </style>

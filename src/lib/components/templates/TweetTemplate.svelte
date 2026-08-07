@@ -1,6 +1,6 @@
 <script lang="ts">
 import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
-import { stripMarkup } from '$lib/highlight';
+import HighlightedText from '$lib/components/HighlightedText.svelte';
 import { TWEET_DEFAULTS } from '$lib/studio/slide-content-defaults';
 import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
@@ -16,6 +16,10 @@ interface TweetProps {
 	topAvatarInnerBg?: string;
 	/** Override letters in top circle; empty → initials from name. */
 	topAvatarLabel?: string;
+	/** Ring border color around the top avatar. */
+	topAvatarRingColor?: string;
+	/** Ring border thickness in px (0 = no ring). */
+	topAvatarRingWidth?: number;
 	topVerified?: boolean;
 	topText?: string;
 	topImage?: string;
@@ -46,6 +50,8 @@ interface TweetProps {
 	bottomAvatar?: string;
 	bottomAvatarInnerBg?: string;
 	bottomAvatarLabel?: string;
+	bottomAvatarRingColor?: string;
+	bottomAvatarRingWidth?: number;
 	bottomVerified?: boolean;
 	bottomText?: string;
 	// Engagement
@@ -100,6 +106,8 @@ let {
 	topAvatar    = '',
 	topAvatarInnerBg = '',
 	topAvatarLabel = '',
+	topAvatarRingColor = '#c9b97a',
+	topAvatarRingWidth = 4,
 	topVerified  = true,
 	topText      = 'Ketchup or mayo or mustard?',
 	topImage     = TWEET_DEFAULTS.topImage || '/templates/tweet/demo-bg.jpg',
@@ -117,6 +125,8 @@ let {
 	bottomAvatar = '',
 	bottomAvatarInnerBg = '',
 	bottomAvatarLabel = '',
+	bottomAvatarRingColor = '#c9b97a',
+	bottomAvatarRingWidth = 4,
 	bottomVerified = true,
 	bottomText   = '3 straight misses chef. These appear to be French fries.',
 	replyCount = '4.2K',
@@ -155,8 +165,6 @@ let {
 	showReply = false,
 }: TweetProps = $props();
 
-	const topTextDisplay = $derived(stripMarkup(topText));
-	const bottomTextDisplay = $derived(stripMarkup(bottomText));
 	const topNameDisplay = $derived(String(topName ?? ''));
 	const topHandleDisplay = $derived(String(topHandle ?? ''));
 	const bottomNameDisplay = $derived(String(bottomName ?? ''));
@@ -351,6 +359,12 @@ let {
 		if (s.italic) bits.push('font-style: italic;');
 		if (s.underline) bits.push('text-decoration: underline;');
 		if (s.color) bits.push(`color: ${s.color};`);
+		if (s.bgColor) {
+			bits.push(`background: ${s.bgColor};`);
+			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
+			bits.push('padding: 0.08em 0.18em;');
+			bits.push('border-radius: 0.18em;');
+		}
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.align) bits.push(`text-align: ${s.align};`);
@@ -411,6 +425,11 @@ let {
 
 	const topAvatarSelected = $derived(selectedText === 'tweetTopAvatar');
 	const bottomAvatarSelected = $derived(selectedText === 'tweetBottomAvatar');
+
+	const topRingW = $derived(Math.max(0, Math.min(24, Math.round(Number(topAvatarRingWidth) || 0))));
+	const bottomRingW = $derived(Math.max(0, Math.min(24, Math.round(Number(bottomAvatarRingWidth) || 0))));
+	const topRingCol = $derived((topAvatarRingColor && topAvatarRingColor.trim()) || '#c9b97a');
+	const bottomRingCol = $derived((bottomAvatarRingColor && bottomAvatarRingColor.trim()) || '#c9b97a');
 </script>
 
 <!-- Outer wrapper — controls display size -->
@@ -454,27 +473,30 @@ let {
 				padding: 72px 80px 88px;
 			"
 		>
-			<!-- OP: avatar + name + badge + handle (classic tweet header) -->
-			<DraggableBlock
-				dx={textOffsets.tweetTopProfile?.x ?? 0}
-				dy={textOffsets.tweetTopProfile?.y ?? 0}
-				{interactive}
-				scale={dragScale}
-				onChange={(x, y) => onTextOffsetChange?.('tweetTopProfile', { x, y })}
-			>
-				{#snippet children()}
-					<div style="display:flex;align-items:center;gap:24px;margin:0 0 28px;width:100%;">
+			<!-- OP: avatar, name, and handle are independent (not one locked profile group) -->
+			<div style="display:flex;align-items:flex-start;gap:24px;margin:0 0 28px;width:100%;">
+				<DraggableBlock
+					dx={textOffsets.tweetTopAvatar?.x ?? textOffsets.tweetTopProfile?.x ?? 0}
+					dy={textOffsets.tweetTopAvatar?.y ?? textOffsets.tweetTopProfile?.y ?? 0}
+					{interactive}
+					scale={dragScale}
+					immediateTextDrag={true}
+					onChange={(x, y) => onTextOffsetChange?.('tweetTopAvatar', { x, y })}
+				>
+					{#snippet children()}
 						<div
 							role="button"
 							tabindex="0"
 							data-draggable-no-pan
 							data-text-selectable="tweetTopAvatar"
 							style="
-								width:88px;height:88px;border-radius:50%;flex-shrink:0;overflow:hidden;
-								background:{topInnerDiscBg};
+								width:{88 + topRingW * 2}px;height:{88 + topRingW * 2}px;border-radius:50%;flex-shrink:0;
 								display:flex;align-items:center;justify-content:center;
-								border:1px solid {isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)'};
-								cursor:{interactive && onTextSelect ? 'pointer' : 'default'};
+								padding:{topRingW}px;box-sizing:border-box;
+								background:{topRingW > 0
+									? `linear-gradient(135deg, ${topRingCol}, color-mix(in srgb, ${topRingCol} 60%, white))`
+									: 'transparent'};
+								cursor:{interactive ? 'grab' : 'default'};
 								outline:none;
 								{topAvatarSelected ? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);' : ''}
 							"
@@ -487,14 +509,37 @@ let {
 								}
 							}}
 						>
-							{#if topAvatar?.trim()}
-								<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;display:block;" />
-							{:else}
-								<span style="color:{topDiscInk()};font-size:28px;font-weight:700;letter-spacing:-0.5px;pointer-events:none;">{topDiscText}</span>
-							{/if}
+							<div
+								style="
+									width:100%;height:100%;border-radius:50%;overflow:hidden;
+									background:{topInnerDiscBg};
+									display:flex;align-items:center;justify-content:center;
+									pointer-events:none;
+								"
+							>
+								{#if topAvatar?.trim()}
+									<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />
+								{:else}
+									<span style="color:{topDiscInk()};font-size:28px;font-weight:700;letter-spacing:-0.5px;">{topDiscText}</span>
+								{/if}
+							</div>
 						</div>
-						<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;">
-							<div style="display:flex;align-items:center;gap:8px;min-width:0;width:fit-content;max-width:100%;">
+					{/snippet}
+				</DraggableBlock>
+
+				<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+					<div style="display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;">
+						<DraggableBlock
+							dx={textOffsets.tweetTopName?.x ?? textOffsets.tweetTopProfile?.x ?? 0}
+							dy={textOffsets.tweetTopName?.y ?? textOffsets.tweetTopProfile?.y ?? 0}
+							{interactive}
+							scale={dragScale}
+							holdDragFromText={!!topNameEditable}
+							immediateTextDrag={selectedText === 'tweetTopName'}
+							holdMs={300}
+							onChange={(x, y) => onTextOffsetChange?.('tweetTopName', { x, y })}
+						>
+							{#snippet children()}
 								<div style="min-width:0;max-width:100%;">
 									<CanvasMarkupTextBlock
 										value={topName}
@@ -517,13 +562,26 @@ let {
 										{/snippet}
 									</CanvasMarkupTextBlock>
 								</div>
-								{#if topVerified}
-									<svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;" aria-hidden="true">
-										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
-										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
-									</svg>
-								{/if}
-							</div>
+							{/snippet}
+						</DraggableBlock>
+						{#if topVerified}
+							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;" aria-hidden="true">
+								<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
+								<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
+							</svg>
+						{/if}
+					</div>
+					<DraggableBlock
+						dx={textOffsets.tweetTopHandle?.x ?? textOffsets.tweetTopProfile?.x ?? 0}
+						dy={textOffsets.tweetTopHandle?.y ?? textOffsets.tweetTopProfile?.y ?? 0}
+						{interactive}
+						scale={dragScale}
+						holdDragFromText={!!topHandleEditable}
+						immediateTextDrag={selectedText === 'tweetTopHandle'}
+						holdMs={300}
+						onChange={(x, y) => onTextOffsetChange?.('tweetTopHandle', { x, y })}
+					>
+						{#snippet children()}
 							<CanvasMarkupTextBlock
 								value={topHandle}
 								interactive={topHandleEditable}
@@ -544,10 +602,10 @@ let {
 									<p style="margin:0;font-size:{tweetStyles.tweetTopHandle?.fontSize ?? 28}px;color:{textSecondary};font-weight:400;line-height:1.25;letter-spacing:-0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; {topHandleCss}">{topHandleDisplay}</p>
 								{/snippet}
 							</CanvasMarkupTextBlock>
-						</div>
-					</div>
-				{/snippet}
-			</DraggableBlock>
+						{/snippet}
+					</DraggableBlock>
+				</div>
+			</div>
 
 			<!-- Tweet body -->
 			<DraggableBlock
@@ -581,7 +639,11 @@ let {
 								<p
 									style="font-size:{tweetStyles.tweetTopText?.fontSize ?? 42}px; font-weight:400; color:{textPrimary}; line-height:1.4; margin:0; letter-spacing:-0.02em; word-break:break-word; flex-shrink: 0; {topTextCss}"
 								>
-									{topTextDisplay}
+									<HighlightedText
+										text={topText}
+										defaultColor={tweetHighlightDefault}
+										parseHighlights={true}
+									/>
 								</p>
 							{/snippet}
 						</CanvasMarkupTextBlock>
@@ -765,28 +827,31 @@ let {
 			</div>
 
 			{#if showReply}
-			<!-- Reply: author row (directly under media, same canvas) -->
+			<!-- Reply: author row — avatar / name / handle independent -->
 			<div style="height:1px;background:{divider};margin:36px 0 28px;width:100%;flex-shrink:0;"></div>
-			<DraggableBlock
-				dx={textOffsets.tweetBottomProfile?.x ?? 0}
-				dy={textOffsets.tweetBottomProfile?.y ?? 0}
-				{interactive}
-				scale={dragScale}
-				onChange={(x, y) => onTextOffsetChange?.('tweetBottomProfile', { x, y })}
-			>
-				{#snippet children()}
-					<div style="display:flex;align-items:center;gap:24px;margin:0 0 18px;width:100%;">
+			<div style="display:flex;align-items:flex-start;gap:24px;margin:0 0 18px;width:100%;">
+				<DraggableBlock
+					dx={textOffsets.tweetBottomAvatar?.x ?? textOffsets.tweetBottomProfile?.x ?? 0}
+					dy={textOffsets.tweetBottomAvatar?.y ?? textOffsets.tweetBottomProfile?.y ?? 0}
+					{interactive}
+					scale={dragScale}
+					immediateTextDrag={true}
+					onChange={(x, y) => onTextOffsetChange?.('tweetBottomAvatar', { x, y })}
+				>
+					{#snippet children()}
 						<div
 							role="button"
 							tabindex="0"
 							data-draggable-no-pan
 							data-text-selectable="tweetBottomAvatar"
 							style="
-								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
-								background:{bottomInnerDiscBg};
+								width:{72 + bottomRingW * 2}px;height:{72 + bottomRingW * 2}px;border-radius:50%;flex-shrink:0;
 								display:flex;align-items:center;justify-content:center;
-								border:1px solid {isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)'};
-								cursor:{interactive && onTextSelect ? 'pointer' : 'default'};
+								padding:{bottomRingW}px;box-sizing:border-box;
+								background:{bottomRingW > 0
+									? `linear-gradient(135deg, ${bottomRingCol}, color-mix(in srgb, ${bottomRingCol} 60%, white))`
+									: 'transparent'};
+								cursor:{interactive ? 'grab' : 'default'};
 								outline:none;
 								{bottomAvatarSelected ? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);' : ''}
 							"
@@ -799,14 +864,37 @@ let {
 								}
 							}}
 						>
-							{#if bottomAvatar?.trim()}
-								<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;display:block;" />
-							{:else}
-								<span style="color:{bottomDiscInk()};font-size:26px;font-weight:700;pointer-events:none;">{bottomDiscText}</span>
-							{/if}
+							<div
+								style="
+									width:100%;height:100%;border-radius:50%;overflow:hidden;
+									background:{bottomInnerDiscBg};
+									display:flex;align-items:center;justify-content:center;
+									pointer-events:none;
+								"
+							>
+								{#if bottomAvatar?.trim()}
+									<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />
+								{:else}
+									<span style="color:{bottomDiscInk()};font-size:26px;font-weight:700;">{bottomDiscText}</span>
+								{/if}
+							</div>
 						</div>
-						<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;">
-							<div style="display:flex;align-items:center;gap:8px;width:fit-content;max-width:100%;">
+					{/snippet}
+				</DraggableBlock>
+
+				<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+					<div style="display:flex;align-items:center;gap:8px;max-width:100%;">
+						<DraggableBlock
+							dx={textOffsets.tweetBottomName?.x ?? textOffsets.tweetBottomProfile?.x ?? 0}
+							dy={textOffsets.tweetBottomName?.y ?? textOffsets.tweetBottomProfile?.y ?? 0}
+							{interactive}
+							scale={dragScale}
+							holdDragFromText={!!bottomNameEditable}
+							immediateTextDrag={selectedText === 'tweetBottomName'}
+							holdMs={300}
+							onChange={(x, y) => onTextOffsetChange?.('tweetBottomName', { x, y })}
+						>
+							{#snippet children()}
 								<CanvasMarkupTextBlock
 									value={bottomName}
 									interactive={bottomNameEditable}
@@ -827,13 +915,26 @@ let {
 										<p style="margin:0;font-size:{tweetStyles.tweetBottomName?.fontSize ?? 34}px;font-weight:700;color:{textPrimary};letter-spacing:-0.02em;line-height:1.2; {bottomNameCss}">{bottomNameDisplay}</p>
 									{/snippet}
 								</CanvasMarkupTextBlock>
-								{#if bottomVerified}
-									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;" aria-hidden="true">
-										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
-										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
-									</svg>
-								{/if}
-							</div>
+							{/snippet}
+						</DraggableBlock>
+						{#if bottomVerified}
+							<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;" aria-hidden="true">
+								<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
+								<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
+							</svg>
+						{/if}
+					</div>
+					<DraggableBlock
+						dx={textOffsets.tweetBottomHandle?.x ?? textOffsets.tweetBottomProfile?.x ?? 0}
+						dy={textOffsets.tweetBottomHandle?.y ?? textOffsets.tweetBottomProfile?.y ?? 0}
+						{interactive}
+						scale={dragScale}
+						holdDragFromText={!!bottomHandleEditable}
+						immediateTextDrag={selectedText === 'tweetBottomHandle'}
+						holdMs={300}
+						onChange={(x, y) => onTextOffsetChange?.('tweetBottomHandle', { x, y })}
+					>
+						{#snippet children()}
 							<CanvasMarkupTextBlock
 								value={bottomHandle}
 								interactive={bottomHandleEditable}
@@ -854,10 +955,10 @@ let {
 									<p style="margin:0;font-size:{tweetStyles.tweetBottomHandle?.fontSize ?? 26}px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandleDisplay}</p>
 								{/snippet}
 							</CanvasMarkupTextBlock>
-						</div>
-					</div>
-				{/snippet}
-			</DraggableBlock>
+						{/snippet}
+					</DraggableBlock>
+				</div>
+			</div>
 
 			<!-- Reply text -->
 			<DraggableBlock
@@ -890,7 +991,11 @@ let {
 							<p
 								style="font-size:{tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 40}px; font-weight:400; color:{textPrimary}; line-height:1.4; margin:0; letter-spacing:-0.02em; word-break:break-word; {bottomTextCss}"
 							>
-								{bottomTextDisplay}
+								<HighlightedText
+									text={bottomText}
+									defaultColor={tweetHighlightDefault}
+									parseHighlights={true}
+								/>
 							</p>
 						{/snippet}
 					</CanvasMarkupTextBlock>

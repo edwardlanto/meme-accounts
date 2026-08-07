@@ -369,7 +369,7 @@
 					color: {editTextColor ?? 'inherit'};
 					{typographyCss(editTypography, fontFamily, fontSize)}
 					{uppercase && !editTypography?.textTransform ? 'text-transform: uppercase;' : ''}
-					{CANVAS_TEXT_FOCUS_RING}
+					outline: none;
 					cursor: text;
 					touch-action: manipulation;
 					white-space: pre-wrap;

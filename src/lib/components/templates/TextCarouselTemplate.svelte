@@ -18,6 +18,8 @@
 		/** Override text inside the circle; empty = derive initials from `name`. */
 		avatarLabel?: string;
 		ringColor?: string;
+		/** Ring border thickness in px (0 = no ring). */
+		ringWidth?: number;
 		bgColor?: string;
 		templateTheme?: 'light' | 'dark';
 		text?: string;
@@ -58,6 +60,7 @@
 		avatarInnerBg = '',
 		avatarLabel = '',
 		ringColor = '#c9b97a',
+		ringWidth = 5,
 		bgColor   = '',
 		templateTheme = 'light',
 		text      = TEXT_CAROUSEL_DEFAULTS.body,
@@ -163,6 +166,8 @@
 	);
 	const nameForInitials = $derived((name && name.trim()) ? name : TEXT_CAROUSEL_DEFAULTS.name);
 	const discText = $derived((avatarLabel && avatarLabel.trim()) || initials(nameForInitials));
+	const ringPx = $derived(Math.max(0, Math.min(24, Math.round(Number(ringWidth) || 0))));
+	const avatarOuterSize = $derived(130 + ringPx * 2);
 
 	const BASE_W = 1080;
 	const BASE_H = 1350;
@@ -233,10 +238,13 @@
 
 			<!-- Avatar circle with ring -->
 			<div style="
-				width: 130px; height: 130px; border-radius: 50%; flex-shrink: 0;
+				width: {avatarOuterSize}px; height: {avatarOuterSize}px; border-radius: 50%; flex-shrink: 0;
 				display: flex; align-items: center; justify-content: center;
-				padding: 5px;
-				background: linear-gradient(135deg, {ringColor}, color-mix(in srgb, {ringColor} 60%, white));
+				padding: {ringPx}px;
+				box-sizing: border-box;
+				background: {ringPx > 0
+					? `linear-gradient(135deg, ${ringColor}, color-mix(in srgb, ${ringColor} 60%, white))`
+					: 'transparent'};
 			">
 				<div
 					role="button"
