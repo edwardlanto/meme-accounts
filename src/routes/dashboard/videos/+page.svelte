@@ -61,31 +61,33 @@
 	.videos-page {
 		max-width: 560px;
 		margin: 0 auto;
-		padding: 1.5rem 1.25rem 2.5rem;
+		padding: 32px 24px 64px;
 		color: var(--app-text);
+		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 	}
 	.videos-hero {
 		margin-bottom: 1.25rem;
 	}
 	.videos-hero h1 {
 		margin: 0 0 0.45rem;
-		font-size: 1.45rem;
+		font-size: clamp(28px, 3.4vw, 36px);
 		font-weight: 800;
-		line-height: 1.15;
+		letter-spacing: -0.025em;
+		line-height: 1.05;
 	}
 	.videos-hero p {
 		margin: 0;
-		font-size: 0.88rem;
-		line-height: 1.45;
+		font-size: 14px;
+		line-height: 1.55;
 		color: var(--app-text-2);
 		max-width: 42rem;
 	}
 	.import-card {
-		padding: 1rem;
-		border: 1px solid var(--bulk-border, #e2e8f0);
-		border-radius: 14px;
-		background: var(--app-surface-2, #f8fafc);
-		box-shadow: 0 2px 12px color-mix(in oklab, var(--app-text) 6%, transparent);
+		padding: 1.1rem;
+		border: 1px solid var(--app-border);
+		border-radius: 18px;
+		background: var(--app-surface-2);
+		box-shadow: 0 1px 2px rgba(15, 15, 16, 0.04), 0 8px 22px -10px rgba(15, 15, 16, 0.1);
 	}
 	.foot-hint {
 		margin: 1rem 0 0;

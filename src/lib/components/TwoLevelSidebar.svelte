@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { PanelLeft, LogOut, MoreHorizontal } from 'lucide-svelte';
 
-	type NavGroupItem = { href: string; label: string; icon: any; accent?: string };
+	type NavGroupItem = { href: string; label: string; icon: any };
 	type NavGroup = { label: string; items: NavGroupItem[] };
 
 	type Props = {
@@ -29,25 +29,6 @@
 
 	let isCollapsed = $state(false);
 	const softEase = 'cubic-bezier(0.22, 1, 0.36, 1)';
-
-	const accentByLabel: Record<string, string> = {
-		Overview: 'linear-gradient(135deg, #1f1f22 0%, #0a0a0c 100%)',
-		Templates: 'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)',
-		Carousels: 'linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)',
-		Composer: 'linear-gradient(135deg, #a78bfa 0%, #6d28d9 100%)',
-		Videos: 'linear-gradient(135deg, #f472b6 0%, #e11d48 100%)',
-		'News Studio': 'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)',
-		Branding: 'linear-gradient(135deg, #fb7185 0%, #db2777 100%)',
-		Discover: 'linear-gradient(135deg, #2dd4bf 0%, #0e7490 100%)',
-		Analytics: 'linear-gradient(135deg, #a3e635 0%, #65a30d 100%)',
-		Scheduler: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
-		'Post Tests': 'linear-gradient(135deg, #c084fc 0%, #7c3aed 100%)',
-		Settings: 'linear-gradient(135deg, #a1a1aa 0%, #52525b 100%)',
-	};
-
-	function accentFor(item: NavGroupItem): string {
-		return item.accent ?? accentByLabel[item.label] ?? 'linear-gradient(135deg, #71717a 0%, #27272a 100%)';
-	}
 
 	function isActive(href: string) {
 		if (!currentPath) return false;
@@ -124,7 +105,6 @@
 							<span
 								class="ssp-icon-tile"
 								class:tile-active={active}
-								style={`background:${accentFor(item)}`}
 								aria-hidden="true"
 							>
 								<Icon size={17} class="ssp-tile-icon" />
@@ -171,14 +151,15 @@
 
 <style>
 	.ssp-sidebar {
-		--ssp-bg: #fafafa;
-		--ssp-text: #0a0a0a;
-		--ssp-text-2: rgba(10, 10, 10, 0.62);
-		--ssp-text-3: rgba(10, 10, 10, 0.42);
-		--ssp-border: rgba(10, 10, 10, 0.08);
-		--ssp-border-hover: rgba(10, 10, 10, 0.14);
-		--ssp-active-bg: #ffffff;
-		--ssp-hover-bg: rgba(10, 10, 10, 0.045);
+		--ssp-bg: #ffffff;
+		--ssp-text: #0f0f10;
+		--ssp-text-2: #5b5b62;
+		--ssp-text-3: #9a9aa1;
+		--ssp-border: rgba(15, 15, 16, 0.08);
+		--ssp-border-hover: rgba(15, 15, 16, 0.14);
+		--ssp-active-bg: #f6f7f9;
+		--ssp-hover-bg: rgba(15, 15, 16, 0.04);
+		--ssp-accent: #7bf1a8;
 
 		position: relative;
 		display: flex;
@@ -324,10 +305,7 @@
 	}
 	.ssp-item.active {
 		background: var(--ssp-active-bg);
-		box-shadow:
-			0 1px 0 rgba(10, 10, 10, 0.04),
-			0 1px 2px rgba(10, 10, 10, 0.05),
-			0 8px 24px -12px rgba(10, 10, 10, 0.08);
+		box-shadow: none;
 		color: var(--ssp-text);
 	}
 	:global(:root[data-theme='dark']) .ssp-item.active {
@@ -345,10 +323,14 @@
 		align-items: center;
 		justify-content: center;
 		color: #ffffff;
-		box-shadow:
-			inset 0 1px 0 rgba(255, 255, 255, 0.18),
-			0 1px 2px rgba(0, 0, 0, 0.12);
-		transition: transform 220ms var(--ease), box-shadow 220ms ease;
+		background: #0f0f10;
+		box-shadow: none;
+		transition: transform 220ms var(--ease), background 220ms ease, color 220ms ease;
+	}
+	.ssp-item.active .ssp-icon-tile,
+	.ssp-icon-tile.tile-active {
+		background: var(--ssp-accent);
+		color: #0f0f10;
 	}
 	.ssp-item:hover .ssp-icon-tile {
 		transform: scale(1.04);
@@ -356,7 +338,7 @@
 	.ssp-item:active .ssp-icon-tile {
 		transform: scale(0.96);
 	}
-	.ssp-tile-icon { color: #ffffff; }
+	.ssp-tile-icon { color: inherit; }
 
 	.ssp-label {
 		flex: 1;
@@ -457,9 +439,9 @@
 		gap: 6px;
 		height: 38px;
 		padding: 0 16px;
-		background: var(--ssp-active-bg);
-		border: 1px solid var(--ssp-border);
-		border-radius: 10px;
+		background: transparent;
+		border: 1px solid var(--ssp-border-hover);
+		border-radius: 999px;
 		color: var(--ssp-text);
 		font-family: inherit;
 		font-size: 13.5px;
@@ -473,9 +455,10 @@
 			box-shadow 200ms ease;
 	}
 	.ssp-signout:hover {
-		border-color: var(--ssp-border-hover);
+		background: rgba(15, 15, 16, 0.04);
+		border-color: var(--ssp-text);
 		transform: translateY(-1px);
-		box-shadow: 0 6px 16px -8px rgba(10, 10, 10, 0.18);
+		box-shadow: none;
 	}
 	:global(:root[data-theme='dark']) .ssp-signout:hover {
 		box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.6);

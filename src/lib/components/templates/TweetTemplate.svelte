@@ -90,6 +90,8 @@ interface TweetProps {
 	onLikeCountChange?: (v: string) => void;
 	textOffsets?: Record<string, { x: number; y: number }>;
 	onTextOffsetChange?: (kind: string, next: { x: number; y: number }) => void;
+	/** When false (default), hide the reply / thread under the main tweet. */
+	showReply?: boolean;
 }
 
 let {
@@ -149,6 +151,8 @@ let {
 	onTopImagePanChange,
 	textOffsets = {},
 	onTextOffsetChange,
+	/** Reply / thread under the main tweet — off by default (single-post card). */
+	showReply = false,
 }: TweetProps = $props();
 
 	const topTextDisplay = $derived(stripMarkup(topText));
@@ -444,9 +448,10 @@ let {
 				transform-origin: 0 0;
 				display: flex;
 				flex-direction: column;
+				justify-content: center;
 				box-sizing: border-box;
 				overflow: visible;
-				padding: 40px 60px 60px;
+				padding: 72px 80px 88px;
 			"
 		>
 			<!-- OP: avatar + name + badge + handle (classic tweet header) -->
@@ -458,16 +463,17 @@ let {
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopProfile', { x, y })}
 			>
 				{#snippet children()}
-					<div style="display:flex;align-items:flex-start;gap:16px;margin:0 0 20px;">
+					<div style="display:flex;align-items:center;gap:24px;margin:0 0 28px;width:100%;">
 						<div
 							role="button"
 							tabindex="0"
 							data-draggable-no-pan
 							data-text-selectable="tweetTopAvatar"
 							style="
-								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
+								width:88px;height:88px;border-radius:50%;flex-shrink:0;overflow:hidden;
 								background:{topInnerDiscBg};
 								display:flex;align-items:center;justify-content:center;
+								border:1px solid {isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)'};
 								cursor:{interactive && onTextSelect ? 'pointer' : 'default'};
 								outline:none;
 								{topAvatarSelected ? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);' : ''}
@@ -482,34 +488,37 @@ let {
 							}}
 						>
 							{#if topAvatar?.trim()}
-								<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;" />
+								<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;display:block;" />
 							{:else}
-								<span style="color:{topDiscInk()};font-size:26px;font-weight:700;letter-spacing:-0.5px;pointer-events:none;">{topDiscText}</span>
+								<span style="color:{topDiscInk()};font-size:28px;font-weight:700;letter-spacing:-0.5px;pointer-events:none;">{topDiscText}</span>
 							{/if}
 						</div>
-						<div style="flex:1;min-width:0;padding-top:2px;">
-							<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-								<CanvasMarkupTextBlock
-									value={topName}
-									interactive={topNameEditable}
-									defaultColor={tweetHighlightDefault}
-									toolbarKind="tweetTopName"
-									selected={selectedText === 'tweetTopName'}
-									onTextSelect={onTextSelect}
-									onHeadlineRangeSelect={onHeadlineRangeSelect}
-									rows={1}
-									{showToolbar}
-									ariaLabel="Top name"
-									fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-									fontSize={tweetStyles.tweetTopName?.fontSize ?? 38}
-									onTextChange={onTopNameChange}
-								>
-									{#snippet display()}
-										<span style="font-size:{tweetStyles.tweetTopName?.fontSize ?? 38}px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {topNameCss}">{topNameDisplay}</span>
-									{/snippet}
-								</CanvasMarkupTextBlock>
+						<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;">
+							<div style="display:flex;align-items:center;gap:8px;min-width:0;width:fit-content;max-width:100%;">
+								<div style="min-width:0;max-width:100%;">
+									<CanvasMarkupTextBlock
+										value={topName}
+										interactive={topNameEditable}
+										defaultColor={tweetHighlightDefault}
+										toolbarKind="tweetTopName"
+										selected={selectedText === 'tweetTopName'}
+										onTextSelect={onTextSelect}
+										onHeadlineRangeSelect={onHeadlineRangeSelect}
+										rows={1}
+										minHeight="0px"
+										{showToolbar}
+										ariaLabel="Top name"
+										fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+										fontSize={tweetStyles.tweetTopName?.fontSize ?? 36}
+										onTextChange={onTopNameChange}
+									>
+										{#snippet display()}
+											<p style="margin:0;font-size:{tweetStyles.tweetTopName?.fontSize ?? 36}px;font-weight:700;color:{textPrimary};letter-spacing:-0.02em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; {topNameCss}">{topNameDisplay}</p>
+										{/snippet}
+									</CanvasMarkupTextBlock>
+								</div>
 								{#if topVerified}
-									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px;">
+									<svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;" aria-hidden="true">
 										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
 										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
 									</svg>
@@ -524,14 +533,15 @@ let {
 								onTextSelect={onTextSelect}
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 								rows={1}
+								minHeight="0px"
 								{showToolbar}
 								ariaLabel="Top handle"
 								fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 30}
+								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 28}
 								onTextChange={onTopHandleChange}
 							>
 								{#snippet display()}
-									<span style="font-size:{tweetStyles.tweetTopHandle?.fontSize ?? 30}px;color:{textSecondary};font-weight:400;line-height:1.25; {topHandleCss}">{topHandleDisplay}</span>
+									<p style="margin:0;font-size:{tweetStyles.tweetTopHandle?.fontSize ?? 28}px;color:{textSecondary};font-weight:400;line-height:1.25;letter-spacing:-0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; {topHandleCss}">{topHandleDisplay}</p>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -550,7 +560,7 @@ let {
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopText', { x, y })}
 			>
 				{#snippet children()}
-					<div style="margin: 0 0 22px;">
+					<div style="margin: 0 0 28px;">
 						<CanvasMarkupTextBlock
 							value={topText}
 							interactive={topEditable}
@@ -564,12 +574,12 @@ let {
 							{showToolbar}
 							ariaLabel="Tweet text"
 							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
-							fontSize={tweetStyles.tweetTopText?.fontSize ?? 44}
+							fontSize={tweetStyles.tweetTopText?.fontSize ?? 42}
 							onTextChange={onTopTextChange}
 						>
 							{#snippet display()}
 								<p
-									style="font-size:{tweetStyles.tweetTopText?.fontSize ?? 44}px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; flex-shrink: 0; {topTextCss}"
+									style="font-size:{tweetStyles.tweetTopText?.fontSize ?? 42}px; font-weight:400; color:{textPrimary}; line-height:1.4; margin:0; letter-spacing:-0.02em; word-break:break-word; flex-shrink: 0; {topTextCss}"
 								>
 									{topTextDisplay}
 								</p>
@@ -591,7 +601,7 @@ let {
 					{#snippet children()}
 						<div
 							data-tweet-media-frame
-							style="border-radius:16px;overflow:hidden;margin:0 0 40px;border:1px solid {mediaBorder};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:{clamp(Number(topImageWidth) || 920, 520, 920)}px;max-width:100%;{mediaFrameOutline}"
+							style="border-radius:24px;overflow:hidden;margin:0 0 28px;border:1px solid {mediaBorder};flex-shrink:0;position:relative;height:{Math.max(180, Number(topImageHeight) || 360)}px;width:100%;max-width:100%;{mediaFrameOutline}"
 							onclick={onTweetMediaFrameClick}
 							onpointermove={moveTopImage}
 							onpointerup={endTopImage}
@@ -707,7 +717,56 @@ let {
 				</DraggableBlock>
 			{/if}
 
+			<!-- Engagement row -->
+			<div
+				style="
+					display:flex;
+					align-items:center;
+					gap:36px;
+					padding-top:4px;
+					border-top:1px solid {divider};
+					margin-top:4px;
+					flex-shrink:0;
+				"
+			>
+				{#each [
+					{ label: 'Replies', value: replyCount, kind: 'tweetReplyCount' as const, onChange: onReplyCountChange },
+					{ label: 'Reposts', value: repostCount, kind: 'tweetRepostCount' as const, onChange: onRepostCountChange },
+					{ label: 'Likes', value: likeCount, kind: 'tweetLikeCount' as const, onChange: onLikeCountChange },
+				] as metric}
+					<div style="display:flex;align-items:baseline;gap:8px;min-width:0;">
+						{#if metric.onChange && interactive}
+							<CanvasMarkupTextBlock
+								value={metric.value}
+								interactive={true}
+								defaultColor={tweetHighlightDefault}
+								toolbarKind={metric.kind}
+								selected={selectedText === metric.kind}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+								rows={1}
+								minHeight="0px"
+								{showToolbar}
+								ariaLabel={metric.label}
+								fontFamily="'Satoshi', system-ui, sans-serif"
+								fontSize={26}
+								onTextChange={metric.onChange}
+							>
+								{#snippet display()}
+									<span style="font-size:26px;font-weight:700;color:{textPrimary};letter-spacing:-0.02em;line-height:1.2;">{metric.value}</span>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						{:else}
+							<span style="font-size:26px;font-weight:700;color:{textPrimary};letter-spacing:-0.02em;line-height:1.2;">{metric.value}</span>
+						{/if}
+						<span style="font-size:24px;font-weight:400;color:{textSecondary};line-height:1.2;">{metric.label}</span>
+					</div>
+				{/each}
+			</div>
+
+			{#if showReply}
 			<!-- Reply: author row (directly under media, same canvas) -->
+			<div style="height:1px;background:{divider};margin:36px 0 28px;width:100%;flex-shrink:0;"></div>
 			<DraggableBlock
 				dx={textOffsets.tweetBottomProfile?.x ?? 0}
 				dy={textOffsets.tweetBottomProfile?.y ?? 0}
@@ -716,7 +775,7 @@ let {
 				onChange={(x, y) => onTextOffsetChange?.('tweetBottomProfile', { x, y })}
 			>
 				{#snippet children()}
-					<div style="display:flex;align-items:flex-start;gap:16px;margin:8px 0 14px;">
+					<div style="display:flex;align-items:center;gap:24px;margin:0 0 18px;width:100%;">
 						<div
 							role="button"
 							tabindex="0"
@@ -726,6 +785,7 @@ let {
 								width:72px;height:72px;border-radius:50%;flex-shrink:0;overflow:hidden;
 								background:{bottomInnerDiscBg};
 								display:flex;align-items:center;justify-content:center;
+								border:1px solid {isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)'};
 								cursor:{interactive && onTextSelect ? 'pointer' : 'default'};
 								outline:none;
 								{bottomAvatarSelected ? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);' : ''}
@@ -740,13 +800,13 @@ let {
 							}}
 						>
 							{#if bottomAvatar?.trim()}
-								<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;" />
+								<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;pointer-events:none;display:block;" />
 							{:else}
 								<span style="color:{bottomDiscInk()};font-size:26px;font-weight:700;pointer-events:none;">{bottomDiscText}</span>
 							{/if}
 						</div>
-						<div style="flex:1;min-width:0;padding-top:2px;">
-							<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+						<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;">
+							<div style="display:flex;align-items:center;gap:8px;width:fit-content;max-width:100%;">
 								<CanvasMarkupTextBlock
 									value={bottomName}
 									interactive={bottomNameEditable}
@@ -756,18 +816,19 @@ let {
 									onTextSelect={onTextSelect}
 									onHeadlineRangeSelect={onHeadlineRangeSelect}
 									rows={1}
+									minHeight="0px"
 									{showToolbar}
 									ariaLabel="Bottom name"
-							fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 38}
+									fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 34}
 									onTextChange={onBottomNameChange}
 								>
 									{#snippet display()}
-										<span style="font-size:{tweetStyles.tweetBottomName?.fontSize ?? 38}px;font-weight:800;color:{textPrimary};letter-spacing:-0.35px;line-height:1.15; {bottomNameCss}">{bottomNameDisplay}</span>
+										<p style="margin:0;font-size:{tweetStyles.tweetBottomName?.fontSize ?? 34}px;font-weight:700;color:{textPrimary};letter-spacing:-0.02em;line-height:1.2; {bottomNameCss}">{bottomNameDisplay}</p>
 									{/snippet}
 								</CanvasMarkupTextBlock>
 								{#if bottomVerified}
-									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px;">
+									<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;" aria-hidden="true">
 										<circle cx="12" cy="12" r="12" fill="#1D9BF0" />
 										<path d="M9.5 16.5l-3-3 1.4-1.4 1.6 1.6 5.1-5.1 1.4 1.4z" fill="white" />
 									</svg>
@@ -782,14 +843,15 @@ let {
 								onTextSelect={onTextSelect}
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 								rows={1}
+								minHeight="0px"
 								{showToolbar}
 								ariaLabel="Bottom handle"
-						fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 30}
+								fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 26}
 								onTextChange={onBottomHandleChange}
 							>
 								{#snippet display()}
-									<span style="font-size:{tweetStyles.tweetBottomHandle?.fontSize ?? 30}px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandleDisplay}</span>
+									<p style="margin:0;font-size:{tweetStyles.tweetBottomHandle?.fontSize ?? 26}px;color:{textSecondary};font-weight:400;line-height:1.25; {bottomHandleCss}">{bottomHandleDisplay}</p>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						</div>
@@ -821,12 +883,12 @@ let {
 						{showToolbar}
 						ariaLabel="Reply text"
 						fontFamily={headlineStyle.fontFamily ?? "'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
-						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 44}
+						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 40}
 						onTextChange={onBottomTextChange}
 					>
 						{#snippet display()}
 							<p
-								style="font-size:{tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 44}px; font-weight:400; color:{textPrimary}; line-height:1.38; margin:0; letter-spacing:-0.25px; word-break:break-word; {bottomTextCss}"
+								style="font-size:{tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 40}px; font-weight:400; color:{textPrimary}; line-height:1.4; margin:0; letter-spacing:-0.02em; word-break:break-word; {bottomTextCss}"
 							>
 								{bottomTextDisplay}
 							</p>
@@ -834,12 +896,11 @@ let {
 					</CanvasMarkupTextBlock>
 				{/snippet}
 			</DraggableBlock>
-
-			<div style="flex:1;min-height:0;"></div>
+			{/if}
 
 			<!-- X watermark -->
 			<div style="
-				position:absolute;bottom:32px;right:64px;
+				position:absolute;bottom:36px;right:72px;
 				font-size:22px;font-weight:600;color:{textSecondary};opacity:0.28;
 				letter-spacing:0;font-family:inherit;
 			">𝕏</div>

@@ -19,7 +19,7 @@
 			<h1 class="page-title">Templates</h1>
 			<p class="page-sub">Pick a layout to open in Studio. Your saved work lives under Carousels.</p>
 		</div>
-		<a href="/dashboard/carousels" class="create-btn">Your carousels →</a>
+		<a href="/dashboard/carousels" class="ma-btn ma-btn-primary">Your carousels →</a>
 	</header>
 
 	<section class="templates-section reveal" style="--d:0.05s">
@@ -35,16 +35,16 @@
 
 <style>
 	:root:not([data-theme='dark']) {
-		--ap-text: #0a0a0a;
-		--ap-text-2: rgba(10, 10, 10, 0.62);
-		--ap-soft: #f6f5f1;
+		--ap-text: #0f0f10;
+		--ap-text-2: #5b5b62;
+		--ap-soft: #f6f7f9;
 		--ap-bg: #ffffff;
 		--panel-bg: #ffffff;
-		--panel-bg-2: #fafafa;
-		--panel-border: rgba(10, 10, 10, 0.08);
+		--panel-bg-2: #f6f7f9;
+		--panel-border: rgba(15, 15, 16, 0.08);
 		--t-strong: var(--ap-text);
 		--t: var(--ap-text-2);
-		--shadow-soft: 0 1px 2px rgba(10, 10, 10, 0.04), 0 8px 22px -10px rgba(10, 10, 10, 0.1);
+		--shadow-soft: 0 1px 2px rgba(15, 15, 16, 0.04), 0 8px 22px -10px rgba(15, 15, 16, 0.1);
 	}
 	:root[data-theme='dark'] {
 		--ap-text: #f5f5f5;
@@ -108,8 +108,8 @@
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
-		background: #34d399;
-		box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+		background: #7bf1a8;
+		box-shadow: 0 0 0 3px rgba(123, 241, 168, 0.22);
 	}
 	.page-title {
 		font-size: clamp(28px, 3.4vw, 42px);
@@ -125,24 +125,6 @@
 		color: var(--t);
 		margin: 0;
 		max-width: 60ch;
-	}
-	.create-btn {
-		display: inline-flex;
-		align-items: center;
-		padding: 12px 20px;
-		border-radius: 999px;
-		border: 1px solid var(--ap-text);
-		background: var(--ap-text);
-		color: var(--ap-bg);
-		font-family: inherit;
-		font-size: 13.5px;
-		font-weight: 700;
-		text-decoration: none;
-		white-space: nowrap;
-	}
-	.create-btn:hover {
-		transform: translateY(-1px);
-		box-shadow: var(--shadow-soft);
 	}
 	.section-head {
 		margin-bottom: 16px;

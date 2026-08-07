@@ -6,7 +6,7 @@ import {
 	listBulkWorkspaces,
 	saveBulkWorkspaceRow,
 } from '$lib/server/bulk-workspaces';
-import type { BulkShow } from '$lib/studio/bulk-to-studio';
+import { slimBulkCoverSlide, type BulkShow } from '$lib/studio/bulk-to-studio';
 
 const upsertSchema = z.object({
 	id: z.string().uuid().optional(),
@@ -48,7 +48,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 				shows: shows.slice(0, 24).map((s) => {
 					const slides = Array.isArray(s.slides) ? s.slides : [];
 					const first = slides[0];
+					const coverSlide = slimBulkCoverSlide(first);
 					const candidates = [
+						String(coverSlide?.mediaThumb ?? '').trim(),
+						String(coverSlide?.mediaUrl ?? '').trim(),
 						String(first?.mediaThumb ?? '').trim(),
 						String(first?.mediaUrl ?? '').trim(),
 						safeWorkspaceThumb,
@@ -68,6 +71,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 						headline: String(first?.headline ?? '').trim(),
 						thumb: safeThumb,
 						template: String(first?.template ?? 'news'),
+						coverSlide,
 						fromVideoClips: !!s.fromVideoClips,
 					};
 				}),

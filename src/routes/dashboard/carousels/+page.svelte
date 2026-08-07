@@ -17,6 +17,8 @@
 		loadBulkWorkspace,
 		showsHaveContent,
 	} from '$lib/studio/bulk-workspace';
+	import { type BulkSlide } from '$lib/studio/bulk-to-studio';
+	import BulkLibraryCover from '$lib/components/bulk/BulkLibraryCover.svelte';
 	import {
 		ImagePlus,
 		Plus,
@@ -42,6 +44,8 @@
 		headline: string;
 		thumb: string;
 		template: string;
+		/** Slim first slide for live template preview on the card. */
+		coverSlide?: BulkSlide | null;
 		fromVideoClips?: boolean;
 	};
 
@@ -92,6 +96,9 @@
 	/** Multi-select for YouTube clip cards (keys from clipShowCards). */
 	let selectedClipKeys = $state<string[]>([]);
 	let bulkDeletingClips = $state(false);
+	/** Multi-select for From Bulk cards (keys from bulkShowCards). */
+	let selectedBulkKeys = $state<string[]>([]);
+	let bulkDeletingBulk = $state(false);
 	/** Track hero URLs that failed to load so we fall back to text cards. */
 	let brokenDraftThumbIds = $state<Record<string, true>>({});
 	let brokenSavedThumbIds = $state<Record<string, true>>({});
@@ -229,7 +236,7 @@
 							template: 'news',
 						},
 					] as BulkShowCard[]);
-			return shows.map((show) => ({
+			return shows.map((show, i) => ({
 				workspaceId: ws.id,
 				workspaceTopic: ws.topic || ws.title,
 				updatedAt: ws.updatedAt,
@@ -237,6 +244,7 @@
 					? `/dashboard/bulk/${ws.id}?show=${encodeURIComponent(show.id)}`
 					: `/dashboard/bulk/${ws.id}`,
 				show,
+				key: `bulk-${ws.id}-${show.id || i}`,
 			}));
 		}),
 	);
@@ -918,14 +926,74 @@
 		}
 	}
 
-	async function deleteBulkWorkspace(id: string) {
-		if (!confirm('Delete this bulk generation? This cannot be undone.')) return;
+	const allBulkSelected = $derived(
+		bulkShowCards.length > 0 && selectedBulkKeys.length === bulkShowCards.length,
+	);
+
+	function toggleBulkSelected(key: string) {
+		if (selectedBulkKeys.includes(key)) {
+			selectedBulkKeys = selectedBulkKeys.filter((x) => x !== key);
+		} else {
+			selectedBulkKeys = [...selectedBulkKeys, key];
+		}
+	}
+
+	function toggleSelectAllBulk() {
+		if (allBulkSelected) selectedBulkKeys = [];
+		else selectedBulkKeys = bulkShowCards.map((c) => c.key);
+	}
+
+	async function deleteOneBulkCard(card: (typeof bulkShowCards)[number]) {
+		const showId = String(card.show?.id ?? '').trim();
+		const label = card.show.title || card.show.headline || 'this carousel';
+		if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
 		try {
-			const res = await fetch(`/api/bulk/workspaces/${id}`, { method: 'DELETE' });
-			if (!res.ok) throw new Error('Delete failed');
-			bulkWorkspaces = bulkWorkspaces.filter((w) => w.id !== id);
+			await removeShowsFromWorkspace(card.workspaceId, showId ? [showId] : []);
+			selectedBulkKeys = selectedBulkKeys.filter((k) => k !== card.key);
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'Could not delete');
+		}
+	}
+
+	async function deleteSelectedBulk() {
+		const keys = [...selectedBulkKeys];
+		if (!keys.length) return;
+		const cards = bulkShowCards.filter((c) => keys.includes(c.key));
+		if (
+			!confirm(
+				`Delete ${cards.length} bulk carousel${cards.length === 1 ? '' : 's'}? This cannot be undone.`,
+			)
+		) {
+			return;
+		}
+		bulkDeletingBulk = true;
+		try {
+			const byWorkspace = new Map<string, string[]>();
+			const wholeWorkspace: string[] = [];
+
+			for (const card of cards) {
+				const showId = String(card.show?.id ?? '').trim();
+				if (!showId) {
+					wholeWorkspace.push(card.workspaceId);
+					continue;
+				}
+				const list = byWorkspace.get(card.workspaceId) ?? [];
+				list.push(showId);
+				byWorkspace.set(card.workspaceId, list);
+			}
+
+			for (const id of [...new Set(wholeWorkspace)]) {
+				await removeShowsFromWorkspace(id, []);
+			}
+			for (const [workspaceId, showIds] of byWorkspace) {
+				if (wholeWorkspace.includes(workspaceId)) continue;
+				await removeShowsFromWorkspace(workspaceId, showIds);
+			}
+			selectedBulkKeys = [];
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'Could not delete');
+		} finally {
+			bulkDeletingBulk = false;
 		}
 	}
 
@@ -1140,8 +1208,8 @@
 			<p class="page-sub">Bulk generations, YouTube clips, Studio drafts, and named saves — open one to keep editing.</p>
 		</div>
 		<div class="hero-actions">
-			<a href="/dashboard/templates" class="ghost-btn">Browse templates</a>
-			<a href="/dashboard/bulk" class="create-btn"><Plus size={15} /> New from Bulk</a>
+			<a href="/dashboard/templates" class="ma-btn ma-btn-ghost">Browse templates</a>
+			<a href="/dashboard/bulk" class="ma-btn ma-btn-primary"><Plus size={15} /> New from Bulk</a>
 		</div>
 	</header>
 
@@ -1160,12 +1228,12 @@
 			<div class="empty-icon"><ImagePlus size={22} /></div>
 			<h3 class="empty-title">No carousels yet</h3>
 			<p class="empty-desc">
-				Generate in Bulk, clip a YouTube video, or edit in Studio — all autosave here. Use Save template for a named Studio copy.
+				Generate in Bulk, clip a YouTube video, or edit in Studio — then save when you’re ready. Use Save template for a named Studio copy.
 			</p>
 			<div class="empty-actions">
-				<a href="/dashboard/bulk" class="empty-cta"><Rows3 size={14} /> Open Bulk</a>
-				<a href="/dashboard/videos" class="ghost-btn">Clip YouTube</a>
-				<a href="/dashboard/studio?template=news" class="ghost-btn">Open Studio</a>
+				<a href="/dashboard/bulk" class="ma-btn ma-btn-primary"><Rows3 size={14} /> Open Bulk</a>
+				<a href="/dashboard/videos" class="ma-btn ma-btn-ghost">Clip YouTube</a>
+				<a href="/dashboard/studio?template=news" class="ma-btn ma-btn-ghost">Open Studio</a>
 			</div>
 		</div>
 	{/if}
@@ -1301,31 +1369,71 @@
 	{#if bulkShowCards.length > 0}
 		<section class="studio-drafts-block reveal" style="--d:0.04s">
 			<div class="studio-drafts-head">
-				<h2 class="studio-drafts-title">From Bulk</h2>
-				<p class="studio-drafts-sub">
-					Carousels generated in the Bulk editor. Open one to keep editing the full stack.
-				</p>
+				<div class="studio-drafts-head-row">
+					<div>
+						<h2 class="studio-drafts-title">From Bulk</h2>
+						<p class="studio-drafts-sub">
+							Carousels generated in the Bulk editor. Open one to keep editing, or select several to delete.
+						</p>
+					</div>
+					<div class="draft-select-bar">
+						<button type="button" class="draft-select-all" onclick={toggleSelectAllBulk}>
+							<span
+								class="draft-select-box"
+								class:draft-select-box--on={allBulkSelected}
+								aria-hidden="true"
+							></span>
+							{allBulkSelected ? 'Deselect all' : 'Select all'}
+						</button>
+						{#if selectedBulkKeys.length > 0}
+							<button
+								type="button"
+								class="draft-bulk-delete"
+								disabled={bulkDeletingBulk}
+								onclick={() => void deleteSelectedBulk()}
+							>
+								{#if bulkDeletingBulk}
+									<Loader size={13} class="spin" />
+								{:else}
+									<Trash2 size={13} />
+								{/if}
+								Delete {selectedBulkKeys.length}
+							</button>
+						{/if}
+					</div>
+				</div>
 			</div>
 			<div class="carousel-grid studio-drafts-grid">
-				{#each bulkShowCards as card, i (`${card.workspaceId}-${card.show.id || i}`)}
+				{#each bulkShowCards as card, i (card.key)}
 					{@const title = card.show.title || card.show.headline || 'Untitled carousel'}
 					{@const headline = card.show.headline || title}
-					<div class="carousel-card reveal group studio-draft-card" style="--d:{0.08 + i * 0.03}s">
-						<a href={card.href} class="card-preview studio-draft-card-preview" style="background-color: #0a0a0a;">
-							{#if card.show.thumb}
-								<img
-									src={card.show.thumb}
-									alt=""
-									class="studio-draft-bg-img studio-draft-bg-img--full-slide"
-									referrerpolicy="no-referrer"
-									loading="lazy"
-									draggable="false"
-								/>
-							{:else}
-								<p class="card-preview-text studio-draft-preview-headline" style="color: #f5f5f5">
-									{headline}
-								</p>
-							{/if}
+					{@const isSelected = selectedBulkKeys.includes(card.key)}
+					<div
+						class="carousel-card reveal group studio-draft-card"
+						class:studio-draft-card--selected={isSelected}
+						style="--d:{0.08 + i * 0.03}s"
+					>
+						<label class="draft-check">
+							<input
+								type="checkbox"
+								checked={isSelected}
+								onchange={() => toggleBulkSelected(card.key)}
+								onclick={(e) => e.stopPropagation()}
+							/>
+							<span class="sr-only">Select carousel</span>
+						</label>
+						<a
+							href={card.href}
+							class="card-preview studio-draft-card-preview bulk-lib-card-preview"
+							style="background-color: #0a0a0a;"
+						>
+							<BulkLibraryCover
+								coverSlide={card.show.coverSlide}
+								thumb={card.show.thumb}
+								{headline}
+								template={card.show.template}
+								showId={card.show.id}
+							/>
 						</a>
 						{#if card.show.slideCount}
 							<div class="slide-count">{card.show.slideCount} slides</div>
@@ -1345,8 +1453,8 @@
 								<button
 									type="button"
 									class="card-action card-action--delete"
-									title="Delete bulk generation"
-									onclick={() => void deleteBulkWorkspace(card.workspaceId)}
+									title="Delete carousel"
+									onclick={() => void deleteOneBulkCard(card)}
 								>
 									<Trash2 size={11} />
 								</button>
@@ -1413,7 +1521,7 @@
 					<div>
 						<h2 class="studio-drafts-title">Studio drafts</h2>
 						<p class="studio-drafts-sub">
-							Workspace saves from Studio. Open to edit, or select several to delete.
+							Saved from Studio with Save draft. Open to edit, or select several to delete.
 						</p>
 					</div>
 					<div class="draft-select-bar">
@@ -1610,20 +1718,20 @@
 
 <style>
 	:root:not([data-theme='dark']) {
-		--ap-text: #0a0a0a;
-		--ap-text-2: rgba(10, 10, 10, 0.62);
-		--ap-text-3: rgba(10, 10, 10, 0.42);
-		--ap-soft: #f6f5f1;
+		--ap-text: #0f0f10;
+		--ap-text-2: #5b5b62;
+		--ap-text-3: #9a9aa1;
+		--ap-soft: #f6f7f9;
 		--ap-bg: #ffffff;
 		--panel-bg: #ffffff;
-		--panel-bg-2: #fafafa;
-		--panel-border: rgba(10, 10, 10, 0.08);
-		--panel-border-hover: rgba(10, 10, 10, 0.16);
+		--panel-bg-2: #f6f7f9;
+		--panel-border: rgba(15, 15, 16, 0.08);
+		--panel-border-hover: rgba(15, 15, 16, 0.14);
 		--t-strong: var(--ap-text);
 		--t: var(--ap-text-2);
 		--t-muted: var(--ap-text-3);
-		--shadow-soft: 0 1px 2px rgba(10, 10, 10, 0.04), 0 8px 22px -10px rgba(10, 10, 10, 0.1);
-		--shadow-pop: 0 18px 40px -16px rgba(10, 10, 10, 0.18), 0 6px 14px -8px rgba(10, 10, 10, 0.12);
+		--shadow-soft: 0 1px 2px rgba(15, 15, 16, 0.04), 0 8px 22px -10px rgba(15, 15, 16, 0.1);
+		--shadow-pop: 0 18px 40px -16px rgba(15, 15, 16, 0.16), 0 6px 14px -8px rgba(15, 15, 16, 0.1);
 	}
 	:root[data-theme='dark'] {
 		--ap-text: #f5f5f5;
@@ -1715,45 +1823,6 @@
 		gap: 10px;
 		flex-wrap: wrap;
 		align-items: center;
-	}
-	.create-btn,
-	.ghost-btn,
-	.empty-cta {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 12px 20px;
-		border-radius: 999px;
-		font-family: inherit;
-		font-size: 13.5px;
-		font-weight: 700;
-		cursor: pointer;
-		text-decoration: none;
-		white-space: nowrap;
-		transition:
-			transform 0.22s ease,
-			box-shadow 0.22s ease;
-	}
-	.create-btn,
-	.empty-cta {
-		border: 1px solid var(--ap-text);
-		background: var(--ap-text);
-		color: var(--ap-bg);
-	}
-	.ghost-btn {
-		border: 1px solid var(--panel-border);
-		background: var(--panel-bg);
-		color: var(--t-strong);
-	}
-	.create-btn:hover:not(:disabled),
-	.ghost-btn:hover,
-	.empty-cta:hover {
-		transform: translateY(-1px);
-		box-shadow: var(--shadow-soft);
-	}
-	.create-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 	.spin {
 		animation: spin 0.8s linear infinite;
@@ -2021,9 +2090,9 @@
 		font-family: inherit;
 	}
 	.filter-tab--on {
-		background: var(--ap-text);
-		color: var(--ap-bg);
-		border-color: var(--ap-text);
+		background: var(--app-accent, #7bf1a8);
+		color: #0f0f10;
+		border-color: var(--app-accent, #7bf1a8);
 	}
 	.filter-count {
 		font-size: 10px;
@@ -2163,6 +2232,9 @@
 
 	.studio-draft-card-preview {
 		position: relative;
+	}
+	.bulk-lib-card-preview {
+		padding: 0;
 	}
 	.studio-draft-bg-img {
 		position: absolute;

@@ -739,6 +739,11 @@ import JSZip from 'jszip';
 		}
 		ensureTemplateDefaultsForSlide(t, idx);
 		finalizeTemplateSwitch(from, t, idx);
+		// Letterbox video layouts (Highlight, etc.) default to a black canvas fill.
+		if (isVideoStoryFamily(t) && !isVideoStoryFamily(from)) {
+			canvasBgDark = true;
+			if (!textColorTouched) textColor = '#FFFFFF';
+		}
 		// Keep the current slide's clip when switching templates (video is stored per-template)
 		if (from !== t) {
 			const fromRow = [...(bgVideosByTemplate[from] ?? [])];
@@ -2110,9 +2115,17 @@ import JSZip from 'jszip';
 			}
 			applyBlankCanvas();
 			applyTemplateToAll(next);
+			if (isVideoStoryFamily(next)) {
+				canvasBgDark = true;
+				if (!textColorTouched) textColor = '#FFFFFF';
+			}
 			seedNewsStarterPlaceholderLayout();
 		} else {
 			applyTemplateToAll(next);
+			if (isVideoStoryFamily(next)) {
+				canvasBgDark = true;
+				if (!textColorTouched) textColor = '#FFFFFF';
+			}
 		}
 	});
 
@@ -2816,6 +2829,8 @@ import JSZip from 'jszip';
 		}
 		const hex = dark ? '#000000' : '#ffffff';
 		const t = previewTemplate;
+		// Persist solid fill for templates that paint from `newsSolidBgBySlide`.
+		// Video / highlight layouts read `canvasSolidHex` directly via `bgColor`.
 		if (t === 'news' || t === 'blank') {
 			pushUndo(t, paintSlide);
 			// Keep media; only set the solid fill behind / instead of gradient.
@@ -4625,9 +4640,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let draftError = $state('');
 	/** Last export failure message (html-to-image often rejects with an Event). */
 	let lastExportError = $state('');
-	/** Gate autosave until draft restore / starter seed finishes (avoids saving mid-hydrate). */
+	/** Gate draft restore / starter seed (avoids mutating mid-hydrate). */
 	let draftLoaded = $state(false);
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let sourceLogoInput = $state<HTMLInputElement | null>(null);
 	/** Shown after a successful manual save from the sidebar button. */
 	/** HTTPS preview URL when still on legacy storage/CDN — prefer `draftPreviewKey` + R2. */
@@ -6025,7 +6039,7 @@ tweetTopImagePanYBySlide,
 
 	type SaveDraftNowOpts = { captureThumbnail?: boolean };
 
-	/** Persist workspace draft (`news_studio`) — listed under Carousels. */
+	/** Persist workspace draft (`news_studio`) — listed under Carousels after user confirms. */
 	async function saveDraftNow(opts?: SaveDraftNowOpts) {
 		if (!userId) return;
 		const captureThumbnail = opts?.captureThumbnail === true;
@@ -6072,12 +6086,20 @@ tweetTopImagePanYBySlide,
 		if (data?.id) draftId = data.id;
 	}
 
-	function scheduleDraftSave() {
-		if (!draftLoaded || draftRestoring || !userId) return;
-		if (saveTimer) clearTimeout(saveTimer);
-		// Capture a thumb on first save (or when missing) so Carousels cards aren't blank/broken.
-		const needThumb = !String(draftPreviewKey ?? '').trim();
-		saveTimer = setTimeout(() => void saveDraftNow({ captureThumbnail: needThumb }), needThumb ? 1600 : 900);
+	/** User-confirmed draft save — never auto-writes to Carousels. */
+	async function confirmAndSaveDraft() {
+		if (!userId || draftSaving || draftRestoring) return;
+		const isNew = !String(draftId ?? '').trim();
+		const ok = confirm(
+			isNew
+				? 'Save this as a Studio draft in Carousels?'
+				: 'Update your Studio draft in Carousels?',
+		);
+		if (!ok) return;
+		await saveDraftNow({ captureThumbnail: true });
+		if (draftError) {
+			alert(draftError);
+		}
 	}
 
 	// ── Auth ──────────────────────────────────────────────────────────────
@@ -6151,6 +6173,10 @@ tweetTopImagePanYBySlide,
 							// Fresh session from template carousel / `?template=` — never overlay last autosave.
 							applyBlankCanvas();
 							applyTemplateToAll(forcedTemplateFromQuery);
+							if (isVideoStoryFamily(forcedTemplateFromQuery)) {
+								canvasBgDark = true;
+								if (!textColorTouched) textColor = '#FFFFFF';
+							}
 							seedNewsStarterPlaceholderLayout();
 						}
 						// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
@@ -6158,8 +6184,6 @@ tweetTopImagePanYBySlide,
 						// Clear only after starter/draft mutations so the boot skeleton covers one continuous pass.
 						draftRestoring = false;
 						draftLoaded = true;
-						// `$effect` may not re-run just because `draftLoaded` flipped — kick autosave once.
-						scheduleDraftSave();
 					}
 				})();
 			});
@@ -7884,12 +7908,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		closeToolbar();
 	});
 
-	// Auto-save workspace draft (debounced) so Carousels / reload can restore work.
-	$effect(() => {
-		buildDraftState();
-		scheduleDraftSave();
-	});
-
 	// ── Generate circle image via Vertex ─────────────────────────────────
 	/** Returns true when a `dataUrl` was applied to `circleImages[slideIdx]`. */
 	async function generateCircleImage(slideIdx: number = activeSlide, skipVertexCache = false): Promise<boolean> {
@@ -8801,7 +8819,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (t === 'tweet' || t === 'article' || t === 'textCarousel' || isWhitePostFamily(t)) {
 			return canvasBgDark ? '#0a0a0a' : '#ffffff';
 		}
-		if (isVideoStoryFamily(t)) return '#000000';
+		if (isVideoStoryFamily(t)) return canvasSolidHex;
 		return canvasBgDark ? '#0a0a0a' : '#ffffff';
 	}
 
@@ -9172,11 +9190,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				onSelect={(id) => setActiveTemplate(id as TemplateId)}
 				onApplyAll={() => applyTemplateToAll(activeTemplate)}
 			/>
-			<FormatDockToolbar
-				formats={FORMATS.map((f) => ({ id: f.id, label: f.label, title: `${f.w}×${f.h}` }))}
-				selectedId={formatId}
-				onSelect={(id) => (formatId = id as FormatId)}
-			/>
 			<div
 				class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.05)] backdrop-blur-[14px]"
 				title="Canvas background"
@@ -9230,7 +9243,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 								setActiveFilmStripTop(Number(n) || 0);
 							}}
 							min={0}
-							max={55}
+							max={100}
 							step={1}
 							class="mb-3.5 min-w-0"
 						/>
@@ -9246,12 +9259,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 								setActiveFilmStripBottom(Number(n) || 0);
 							}}
 							min={0}
-							max={55}
+							max={100}
 							step={1}
 							class="min-w-0"
 						/>
 						<p class="mt-3 text-[10px] leading-snug text-[#999]">
-							Black letterbox height as a percent of the canvas.
+							Black letterbox height as a percent of the canvas. 50% + 50% meets in the middle.
 						</p>
 					</PopoverContent>
 				</Popover>
@@ -9261,10 +9274,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				<div class="studio-dock-skel" aria-hidden="true">
 					{#each Array(10) as _}
 						<span class="studio-dock-skel-pill"></span>
-					{/each}
-					<span class="studio-dock-skel-gap"></span>
-					{#each Array(4) as _}
-						<span class="studio-dock-skel-chip"></span>
 					{/each}
 				</div>
 			{/if}
@@ -10065,13 +10074,31 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						: previewTemplate === 'videoPost'
 							? { ...VIDEO_POST_HEADLINE_STYLE, ...canvasVideoStoryHeadlineStyle }
 						: previewTemplate === 'videoSource'
-							? { ...VIDEO_SOURCE_HEADLINE_STYLE, ...canvasVideoStoryHeadlineStyle }
+							? {
+									...VIDEO_SOURCE_HEADLINE_STYLE,
+									...canvasVideoStoryHeadlineStyle,
+									color:
+										canvasVideoStoryHeadlineStyle.color ??
+										(canvasBgDark ? '#ffffff' : '#0a0a0a'),
+								}
 							: previewTemplate === 'videoText'
 								? { ...VIDEO_TEXT_HEADLINE_STYLE, ...canvasVideoStoryHeadlineStyle }
 								: previewTemplate === 'videoCreator'
-									? { ...VIDEO_CREATOR_HEADLINE_STYLE, ...canvasVideoStoryHeadlineStyle }
+									? {
+											...VIDEO_CREATOR_HEADLINE_STYLE,
+											...canvasVideoStoryHeadlineStyle,
+											color:
+												canvasVideoStoryHeadlineStyle.color ??
+												(canvasBgDark ? '#ffffff' : '#0a0a0a'),
+										}
 									: previewTemplate === 'videoHook'
-										? { ...VIDEO_HOOK_HEADLINE_STYLE, ...canvasVideoStoryHeadlineStyle }
+										? {
+												...VIDEO_HOOK_HEADLINE_STYLE,
+												...canvasVideoStoryHeadlineStyle,
+												color:
+													canvasVideoStoryHeadlineStyle.color ??
+													(canvasBgDark ? '#ffffff' : '#0a0a0a'),
+											}
 										: canvasVideoStoryHeadlineStyle}
 					bodyStyle={previewTemplate === 'videoFeature'
 						? { ...VIDEO_FEATURE_BODY_STYLE, ...canvasBlackTextBodyStyle }
@@ -10123,6 +10150,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						filmStripDefaultsFor(previewTemplate).bottomPct
 					}
 					showToolbar={false}
+					bgColor={canvasSolidHex}
 				/>
 				<StudioImageStickers
 					w={CANVAS_W}
@@ -11201,6 +11229,15 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			</DragDropProvider>
 		{/if}
 
+		<!-- Format dock — under filmstrip, above prompt bar -->
+		<div class="relative z-[35] flex w-full shrink-0 justify-center px-4 pt-1.5 pb-0.5">
+			<FormatDockToolbar
+				formats={FORMATS.map((f) => ({ id: f.id, label: f.label, title: `${f.w}×${f.h}` }))}
+				selectedId={formatId}
+				onSelect={(id) => (formatId = id as FormatId)}
+			/>
+		</div>
+
 		<!-- ── Prompt bar ── below the filmstrip ───────────────────── -->
 		<div class="studio-prompt-chrome relative z-[40] shrink-0 overflow-visible px-4 pt-1.5 pb-3">
 			<div class="mx-auto w-full max-w-2xl overflow-visible">
@@ -11885,6 +11922,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			zIndex: 200,
 			posting: exportingAll,
 			exportingZip: exporting,
+			draftSaving,
+			onSaveDraft: () => void confirmAndSaveDraft(),
 			onExportZip: () => void exportPng(),
 			onBurnMusicClick: () => void navigateToBurnMusicPage(),
 			onSaveTemplate: (name: string) => saveStudioTemplateNamed(name),

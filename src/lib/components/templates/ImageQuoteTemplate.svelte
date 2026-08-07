@@ -5,6 +5,7 @@
 	import DraggableMediaFrame from '$lib/components/DraggableMediaFrame.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { appendTextShadowCss } from '$lib/textStyleCss';
+	import { FILM_STRIP_MAX_SIDE_PCT } from '$lib/studio/slide-content-defaults';
 
 	interface Props {
 		image?: string;
@@ -131,10 +132,10 @@
 		filmStripTopPct != null || filmStripBottomPct != null,
 	);
 	const stripTopPct = $derived(
-		Math.max(0, Math.min(55, Number(filmStripTopPct) || 0)),
+		Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripTopPct) || 0)),
 	);
 	const stripBottomPct = $derived(
-		Math.max(0, Math.min(55, Number(filmStripBottomPct) || 0)),
+		Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripBottomPct) || 0)),
 	);
 	const filmTopH = $derived(Math.round((BASE_H * stripTopPct) / 100));
 	const filmBottomH = $derived(Math.round((BASE_H * stripBottomPct) / 100));

@@ -213,6 +213,82 @@ export function defaultRowCaptions(overrides?: Partial<BulkRowCaptions>): BulkRo
 	};
 }
 
+function isSafeStillUrl(url: string): boolean {
+	const t = String(url ?? '').trim();
+	if (!t || t.startsWith('blob:') || t.length >= 2000) return false;
+	if (/\.(mp4|webm|mov)(\?|$)/i.test(t)) return false;
+	if (/youtube\.com\/embed|youtu\.be\//i.test(t)) return false;
+	return true;
+}
+
+/**
+ * First-slide payload for Carousels library live previews.
+ * Drops video playback URLs / caption tracks so list cards stay light.
+ */
+export function slimBulkCoverSlide(slide: BulkSlide | null | undefined): BulkSlide | null {
+	if (!slide) return null;
+	const template = coerceTemplateId(slide.template);
+	const thumb = String(slide.mediaThumb ?? '').trim();
+	const media = String(slide.mediaUrl ?? '').trim();
+	const isVideo = slide.mediaKind === 'video';
+	let safeStill = '';
+	for (const candidate of [thumb, isVideo ? '' : media]) {
+		if (isSafeStillUrl(candidate)) {
+			safeStill = candidate.trim();
+			break;
+		}
+	}
+
+	const out: BulkSlide = {
+		id: String(slide.id || 'cover'),
+		template,
+		headline: String(slide.headline ?? '').slice(0, 400),
+		body: String(slide.body ?? '').slice(0, 600),
+		captions: defaultRowCaptions({ enabled: false }),
+		mediaKind: isVideo ? 'video' : safeStill ? 'image' : (slide.mediaKind ?? null),
+		mediaThumb: safeStill || undefined,
+		// Videos: omit playback so BulkSlidePreview uses the poster still.
+		mediaUrl: isVideo ? undefined : safeStill || undefined,
+		videoMuted: true,
+	};
+
+	const newsHeadline = String(slide.clipMeta?.newsHeadline ?? '').trim();
+	if (newsHeadline || slide.clipMeta?.clipId) {
+		out.clipMeta = {
+			clipId: String(slide.clipMeta?.clipId ?? ''),
+			viralityScore: Number(slide.clipMeta?.viralityScore) || 0,
+			hook: String(slide.clipMeta?.hook ?? '').slice(0, 200),
+			reason: '',
+			newsHeadline: newsHeadline || undefined,
+		};
+	}
+	return out;
+}
+
+/** Reconstruct a cover slide from list-card summary fields when `coverSlide` is absent. */
+export function coverSlideFromCardSummary(opts: {
+	id?: string;
+	template?: string;
+	headline?: string;
+	thumb?: string;
+}): BulkSlide | null {
+	const thumb = String(opts.thumb ?? '').trim();
+	const headline = String(opts.headline ?? '').trim();
+	if (!isSafeStillUrl(thumb) && !headline) return null;
+	const still = isSafeStillUrl(thumb) ? thumb : '';
+	return {
+		id: String(opts.id || 'cover'),
+		template: coerceTemplateId(opts.template || 'news'),
+		headline: headline || ' ',
+		body: '',
+		captions: defaultRowCaptions({ enabled: false }),
+		mediaKind: still ? 'image' : null,
+		mediaThumb: still || undefined,
+		mediaUrl: still || undefined,
+		videoMuted: true,
+	};
+}
+
 export function templateForSlideType(type: string): TemplateId {
 	switch (String(type ?? '').toLowerCase()) {
 		case 'hook':

@@ -170,28 +170,30 @@
   /* Default = LIGHT */
   color-scheme: light;
 
-  /* Semantic app tokens (light) */
+  /* Semantic app tokens (light) — aligned with marketing homepage */
   --app-bg: #ffffff;
-  --app-surface: #f7f7fb;
+  --app-surface: #f6f7f9;
   --app-surface-2: #ffffff;
-  --app-surface-3: #f1f2f6;
+  --app-surface-3: #eef1f5;
 
-  --app-border: rgba(10, 10, 10, 0.10);
-  --app-border-hover: rgba(10, 10, 10, 0.16);
+  --app-border: rgba(15, 15, 16, 0.08);
+  --app-border-hover: rgba(15, 15, 16, 0.14);
 
-  --app-text: #0a0a0a;
-  --app-text-2: rgba(10, 10, 10, 0.60);
-  --app-text-3: rgba(10, 10, 10, 0.40);
+  --app-text: #0f0f10;
+  --app-text-2: #5b5b62;
+  --app-text-3: #9a9aa1;
 
-  --app-scroll-thumb: rgba(10, 10, 10, 0.14);
-  --app-scroll-thumb-hover: rgba(10, 10, 10, 0.22);
+  --app-scroll-thumb: rgba(15, 15, 16, 0.14);
+  --app-scroll-thumb-hover: rgba(15, 15, 16, 0.22);
 
   --app-selection-bg: rgba(123, 241, 168, 0.22);
-  --app-selection-fg: #0a0a0a;
+  --app-selection-fg: #0f0f10;
 
   --app-focus: rgba(123, 241, 168, 0.55);
   --app-accent: #7bf1a8;
-  --app-accent-foreground: #0a0a0a;
+  --app-accent-hover: #a7f7c6;
+  --app-accent-foreground: #0f0f10;
+  --app-lime: #E8FF48;
 
   --background:    oklch(1 0 0);
 
@@ -470,6 +472,75 @@ input[type="reset"]:disabled,
 .font-display { font-family: var(--font-display); }
 .font-body    { font-family: var(--font-body); }
 .font-mono    { font-family: var(--font-mono); }
+
+/* ─── Shared CTAs (match marketing homepage `.btn` language) ─ */
+.ma-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition:
+    transform 0.25s ease,
+    background 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ma-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.ma-btn-primary {
+  color: #0f0f10;
+  background: var(--app-accent);
+  border-color: var(--app-accent);
+}
+.ma-btn-primary:hover:not(:disabled) {
+  background: var(--app-accent-hover);
+  border-color: var(--app-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(123, 241, 168, 0.35);
+}
+.ma-btn-ghost {
+  color: var(--app-text);
+  background: transparent;
+  border-color: var(--app-border-hover);
+}
+.ma-btn-ghost:hover:not(:disabled) {
+  background: rgba(15, 15, 16, 0.04);
+}
+.ma-btn-outline {
+  color: var(--app-text);
+  background: #fff;
+  border-color: var(--app-border-hover);
+}
+.ma-btn-outline:hover:not(:disabled) {
+  border-color: var(--app-text);
+  transform: translateY(-1px);
+}
+.ma-btn-lg {
+  padding: 16px 32px;
+  font-size: 15px;
+}
+.ma-btn-sm {
+  padding: 7px 14px;
+  font-size: 12.5px;
+}
+.ma-btn svg {
+  flex-shrink: 0;
+}
 
 /* ─── Light-mode compatibility layer (dashboard pages) ────────────────
    Many screens were initially authored “dark-only” with Tailwind classes like

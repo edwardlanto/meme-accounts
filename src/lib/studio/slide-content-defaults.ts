@@ -111,7 +111,7 @@ export const IMAGE_QUOTE_DEFAULTS = {
 
 /**
  * Black letterbox / film-strip heights as % of canvas height.
- * Top + bottom should stay under ~72% so media remains visible.
+ * Each side is 0–100%; top + bottom are capped at 100% so 50/50 meets in the middle.
  */
 export type FilmStripPct = { topPct: number; bottomPct: number };
 
@@ -142,8 +142,10 @@ export const FILM_STRIP_DEFAULTS: Record<
 	videoSource: { topPct: 30, bottomPct: 8 },
 };
 
-export const FILM_STRIP_MAX_SUM_PCT = 72;
-export const FILM_STRIP_MAX_SIDE_PCT = 55;
+/** Combined top+bottom cannot exceed full canvas (50+50 aligns at center). */
+export const FILM_STRIP_MAX_SUM_PCT = 100;
+/** Each bar can cover the full height on its own. */
+export const FILM_STRIP_MAX_SIDE_PCT = 100;
 
 export function clampFilmStripPct(
 	topPct: number,

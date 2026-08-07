@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Scissors, ImagePlus, Clapperboard, Palette, Sparkles } from 'lucide-svelte';
+	import { Scissors, ImagePlus, Palette, Sparkles } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { cn } from '$lib/utils.js';
@@ -206,7 +206,6 @@
 			}}
 		>
 			<ImagePlus size={18} class="text-violet-500" strokeWidth={2} />
-			<Clapperboard size={16} class="-ml-1 text-cyan-500" strokeWidth={2} />
 			<span class="hidden sm:inline">Image / video</span>
 			<span class="sm:hidden">Media</span>
 		</Button>

@@ -7,6 +7,7 @@
 	import { appendTextShadowCss } from '$lib/textStyleCss';
 	import { stripMarkup } from '$lib/highlight';
 	import {
+		FILM_STRIP_MAX_SIDE_PCT,
 		VIDEO_CREATOR_DEFAULTS,
 		VIDEO_FEATURE_DEFAULTS,
 		VIDEO_POST_DEFAULTS,
@@ -59,6 +60,8 @@
 		/** Black letterbox heights (% of canvas) for hook / creator / source layouts. */
 		filmStripTopPct?: number;
 		filmStripBottomPct?: number;
+		/** Canvas fill behind letterboxes / empty frame (studio White↔Black toggle). */
+		bgColor?: string;
 		/** Double-click video/media frame to open BG tools. */
 		onBackgroundDblClick?: (detail: { clientX: number; clientY: number }) => void;
 	}
@@ -102,13 +105,27 @@
 		layout = 'story',
 		filmStripTopPct = undefined,
 		filmStripBottomPct = undefined,
+		bgColor = '#000000',
 		onBackgroundDblClick,
 	}: Props = $props();
 
+	const canvasFill = $derived((bgColor || '#000000').trim() || '#000000');
+	const isLightCanvas = $derived.by(() => {
+		const h = canvasFill.toLowerCase();
+		if (h === '#fff' || h === '#ffffff' || h === 'white' || h === '#f8fafc') return true;
+		const m = /^#([0-9a-f]{6})$/i.exec(h);
+		if (!m) return false;
+		const n = parseInt(m[1], 16);
+		const r = (n >> 16) & 255;
+		const g = (n >> 8) & 255;
+		const b = n & 255;
+		return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.72;
+	});
+	const letterboxInk = $derived(isLightCanvas ? '#0a0a0a' : '#ffffff');
 	const isHookLayout = $derived(layout === 'hook');
 	const letterboxTopPct = $derived.by(() => {
 		if (filmStripTopPct != null && Number.isFinite(filmStripTopPct)) {
-			return Math.max(0, Math.min(55, Number(filmStripTopPct)));
+			return Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripTopPct)));
 		}
 		if (layout === 'hook') return 26;
 		if (layout === 'creator') return 28;
@@ -117,7 +134,7 @@
 	});
 	const letterboxBottomPct = $derived.by(() => {
 		if (filmStripBottomPct != null && Number.isFinite(filmStripBottomPct)) {
-			return Math.max(0, Math.min(55, Number(filmStripBottomPct)));
+			return Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripBottomPct)));
 		}
 		if (layout === 'hook') return 10;
 		if (layout === 'creator') return 8;
@@ -503,7 +520,7 @@
 										word-break: break-word;
 										line-height: {isHookLayout ? 1.22 : 1.18};
 										letter-spacing: {isHookLayout ? '-0.02em' : '-0.03em'};
-										color: {isHookLayout ? '#ffffff' : '#f4f4f5'};
+										color: {headlineStyle.color ?? (isHookLayout ? letterboxInk : '#f4f4f5')};
 										font-weight: {headlineStyle.fontWeight ?? (isHookLayout ? 400 : 600)};
 										font-size: {isHookLayout ? hookFontSize : (headlineStyle.fontSize ?? 46)}px;
 										text-shadow: {isHookLayout ? 'none' : '0 2px 12px rgba(0,0,0,0.45)'};
@@ -649,11 +666,12 @@
 >
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {w}px;
 			height: {h}px;
 			position: relative;
-			background: #000000;
+			background: {canvasFill};
 			transform: scale({scale});
 			transform-origin: top left;
 			display: flex;
@@ -814,7 +832,7 @@
 					flex-direction: column;
 					align-items: stretch;
 					box-sizing: border-box;
-					background: #000;
+					background: {canvasFill};
 				"
 			>
 				<div
@@ -868,7 +886,7 @@
 												word-break: break-word;
 												line-height: {headlineStyle.lineHeight ?? 1.28};
 												letter-spacing: -0.02em;
-												color: #ffffff;
+												color: {headlineStyle.color ?? letterboxInk};
 												font-weight: {headlineStyle.fontWeight ?? 400};
 												font-size: {sourceFontSize}px;
 												max-width: 100%;
@@ -886,7 +904,7 @@
 						flex: 1 1 auto;
 						min-height: 0;
 						width: 100%;
-						background: #0a0a0a;
+						background: {isLightCanvas ? '#e8e8e8' : '#0a0a0a'};
 						overflow: {interactive ? 'visible' : 'hidden'};
 						z-index: {mediaSelected ? 8 : 1};
 					"
@@ -899,7 +917,7 @@
 						flex: 0 0 {letterboxBottomPct}%;
 						height: {letterboxBottomPct}%;
 						width: 100%;
-						background: #000;
+						background: {canvasFill};
 					"
 				></div>
 			</div>
@@ -1198,7 +1216,7 @@
 					flex-direction: column;
 					align-items: stretch;
 					box-sizing: border-box;
-					background: #000;
+					background: {canvasFill};
 				"
 			>
 				<div
@@ -1389,7 +1407,7 @@
 											word-break: break-word;
 											line-height: 1.28;
 											letter-spacing: -0.025em;
-											color: #ffffff;
+											color: {headlineStyle.color ?? letterboxInk};
 											font-weight: {headlineStyle.fontWeight ?? 400};
 											font-size: {creatorFontSize}px;
 											max-width: 100%;
@@ -1408,7 +1426,7 @@
 						flex: 1 1 auto;
 						min-height: 0;
 						width: 100%;
-						background: #0a0a0a;
+						background: {isLightCanvas ? '#e8e8e8' : '#0a0a0a'};
 						overflow: {interactive ? 'visible' : 'hidden'};
 						z-index: {mediaSelected ? 8 : 1};
 					"
@@ -1421,7 +1439,7 @@
 						flex: 0 0 {letterboxBottomPct}%;
 						height: {letterboxBottomPct}%;
 						width: 100%;
-						background: #000;
+						background: {canvasFill};
 					"
 				></div>
 			</div>
@@ -1435,7 +1453,7 @@
 					flex-direction: column;
 					align-items: stretch;
 					box-sizing: border-box;
-					background: #000;
+					background: {canvasFill};
 				"
 			>
 				<div
@@ -1465,7 +1483,7 @@
 						max-width: {previewMode ? '92%' : '920px'};
 						margin: 0 auto;
 						aspect-ratio: auto;
-						background: #0a0a0a;
+						background: {isLightCanvas ? '#e8e8e8' : '#0a0a0a'};
 						overflow: {interactive ? 'visible' : 'hidden'};
 						z-index: {mediaSelected ? 8 : 1};
 					"
@@ -1478,7 +1496,7 @@
 						flex: 0 0 {letterboxBottomPct}%;
 						height: {letterboxBottomPct}%;
 						width: 100%;
-						background: #000;
+						background: {canvasFill};
 					"
 				></div>
 			</div>

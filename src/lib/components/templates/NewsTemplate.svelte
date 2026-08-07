@@ -465,9 +465,9 @@
 	});
 
 	let headlineEl = $state<HTMLElement | null>(null);
-	let headlineBlockEl = $state<HTMLElement | null>(null);
-	/** Template-px height of the headline block — keeps source parked above it by default. */
-	let headlineBlockH = $state(220);
+	/** Full headline + paragraph stack height — keeps source parked above both by default. */
+	let textStackEl = $state<HTMLElement | null>(null);
+	let textStackH = $state(220);
 	let sourceEl = $state<HTMLElement | null>(null);
 	let lastHeadlineRestoreNonce = $state(-1);
 
@@ -476,13 +476,13 @@
 	);
 
 	$effect(() => {
-		const el = headlineBlockEl;
+		const el = textStackEl;
 		if (!el || typeof ResizeObserver === 'undefined') {
-			headlineBlockH = 220;
+			textStackH = 220;
 			return;
 		}
 		const measure = () => {
-			headlineBlockH = Math.max(80, el.offsetHeight || 220);
+			textStackH = Math.max(80, el.offsetHeight || 220);
 		};
 		measure();
 		const ro = new ResizeObserver(measure);
@@ -2404,7 +2404,7 @@
 				<div
 					style="
 						width: 100%;
-						padding: 48px 64px {72 + headlineBlockH + 22}px;
+						padding: 48px 64px {72 + textStackH + 22}px;
 						box-sizing: border-box;
 						pointer-events: none;
 					"
@@ -2672,9 +2672,9 @@
 				role={interactive ? 'group' : undefined}
 				aria-label={interactive ? 'News text area' : undefined}
 			>
+			<div bind:this={textStackEl}>
 			<!-- Headline -->
 			<div
-				bind:this={headlineBlockEl}
 				style="
 					position: relative;
 					z-index: {selectedText === 'headline' || hoveringText || editing ? 70 : 50};
@@ -2905,6 +2905,7 @@
 			</DraggableBlock>
 			</div>
 			{/if}
+			</div>
 			</div>
 		</div>
 	</div>

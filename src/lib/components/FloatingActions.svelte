@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark } from 'lucide-svelte';
+	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark, Save } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 
 	interface $$Props {
@@ -19,6 +19,9 @@
 		onSaveTemplate?: (name: string) => void | Promise<void>;
 		/** Prefill for the save-template name field when the popover opens. */
 		defaultTemplateName?: string;
+		/** Explicit workspace draft save (listed under Carousels → Studio drafts). */
+		onSaveDraft?: () => void | Promise<void>;
+		draftSaving?: boolean;
 	}
 
 	let {
@@ -35,6 +38,8 @@
 		onBurnMusicClick = undefined,
 		onSaveTemplate = undefined,
 		defaultTemplateName = '',
+		onSaveDraft = undefined,
+		draftSaving = false,
 	} = ($props() as $$Props);
 
 	/** Host for fixed mode — portaled to `document.body` so nothing clips or re-parents the float. */
@@ -119,6 +124,11 @@
 			saveTemplateSaving = false;
 		}
 	}
+
+	async function handleSaveDraftClick() {
+		if (!onSaveDraft || draftSaving) return;
+		await onSaveDraft();
+	}
 </script>
 
 {#if hasSlides}
@@ -131,6 +141,24 @@
 			? ''
 			: `right:${rightOffsetPx}px;bottom:${bottomOffsetPx}px;z-index:${zIndex};`}
 	>
+		{#if typeof onSaveDraft === 'function'}
+			<button
+				type="button"
+				onclick={() => void handleSaveDraftClick()}
+				class="fa-btn"
+				disabled={draftSaving}
+				title="Save a workspace draft to Carousels"
+			>
+				{#if draftSaving}
+					<LoaderCircle size={13} class="animate-spin" />
+					Saving…
+				{:else}
+					<Save size={13} />
+					Save draft
+				{/if}
+			</button>
+		{/if}
+
 		<!-- Save template -->
 		{#if typeof onSaveTemplate === 'function'}
 			<div class="relative">
@@ -178,7 +206,7 @@
 								{/if}
 							</button>
 							<p class="text-[10px] leading-snug text-[rgba(10,10,10,0.38)]">
-								Shows up under Carousels. Studio also autosaves drafts as you edit.
+								Named copy under Carousels. Use Save draft for a quick workspace restore.
 							</p>
 						</div>
 					</div>
@@ -195,151 +223,6 @@
 				</button>
 			</div>
 		{/if}
-
-		<!-- POST -->
-		<div class="relative">
-			{#if showPostPanel}
-				<div class="panel absolute bottom-full mb-2 right-0 w-[340px] overflow-hidden">
-					<div class="panel-header">
-						<div class="flex items-center gap-2">
-							<Calendar size={13} class="text-[#0ea5e9]" />
-							<span class="panel-title">Schedule Post</span>
-						</div>
-						<button onclick={() => (showPostPanel = false)} class="panel-close" aria-label="Close">
-							<X size={11} />
-						</button>
-					</div>
-
-					<div class="p-4 flex flex-col gap-4">
-						<div>
-							<p class="panel-label">Platforms</p>
-							<div class="grid grid-cols-3 gap-2">
-								{#each [
-									{ id: 'instagram', name: 'Instagram', color: '#ec4899' },
-									{ id: 'linkedin', name: 'LinkedIn', color: '#3b82f6' },
-									{ id: 'pinterest', name: 'Pinterest', color: '#ef4444' },
-								] as platform}
-									<button
-										onclick={() => togglePlatform(platform.id)}
-										class="platform-btn"
-										class:platform-btn--active={selectedPlatforms.includes(platform.id)}
-										style="--platform-color: {platform.color};"
-									>
-										<span class="text-[9px] font-mono" style="color: {selectedPlatforms.includes(platform.id) ? platform.color : 'rgba(10,10,10,0.3)'};">{platform.name}</span>
-									</button>
-								{/each}
-							</div>
-						</div>
-
-						<div class="grid grid-cols-2 gap-2">
-							<div>
-								<p class="panel-label">Date</p>
-								<input type="date" bind:value={scheduleDate} class="panel-input" />
-							</div>
-							<div>
-								<p class="panel-label">Time</p>
-								<input type="time" bind:value={scheduleTime} class="panel-input" />
-							</div>
-						</div>
-
-						<button disabled class="panel-action-btn">
-							<Send size={13} class="opacity-40" />
-							Schedule Post
-							<span class="soon-badge">Soon</span>
-						</button>
-					</div>
-				</div>
-			{/if}
-
-			<button
-				onclick={handlePostClick}
-				disabled={posting}
-				class="fa-btn"
-				class:fa-btn--active={showPostPanel}
-			>
-				<Calendar size={13} />
-				{#if posting}
-					Exporting… <LoaderCircle size={13} class="animate-spin" />
-				{:else}
-					Post
-				{/if}
-			</button>
-		</div>
-
-		<!-- BURN MUSIC -->
-		<div class="relative">
-			{#if showMusicPanel && !onBurnMusicClick}
-				<div class="panel absolute bottom-full mb-2 right-0 w-[400px] overflow-hidden">
-					<div class="panel-header">
-						<div class="flex items-center gap-2">
-							<Music size={13} class="text-[#a78bfa]" />
-							<span class="panel-title">Burn Music</span>
-						</div>
-						<button onclick={() => (showMusicPanel = false)} class="panel-close" aria-label="Close">
-							<X size={11} />
-						</button>
-					</div>
-
-					<div class="max-h-[320px] overflow-y-auto" style="scrollbar-width:thin;">
-						{#each slideLabels as label, i}
-							{@const music = slideMusic[i] ?? { song: 'No music', seconds: 15 }}
-							<div class="music-row">
-								<div class="slide-badge">{i + 1}</div>
-								<span class="slide-label">{label}</span>
-								<select
-									value={music.song}
-									onchange={(e) => {
-										const arr = [...slideMusic];
-										if (!arr[i]) arr[i] = { song: 'No music', seconds: 15 };
-										arr[i] = { ...arr[i], song: (e.target as HTMLSelectElement).value };
-										slideMusic = arr;
-									}}
-									class="panel-select"
-								>
-									{#each SONG_OPTIONS as opt}
-										<option value={opt}>{opt}</option>
-									{/each}
-								</select>
-								<div class="flex items-center gap-1.5 flex-shrink-0">
-									<input type="range" min="1" max="60" step="1" value={music.seconds}
-										oninput={(e) => {
-											const arr = [...slideMusic];
-											if (!arr[i]) arr[i] = { song: 'No music', seconds: 15 };
-											arr[i] = { ...arr[i], seconds: parseInt((e.target as HTMLInputElement).value) };
-											slideMusic = arr;
-										}}
-										class="w-16 cursor-pointer"
-									/>
-									<span class="text-[9px] text-[rgba(10,10,10,0.3)] w-8 text-right">{music.seconds}s</span>
-								</div>
-							</div>
-						{/each}
-					</div>
-
-					<div class="p-3 border-t border-black/[0.06]">
-						<button disabled class="panel-action-btn">
-							<Music size={13} class="opacity-40" />
-							Export as Video
-							<span class="soon-badge">Coming soon</span>
-						</button>
-					</div>
-				</div>
-			{/if}
-
-			<button
-				onclick={async () => {
-					if (onBurnMusicClick) { await onBurnMusicClick(); return; }
-					showMusicPanel = !showMusicPanel;
-					showPostPanel = false;
-					showSavePanel = false;
-				}}
-				class="fa-btn"
-				class:fa-btn--active={showMusicPanel && !onBurnMusicClick}
-			>
-				<Music size={13} />
-				Burn
-			</button>
-		</div>
 
 		<!-- EXPORT ZIP -->
 		{#if typeof onExportZip === 'function'}
@@ -398,9 +281,9 @@
 	}
 
 	.fa-btn--active {
-		background: rgba(10, 10, 10, 0.88) !important;
-		color: rgba(255, 255, 255, 0.92) !important;
-		border-color: transparent !important;
+		background: #7bf1a8 !important;
+		color: #0f0f10 !important;
+		border-color: #7bf1a8 !important;
 	}
 
 	/* ── Floating panel ── */
@@ -496,18 +379,20 @@
 		justify-content: center;
 		gap: 8px;
 		padding: 10px 14px;
-		border-radius: 11px;
+		border-radius: 999px;
 		font-size: 12.5px;
 		font-weight: 600;
 		font-family: inherit;
-		color: #fff;
-		background: #0f0f10;
-		border: 1px solid transparent;
+		color: #0f0f10;
+		background: #7bf1a8;
+		border: 1px solid #7bf1a8;
 		cursor: pointer;
-		transition: background 140ms ease, transform 140ms ease;
+		transition: background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 	}
 	.panel-save-btn:hover:not(:disabled) {
-		background: #2a2a2e;
+		background: #a7f7c6;
+		border-color: #a7f7c6;
+		box-shadow: 0 8px 24px rgba(123, 241, 168, 0.35);
 	}
 	.panel-save-btn:active:not(:disabled) {
 		transform: scale(0.98);
