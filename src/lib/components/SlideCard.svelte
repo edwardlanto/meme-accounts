@@ -4,7 +4,7 @@
 	let {
 		slide,
 		images = [] as string[],
-		brandColor = '#E8FF48',
+		brandColor = '#7bf1a8',
 		brandName = 'Your Brand',
 		scale = 0.24,
 		total = 8,

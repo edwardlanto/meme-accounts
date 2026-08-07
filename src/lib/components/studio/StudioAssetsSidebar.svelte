@@ -1363,7 +1363,7 @@
 		transition: box-shadow 0.12s ease, transform 0.12s ease;
 	}
 	button.asset-thumb-btn:hover {
-		box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent, #e8ff48) 70%, transparent);
+		box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent, #7bf1a8) 70%, transparent);
 		transform: scale(1.02);
 	}
 	.asset-thumb img {

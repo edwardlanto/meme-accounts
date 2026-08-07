@@ -55,10 +55,10 @@
 	}
 
 	.layout-chip-on {
-		background: color-mix(in oklab, var(--accent, #e8ff48) 22%, var(--panel-bg, #fff));
-		border-color: color-mix(in oklab, var(--accent, #e8ff48) 55%, transparent);
+		background: color-mix(in oklab, var(--accent, #7bf1a8) 22%, var(--panel-bg, #fff));
+		border-color: color-mix(in oklab, var(--accent, #7bf1a8) 55%, transparent);
 		color: var(--t-strong, #111);
-		box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent, #e8ff48) 35%, transparent);
+		box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent, #7bf1a8) 35%, transparent);
 	}
 
 	.layout-chip:disabled {

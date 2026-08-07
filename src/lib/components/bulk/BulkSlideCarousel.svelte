@@ -403,7 +403,7 @@
 		opacity: 0.92;
 	}
 	.score-hot {
-		background: #e8ff48;
+		background: #7bf1a8;
 		color: #080808;
 	}
 	.score-mid {
@@ -440,7 +440,7 @@
 	}
 	.carousel-dot.dot-on {
 		width: 0.62rem;
-		background: var(--app-accent, #e8ff48);
+		background: var(--app-accent, #7bf1a8);
 		transform: scale(1.08);
 	}
 </style>

@@ -16,7 +16,7 @@
 	// ── Data ──────────────────────────────────────────────────────────────
 	let slides = $state<any[]>([]);
 	let images = $state<string[]>([]);
-	let brandColor = $state('#E8FF48');
+	let brandColor = $state('#7bf1a8');
 	let brandName = $state('Your Brand');
 	let loading = $state(true);
 
@@ -721,7 +721,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		background: #E8FF48;
+		background: #7bf1a8;
 		color: #0a0a0a;
 		border: none;
 		border-radius: 8px;
@@ -749,7 +749,7 @@
 	}
 	.progress-fill {
 		height: 100%;
-		background: #E8FF48;
+		background: #7bf1a8;
 		border-radius: 100px;
 		transition: width 0.3s;
 	}
@@ -802,7 +802,7 @@
 
 	.total-dur {
 		margin-left: auto;
-		color: #E8FF48;
+		color: #7bf1a8;
 		font-size: 11px;
 	}
 
@@ -854,14 +854,14 @@
 	.apply-all {
 		font-family: 'Satoshi', sans-serif;
 		font-size: 10px;
-		color: rgba(232,255,72,0.5);
+		color: rgba(123,241,168,0.5);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		text-decoration: underline;
 		padding: 0;
 	}
-	.apply-all:hover { color: #E8FF48; }
+	.apply-all:hover { color: #7bf1a8; }
 
 	.slide-list {
 		flex: 1;
@@ -880,7 +880,7 @@
 		transition: background 0.1s;
 	}
 	.slide-row:hover { background: rgba(255,255,255,0.03); }
-	.slide-row.active { background: rgba(232,255,72,0.04); }
+	.slide-row.active { background: rgba(123,241,168,0.04); }
 
 	.mini-thumb {
 		width: 59px;
@@ -945,7 +945,7 @@
 	}
 	.slide-progress-fill {
 		height: 100%;
-		background: #E8FF48;
+		background: #7bf1a8;
 		transition: width 0.05s linear;
 	}
 
@@ -981,7 +981,7 @@
 		cursor: pointer;
 		transition: all 0.15s;
 	}
-	.play-btn:hover { background: rgba(232,255,72,0.15); border-color: rgba(232,255,72,0.4); }
+	.play-btn:hover { background: rgba(123,241,168,0.15); border-color: rgba(123,241,168,0.4); }
 
 	.slide-counter {
 		position: absolute;
@@ -1018,7 +1018,7 @@
 	.film-chip:hover { opacity: 0.7; }
 	.film-chip.active {
 		opacity: 1;
-		border-color: #E8FF48;
+		border-color: #7bf1a8;
 	}
 
 	.time-info {
@@ -1063,8 +1063,8 @@
 		text-align: center;
 	}
 	.audio-drop:hover, .audio-drop.dropping {
-		border-color: rgba(232,255,72,0.35);
-		background: rgba(232,255,72,0.03);
+		border-color: rgba(123,241,168,0.35);
+		background: rgba(123,241,168,0.03);
 	}
 	.hidden-input { display: none; }
 
@@ -1130,7 +1130,7 @@
 	.tip-list li::before {
 		content: '→';
 		position: absolute; left: 0;
-		color: rgba(232,255,72,0.4);
+		color: rgba(123,241,168,0.4);
 	}
 
 	/* ── Audio loaded ────────────────────────────────────────────────────── */
@@ -1154,10 +1154,10 @@
 	.audio-icon-wrap {
 		width: 34px; height: 34px;
 		border-radius: 8px;
-		background: rgba(232,255,72,0.1);
-		border: 1px solid rgba(232,255,72,0.2);
+		background: rgba(123,241,168,0.1);
+		border: 1px solid rgba(123,241,168,0.2);
 		display: flex; align-items: center; justify-content: center;
-		color: #E8FF48;
+		color: #7bf1a8;
 		flex-shrink: 0;
 	}
 
@@ -1203,7 +1203,7 @@
 
 	.wave-bar {
 		flex: 1;
-		background: rgba(232,255,72,0.35);
+		background: rgba(123,241,168,0.35);
 		border-radius: 2px;
 		min-height: 4px;
 		animation: wavePulse 2s ease-in-out infinite alternate;
@@ -1222,7 +1222,7 @@
 	.vol-slider {
 		flex: 1;
 		height: 3px;
-		accent-color: #E8FF48;
+		accent-color: #7bf1a8;
 		cursor: pointer;
 	}
 
@@ -1282,7 +1282,7 @@
 		gap: 8px;
 		padding: 12px;
 		border-radius: 10px;
-		background: #E8FF48;
+		background: #7bf1a8;
 		color: #0a0a0a;
 		font-weight: 700;
 		font-size: 14px;
@@ -1294,7 +1294,7 @@
 	.big-export-btn:hover:not(:disabled) {
 		background: #f0ff6e;
 		transform: translateY(-1px);
-		box-shadow: 0 8px 24px rgba(232,255,72,0.25);
+		box-shadow: 0 8px 24px rgba(123,241,168,0.25);
 	}
 	.big-export-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
@@ -1310,10 +1310,10 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
-		color: #E8FF48;
+		color: #7bf1a8;
 		text-align: center;
 	}
-	.export-done p { font-size: 13px; font-weight: 600; margin: 0; color: #E8FF48; }
+	.export-done p { font-size: 13px; font-weight: 600; margin: 0; color: #7bf1a8; }
 	.export-done-sub { font-size: 11px; color: rgba(255,255,255,0.3) !important; }
 
 	.export-error {
@@ -1343,7 +1343,7 @@
 	}
 	.render-progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #E8FF48, #a3ff00);
+		background: linear-gradient(90deg, #7bf1a8, #a3ff00);
 		border-radius: 100px;
 		transition: width 0.4s ease;
 	}
@@ -1356,12 +1356,12 @@
 	.render-pct {
 		font-family: 'Satoshi', sans-serif;
 		font-size: 13px;
-		color: #E8FF48;
+		color: #7bf1a8;
 		margin: 0;
 	}
 
 	/* ── Utility ─────────────────────────────────────────────────────────── */
-	:global(.lime) { color: #E8FF48; }
+	:global(.lime) { color: #7bf1a8; }
 	:global(.muted) { color: rgba(255,255,255,0.25); }
 	:global(.spin) { animation: spin 1s linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }

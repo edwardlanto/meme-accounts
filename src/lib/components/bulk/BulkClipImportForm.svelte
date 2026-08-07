@@ -471,7 +471,7 @@
 		text-align: left;
 	}
 	.recent-item:hover:not(:disabled) {
-		border-color: var(--app-accent, #e8ff48);
+		border-color: var(--app-accent, #7bf1a8);
 	}
 	.recent-title {
 		flex: 1;
@@ -506,8 +506,8 @@
 		cursor: pointer;
 	}
 	.tabs button.tab-on {
-		border-color: var(--app-accent, #e8ff48);
-		background: color-mix(in oklab, var(--app-accent, #e8ff48) 18%, transparent);
+		border-color: var(--app-accent, #7bf1a8);
+		background: color-mix(in oklab, var(--app-accent, #7bf1a8) 18%, transparent);
 		color: var(--app-text);
 	}
 	.field {
@@ -545,7 +545,7 @@
 		padding: 0.55rem 0.75rem;
 		border: none;
 		border-radius: 10px;
-		background: var(--app-accent, #e8ff48);
+		background: var(--app-accent, #7bf1a8);
 		color: #080808;
 		font-size: 0.85rem;
 		font-weight: 700;
@@ -569,8 +569,8 @@
 		text-align: center;
 	}
 	.dropzone.drag-on {
-		border-color: var(--app-accent, #e8ff48);
-		background: color-mix(in oklab, var(--app-accent, #e8ff48) 12%, transparent);
+		border-color: var(--app-accent, #7bf1a8);
+		background: color-mix(in oklab, var(--app-accent, #7bf1a8) 12%, transparent);
 	}
 	.dropzone p {
 		margin: 0;

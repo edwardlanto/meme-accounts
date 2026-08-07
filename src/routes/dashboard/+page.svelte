@@ -4,32 +4,99 @@
 	import { goto } from '$app/navigation';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
-		ArrowRight, ImagePlus, Sparkles, Layers, BarChart3, Trash2, ArrowUpRight, Rows3, Video, LayoutTemplate
+		ArrowRight, ImagePlus, Trash2, ArrowUpRight, Rows3, Video, LayoutTemplate
 	} from 'lucide-svelte';
 
+	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte`. */
+	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
 
+	type DraftRow = { id: string; updated_at: string; state?: Record<string, unknown>; created_at?: string };
+
 	let loading = $state(true);
 	let userId = $state('');
-	let studioSavedTemplates = $state<{ id: string; updated_at: string; state?: Record<string, unknown> }[]>(
-		[],
-	);
+	let recentCarousels = $state<DraftRow[]>([]);
+	let recentCarouselThumbById = $state<Record<string, string>>({});
+	let studioSavedTemplates = $state<DraftRow[]>([]);
 	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
 
 	const primaryCards = [
-		{ href: '/dashboard/branding',       icon: Sparkles,  label: 'Generate Image', sub: 'Branding generator',  accent: '#7c3aed', tint: '#f3e8ff' },
 		{ href: '/dashboard/templates',      icon: LayoutTemplate, label: 'Templates', sub: 'Layouts & starters', accent: '#0891b2', tint: '#cffafe' },
 		{ href: '/dashboard/carousels',      icon: ImagePlus, label: 'Carousels', sub: 'Your generated posts', accent: '#0284c7', tint: '#e0f2fe' },
 		{ href: '/dashboard/bulk',           icon: Rows3,     label: 'Bulk',     sub: 'Edit slideshows + clips', accent: '#0f766e', tint: '#ccfbf1' },
 		{ href: '/dashboard/videos',         icon: Video,     label: 'Videos',   sub: 'Paste link → find clips', accent: '#e11d48', tint: '#ffe4e6' },
-		{ href: '/dashboard/studio?template=news', icon: Layers, label: 'News Studio', sub: 'News → post', accent: '#ea580c', tint: '#ffedd5' },
-		{ href: '/dashboard/analytics',      icon: BarChart3, label: 'Analytics',      sub: 'Track performance',    accent: '#16a34a', tint: '#dcfce7' },
 	] as const;
 
-	function studioSavedTemplateName(row: { state?: Record<string, unknown> }): string {
+	function stripMarkup(s: string): string {
+		return String(s ?? '')
+			.replace(/<\/?[^>]+>/g, '')
+			.replace(/\*\*|__/g, '')
+			.replace(/[*_]/g, '');
+	}
+
+	function timeAgo(dateStr: string): string {
+		const d = new Date(dateStr);
+		const diff = Date.now() - d.getTime();
+		const m = Math.floor(diff / 60000);
+		if (m < 1) return 'just now';
+		if (m < 60) return `${m}m ago`;
+		const h = Math.floor(m / 60);
+		if (h < 24) return `${h}h ago`;
+		return `${Math.floor(h / 24)}d ago`;
+	}
+
+	function carouselTitle(d: DraftRow): string {
+		const slides = d.state?.slides;
+		if (Array.isArray(slides) && slides.length) {
+			const t = stripMarkup(String(slides[0] ?? ''))
+				.trim()
+				.replace(/\s+/g, ' ');
+			if (t) return t.length > 64 ? `${t.slice(0, 61)}…` : t;
+		}
+		const src = d.state?.source;
+		if (typeof src === 'string' && src.trim()) {
+			const t = src.trim();
+			return t.length > 64 ? `${t.slice(0, 61)}…` : t;
+		}
+		return 'Untitled carousel';
+	}
+
+	function studioSavedTemplateName(row: DraftRow): string {
 		const raw = String((row.state as Record<string, unknown> | undefined)?._templateName ?? '').trim();
 		return raw || 'Untitled template';
+	}
+
+	async function signPreviewKey(key: string): Promise<string> {
+		const k = String(key ?? '').trim();
+		if (!k) return '';
+		try {
+			const { url } = await r2SignRead({ key: k });
+			return String(url ?? '').trim();
+		} catch {
+			return '';
+		}
+	}
+
+	async function hydrateRecentCarouselThumbs() {
+		const rows = recentCarousels;
+		if (!userId || !rows.length) {
+			recentCarouselThumbById = {};
+			return;
+		}
+		const next: Record<string, string> = {};
+		await Promise.all(
+			rows.map(async (row) => {
+				const id = String(row.id ?? '').trim();
+				if (!id) return;
+				const s = row.state;
+				const key =
+					String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+				const url = await signPreviewKey(key);
+				if (url) next[id] = url;
+			}),
+		);
+		recentCarouselThumbById = next;
 	}
 
 	async function hydrateSavedTemplateThumbs() {
@@ -43,28 +110,26 @@
 			rows.map(async (row) => {
 				const id = String(row.id ?? '').trim();
 				if (!id) return;
-				const s = row.state as Record<string, unknown> | undefined;
+				const s = row.state;
 				const key =
 					String(s?.draftPreviewKey ?? '').trim() ||
 					String(s?.draftPreviewPath ?? '').trim() ||
 					`${userId}/templates/${id}.png`;
-				try {
-					const { url } = await r2SignRead({ key });
-					next[id] = url;
-				} catch {
-					// ignore
-				}
+				const url = await signPreviewKey(key);
+				if (url) next[id] = url;
 			}),
 		);
 		studioSavedTemplateThumbById = next;
 	}
 
-	function studioSavedTemplatePreviewUrl(row: {
-		state?: Record<string, unknown>;
-	}): { url: string; fullSlideRaster: boolean } {
-		const signed = studioSavedTemplateThumbById[String((row as { id?: string }).id ?? '').trim()];
+	function draftPreviewUrl(
+		row: DraftRow,
+		signedMap: Record<string, string>,
+	): { url: string; fullSlideRaster: boolean } {
+		const id = String(row.id ?? '').trim();
+		const signed = signedMap[id];
 		if (signed) return { url: signed, fullSlideRaster: true };
-		const s = row.state as Record<string, unknown> | undefined;
+		const s = row.state;
 		const draftPreviewUrl = String(s?.draftPreviewUrl ?? '').trim();
 		if (draftPreviewUrl.startsWith('http://') || draftPreviewUrl.startsWith('https://')) {
 			return { url: draftPreviewUrl, fullSlideRaster: true };
@@ -80,7 +145,7 @@
 		if (!confirm('Delete this saved template? This cannot be undone.')) return;
 		try {
 			const row = studioSavedTemplates.find((x) => x.id === id);
-			const s = row?.state as Record<string, unknown> | undefined;
+			const s = row?.state;
 			const key =
 				String(s?.draftPreviewKey ?? '').trim() ||
 				String(s?.draftPreviewPath ?? '').trim() ||
@@ -105,21 +170,58 @@
 		studioSavedTemplateThumbById = next;
 	}
 
+	async function deleteRecentCarousel(id: string) {
+		if (!confirm('Delete this carousel draft? This cannot be undone.')) return;
+		try {
+			const row = recentCarousels.find((x) => x.id === id);
+			const s = row?.state;
+			const key =
+				String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+			if (key) await r2DeleteObject({ key });
+		} catch {
+			// ignore
+		}
+		const { error } = await (supabase as any)
+			.from('drafts')
+			.delete()
+			.eq('id', id)
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND);
+		if (error) {
+			alert(error.message ?? 'Could not delete carousel');
+			return;
+		}
+		recentCarousels = recentCarousels.filter((x) => x.id !== id);
+		const next = { ...recentCarouselThumbById };
+		delete next[id];
+		recentCarouselThumbById = next;
+	}
+
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
 
-		const savedTplRes = await (supabase as any)
-			.from('drafts')
-			.select('id,updated_at,state')
-			.eq('user_id', user.id)
-			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
-			.order('updated_at', { ascending: false })
-			.limit(12);
+		const [draftRes, savedTplRes] = await Promise.all([
+			(supabase as any)
+				.from('drafts')
+				.select('id,updated_at,created_at,state')
+				.eq('user_id', user.id)
+				.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND)
+				.order('updated_at', { ascending: false })
+				.limit(8),
+			(supabase as any)
+				.from('drafts')
+				.select('id,updated_at,state')
+				.eq('user_id', user.id)
+				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+				.order('updated_at', { ascending: false })
+				.limit(12),
+		]);
 
+		recentCarousels = draftRes.data ?? [];
 		studioSavedTemplates = savedTplRes.data ?? [];
-		await hydrateSavedTemplateThumbs();
+		await Promise.all([hydrateRecentCarouselThumbs(), hydrateSavedTemplateThumbs()]);
 		loading = false;
 	});
 </script>
@@ -134,13 +236,13 @@
 				<span class="hero-dot"></span>
 				<span>Studio</span>
 			</div>
-			<h1 class="hero-title">Start by generating a free image</h1>
+			<h1 class="hero-title">Create your next post</h1>
 			<p class="hero-sub">
-				Upload a style reference, choose a size preset, and generate a branded slideshow in seconds.
+				Pick a template, build a carousel, or pull clips from a video — then ship from Studio.
 			</p>
 			<div class="hero-actions">
-				<a href="/dashboard/branding" class="btn btn-dark">
-					Generate
+				<a href="/dashboard/templates" class="btn btn-dark">
+					Browse templates
 					<ArrowRight size={14} />
 				</a>
 				<a href="/dashboard/carousels/new" class="btn btn-ghost">
@@ -170,14 +272,80 @@
 		{/each}
 	</section>
 
-	<!-- ── Saved templates ────────────────────────────────── -->
 	{#if !loading}
+		<!-- ── Recent carousels ───────────────────────────────── -->
+		<section class="saved-section" aria-labelledby="recent-carousels-heading">
+			<div class="saved-section-head saved-section-head--row">
+				<div class="saved-section-titles">
+					<h2 id="recent-carousels-heading" class="saved-section-title">Recent carousels</h2>
+					<p class="saved-section-sub">
+						Your latest Studio drafts — open one to keep editing.
+					</p>
+				</div>
+				<a class="saved-section-all" href="/dashboard/carousels">
+					View all
+					<ArrowRight size={13} />
+				</a>
+			</div>
+
+			{#if recentCarousels.length > 0}
+				<div class="saved-templates-grid">
+					{#each recentCarousels as row (row.id)}
+						{@const pv = draftPreviewUrl(row, recentCarouselThumbById)}
+						<div class="saved-template-tile group">
+							<a
+								class="saved-template-link"
+								href="/dashboard/studio?draft={row.id}"
+								aria-label="Open carousel {carouselTitle(row)}"
+							>
+								{#if pv.url}
+									<img
+										src={pv.url}
+										alt=""
+										class="saved-template-img"
+										class:saved-template-img--full={pv.fullSlideRaster}
+										referrerpolicy="no-referrer"
+										loading="lazy"
+										draggable="false"
+									/>
+								{:else}
+									<div class="saved-template-empty">
+										<span class="saved-template-empty-text">{carouselTitle(row)}</span>
+									</div>
+								{/if}
+								<div class="saved-template-meta">
+									<span class="saved-template-meta-title">{carouselTitle(row)}</span>
+									<span class="saved-template-meta-time">{timeAgo(row.updated_at)}</span>
+								</div>
+							</a>
+							<button
+								type="button"
+								class="saved-template-del"
+								title="Delete carousel"
+								aria-label="Delete carousel"
+								onclick={() => void deleteRecentCarousel(row.id)}
+							>
+								<Trash2 size={12} />
+							</button>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="saved-empty">
+					No carousels yet.
+					<a class="saved-section-link" href="/dashboard/templates">Pick a template</a>
+					to start one — it will show up here.
+				</p>
+			{/if}
+		</section>
+
+		<!-- ── Saved templates ────────────────────────────────── -->
 		<section class="saved-section" aria-labelledby="saved-templates-heading">
 			<div class="saved-section-head">
 				<div class="saved-section-titles">
 					<h2 id="saved-templates-heading" class="saved-section-title">Saved templates</h2>
 					<p class="saved-section-sub">
-						Layouts you saved from News Studio. Open one to keep editing, or manage the full list on
+						Layouts you saved from Studio. Open one to keep editing, or manage the full list on
 						<a class="saved-section-link" href="/dashboard/carousels">Carousels</a>.
 					</p>
 				</div>
@@ -186,7 +354,7 @@
 			{#if studioSavedTemplates.length > 0}
 				<div class="saved-templates-grid">
 					{#each studioSavedTemplates as row (row.id)}
-						{@const pv = studioSavedTemplatePreviewUrl(row)}
+						{@const pv = draftPreviewUrl(row, studioSavedTemplateThumbById)}
 						<div class="saved-template-tile group">
 							<a
 								class="saved-template-link"
@@ -224,7 +392,7 @@
 			{:else}
 				<p class="saved-empty">
 					No saved templates yet. In
-					<a class="saved-section-link" href="/dashboard/studio?template=news">News Studio</a>, save a
+					<a class="saved-section-link" href="/dashboard/studio">Studio</a>, save a
 					layout and it will show up here.
 				</p>
 			{/if}
@@ -372,13 +540,15 @@
 		white-space: nowrap;
 	}
 	.btn-dark {
-		background: #ffffff;
+		background: #7bf1a8;
 		color: #0a0a0a;
-		border-color: #ffffff;
+		border-color: #7bf1a8;
 	}
 	.btn-dark:hover {
 		transform: translateY(-1px);
-		box-shadow: 0 12px 28px -10px rgba(255, 255, 255, 0.35);
+		background: #a7f7c6;
+		border-color: #a7f7c6;
+		box-shadow: 0 12px 28px -10px rgba(123, 241, 168, 0.45);
 	}
 	.btn-ghost {
 		color: rgba(255, 255, 255, 0.92);
@@ -622,4 +792,64 @@
 		.hero-glow { animation: none; }
 		.hero, .card, .saved-section { animation: none; }
 	}
+
+	.saved-section-head--row {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
+	.saved-section-all {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
+		margin-top: 4px;
+		padding: 7px 12px;
+		border-radius: 999px;
+		border: 1px solid var(--ap-line);
+		background: var(--ap-soft);
+		color: var(--ap-text);
+		font-size: 12px;
+		font-weight: 600;
+		text-decoration: none;
+		transition: border-color 0.2s, background 0.2s, transform 0.2s;
+	}
+	.saved-section-all:hover {
+		border-color: var(--ap-line-2);
+		transform: translateY(-1px);
+	}
+	.saved-template-meta {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		padding: 28px 12px 12px;
+		background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.72) 55%);
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		pointer-events: none;
+	}
+	.saved-template-meta-title {
+		color: #fff;
+		font-size: 12px;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+		display: -webkit-box;
+		line-clamp: 2;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.saved-template-meta-time {
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 10.5px;
+		font-weight: 500;
+	}
+	@media (max-width: 640px) {
+		.saved-section-head--row { flex-direction: column; align-items: stretch; }
+		.saved-section-all { align-self: flex-start; }
+	}
+
 </style>

@@ -182,7 +182,7 @@
 
 <style>
 	.page {
-		--lime: #e8ff48;
+		--lime: #7bf1a8;
 		--orange: #ff6b35;
 		--ink: #0a0505;
 		--paper: #f7f4ef;

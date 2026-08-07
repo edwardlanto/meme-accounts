@@ -365,7 +365,7 @@
 									<HighlightedText
 										as="div"
 										text={headline}
-										parseHighlights={false}
+										parseHighlights={true}
 										style="
 											margin: 0;
 											white-space: pre-wrap;

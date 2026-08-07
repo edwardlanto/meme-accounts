@@ -284,6 +284,7 @@
 								<HighlightedText
 									as="div"
 									text={displayText}
+									parseHighlights={true}
 									defaultColor={highlightColor}
 									style="
 										color: {baseText};

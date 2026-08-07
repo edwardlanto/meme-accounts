@@ -162,13 +162,6 @@
 						: 'Welcome back — continue to your dashboard.'}
 				</p>
 
-				{#if modal.mode === 'signup'}
-					<label class="marketing-opt">
-						<input type="checkbox" bind:checked={marketingEmails} class="marketing-check" />
-						<span class="marketing-copy">Send me tips &amp; deals — unsubscribe anytime</span>
-					</label>
-				{/if}
-
 				<button type="button" class="oauth-btn" onclick={loginWithGoogle}>
 					<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
 						<path

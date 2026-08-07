@@ -707,8 +707,8 @@
 	}
 
 	.feed-card-on {
-		border-color: color-mix(in oklab, #e8ff48 45%, var(--app-border));
-		box-shadow: 0 0 0 1px color-mix(in oklab, #e8ff48 20%, transparent);
+		border-color: color-mix(in oklab, #7bf1a8 45%, var(--app-border));
+		box-shadow: 0 0 0 1px color-mix(in oklab, #7bf1a8 20%, transparent);
 	}
 
 	.feed-card-media {
@@ -746,15 +746,15 @@
 	}
 
 	.btn-reframe-done {
-		border-color: color-mix(in oklab, #e8ff48 40%, var(--app-border));
-		background: color-mix(in oklab, #e8ff48 8%, transparent);
-		color: #e8ff48;
+		border-color: color-mix(in oklab, #7bf1a8 40%, var(--app-border));
+		background: color-mix(in oklab, #7bf1a8 8%, transparent);
+		color: #7bf1a8;
 	}
 
 	.btn-reframe-busy {
-		border-color: color-mix(in oklab, #e8ff48 35%, var(--app-border));
-		background: color-mix(in oklab, #e8ff48 6%, transparent);
-		color: #e8ff48;
+		border-color: color-mix(in oklab, #7bf1a8 35%, var(--app-border));
+		background: color-mix(in oklab, #7bf1a8 6%, transparent);
+		color: #7bf1a8;
 	}
 
 	.phone-frame {
@@ -1214,7 +1214,7 @@
 
 	.progress-fill {
 		height: 100%;
-		background: #e8ff48;
+		background: #7bf1a8;
 		transition: width 0.1s linear;
 	}
 
@@ -1345,7 +1345,7 @@
 		padding: 0.45rem 1.05rem;
 		border-radius: 0.45rem;
 		border: 0;
-		background: #e8ff48;
+		background: #7bf1a8;
 		color: #080808;
 		font-size: 0.8rem;
 		font-weight: 700;
@@ -1411,9 +1411,9 @@
 
 	.btn-carousel:hover,
 	.btn-carousel-on {
-		border-color: color-mix(in oklab, #e8ff48 40%, var(--app-border));
-		background: color-mix(in oklab, #e8ff48 10%, transparent);
-		color: #e8ff48;
+		border-color: color-mix(in oklab, #7bf1a8 40%, var(--app-border));
+		background: color-mix(in oklab, #7bf1a8 10%, transparent);
+		color: #7bf1a8;
 	}
 
 	.carousel-builder {
@@ -1455,8 +1455,8 @@
 	}
 
 	.carousel-chip-on {
-		border-color: color-mix(in oklab, #e8ff48 45%, var(--app-border));
-		background: color-mix(in oklab, #e8ff48 10%, transparent);
+		border-color: color-mix(in oklab, #7bf1a8 45%, var(--app-border));
+		background: color-mix(in oklab, #7bf1a8 10%, transparent);
 		color: #c8e838;
 	}
 
@@ -1466,7 +1466,7 @@
 		width: 1rem;
 		height: 1rem;
 		border-radius: 999px;
-		background: #e8ff48;
+		background: #7bf1a8;
 		color: #080808;
 		font-size: 0.58rem;
 		font-weight: 800;
@@ -1483,7 +1483,7 @@
 		padding: 0.4rem 0.85rem;
 		border-radius: 0.45rem;
 		border: 0;
-		background: #e8ff48;
+		background: #7bf1a8;
 		color: #080808;
 		font-size: 0.78rem;
 		font-weight: 700;

@@ -17,7 +17,7 @@ const initial: WizardState = {
 	slides: [],
 	topic: '',
 	style: 'dark',
-	brandColor: '#E8FF48',
+	brandColor: '#7bf1a8',
 	brandName: 'Your Brand',
 };
 

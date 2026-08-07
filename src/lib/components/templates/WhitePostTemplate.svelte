@@ -316,7 +316,7 @@
 							<HighlightedText
 								as="div"
 								text={bodyDisplay}
-								parseHighlights={false}
+								parseHighlights={true}
 								style="
 									margin: 0;
 									white-space: pre-wrap;

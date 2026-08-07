@@ -469,7 +469,7 @@
 								<HighlightedText
 									as="div"
 									text={headline}
-									parseHighlights={false}
+									parseHighlights={true}
 									defaultColor={highlightColor}
 									style="
 										margin: 0;
@@ -494,8 +494,8 @@
 							<div style="text-align: {headlineStyle.align ?? (isHookLayout ? 'left' : 'center')}; width: 100%;">
 								<HighlightedText
 									as="div"
-									text={isHookLayout ? stripMarkup(headline) : headline}
-									parseHighlights={false}
+									text={headline}
+									parseHighlights={true}
 									defaultColor={highlightColor}
 									style="
 										margin: 0;
@@ -968,8 +968,8 @@
 									>
 										<HighlightedText
 											as="div"
-											text={stripMarkup(headline)}
-											parseHighlights={false}
+											text={headline}
+											parseHighlights={true}
 											defaultColor={highlightColor}
 											style="
 												margin: 0;
@@ -1144,7 +1144,7 @@
 									<HighlightedText
 										as="div"
 										text={headline?.trim() ?? ''}
-										parseHighlights={false}
+										parseHighlights={true}
 										defaultColor="#ffffff"
 										style="
 											margin: 0;

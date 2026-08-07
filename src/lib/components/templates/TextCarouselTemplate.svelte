@@ -105,7 +105,8 @@
 		return ink === s.color ? s : { ...s, color: ink };
 	}
 
-	const bodyDisplayText = $derived(stripMarkup((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body));
+	const bodyDisplayText = $derived((text && text.trim()) ? text : TEXT_CAROUSEL_DEFAULTS.body);
+	const bodyPlainForSizing = $derived(stripMarkup(bodyDisplayText));
 
 	const toolbarBodyFontPx = $derived(textCarouselStyles.textCarouselBody?.fontSize ?? null);
 
@@ -122,7 +123,7 @@
 			...merged,
 			fontFamily: merged.fontFamily ?? DEFAULT_BODY_FONT,
 			fontWeight: merged.fontWeight ?? 400,
-			fontSize: merged.fontSize ?? autoTextCarouselFontPx(bodyDisplayText, toolbarBodyFontPx),
+			fontSize: merged.fontSize ?? autoTextCarouselFontPx(bodyPlainForSizing, toolbarBodyFontPx),
 			lineHeight: merged.lineHeight ?? 1.38,
 			align: merged.align ?? 'left',
 		};
@@ -380,6 +381,8 @@
 							<HighlightedText
 								as="div"
 								text={bodyDisplayText}
+								parseHighlights={true}
+								defaultColor="#F5A623"
 								style="margin: 0; letter-spacing: -0.8px; word-break: break-word; white-space: pre-wrap; text-align: left; color: {baseText}; {bodyMergedCss}"
 							/>
 						{/snippet}

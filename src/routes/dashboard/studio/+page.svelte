@@ -2801,9 +2801,29 @@ import JSZip from 'jszip';
 	let textColor = $state('#0a0a0a');
 	let textColorTouched = $state(false);
 	let uiTheme = $state<'light' | 'dark'>('light');
+	/** Studio canvas fill: white vs black (independent of dashboard chrome theme). */
+	let canvasBgDark = $state(false);
+	const canvasTheme = $derived<'light' | 'dark'>(canvasBgDark ? 'dark' : 'light');
+	const canvasSolidHex = $derived(canvasBgDark ? '#000000' : '#ffffff');
 
-	const textCarouselDefaultAvatarBg = $derived(uiTheme === 'dark' ? '#0a0a0a' : '#ffffff');
+	const textCarouselDefaultAvatarBg = $derived(canvasBgDark ? '#0a0a0a' : '#ffffff');
 
+	function setCanvasBackgroundDark(dark: boolean) {
+		if (canvasBgDark === dark) return;
+		canvasBgDark = dark;
+		if (!textColorTouched) {
+			textColor = dark ? '#FFFFFF' : '#0a0a0a';
+		}
+		const hex = dark ? '#000000' : '#ffffff';
+		const t = previewTemplate;
+		if (t === 'news' || t === 'blank') {
+			pushUndo(t, paintSlide);
+			// Keep media; only set the solid fill behind / instead of gradient.
+			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
+				i === paintSlide ? hex : (newsSolidBgBySlide[i] ?? ''),
+			);
+		}
+	}
 	onMount(() => {
 		// Track global theme changes (dashboard toggle updates <html data-theme="...">).
 		const readTheme = (): 'light' | 'dark' => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
@@ -3804,6 +3824,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			// News
 			case 'source': return 34;
 			case 'headline': return undefined; // News headline auto-sizes based on length
+			case 'newsSubtext': return 32;
 
 			// Article
 			case 'articleBody': return 46;
@@ -3869,6 +3890,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (newsHeadlineLive !== null) return newsHeadlineLive;
 			return slides[si] ?? '';
 		}
+		if (selectedText === 'newsSubtext') return newsSubtextBySlide[si] ?? '';
 		if (selectedText === 'articleBody') return articleTextBySlide[si] ?? '';
 		if (selectedText === 'textCarouselBody') return textCarouselTextBySlide[si] ?? '';
 		if (selectedText === 'tweetBottomText') return tweetBottomTextBySlide[si] ?? '';
@@ -4188,6 +4210,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		const clearTextKinds = new Set<TextElementKind>([
 			'headline',
+			'newsSubtext',
 			'source',
 			'articleBody',
 			'articleSwipeText',
@@ -4223,6 +4246,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				} else {
 					slides = slides.map((s, i) => (i === slide ? '' : s));
 				}
+				break;
+			case 'newsSubtext':
+				newsSubtextBySlide = newsSubtextBySlide.map((x, i) => (i === slide ? '' : x));
 				break;
 			case 'source':
 				if (sourceLabelMode === 'logo') {
@@ -4533,6 +4559,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const canvasTextOverlays = $derived((slideTextOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []);
 	const canvasStyleMap = $derived((stylesByTemplateBySlide[previewTemplate] ?? [])[paintSlide] ?? {});
 	const canvasHeadlineStyle = $derived(canvasStyleMap.headline ?? {});
+	const canvasNewsSubtextStyle = $derived(canvasStyleMap.newsSubtext ?? {});
 	const canvasSourceStyle = $derived(canvasStyleMap.source ?? {});
 	const canvasVideoStoryHeadlineStyle = $derived(canvasStyleMap.videoStoryHeadline ?? {});
 	const canvasVideoStoryWatermarkStyle = $derived(canvasStyleMap.videoStoryWatermark ?? {});
@@ -8020,6 +8047,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		newsSolidBgBySlide = Array.from({ length: slides.length }, (_, i) =>
 			i === slideIdx ? c : (newsSolidBgBySlide[i] ?? '')
 		);
+		const low = c.toLowerCase();
+		if (low === '#000000' || low === '#000' || low === '#0a0a0a') canvasBgDark = true;
+		else if (low === '#ffffff' || low === '#fff' || low === '#f8fafc') canvasBgDark = false;
 		solidBgPopoverOpen = false;
 	}
 
@@ -8764,15 +8794,15 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	/** Letterboxing for filmstrip / burn-music PNGs — align with each template’s real canvas fill. */
 	function filmstripPngBackgroundForSlide(slideIdx: number): string {
 		const t = coerceTemplateId(slideTemplates[slideIdx] ?? 'news');
-		if (t === 'blank') {
-			const solid = String(newsSolidBgBySlide[slideIdx] ?? '').trim();
-			if (solid) return solid;
+		const solid = String(newsSolidBgBySlide[slideIdx] ?? '').trim();
+		if ((t === 'blank' || t === 'news') && solid) return solid;
+		if (t === 'blank') return canvasSolidHex;
+		if (t === 'blackText' || isPhotoStoryFamily(t) || t === 'imageQuote') return canvasSolidHex;
+		if (t === 'tweet' || t === 'article' || t === 'textCarousel' || isWhitePostFamily(t)) {
+			return canvasBgDark ? '#0a0a0a' : '#ffffff';
 		}
-		if (t === 'blackText' || isPhotoStoryFamily(t) || t === 'imageQuote') return '#000000';
-		if (t === 'tweet') return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
-		if (t === 'textCarousel' || isWhitePostFamily(t)) return '#ffffff';
 		if (isVideoStoryFamily(t)) return '#000000';
-		return uiTheme === 'light' ? '#ffffff' : '#0a0a0a';
+		return canvasBgDark ? '#0a0a0a' : '#ffffff';
 	}
 
 	/**
@@ -9147,6 +9177,20 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				selectedId={formatId}
 				onSelect={(id) => (formatId = id as FormatId)}
 			/>
+			<div
+				class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.05)] backdrop-blur-[14px]"
+				title="Canvas background"
+			>
+				<span class="text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.55)]">White</span>
+				<Switch
+					id="studio-canvas-bg-toggle"
+					size="sm"
+					checked={canvasBgDark}
+					onCheckedChange={(v) => setCanvasBackgroundDark(!!v)}
+					aria-label="Toggle canvas background black or white"
+				/>
+				<span class="text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.55)]">Black</span>
+			</div>
 			{#if activeFilmStrip}
 				<Popover bind:open={filmStripPopoverOpen}>
 					<PopoverTrigger
@@ -9303,7 +9347,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<BlankTemplate
 						backgroundImage={canvasBackgroundImage}
 						backgroundVideo={canvasBackgroundVideo}
-						solidBackgroundColor={newsSolidBgBySlide[paintSlide] || '#ffffff'}
+						solidBackgroundColor={newsSolidBgBySlide[paintSlide] || canvasSolidHex}
 						w={CANVAS_W}
 						h={CANVAS_H}
 						scale={1}
@@ -9341,7 +9385,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</div>
 			{:else if previewTemplate === 'news'}
 				<NewsTemplate
-					templateTheme="dark"
+					templateTheme={canvasTheme}
 					bind:exportRef
 					bind:circleX
 					bind:circleY
@@ -9486,11 +9530,11 @@ showSubjectCutout={canvasShowCutout}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-					parseHighlightMarkup={previewTemplate === 'news'}
+					parseHighlightMarkup={true}
 				/>
 			{:else if previewTemplate === 'article'}
 				<ArticleTemplate
-					templateTheme={uiTheme}
+					templateTheme={canvasTheme}
 					bind:exportRef
 					canvasW={CANVAS_W}
 					canvasH={CANVAS_H}
@@ -9540,12 +9584,12 @@ showSubjectCutout={canvasShowCutout}
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-					parseHighlightMarkup={previewTemplate === 'news'}
+					parseHighlightMarkup={true}
 				/>
 			{:else if previewTemplate === 'tweet'}
 				<!-- Tweet: minimal integration for now (top tweet text = slide text). -->
 				<TweetTemplate
-					templateTheme={uiTheme}
+					templateTheme={canvasTheme}
 					bind:exportRef
 					canvasW={CANVAS_W}
 					canvasH={CANVAS_H}
@@ -9622,11 +9666,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-					parseHighlightMarkup={previewTemplate === 'news'}
+					parseHighlightMarkup={true}
 				/>
 			{:else if previewTemplate === 'textCarousel'}
 				<TextCarouselTemplate
-					templateTheme={uiTheme}
+					templateTheme={canvasTheme}
 					bind:exportRef
 					canvasW={CANVAS_W}
 					canvasH={CANVAS_H}
@@ -9676,7 +9720,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					onRangeSelect={onTextOverlayRangeSelect}
 					onTextOverlaysChange={(o: any) => { if (!canvasInteractive) return; setSlideTextOverlays(paintSlide, o, previewTemplate); }}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-					parseHighlightMarkup={previewTemplate === 'news'}
+					parseHighlightMarkup={true}
 				/>
 			{:else if isWhitePostFamily(previewTemplate)}
 				<WhitePostTemplate
@@ -10107,7 +10151,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						setSlideTextOverlays(paintSlide, o, previewTemplate);
 					}}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-					parseHighlightMarkup={previewTemplate === 'news'}
+					parseHighlightMarkup={true}
 				/>
 			{:else if isPhotoStoryFamily(previewTemplate)}
 				<PhotoStoryTemplate
@@ -10248,11 +10292,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						setSlideTextOverlays(paintSlide, o, previewTemplate);
 					}}
 					onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-					parseHighlightMarkup={previewTemplate === 'news'}
+					parseHighlightMarkup={true}
 				/>
 			{:else if previewTemplate === 'imageQuote'}
 				<ImageQuoteTemplate
-					templateTheme="dark"
+					templateTheme={canvasTheme}
 					bind:exportRef
 					canvasW={CANVAS_W}
 					canvasH={CANVAS_H}
@@ -10264,8 +10308,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					filmStripTopPct={filmStripTopPctByTemplate.imageQuote?.[paintSlide] ?? filmStripDefaultsFor('imageQuote').topPct}
 					filmStripBottomPct={filmStripBottomPctByTemplate.imageQuote?.[paintSlide] ?? filmStripDefaultsFor('imageQuote').bottomPct}
 					highlightColor={highlightColor}
-					bgColor="#000000"
-					textColor="#ffffff"
+					bgColor={canvasSolidHex}
+					textColor={canvasBgDark ? '#ffffff' : '#0a0a0a'}
 					scale={previewScale}
 					interactive={canvasInteractive}
 					headlineStyle={canvasHeadlineStyle}
@@ -11306,7 +11350,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											onclick={() => (category = cat.id)}
 											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
 												{category === cat.id
-													? 'bg-[#E8FF48] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+													? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
 													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
 										>
 											{cat.label}
@@ -11322,7 +11366,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											onclick={() => (storyCategory = th.id)}
 											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
 												{storyCategory === th.id
-													? 'bg-[#E8FF48] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+													? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
 													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
 										>
 											{th.label}
@@ -11338,7 +11382,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											onclick={() => (quoteTopicCategory = topic.id)}
 											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
 												{quoteTopicCategory === topic.id
-													? 'bg-[#E8FF48] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+													? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
 													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
 										>
 											{topic.label}
@@ -11355,7 +11399,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											onclick={() => (stepsCount = n)}
 											class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
 												{stepsCount === n
-													? 'bg-[#E8FF48] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+													? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
 													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
 										>
 											{n}
@@ -11371,7 +11415,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 											onclick={() => (factTopicCategory = topic.id)}
 											class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
 												{factTopicCategory === topic.id
-													? 'bg-[#E8FF48] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+													? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
 													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
 										>
 											{topic.label}
@@ -11449,7 +11493,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						onclick={() => (newsGenerateImages = !newsGenerateImages)}
 						class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-semibold font-body transition-all duration-150 select-none shrink-0
 							{newsGenerateImages
-								? 'border-[#E8FF48] bg-[#E8FF48] text-[#080808] hover:bg-[#dcf23a]'
+								? 'border-[#7bf1a8] bg-[#7bf1a8] text-[#080808] hover:bg-[#dcf23a]'
 								: 'border-[#e2e2e2] bg-white text-[#666] hover:border-[#c8c8c8]'}"
 						title={newsGenerateImages ? 'Image generation ON' : 'Image generation OFF - text only'}
 					>

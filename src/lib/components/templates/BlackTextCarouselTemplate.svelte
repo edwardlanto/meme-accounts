@@ -1,10 +1,10 @@
 <script lang="ts">
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
+	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { appendTextShadowCss } from '$lib/textStyleCss';
 	import { BLACK_TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
-	import { stripMarkup } from '$lib/highlight';
 	import { loadGoogleFont } from '$lib/fonts';
 
 	interface Props {
@@ -65,8 +65,8 @@
 		showToolbar = false,
 	}: Props = $props();
 
-	const headlineDisplay = $derived(stripMarkup(headline));
-	const bodyDisplay = $derived(stripMarkup(body));
+	const headlineDisplay = $derived(headline);
+	const bodyDisplay = $derived(body);
 
 	const BASE_W = 1080;
 	const BASE_H = 1350;
@@ -291,11 +291,13 @@
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
-									<div
+									<HighlightedText
+										as="div"
+										text={headlineDisplay}
+										parseHighlights={true}
+										defaultColor="#F5A623"
 										style="margin: 0; text-align: {mergedHeadlineStyle.align ?? 'left'}; word-break: break-word; white-space: pre-wrap; {headlineCss}"
-									>
-										{headlineDisplay}
-									</div>
+									/>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						{/snippet}
@@ -326,11 +328,13 @@
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
-									<div
+									<HighlightedText
+										as="div"
+										text={bodyDisplay}
+										parseHighlights={true}
+										defaultColor={bodyColor}
 										style="margin: 0; text-align: {mergedBodyStyle.align ?? 'left'}; word-break: break-word; white-space: pre-wrap; {bodyCss}"
-									>
-										{bodyDisplay}
-									</div>
+									/>
 								{/snippet}
 							</CanvasMarkupTextBlock>
 						{/snippet}

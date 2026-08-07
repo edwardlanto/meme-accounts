@@ -29,13 +29,13 @@ export const GENERATED_DEMO_POSTS = {
 	"text": {
 		name: "Signal Over Noise",
 		handle: "@signalovernoise",
-		body: "Most founders optimize for looking busy.\n\nThe dangerous ones optimize for one metric customers actually feel.",
+		body: "Most founders optimize for looking busy.\n\nThe dangerous ones optimize for [[one metric]] customers actually feel.",
 	},
 	"black-text": {
 		name: "Lena Ortiz",
 		handle: "@lenabuilds",
 		headline: "Charge more. Talk less. Ship weekly.",
-		body: "Underpricing is a confidence problem dressed up as a pricing strategy.\n\nRaise the price until the wrong customers leave.\n\nThen build for the ones who stayed.",
+		body: "Underpricing is a confidence problem dressed up as a pricing strategy.\n\nRaise the price until the [[wrong customers]] leave.\n\nThen build for the ones who stayed.",
 	},
 	"video-feature": {
 		headline: "Claude just became the [[co-founder]] most teams were afraid to hire",

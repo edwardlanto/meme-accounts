@@ -408,7 +408,7 @@
 						<p class="text-[11px] text-red-300/90 leading-snug">{exportError} <a href="/pricing" class="underline">Upgrade</a></p>
 					{/if}
 					<button onclick={exportCurrent} disabled={exporting || exportingAll}
-						class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
+						class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#7bf1a8] hover:bg-[#a7f7c6] hover:shadow-[0_4px_16px_rgba(123,241,168,0.25)] transition-all disabled:opacity-50">
 						{#if exporting}
 							<Loader size={13} class="animate-spin" /> Exporting…
 						{:else}

@@ -14,7 +14,7 @@
 		{ src: '/placeholders/marquee/slide-5.png', tint: '#FFD6A5', tag: 'Schedule' },
 	];
 
-	/** Platforms Meme Accounts publishes to — shown as a trust/connector strip. */
+	/** Platforms formats are built for — shown as a trust/connector strip. */
 	const platforms = [
 		{ label: 'Instagram', abbr: 'IG', bg: 'linear-gradient(135deg,#f58529,#dd2a7b,#8134af)' },
 		{ label: 'TikTok', abbr: 'TT', bg: 'linear-gradient(135deg,#25f4ee,#0f0f10 55%,#fe2c55)' },
@@ -28,29 +28,29 @@
 
 	const stats = [
 		{ value: 10, suffix: 'x', label: 'faster than building posts by hand in Canva' },
-		{ value: 40, suffix: '+', label: 'hours saved a month once posting is on autopilot' },
-		{ value: 3, suffix: 'x', label: 'more consistent posting once schedules run themselves' },
+		{ value: 20, suffix: '+', label: 'templates you can spin up and test in minutes' },
+		{ value: 3, suffix: 'x', label: 'more concepts you can try before picking a winner' },
 	];
 
 	const featured = [
 		{ title: 'Viral Hooks', creator: 'Maya Carter', initials: 'MC',
-		  bg: '#7B2D26', img: '/placeholders/placeholder-square.jpeg',
-		  alt: 'Viral hooks meme template preview' },
+		  bg: '#7B2D26', img: '/placeholders/home/feat-viral-hooks.png',
+		  alt: '3D art of a phone with floating speech bubbles for viral hook templates' },
 		{ title: 'Carousels', creator: 'Avery James', initials: 'AJ',
-		  bg: '#D67862', img: '/placeholders/placeholder-square.jpeg',
-		  alt: 'Instagram carousel meme template preview' },
+		  bg: '#D67862', img: '/placeholders/home/feat-carousels.png',
+		  alt: '3D art of stacked carousel slide cards' },
 		{ title: 'News Studio', creator: 'Sienna Cole', initials: 'SC',
-		  bg: '#3D6B8C', img: '/placeholders/placeholder-square.jpeg',
-		  alt: 'News-style meme post template preview' },
+		  bg: '#3D6B8C', img: '/placeholders/home/feat-news-studio.png',
+		  alt: '3D art of a news-style frame for meme posts' },
 		{ title: 'Slide Composer', creator: 'Devin Park', initials: 'DP',
-		  bg: '#A6B4C4', img: '/placeholders/placeholder-square.jpeg',
-		  alt: 'Slide composer meme template preview' },
+		  bg: '#A6B4C4', img: '/placeholders/home/feat-slide-composer.png',
+		  alt: '3D art of a creative studio desk assembling slides' },
 	];
 
 	const benefits = [
 		{
 			title: 'Bulk create',
-			desc: 'Generate dozens of meme posts in one session — captions, slides, and formats ready to schedule.',
+			desc: 'Spin up dozens of meme posts in one session — captions, slides, and formats ready to preview.',
 			icon: 'grid',
 		},
 		{
@@ -59,8 +59,8 @@
 			icon: 'spark',
 		},
 		{
-			title: 'Schedule & auto-post',
-			desc: 'Queue daily drops, keep your feed consistent, and stop living in the Instagram draft folder.',
+			title: 'Test reactions',
+			desc: 'Ship concepts fast, share them with potential customers, and see what actually lands.',
 			icon: 'clock',
 		},
 		{
@@ -72,21 +72,21 @@
 
 	const testimonials = [
 		{
-			quote: 'I went from posting twice a week to every single day. The bulk studio does in one sitting what used to eat my whole Sunday.',
+			quote: 'I went from posting twice a week to testing a full week of ideas in one sitting. The bulk studio does what used to eat my whole Sunday.',
 			name: 'Maya Carter',
 			role: 'Runs a 240K-follower meme page',
 			initials: 'MC',
 			bg: '#7B2D26',
 		},
 		{
-			quote: 'Templates that already look like the top posts in my niche — I just swap the joke and schedule the week.',
+			quote: 'Templates that already look like the top posts in my niche — I just swap the joke and see which version people react to.',
 			name: 'Avery James',
 			role: 'Instagram carousel creator',
 			initials: 'AJ',
 			bg: '#D67862',
 		},
 		{
-			quote: 'Auto-posting means my page never goes quiet, even on weeks I barely open the app.',
+			quote: 'I use it to mock up formats before I commit. Potential customers react in hours instead of me guessing in Canva all week.',
 			name: 'Sienna Cole',
 			role: 'News-style meme account',
 			initials: 'SC',
@@ -97,11 +97,11 @@
 	const faqs = [
 		{
 			q: 'What is Meme Accounts?',
-			a: 'Meme Accounts is a create-and-schedule tool for people who run Instagram meme and niche pages. Pick a template, build posts in bulk or in the studio, then schedule and auto-post from one place.',
+			a: 'Meme Accounts is a template studio for people who run Instagram meme and niche pages. Pick a layout, build posts fast in bulk or in the studio, then share concepts to see what potential customers react to.',
 		},
 		{
-			q: 'Can I schedule Instagram meme posts?',
-			a: 'Yes. Connect your account, queue carousels and image posts, and let Meme Accounts publish on the schedule you set — so your page stays active without posting manually every day.',
+			q: 'Is this a scheduling tool?',
+			a: 'No. Meme Accounts is built for creating and testing templates quickly — not for queueing or auto-posting. You build the look, export or share drafts, and decide what to publish yourself.',
 		},
 		{
 			q: 'Do I need design skills?',
@@ -109,15 +109,15 @@
 		},
 		{
 			q: 'Can I create posts in bulk?',
-			a: 'Yes. Bulk tools let you spin up many meme posts at once, then refine winners in the studio before you schedule them.',
+			a: 'Yes. Bulk tools let you spin up many meme posts at once, then refine the ones that feel strongest in the studio.',
 		},
 		{
-			q: 'Which platforms can I post to?',
-			a: 'Meme Accounts is built around Instagram, with support for cross-posting formats to TikTok, X, LinkedIn, Facebook, and more as you connect them.',
+			q: 'What formats can I build for?',
+			a: 'Layouts are sized for Instagram and translate cleanly to TikTok, X, LinkedIn, Facebook, and similar feeds — so you can test one concept across the places your audience already hangs out.',
 		},
 		{
 			q: 'Is there a free plan?',
-			a: 'Yes. You can start free with no credit card. Upgrade when you need more volume, seats, or advanced scheduling — cancel anytime.',
+			a: 'Yes. You can start free with no credit card. Upgrade when you need more volume or seats — cancel anytime.',
 		},
 		{
 			q: 'What templates can I use?',
@@ -126,7 +126,7 @@
 	];
 
 	const metaDescription =
-		'Create viral meme posts, carousels, and reels with ready-made templates. Bulk generate, schedule, and auto-post to Instagram, TikTok, and more — built for meme page creators.';
+		'Build viral meme templates fast — carousels, hooks, news frames, and more. Test concepts with potential customers and see what reacts. Built for meme page creators.';
 
 	const jsonLd = {
 		'@context': 'https://schema.org',
@@ -235,18 +235,18 @@
 </script>
 
 <svelte:head>
-	<title>Meme Accounts — Create &amp; Schedule Meme Posts Fast</title>
+	<title>Meme Accounts — Build Meme Templates Fast</title>
 	<meta name="description" content={metaDescription} />
 	<link rel="canonical" href="https://memeaccounts.com/" />
 
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content="https://memeaccounts.com/" />
-	<meta property="og:title" content="Meme Accounts — Create & Schedule Meme Posts Fast" />
+	<meta property="og:title" content="Meme Accounts — Build Meme Templates Fast" />
 	<meta property="og:description" content={metaDescription} />
 	<meta property="og:site_name" content="Meme Accounts" />
 
 	<meta name="twitter:card" content="summary_large_image" />
-	<meta name="twitter:title" content="Meme Accounts — Create & Schedule Meme Posts Fast" />
+	<meta name="twitter:title" content="Meme Accounts — Build Meme Templates Fast" />
 	<meta name="twitter:description" content={metaDescription} />
 
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -295,8 +295,8 @@
 					height="44"
 				/>
 			</div>
-			<h1 class="hero-title">Post memes on autopilot</h1>
-			<p class="hero-sub">Pick a template, connect your account, and let Meme Accounts build, schedule, and ship your daily posts — while you focus on the next viral idea.</p>
+			<h1 class="hero-title">Build meme templates fast</h1>
+			<p class="hero-sub">Pick a layout, spin up posts in Studio, and test what potential customers react to — without living in Canva for hours.</p>
 			<div class="hero-ctas">
 				<a href="/?auth=signup" class="btn btn-dark btn-cta">
 					Explore Templates
@@ -305,21 +305,17 @@
 						<polyline points="12 5 19 12 12 19"/>
 					</svg>
 				</a>
-				<a href="#how" class="btn btn-light-outline btn-cta">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20"/></svg>
-					See how it works
-				</a>
 			</div>
 
 			<!-- Platform strip -->
-			<div class="platform-strip" aria-label="Platforms Meme Accounts publishes to">
-				<span class="platform-strip-label">Publish everywhere</span>
+			<!-- <div class="platform-strip" aria-label="Formats Meme Accounts is built for">
+				<span class="platform-strip-label">Built for these feeds</span>
 				<div class="platform-icons">
 					{#each platforms as p}
 						<span class="platform-chip" style="background:{p.bg}" title={p.label} aria-label={p.label}>{p.abbr}</span>
 					{/each}
 				</div>
-			</div>
+			</div> -->
 		</div>
 
 
@@ -403,7 +399,7 @@
 						<div class="fc-thumb" aria-hidden="true">
 							<svg viewBox="0 0 40 40" width="22" height="22" fill="none">
 								<rect x="6" y="6" width="28" height="28" rx="6" fill="#0f0f10"/>
-								<rect x="11" y="11" width="18" height="3" rx="1.5" fill="#E8FF48"/>
+								<rect x="11" y="11" width="18" height="3" rx="1.5" fill="#7bf1a8"/>
 								<rect x="11" y="17" width="14" height="3" rx="1.5" fill="#fff" opacity=".55"/>
 								<rect x="11" y="23" width="10" height="3" rx="1.5" fill="#fff" opacity=".25"/>
 							</svg>
@@ -420,29 +416,29 @@
 					<p class="how-step-desc">Choose a meme-ready layout — carousels, hooks, news frames, and more.</p>
 				</div>
 
-				<!-- Step 2: connect account card -->
+				<!-- Step 2: customize in studio -->
 				<div class="how-col reveal" style="--d:0.08s">
 					<div class="float-card fc-account">
 						<div class="fc-platform">
 							<svg viewBox="0 0 40 40" width="22" height="22" aria-hidden="true">
 								<circle cx="20" cy="20" r="20" fill="#0f0f10"/>
-								<path d="M14 26 L18 14 L20 22 L26 12 L26 26" stroke="#E8FF48" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+								<path d="M14 26 L18 14 L20 22 L26 12 L26 26" stroke="#7bf1a8" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 							</svg>
 						</div>
 						<div class="fc-text">
-							<p class="fc-title">12,400 followers</p>
-							<p class="fc-handle">@yourmemepage</p>
+							<p class="fc-title">Studio ready</p>
+							<p class="fc-handle">type · crop · brand</p>
 						</div>
 					</div>
-					<h3 class="how-step-title">Connect your account</h3>
-					<p class="how-step-desc">Link Instagram so finished posts can go live on your schedule.</p>
+					<h3 class="how-step-title">Customize in Studio</h3>
+					<p class="how-step-desc">Swap copy, tweak type, and polish the look until the concept feels right.</p>
 				</div>
 
-				<!-- Step 3: auto-post chips -->
+				<!-- Step 3: test reactions -->
 				<div class="how-col reveal" style="--d:0.16s">
 					<div class="float-card fc-chips">
 						<span class="chip" style="background:#0f0f10">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E8FF48" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7bf1a8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 						</span>
 						<span class="chip" style="background:#3D6B8C">
 							<span class="chip-letter">IG</span>
@@ -451,8 +447,8 @@
 							<span class="chip-letter">TT</span>
 						</span>
 					</div>
-					<h3 class="how-step-title">Auto-post daily</h3>
-					<p class="how-step-desc">Meme Accounts schedules and publishes so your page never goes quiet.</p>
+					<h3 class="how-step-title">Test the reaction</h3>
+					<p class="how-step-desc">Share drafts with potential customers and see which template actually lands.</p>
 				</div>
 			</div>
 		</div>
@@ -462,9 +458,9 @@
 	<section id="built-for" class="benefits">
 		<div class="container">
 			<div class="section-head reveal">
-				<h2 class="benefits-h">Everything you need to ship daily</h2>
+				<h2 class="benefits-h">Everything you need to ship concepts</h2>
 				<p class="section-sub">
-					Everything you need to ship daily content without bouncing between Canva, drafts, and native schedulers.
+					Build templates fast, polish in Studio, and learn what people react to — without bouncing between Canva and drafts.
 				</p>
 			</div>
 			<div class="benefits-grid">
@@ -538,7 +534,7 @@
 		<div class="container cta-row reveal">
 			<div class="cta-glow" aria-hidden="true"></div>
 			<div>
-				<h2 class="cta-h">Ready to put posting on autopilot?</h2>
+				<h2 class="cta-h">Ready to test your next template?</h2>
 				<p class="cta-p">Free to start. No credit card. Cancel anytime.</p>
 			</div>
 			<a href="/?auth=signup" class="btn btn-dark btn-lg">Get Meme Accounts</a>
@@ -558,7 +554,7 @@
 						height="28"
 					/>
 				</a>
-				<p class="footer-tag">Create. Schedule. Grow. Built for meme pages.</p>
+				<p class="footer-tag">Create. Test. Grow. Built for meme pages.</p>
 			</div>
 
 			<div class="footer-col">
@@ -589,7 +585,7 @@
 		<div class="container footer-bottom">
 			<p>© 2026 Meme Accounts. All rights reserved.</p>
 			<p class="footer-fine">
-				Meme Accounts is a content creation and scheduling tool. Brand names belong to their respective owners.
+				Meme Accounts is a template studio for meme page creators. Brand names belong to their respective owners.
 			</p>
 		</div>
 	</footer>
@@ -606,8 +602,8 @@
 		--ap-text-3: #9a9aa1;
 		--ap-line: rgba(15, 15, 16, 0.08);
 		--ap-line-2: rgba(15, 15, 16, 0.14);
-		--ap-accent: #0f0f10;
-		--ap-lime: #E8FF48;
+		--ap-accent: #7bf1a8;
+		--ap-lime: #E8FF48; /* yellow accents on the black announce header */
 
 		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 		color: var(--ap-text);
@@ -758,15 +754,15 @@
 		transform: translateY(-1px);
 	}
 	.btn-dark {
-		color: #fff;
+		color: #0a0a0a;
 		background: var(--ap-accent);
 		border-color: var(--ap-accent);
 	}
 	.btn-dark:hover {
-		background: #2a2a2a;
-		border-color: #2a2a2a;
+		background: #a7f7c6;
+		border-color: #a7f7c6;
 		transform: translateY(-1px);
-		box-shadow: 0 8px 24px rgba(15, 15, 16, 0.18);
+		box-shadow: 0 8px 24px rgba(123, 241, 168, 0.35);
 	}
 	.btn-lg {
 		padding: 16px 32px;
@@ -789,7 +785,7 @@
 		height: 620px;
 		transform: translateX(-50%);
 		background:
-			radial-gradient(closest-side, rgba(232, 255, 72, 0.22), transparent 70%),
+			radial-gradient(closest-side, rgba(123, 241, 168, 0.22), transparent 70%),
 			radial-gradient(closest-side at 30% 60%, rgba(139, 92, 246, 0.10), transparent 70%),
 			radial-gradient(closest-side at 70% 40%, rgba(6, 182, 212, 0.10), transparent 70%);
 		filter: blur(10px);
@@ -1398,7 +1394,7 @@
 		flex-shrink: 0;
 		overflow: hidden;
 	}
-	.fc-platform { background: #E8FF48; }
+	.fc-platform { background: #7bf1a8; }
 
 	.fc-text { display: flex; flex-direction: column; gap: 3px; }
 	.fc-title {
@@ -1657,7 +1653,7 @@
 		right: -10%;
 		width: 420px;
 		height: 420px;
-		background: radial-gradient(closest-side, rgba(232, 255, 72, 0.28), transparent 70%);
+		background: radial-gradient(closest-side, rgba(123, 241, 168, 0.28), transparent 70%);
 		pointer-events: none;
 	}
 	.cta-h {

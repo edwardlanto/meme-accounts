@@ -1030,7 +1030,7 @@
 		display: flex; flex-direction: column; gap: 1.1rem;
 	}
 	.settings-card--danger { border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.03); }
-	.settings-card--info   { border-color: rgba(232,255,72,0.1); background: rgba(232,255,72,0.02); }
+	.settings-card--info   { border-color: rgba(123,241,168,0.1); background: rgba(123,241,168,0.02); }
 
 	.card-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
 	.card-title--danger { color: #f87171; }
@@ -1041,17 +1041,17 @@
 	.profile-row { display: flex; align-items: center; gap: 1rem; }
 	.profile-avatar {
 		width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
-		background: rgba(232,255,72,0.12); border: 2px solid rgba(232,255,72,0.25);
+		background: rgba(123,241,168,0.12); border: 2px solid rgba(123,241,168,0.25);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Satoshi', sans-serif; font-size: 18px; font-weight: 700; color: #E8FF48;
+		font-family: 'Satoshi', sans-serif; font-size: 18px; font-weight: 700; color: #7bf1a8;
 	}
 	.profile-info { flex: 1; }
 	.profile-name  { font-size: 0.9375rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.2rem; }
 	.profile-email { font-size: 0.8125rem; color: var(--t-muted); margin: 0; font-family: 'Satoshi', sans-serif; }
 	.profile-plan-badge {
 		padding: 3px 10px; border-radius: 6px;
-		background: rgba(232,255,72,0.12); border: 1px solid rgba(232,255,72,0.2);
-		font-size: 0.7rem; font-family: 'Satoshi', sans-serif; font-weight: 700; color: #E8FF48;
+		background: rgba(123,241,168,0.12); border: 1px solid rgba(123,241,168,0.2);
+		font-size: 0.7rem; font-family: 'Satoshi', sans-serif; font-weight: 700; color: #7bf1a8;
 		text-transform: uppercase; letter-spacing: 0.07em;
 	}
 
@@ -1094,7 +1094,7 @@
 
 	/* ── Integrations ──────────────────────────────────────────── */
 	.loading-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.8125rem; color: var(--t-muted); }
-	.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); border-top-color: #E8FF48; animation: spin 0.8s linear infinite; }
+	.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); border-top-color: #7bf1a8; animation: spin 0.8s linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 
 	.integrations-list { display: flex; flex-direction: column; gap: 1rem; }
@@ -1158,7 +1158,7 @@
 	.btn-connect {
 		padding: 0.55rem 1.1rem; border-radius: 9px; border: none;
 		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
-		cursor: pointer; background: var(--c, #E8FF48); color: white;
+		cursor: pointer; background: var(--c, #7bf1a8); color: white;
 		transition: opacity 0.12s, transform 0.12s;
 	}
 	.btn-connect:hover:not(:disabled) { transform: translateY(-1px); opacity: 0.92; }
@@ -1244,17 +1244,17 @@
 	}
 	.btn-docs:hover { color: rgba(255,255,255,0.7); }
 
-	.inline-link { color: #E8FF48; text-decoration: none; }
+	.inline-link { color: #7bf1a8; text-decoration: none; }
 	.inline-link:hover { text-decoration: underline; }
 
 	.btn-secondary-sm {
 		display: inline-flex; align-items: center; gap: 0.3rem;
 		padding: 0.45rem 0.85rem; border-radius: 8px;
-		background: rgba(232,255,72,0.08); border: 1px solid rgba(232,255,72,0.18);
-		color: #E8FF48; font-size: 0.78rem; font-weight: 600; text-decoration: none;
+		background: rgba(123,241,168,0.08); border: 1px solid rgba(123,241,168,0.18);
+		color: #7bf1a8; font-size: 0.78rem; font-weight: 600; text-decoration: none;
 		transition: all 0.15s;
 	}
-	.btn-secondary-sm:hover { background: rgba(232,255,72,0.12); }
+	.btn-secondary-sm:hover { background: rgba(123,241,168,0.12); }
 
 	/* ── Billing ───────────────────────────────────────────────── */
 	.plan-row {
@@ -1263,10 +1263,10 @@
 	.plan-info { display: flex; align-items: center; gap: 1rem; }
 	.plan-badge {
 		width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
-		background: rgba(232,255,72,0.12); border: 1px solid rgba(232,255,72,0.25);
+		background: rgba(123,241,168,0.12); border: 1px solid rgba(123,241,168,0.25);
 		display: flex; align-items: center; justify-content: center;
 		font-family: 'Satoshi', sans-serif; font-size: 11px; font-weight: 700;
-		color: #E8FF48; text-transform: uppercase; letter-spacing: 0.08em;
+		color: #7bf1a8; text-transform: uppercase; letter-spacing: 0.08em;
 	}
 	.plan-name  { font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; font-size: 0.9375rem; }
 	.plan-price { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
@@ -1309,11 +1309,11 @@
 	.btn-upgrade {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.65rem 1.25rem; border-radius: 10px; border: none;
-		background: #E8FF48; color: #0a0a0a;
+		background: #7bf1a8; color: #0a0a0a;
 		font-size: 0.875rem; font-weight: 600; cursor: pointer;
 		font-family: 'Satoshi', sans-serif; transition: all 0.15s; width: fit-content;
 	}
-	.btn-upgrade:hover { background: #f0ff70; transform: translateY(-1px); }
+	.btn-upgrade:hover { background: #a7f7c6; transform: translateY(-1px); }
 
 	/* ── Login gate ────────────────────────────────────────────── */
 	.login-card { max-width: 420px; }
@@ -1364,7 +1364,7 @@
 
 	.trial-banner {
 		padding: 0.85rem 1rem; border-radius: 10px;
-		background: rgba(232,255,72,0.06); border: 1px solid rgba(232,255,72,0.15);
+		background: rgba(123,241,168,0.06); border: 1px solid rgba(123,241,168,0.15);
 	}
 	.trial-title { margin: 0 0 0.25rem; font-size: 0.8125rem; font-weight: 600; color: var(--t-strong); }
 	.trial-sub { margin: 0; font-size: 0.75rem; color: var(--t-muted); line-height: 1.5; }
@@ -1378,7 +1378,7 @@
 		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
 		display: flex; flex-direction: column; gap: 0.65rem;
 	}
-	.plan-compare-card--current { border-color: rgba(232,255,72,0.35); box-shadow: 0 0 0 1px rgba(232,255,72,0.12); }
+	.plan-compare-card--current { border-color: rgba(123,241,168,0.35); box-shadow: 0 0 0 1px rgba(123,241,168,0.12); }
 	.plan-compare-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 	.plan-compare-name { margin: 0; font-weight: 700; color: var(--t-strong); font-size: 0.9375rem; }
 	.plan-compare-price {

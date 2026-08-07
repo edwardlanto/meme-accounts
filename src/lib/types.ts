@@ -70,6 +70,7 @@ export interface TypographySnapshot {
 /** A text element that can be edited/styled via the floating toolbar. */
 export type TextElementKind =
 	| 'headline'
+	| 'newsSubtext'
 	| 'source'
 	| 'textOverlay'
 	| 'tweetTopName'

@@ -123,7 +123,7 @@
 					onClose();
 				}}
 			>
-				<Sparkles size={18} class="text-[#E8FF48]" strokeWidth={2} />
+				<Sparkles size={18} class="text-[#7bf1a8]" strokeWidth={2} />
 				AI bg
 			</Button>
 			<div class="bg-border h-7 w-px shrink-0" role="separator"></div>

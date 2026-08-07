@@ -127,7 +127,7 @@
 
 <style>
 	.page {
-		--lime: #e8ff48;
+		--lime: #7bf1a8;
 		--ink: #0a0505;
 		--paper: #f3efe8;
 		min-height: 100vh;

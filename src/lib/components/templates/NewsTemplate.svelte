@@ -138,6 +138,8 @@
 		resolveSrc?: (src: string) => string;
 		/** Per-element style overrides (font, size, weight, color, etc.) */
 		headlineStyle?: TextStyle;
+		/** Supporting paragraph under the headline (independent from headline style). */
+		subtextStyle?: TextStyle;
 		sourceStyle?: TextStyle;
 		/** Independent drag offsets for source vs headline (template px). */
 		textOffsets?: Record<string, { x: number; y: number }>;
@@ -238,6 +240,7 @@
 		textOverlays = [],
 		resolveSrc,
 		headlineStyle = {},
+		subtextStyle = {},
 		sourceStyle = {},
 		textOffsets = {},
 		onTextOffsetChange,
@@ -428,16 +431,19 @@
 	});
 
 	const subtextCss = $derived.by(() => {
-		const s = headlineStyle;
+		const s = subtextStyle;
 		const lines: string[] = [];
-		lines.push(`font-family: var(--font-sans), system-ui, -apple-system, sans-serif;`);
-		lines.push(`font-size: ${Math.round((s.fontSize ?? fontSize) * 0.3)}px;`);
-		lines.push('font-weight: 500;');
+		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif;`);
+		else lines.push(`font-family: var(--font-sans), system-ui, -apple-system, sans-serif;`);
+		lines.push(`font-size: ${s.fontSize ?? Math.round((headlineStyle.fontSize ?? fontSize) * 0.3)}px;`);
+		lines.push(`font-weight: ${s.fontWeight ?? 500};`);
+		if (s.italic) lines.push('font-style: italic;');
+		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? textColor};`);
-		lines.push(`text-align: ${s.align ?? 'left'};`);
-		lines.push('letter-spacing: 0;');
-		lines.push('line-height: 1.4;');
-		lines.push('opacity: 0.86;');
+		lines.push(`text-align: ${s.align ?? headlineStyle.align ?? 'left'};`);
+		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '0'};`);
+		lines.push(`line-height: ${s.lineHeight ?? 1.4};`);
+		lines.push(`opacity: ${s.color ? 1 : 0.86};`);
 		lines.push(CANVAS_TEXT_BOX_TRIM);
 		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
 		return lines.join(' ');
@@ -641,8 +647,6 @@
 	let subtextDraft = $state('');
 	let subtextEl = $state<HTMLElement | null>(null);
 	let subtextEditableEl = $state<HTMLElement | null>(null);
-	/** Which news text block owns the violet ring (subtext used to report as `headline`). */
-	let newsTextTarget = $state<'headline' | 'subtext'>('headline');
 	let headlineInkWrap = $state<HTMLElement | null>(null);
 	let subtextInkWrap = $state<HTMLElement | null>(null);
 	let headlineInkBox = $state<InkBox | null>(null);
@@ -671,25 +675,30 @@
 	}
 
 	$effect(() => {
+		void text;
+		void headlineStyle;
+		void editing;
+		void scale;
+		void selectedText;
 		if (selectedText !== 'headline') {
 			headlineInkBox = null;
+			return;
+		}
+		const id = requestAnimationFrame(() => refreshHeadlineInk());
+		return () => cancelAnimationFrame(id);
+	});
+
+	$effect(() => {
+		void subtext;
+		void subtextStyle;
+		void editingSubtext;
+		void scale;
+		void selectedText;
+		if (selectedText !== 'newsSubtext') {
 			subtextInkBox = null;
 			return;
 		}
-		// Re-measure when selection, edit mode, text, or style changes.
-		void text;
-		void subtext;
-		void headlineStyle;
-		void editing;
-		void editingSubtext;
-		void newsTextTarget;
-		void scale;
-		const id = requestAnimationFrame(() => {
-			if (newsTextTarget === 'headline') refreshHeadlineInk();
-			else headlineInkBox = null;
-			if (newsTextTarget === 'subtext') refreshSubtextInk();
-			else subtextInkBox = null;
-		});
+		const id = requestAnimationFrame(() => refreshSubtextInk());
 		return () => cancelAnimationFrame(id);
 	});
 
@@ -700,7 +709,6 @@
 	function startSubtextEdit(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
-		newsTextTarget = 'subtext';
 		subtextDraft = String(subtext ?? '');
 		editingSubtext = true;
 		void tick().then(() => {
@@ -718,7 +726,7 @@
 			} catch {
 				/* ignore */
 			}
-			onTextSelect?.('headline', ce);
+			onTextSelect?.('newsSubtext', ce);
 			refreshSubtextInk();
 		});
 	}
@@ -799,7 +807,6 @@
 	function startEdit(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
-		newsTextTarget = 'headline';
 		headlineDraft = text;
 		onHeadlineEditStart?.();
 		editing = true;
@@ -915,7 +922,6 @@
 		if (!interactive) return;
 		// Defer so the browser finalises the selection first.
 		setTimeout(() => {
-			newsTextTarget = 'headline';
 			const sel = window.getSelection();
 			const hasRange =
 				sel && sel.rangeCount > 0 && !sel.isCollapsed && headlineEl?.contains(sel.anchorNode);
@@ -2666,7 +2672,7 @@
 				role={interactive ? 'group' : undefined}
 				aria-label={interactive ? 'News text area' : undefined}
 			>
-			<!-- Headline (+ paragraph) -->
+			<!-- Headline -->
 			<div
 				bind:this={headlineBlockEl}
 				style="
@@ -2680,7 +2686,7 @@
 				{interactive}
 				{scale}
 				holdDragFromText={interactive}
-				immediateTextDrag={selectedText === 'headline' && newsTextTarget === 'headline' && !editing}
+				immediateTextDrag={selectedText === 'headline' && !editing}
 				holdMs={220}
 				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 			>
@@ -2688,7 +2694,7 @@
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						data-news-block="headline"
-						style="position: relative; overflow: visible; {interactive ? (selectedText === 'headline' && newsTextTarget === 'headline' && !editing ? 'cursor: grab;' : 'cursor: text;') : ''}"
+						style="position: relative; overflow: visible; {interactive ? (selectedText === 'headline' && !editing ? 'cursor: grab;' : 'cursor: text;') : ''}"
 						title={interactive ? 'Drag to move · Double-click to edit · Shift+drag to highlight' : undefined}
 						onmouseenter={() => (hoveringText = true)}
 						onmouseleave={() => (hoveringText = false)}
@@ -2812,24 +2818,45 @@
 					</div>
 				{/if}
 
-				{#if selectedText === 'headline' && newsTextTarget === 'headline' && interactive}
+				{#if selectedText === 'headline' && interactive}
 					<div aria-hidden="true" style={inkRingStyle(headlineInkBox)}></div>
 				{/if}
 			</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
+			</div>
 
 			{#if String(subtext ?? '').trim() || editingSubtext}
-				<div style="position: relative; margin-top: 18px;" bind:this={subtextInkWrap}>
+			<div
+				style="
+					position: relative;
+					margin-top: 18px;
+					z-index: {selectedText === 'newsSubtext' || editingSubtext ? 70 : 50};
+				"
+			>
+			<DraggableBlock
+				dx={textOffsets.newsSubtext?.x ?? 0}
+				dy={textOffsets.newsSubtext?.y ?? 0}
+				{interactive}
+				{scale}
+				holdDragFromText={interactive}
+				immediateTextDrag={selectedText === 'newsSubtext' && !editingSubtext}
+				holdMs={220}
+				onChange={(x, y) => onTextOffsetChange?.('newsSubtext', { x, y })}
+			>
+				{#snippet children()}
+				<div style="position: relative;" bind:this={subtextInkWrap}>
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<p
 						bind:this={subtextEl}
-						data-text-selectable="subtext"
+						data-text-selectable="newsSubtext"
 						aria-hidden={interactive && editingSubtext ? true : undefined}
 						ondblclick={startSubtextEdit}
 						onclick={(e) => {
 							if (!interactive || textMoved) return;
 							e.stopPropagation();
-							newsTextTarget = 'subtext';
-							if (subtextEl) onTextSelect?.('headline', subtextEl);
+							if (subtextEl) onTextSelect?.('newsSubtext', subtextEl);
 							requestAnimationFrame(() => refreshSubtextInk());
 						}}
 						style="
@@ -2847,7 +2874,7 @@
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							bind:this={subtextEditableEl}
-							data-text-selectable="subtext"
+							data-text-selectable="newsSubtext"
 							contenteditable="true"
 							role="textbox"
 							tabindex="0"
@@ -2870,15 +2897,14 @@
 							"
 						></div>
 					{/if}
-					{#if selectedText === 'headline' && newsTextTarget === 'subtext' && interactive}
+					{#if selectedText === 'newsSubtext' && interactive}
 						<div aria-hidden="true" style={inkRingStyle(subtextInkBox)}></div>
 					{/if}
 				</div>
-			{/if}
-					</div>
 				{/snippet}
 			</DraggableBlock>
 			</div>
+			{/if}
 			</div>
 		</div>
 	</div>

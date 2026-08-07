@@ -234,7 +234,7 @@
 				</button>
 			{:else}
 				<button onclick={exportNewsPng} disabled={exporting}
-					class="flex items-center gap-1.5 text-xs font-semibold font-body px-3 py-1.5 rounded-lg text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_4px_16px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
+					class="flex items-center gap-1.5 text-xs font-semibold font-body px-3 py-1.5 rounded-lg text-[#0a0a0a] bg-[#7bf1a8] hover:bg-[#a7f7c6] hover:shadow-[0_4px_16px_rgba(123,241,168,0.25)] transition-all disabled:opacity-50">
 					{#if exporting}<Loader size={10} class="animate-spin" />{:else}<Download size={10} />{/if}
 					Export PNG
 				</button>
@@ -242,7 +242,7 @@
 			<!-- Video burner link -->
 			<a href="/dashboard/editor/{carouselId}/video"
 				class="flex items-center gap-1.5 text-xs font-semibold font-body px-3 py-1.5 rounded-lg
-					bg-[#E8FF48]/10 text-[#E8FF48] border border-[#E8FF48]/20 hover:bg-[#E8FF48]/18 transition-all">
+					bg-[#7bf1a8]/10 text-[#7bf1a8] border border-[#7bf1a8]/20 hover:bg-[#7bf1a8]/18 transition-all">
 				<Video size={10} /> Make Video
 			</a>
 		</div>
@@ -423,7 +423,7 @@
 			</div>
 			<div class="p-4 border-t border-white/[0.04] mt-auto">
 				<button onclick={save} disabled={saving}
-					class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#E8FF48] hover:bg-[#f0ff70] hover:shadow-[0_6px_24px_rgba(232,255,72,0.25)] transition-all disabled:opacity-50">
+					class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold font-body text-[#0a0a0a] bg-[#7bf1a8] hover:bg-[#a7f7c6] hover:shadow-[0_6px_24px_rgba(123,241,168,0.25)] transition-all disabled:opacity-50">
 					{#if saving}<Loader size={13} class="animate-spin" />{:else if saved}<Check size={13} /> Saved!{:else}<Save size={13} /> Save carousel{/if}
 				</button>
 			</div>

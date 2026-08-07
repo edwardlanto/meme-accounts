@@ -2629,8 +2629,8 @@
 		transform: translateY(-50%) translateY(-1px) scale(0.98);
 	}
 	.filmstrip-item.filmstrip-on {
-		border-color: var(--app-accent, #e8ff48);
-		box-shadow: 0 0 0 1px var(--app-accent, #e8ff48);
+		border-color: var(--app-accent, #7bf1a8);
+		box-shadow: 0 0 0 1px var(--app-accent, #7bf1a8);
 		transform: scale(1.04);
 	}
 	.filmstrip-num {
@@ -2658,7 +2658,7 @@
 		line-height: 1.2;
 	}
 	.score-hot {
-		background: #e8ff48;
+		background: #7bf1a8;
 		color: #080808;
 	}
 	.score-mid {
@@ -2796,8 +2796,8 @@
 		border-color: color-mix(in oklab, var(--app-text) 28%, transparent);
 	}
 	.cap-style-card-on {
-		border-color: var(--app-accent, #e8ff48);
-		box-shadow: 0 0 0 1px var(--app-accent, #e8ff48);
+		border-color: var(--app-accent, #7bf1a8);
+		box-shadow: 0 0 0 1px var(--app-accent, #7bf1a8);
 	}
 	.cap-style-preview-frame {
 		display: flex;

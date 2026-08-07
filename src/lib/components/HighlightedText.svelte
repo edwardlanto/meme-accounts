@@ -1,9 +1,8 @@
 <script lang="ts">
 	/**
 	 * Renders a string containing `[[...]]` highlight markup as styled spans when
-	 * `parseHighlights` is true. **NewsTemplate** is the only slide type that should
-	 * use highlight markup in Studio; all other templates pass `parseHighlights={false}`
-	 * so `[[...]]` stays literal plain text.
+	 * `parseHighlights` is true (default). Pass `parseHighlights={false}` only when
+	 * `[[...]]` should stay literal plain text.
 	 *
 	 * When `parseHighlights` is true, supported syntax:
 	 *   [[WORD]]                  → colored with `defaultColor`
@@ -17,7 +16,7 @@
 	interface Props {
 		text: string;
 		defaultColor?: string;
-		/** If false, `[[...]]` is shown as plain text (no accent spans). Default false — only News uses markup. */
+		/** If false, `[[...]]` is shown as plain text (no accent spans). Default true. */
 		parseHighlights?: boolean;
 		/**
 		 * When true with `parseHighlights`, highlighted spans keep the base text color
@@ -35,7 +34,7 @@
 	let {
 		text,
 		defaultColor = '#F5A623',
-		parseHighlights = false,
+		parseHighlights = true,
 		emphasisBold = false,
 		as = 'span',
 		style = '',

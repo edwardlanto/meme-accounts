@@ -44,7 +44,7 @@
 	const contentTypes = [
 		{ label: 'Carousels', pct: 34, color: '#8B5CF6' },
 		{ label: 'News Template',  pct: 22, color: '#06B6D4' },
-		{ label: 'Tweet Carousel', pct: 18, color: '#E8FF48' },
+		{ label: 'Tweet Carousel', pct: 18, color: '#7bf1a8' },
 		{ label: 'Text Carousel',  pct: 14, color: '#F97316' },
 		{ label: 'Article',        pct: 12, color: '#10B981' },
 	];
@@ -72,7 +72,7 @@
 	];
 
 	const kpis = [
-		{ label: 'Total Published',   value: '124',   change: '+18%',  up: true,  icon: Zap,       color: '#E8FF48' },
+		{ label: 'Total Published',   value: '124',   change: '+18%',  up: true,  icon: Zap,       color: '#7bf1a8' },
 		{ label: 'Avg. Reach',        value: '4.2K',  change: '+31%',  up: true,  icon: Eye,       color: '#8B5CF6' },
 		{ label: 'Avg. Engagement',   value: '6.1%',  change: '+0.8%', up: true,  icon: Heart,     color: '#E1306C' },
 		{ label: 'Scheduled Queue',   value: '23',    change: '-2',    up: false, icon: Calendar,  color: '#06B6D4' },
@@ -324,15 +324,15 @@
 			{#if chartTab === 'overview'}
 				<div class="chart-line-wrap">
 					<div class="chart-legend">
-						<span class="legend-dot" style="background:#E8FF48"></span><span class="legend-label">Posts Published</span>
+						<span class="legend-dot" style="background:#7bf1a8"></span><span class="legend-label">Posts Published</span>
 						<span class="legend-dot" style="background:#8B5CF6"></span><span class="legend-label">Reach (hundreds)</span>
 					</div>
 					<div class="chart-area">
 						<svg width="100%" height="220" viewBox="0 0 740 220" preserveAspectRatio="none" class:chart-visible={animateChart}>
 							<defs>
 								<linearGradient id="lime-grad" x1="0" y1="0" x2="0" y2="1">
-									<stop offset="0%" stop-color="#E8FF48" stop-opacity="0.25"/>
-									<stop offset="100%" stop-color="#E8FF48" stop-opacity="0"/>
+									<stop offset="0%" stop-color="#7bf1a8" stop-opacity="0.25"/>
+									<stop offset="100%" stop-color="#7bf1a8" stop-opacity="0"/>
 								</linearGradient>
 								<linearGradient id="violet-grad" x1="0" y1="0" x2="0" y2="1">
 									<stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.2"/>
@@ -371,7 +371,7 @@
 							/>
 							<polyline
 								points={linePoints(weeklyPublished, 740, 220)}
-								fill="none" stroke="#E8FF48" stroke-width="2.5"
+								fill="none" stroke="#7bf1a8" stroke-width="2.5"
 								class="chart-line"
 							/>
 
@@ -379,7 +379,7 @@
 							{#each weeklyPublished as v, i}
 								{@const x = 40 + (i / (weeklyPublished.length - 1)) * (740 - 80)}
 								{@const y = 220 - 20 - (v / Math.max(...weeklyPublished)) * (220 - 40)}
-								<circle cx={x} cy={y} r="4" fill="#E8FF48" stroke="#080808" stroke-width="2" class="chart-dot"/>
+								<circle cx={x} cy={y} r="4" fill="#7bf1a8" stroke="#080808" stroke-width="2" class="chart-dot"/>
 							{/each}
 
 							<!-- X labels -->
@@ -486,7 +486,7 @@
 									<div
 										class="heat-cell"
 										title="{heatDays[heatmapData.indexOf(row)]} {hour}: {val}/10"
-										style="background: rgba(232,255,72,{val / 10 * 0.9}); border-color: rgba(232,255,72,{val/10*0.15})"
+										style="background: rgba(123,241,168,{val / 10 * 0.9}); border-color: rgba(123,241,168,{val/10*0.15})"
 									></div>
 								{/each}
 							</div>
@@ -496,7 +496,7 @@
 						<span class="heat-legend-label">Low</span>
 						<div class="heat-legend-bar">
 							{#each [0.05, 0.15, 0.3, 0.5, 0.7, 0.9] as o}
-								<div style="background:rgba(232,255,72,{o}); flex:1; height:100%"></div>
+								<div style="background:rgba(123,241,168,{o}); flex:1; height:100%"></div>
 							{/each}
 						</div>
 						<span class="heat-legend-label">High</span>
@@ -727,7 +727,7 @@
 
 	.page-icon {
 		width: 44px; height: 44px; border-radius: 12px;
-		background: #E8FF48;
+		background: #7bf1a8;
 		display: flex; align-items: center; justify-content: center;
 		color: #0a0a0a; flex-shrink: 0;
 	}
@@ -747,12 +747,12 @@
 	.btn-primary-sm {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.55rem 1rem; border-radius: 10px;
-		background: #E8FF48; color: #0a0a0a;
+		background: #7bf1a8; color: #0a0a0a;
 		font-size: 0.8125rem; font-weight: 600; text-decoration: none;
 		font-family: 'Satoshi', sans-serif;
 		transition: transform 0.12s, box-shadow 0.12s;
 	}
-	.btn-primary-sm:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(232,255,72,0.2); }
+	.btn-primary-sm:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(123,241,168,0.2); }
 
 	/* ── Banner ────────────────────────────────────────────────── */
 	.banner { display: flex; align-items: center; gap: 0.65rem; padding: 0.75rem 1rem; border-radius: 12px; font-size: 0.8125rem; }
@@ -819,7 +819,7 @@
 		border-bottom: 2px solid transparent; transition: all 0.15s;
 	}
 	.chart-tab:hover { color: var(--t-strong); }
-	.chart-tab--on { color: #E8FF48; border-bottom-color: #E8FF48; background: rgba(232,255,72,0.03); }
+	.chart-tab--on { color: #7bf1a8; border-bottom-color: #7bf1a8; background: rgba(123,241,168,0.03); }
 
 	.chart-body { padding: 1.5rem 1.75rem; }
 
@@ -978,7 +978,7 @@
 		font-size: 0.75rem; color: rgba(255,255,255,0.3); text-decoration: none;
 		font-family: 'Satoshi', sans-serif;
 	}
-	.link-muted:hover { color: #E8FF48; }
+	.link-muted:hover { color: #7bf1a8; }
 
 	.platform-tabs {
 		display: flex; flex-wrap: wrap; gap: 0.35rem;
@@ -993,7 +993,7 @@
 		cursor: pointer; transition: all 0.12s;
 	}
 	.ptab:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.04); }
-	.ptab--on { color: var(--c, #E8FF48); background: rgba(255,255,255,0.05); }
+	.ptab--on { color: var(--c, #7bf1a8); background: rgba(255,255,255,0.05); }
 	.ptab-icon { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; }
 
 	.queue-kpis {
@@ -1010,13 +1010,13 @@
 	.qkpi-label { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(255,255,255,0.28); font-family: 'Satoshi', sans-serif; margin-top: 0.2rem; }
 	.qkpi--warn .qkpi-val { color: #fb923c; }
 	.qkpi--muted .qkpi-val { color: rgba(255,255,255,0.3); }
-	.qkpi--total { border-color: rgba(232,255,72,0.18); background: rgba(232,255,72,0.03); }
-	.qkpi--total .qkpi-val { color: #E8FF48; }
+	.qkpi--total { border-color: rgba(123,241,168,0.18); background: rgba(123,241,168,0.03); }
+	.qkpi--total .qkpi-val { color: #7bf1a8; }
 
 	.status-loading { display: flex; align-items: center; gap: 0.6rem; font-size: 0.8125rem; color: rgba(255,255,255,0.35); }
 	.spinner {
 		width: 16px; height: 16px; border-radius: 50%;
-		border: 2px solid rgba(255,255,255,0.1); border-top-color: #E8FF48;
+		border: 2px solid rgba(255,255,255,0.1); border-top-color: #7bf1a8;
 		animation: spin 0.8s linear infinite;
 	}
 	@keyframes spin { to { transform: rotate(360deg); } }
@@ -1037,7 +1037,7 @@
 	.btn-connect {
 		padding: 0.55rem 1.1rem; border-radius: 10px; border: none;
 		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
-		cursor: pointer; background: #E8FF48; color: #0a0a0a; transition: opacity 0.12s, transform 0.12s;
+		cursor: pointer; background: #7bf1a8; color: #0a0a0a; transition: opacity 0.12s, transform 0.12s;
 	}
 	.btn-connect:hover:not(:disabled) { transform: translateY(-1px); }
 	.btn-connect:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -1051,7 +1051,7 @@
 	.btn-secondary:hover:not(:disabled) { background: rgba(255,255,255,0.11); }
 	.btn-secondary:disabled { opacity: 0.35; cursor: not-allowed; }
 	.btn-link { font-size: 0.75rem; color: rgba(255,255,255,0.38); text-decoration: none; }
-	.btn-link:hover { color: #E8FF48; }
+	.btn-link:hover { color: #7bf1a8; }
 
 	.accounts-section { display: flex; flex-direction: column; gap: 0.65rem; }
 	.accounts-title {
@@ -1075,9 +1075,9 @@
 	}
 	.acct-avatar {
 		width: 34px; height: 34px; border-radius: 50%;
-		background: rgba(232,255,72,0.1); border: 1px solid rgba(232,255,72,0.2);
+		background: rgba(123,241,168,0.1); border: 1px solid rgba(123,241,168,0.2);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Satoshi', sans-serif; font-size: 12px; color: #E8FF48;
+		font-family: 'Satoshi', sans-serif; font-size: 12px; color: #7bf1a8;
 		flex-shrink: 0; font-weight: 700;
 	}
 	.acct-label { font-size: 0.875rem; color: rgba(255,255,255,0.82); margin: 0 0 0.15rem; font-weight: 500; }

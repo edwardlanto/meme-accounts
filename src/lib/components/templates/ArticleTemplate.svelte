@@ -211,6 +211,7 @@
 								<HighlightedText
 									as="div"
 									text={normalizedText}
+									parseHighlights={true}
 									defaultColor={accentColor}
 									style="
 										font-size: {articleStyles.articleBody?.fontSize ?? headlineStyle.fontSize ?? 46}px;

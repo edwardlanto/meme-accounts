@@ -32,13 +32,13 @@
 
 <style>
 	.page {
-		--lime: #e8ff48;
+		--lime: #7bf1a8;
 		min-height: 100vh;
 		display: grid;
 		place-items: center;
 		padding: 32px 20px;
 		background:
-			radial-gradient(ellipse 60% 50% at 70% 0%, color-mix(in oklch, #e8ff48 45%, transparent), transparent),
+			radial-gradient(ellipse 60% 50% at 70% 0%, color-mix(in oklch, #7bf1a8 45%, transparent), transparent),
 			#0a0a0a;
 		color: rgba(255, 255, 255, 0.92);
 	}
