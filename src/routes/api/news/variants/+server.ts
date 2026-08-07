@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { newsVariantsBodySchema, parseJsonBody } from '$lib/server/request-security';
+import { stripEmDashes } from '$lib/strip-em-dashes';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'anthropic/claude-sonnet-4.5';
@@ -54,11 +55,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const includeReplies = includeRepliesRaw === true;
 
 	if (!env.OPENROUTER_API_KEY) {
-		const variants = getMockVariants(slideCount, title, contentMode, stepCount);
-		return json(includeReplies ? { variants, replies: getMockReplies(slideCount, title) } : { variants });
+		const variants = getMockVariants(slideCount, title, contentMode, stepCount).map(stripEmDashes);
+		return json(
+			includeReplies
+				? { variants, replies: getMockReplies(slideCount, title).map(stripEmDashes) }
+				: { variants },
+		);
 	}
 
 	try {
+		const noEmDash =
+			` NEVER use em dashes (—) or en dashes (–); use commas, periods, or a plain hyphen (-) only.`;
 		// ── Generate all slide texts in one call ──────────────────────────────
 		const newsSystem =
 			`You write short Instagram carousel overlay copy. Output ONLY valid JSON. ` +
@@ -69,13 +76,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			`Each supporting slide must be a DIFFERENT support type — never a rewrite of a previous slide. ` +
 			`Preferred order: slide 2 = concrete evidence/stat/example, slide 3 = why it matters/implication, slide 4 = action/lesson, remaining = distinct angles. ` +
 			`Each slide feels like the NEXT PANEL in the same carousel. ` +
-			`No near-duplicates. No quotes, markdown, emojis, or hashtags.`;
+			`No near-duplicates. No quotes, markdown, emojis, or hashtags.` +
+			noEmDash;
 
 		const factSystem =
 			`You write short Instagram carousel overlay copy for a DID-YOU-KNOW / science explainer (not a story). Output ONLY valid JSON. ` +
 			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
 			`Slide 1 = punchy hook. Slides 2–N each reveal a different facet: mechanism, numbers, comparison, common misconception, stakes, cautious takeaway. ` +
-			`No fake dialogue. No plot beats. No near-duplicates. ALL CAPS. No quotes, markdown, emojis, or hashtags.`;
+			`No fake dialogue. No plot beats. No near-duplicates. ALL CAPS. No quotes, markdown, emojis, or hashtags.` +
+			noEmDash;
 
 		const storySystem =
 			`You write Instagram carousel overlay copy for a SHORT STORY (fiction or tight real-life anecdote), not a news article and not self-help tips. Output ONLY valid JSON. ` +
@@ -85,14 +94,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			`Each slide is ONE beat: a moment, a reversal, a choice, a consequence, a revelation, or the aftermath. ` +
 			`Ban listicle framing ("three lessons…", "here is why…") unless it is clearly spoken in-scene. ` +
 			`Each slide must advance plot or emotional truth — never paraphrase an earlier slide. ` +
-			`ALL CAPS. No quotes, markdown, emojis, or hashtags.`;
+			`ALL CAPS. No quotes, markdown, emojis, or hashtags.` +
+			noEmDash;
 
 		const quoteSystem =
 			`You write Instagram carousel overlay copy for a QUOTE carousel (original lines, not copied famous quotes). Output ONLY valid JSON. ` +
 			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
 			`Slide 1 = the main quote (may echo the title hook). ` +
 			`Slides 2–N each deepen the same topic: meaning, tension, tradeoff, hope, or accountability — one fresh angle per slide. ` +
-			`No fake celebrity names. No near-duplicates. ALL CAPS. No quotation marks, markdown, emojis, or hashtags.`;
+			`No fake celebrity names. No near-duplicates. ALL CAPS. No quotation marks, markdown, emojis, or hashtags.` +
+			noEmDash;
 
 		const middleSteps = Math.max(0, slideCount - 2);
 		const effectiveSteps = slideCount <= 1 ? 0 : slideCount === 2 ? 1 : Math.min(stepCount, middleSteps);
@@ -232,9 +243,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		// ── Optional second pass: add [[highlights]] to each slide ───────────
 		if (autoHighlight && variants.length > 0) {
 			const highlighted = await addHighlights(variants, title, contentMode);
-			return json(includeReplies ? { variants: highlighted, replies } : { variants: highlighted });
+			variants = highlighted;
 		}
-
+		variants = variants.map((v) => stripEmDashes(v));
+		replies = replies.map((r) => stripEmDashes(r));
 		return json(includeReplies ? { variants, replies } : { variants });
 	} catch (err: any) {
 		console.error('[news/variants]', err.message);
@@ -316,7 +328,7 @@ function getMockVariants(
 		'[[33%]] of all acquisitions since 2000 came from 5 companies',
 		'Google, Apple and Meta [[outpace]] every other buyer combined',
 		'Private equity is [[losing ground]] to Big Tech acquirers',
-		'[[Founders]] increasingly build to be acquired — not to IPO',
+		'[[Founders]] increasingly build to be acquired - not to IPO',
 	];
 	const factMock = [
 		title || 'YOUR BRAIN CAN RECOGNIZE A FAMILIAR FACE IN [[150 MILLISECONDS]]',
@@ -326,17 +338,17 @@ function getMockVariants(
 		'IT LIKELY EVOLVED FOR [[COOPERATION]] AND THREAT DETECTION IN GROUPS',
 	];
 	const storyMock = [
-		title || 'SHE FOUND THE [[KEY]] UNDER THE FLOWERPOT — THE LOCK WAS ALREADY OPEN',
+		title || 'SHE FOUND THE [[KEY]] UNDER THE FLOWERPOT - THE LOCK WAS ALREADY OPEN',
 		'INSIDE: [[COLD COFFEE]], A NOTE HALF WRITTEN, THE WINDOW [[AJAR]]',
-		'FOOTPRINTS LED TO THE [[FIRE ESCAPE]] — RAIN WIPED HALF OF THEM',
-		'ON THE ROOF HE STOOD WITH HER [[RING]] IN HIS PALM — HANDS SHAKING',
-		'NOT A THIEF, HE SAID — A [[PROPOSAL]] THAT WENT SIDEWAYS IN TEN MINUTES',
+		'FOOTPRINTS LED TO THE [[FIRE ESCAPE]] - RAIN WIPED HALF OF THEM',
+		'ON THE ROOF HE STOOD WITH HER [[RING]] IN HIS PALM - HANDS SHAKING',
+		'NOT A THIEF, HE SAID - A [[PROPOSAL]] THAT WENT SIDEWAYS IN TEN MINUTES',
 	];
 	const quoteMock = [
-		title || 'YOU DO NOT NEED [[MORE TIME]] — YOU NEED [[FEWER LIES]]',
+		title || 'YOU DO NOT NEED [[MORE TIME]] - YOU NEED [[FEWER LIES]]',
 		'EVERY YES TO [[NOISE]] IS A QUIET NO TO YOUR [[REAL LIFE]]',
-		'CLARITY IS NOT [[CRUEL]] — IT IS THE FIRST FORM OF [[RESPECT]]',
-		'THE TOPIC IS NOT [[MOTIVATION]] — IT IS WHAT YOU REFUSE TO [[NAME]]',
+		'CLARITY IS NOT [[CRUEL]] - IT IS THE FIRST FORM OF [[RESPECT]]',
+		'THE TOPIC IS NOT [[MOTIVATION]] - IT IS WHAT YOU REFUSE TO [[NAME]]',
 		'ONE HONEST [[NO]] CAN PROTECT A THOUSAND [[FUTURE YESSES]]',
 	];
 	const n = Math.max(1, Math.min(8, stepCount));
@@ -355,7 +367,7 @@ function getMockVariants(
 			];
 			return `STEP ${i + 1}: ${actions[i % actions.length]}`;
 		}),
-		'START WITH [[STEP 1]] THIS WEEK — THEN TELL SOMEONE YOUR PLAN',
+		'START WITH [[STEP 1]] THIS WEEK - THEN TELL SOMEONE YOUR PLAN',
 	];
 	const mock =
 		contentMode === 'story'

@@ -173,7 +173,7 @@
 	{#if loading}
 		<div class="skeleton-list">
 			{#each Array(3) as _}
-				<div class="skeleton-row"></div>
+				<div class="skeleton-row sk-shimmer"></div>
 			{/each}
 		</div>
 
@@ -516,17 +516,6 @@
 	.skeleton-row {
 		height: 72px;
 		border-radius: 14px;
-		background: color-mix(in oklab, var(--app-text) 6%, var(--app-bg));
-		animation: sk-pulse 1.8s ease-in-out infinite;
-	}
-	@keyframes sk-pulse {
-		0%,
-		100% {
-			opacity: 0.45;
-		}
-		50% {
-			opacity: 0.75;
-		}
 	}
 
 	.empty-state {

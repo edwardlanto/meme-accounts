@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { generateSlidesBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
+import { stripEmDashes } from '$lib/strip-em-dashes';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -244,11 +245,7 @@ function fitCopy(text: string, maxWords: number, maxChars: number): string {
 }
 
 function stripDashes(text: string): string {
-	return String(text ?? '')
-		.replace(/\u2014/g, ' - ')
-		.replace(/\u2013/g, '-')
-		.replace(/ {2,}/g, ' ')
-		.trim();
+	return stripEmDashes(text);
 }
 
 function buildPrompt(

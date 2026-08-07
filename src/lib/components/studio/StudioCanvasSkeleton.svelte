@@ -8,11 +8,11 @@
 </script>
 
 <div class="skeleton" aria-hidden="true">
-	<div class="sk-media"></div>
+	<div class="sk-media sk-shimmer"></div>
 	<div class="sk-copy">
-		<div class="sk-line sk-line-lg"></div>
-		<div class="sk-line sk-line-md"></div>
-		<div class="sk-line sk-line-sm"></div>
+		<div class="sk-line sk-shimmer sk-line-lg"></div>
+		<div class="sk-line sk-shimmer sk-line-md"></div>
+		<div class="sk-line sk-shimmer sk-line-sm"></div>
 	</div>
 </div>
 {#if label}
@@ -30,42 +30,34 @@
 		padding: 0;
 		border-radius: inherit;
 		overflow: hidden;
-		/* Distinct from empty canvas so boot is obvious in light + dark */
-		background: color-mix(in oklab, var(--app-text, #111) 6%, var(--app-surface, #f4f4f5));
+		background: #f3f3f3;
 	}
 	.sk-media {
 		position: absolute;
 		inset: 0;
-		background: linear-gradient(
-			165deg,
-			color-mix(in oklab, var(--app-text, #111) 8%, transparent),
-			color-mix(in oklab, var(--app-text, #111) 3%, transparent) 55%,
-			color-mix(in oklab, var(--app-text, #111) 10%, transparent)
-		);
 	}
 	.sk-copy {
 		position: relative;
 		z-index: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.65rem;
-		padding: 0 9% 12%;
+		gap: 0.55rem;
+		padding: 0 9% 14%;
 	}
 	.sk-line {
-		height: 0.85rem;
-		border-radius: 999px;
-		background: color-mix(in oklab, var(--app-text, #111) 16%, transparent);
+		height: 0.72rem;
+		border-radius: 6px;
 	}
 	.sk-line-lg {
-		height: 1.65rem;
+		height: 1.15rem;
 		width: 78%;
+		border-radius: 8px;
 	}
 	.sk-line-md {
 		width: 58%;
 	}
 	.sk-line-sm {
 		width: 40%;
-		opacity: 0.75;
 	}
 	.sk-label {
 		position: absolute;
@@ -77,33 +69,6 @@
 		font-size: 0.6875rem;
 		letter-spacing: 0.02em;
 		white-space: nowrap;
-		color: color-mix(in oklab, var(--app-text, #111) 55%, transparent);
-	}
-
-	.skeleton::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		z-index: 1;
-		background: linear-gradient(
-			100deg,
-			transparent 18%,
-			color-mix(in oklab, var(--app-text, #111) 12%, transparent) 48%,
-			transparent 72%
-		);
-		transform: translateX(-100%);
-		animation: sk-sweep 1.45s ease-in-out infinite;
-	}
-
-	@keyframes sk-sweep {
-		to {
-			transform: translateX(100%);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.skeleton::after {
-			animation: none;
-		}
+		color: #9a9a9a;
 	}
 </style>

@@ -8,7 +8,7 @@ export const NEWS_PLACEHOLDER_HEADLINE = D.news.headline;
 export const NEWS_DEFAULT_SUBTEXT =
 	typeof D.news.body === 'string' && D.news.body.trim()
 		? D.news.body
-		: 'The largest AI check ever written — and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.';
+		: 'The largest AI check ever written - and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.';
 
 export const NEWS_DEFAULT_SOURCE = D.news.source;
 

@@ -29,7 +29,8 @@ import JSZip from 'jszip';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import StudioCanvasSkeleton from '$lib/components/studio/StudioCanvasSkeleton.svelte';
 	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
-	import { formatExportError, replaceVideosWithFrameImages } from '$lib/studio/export-capture';
+	import { formatExportError, replaceVideosWithFrameImages, fetchRemoteVideoAsBlobUrl, materializeDomImagesForExport, SAFE_HTML_TO_IMAGE_OPTS } from '$lib/studio/export-capture';
+	import { recordSlideAsVideo, slideExportDurationSec } from '$lib/studio/export-slide-video';
 	import { fade } from 'svelte/transition';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import TextCarouselAvatarToolbar from '$lib/components/TextCarouselAvatarToolbar.svelte';
@@ -41,7 +42,7 @@ import JSZip from 'jszip';
 	import TemplateDockToolbar from '$lib/components/TemplateDockToolbar.svelte';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils.js';
-	import { loadGoogleFont } from '$lib/fonts';
+	import { GOOGLE_FONTS, loadGoogleFont } from '$lib/fonts';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { r2UploadBlob } from '$lib/r2Client';
@@ -78,6 +79,7 @@ import JSZip from 'jszip';
 		HIGHLIGHT_SOLID_PRESETS,
 		HIGHLIGHT_GRADIENT_PRESETS,
 	} from '$lib/highlight';
+	import { stripEmDashes } from '$lib/strip-em-dashes';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
@@ -263,6 +265,8 @@ import JSZip from 'jszip';
 	let generatingVariants = $state(false);
 	/** Keeps the full-canvas loader up for one paint flush after Vertex flags drop (avoids a one-frame flash). */
 	let studioImageGenPaintHold = $state(false);
+	/** True while downloading / decoding a background video onto the canvas. */
+	let backgroundMediaLoading = $state(false);
 	/** >0 while `generateAllSlideImages` / `refreshNewsDeckImagesAfterFetch` run (skip per-slide paint hold). */
 	let studioImageGenBatchDepth = 0;
 	let newsError = $state('');
@@ -2091,8 +2095,9 @@ import JSZip from 'jszip';
 	// Convenience derived for current active slide text
 	const overlayText = $derived(slides[activeSlide] ?? '');
 	function setActiveSlideText(val: string) {
-		if ((slides[activeSlide] ?? '') === val) return;
-		slides = slides.map((s, i) => i === activeSlide ? val : s);
+		const next = previewTemplate === 'news' ? stripEmDashes(val) : val;
+		if ((slides[activeSlide] ?? '') === next) return;
+		slides = slides.map((s, i) => (i === activeSlide ? next : s));
 	}
 
 	// Post data
@@ -2431,7 +2436,16 @@ import JSZip from 'jszip';
 			src = resolveMediaUrl(src);
 			if (!src) return '';
 		}
-		if (src.startsWith('blob:')) return src;
+		// blob: must become data: — html-to-image cacheBust / re-fetch can break blob URLs.
+		if (src.startsWith('blob:')) {
+			try {
+				const res = await fetch(src, { signal: AbortSignal.timeout(30_000) });
+				if (!res.ok) return src;
+				return await blobToDataUrl(await res.blob());
+			} catch {
+				return src;
+			}
+		}
 
 		// Same-origin path or absolute URL on this host — fetch locally (accepts WebP/PNG/JPEG).
 		const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -2475,8 +2489,14 @@ import JSZip from 'jszip';
 			for (let i = 0; i < arr.length; i++) {
 				const cur = String(arr[i] ?? '').trim();
 				if (!cur) continue;
-				if (cur.startsWith('data:') || cur.startsWith('blob:')) continue;
-				if (isR2Ref(cur) || cur.startsWith('http://') || cur.startsWith('https://') || cur.startsWith('/')) {
+				if (cur.startsWith('data:')) continue;
+				if (
+					isR2Ref(cur) ||
+					cur.startsWith('http://') ||
+					cur.startsWith('https://') ||
+					cur.startsWith('/') ||
+					cur.startsWith('blob:')
+				) {
 					const safe = await toExportSafeImageUrl(cur);
 					if (safe && safe !== cur) arr[i] = safe;
 				}
@@ -2497,18 +2517,81 @@ import JSZip from 'jszip';
 		textCarouselAvatarImageBySlide = await mapRow(textCarouselAvatarImageBySlide);
 
 		const logo = String(sourceLogoSrc ?? '').trim();
-		if (logo && !logo.startsWith('data:') && !logo.startsWith('blob:')) {
+		if (logo && !logo.startsWith('data:')) {
 			const safeLogo = await toExportSafeImageUrl(logo);
 			if (safeLogo) sourceLogoSrc = safeLogo;
 		}
 
 		const ctaImg = String(brandCta?.image ?? '').trim();
-		if (ctaImg && !ctaImg.startsWith('data:') && !ctaImg.startsWith('blob:')) {
+		if (ctaImg && !ctaImg.startsWith('data:')) {
 			const safeCta = await toExportSafeImageUrl(ctaImg);
 			if (safeCta) brandCta = { ...brandCta, image: safeCta };
 		}
 
+		// Stickers / logos on the canvas — often still `r2:` or signed https.
+		const nextOverlays: Record<TemplateId, Overlay[][]> = {
+			...(slideOverlaysByTemplate as Record<TemplateId, Overlay[][]>),
+		};
+		for (const key of Object.keys(nextOverlays) as TemplateId[]) {
+			const slidesRow = nextOverlays[key] ?? [];
+			nextOverlays[key] = await Promise.all(
+				slidesRow.map(async (row) => {
+					if (!row?.length) return row ?? [];
+					return Promise.all(
+						row.map(async (o) => {
+							const cur = String(o?.src ?? '').trim();
+							if (!cur || cur.startsWith('data:')) return o;
+							if (
+								!(
+									isR2Ref(cur) ||
+									cur.startsWith('http://') ||
+									cur.startsWith('https://') ||
+									cur.startsWith('/') ||
+									cur.startsWith('blob:')
+								)
+							) {
+								return o;
+							}
+							const safe = await toExportSafeImageUrl(cur);
+							return safe && safe !== cur ? { ...o, src: safe } : o;
+						}),
+					);
+				}),
+			);
+		}
+		slideOverlaysByTemplate = nextOverlays;
+
 		await tick();
+	}
+
+	/** Rewrite remote https video backgrounds to same-origin blob URLs for canvas export. */
+	async function materializeRemoteVideosForExport() {
+		const next: Record<TemplateId, string[]> = { ...bgVideosByTemplate } as Record<TemplateId, string[]>;
+		for (const key of Object.keys(next) as TemplateId[]) {
+			const row = [...(next[key] ?? [])];
+			for (let i = 0; i < row.length; i++) {
+				const cur = String(row[i] ?? '').trim();
+				if (!cur) continue;
+				if (cur.startsWith('blob:') || cur.startsWith('data:')) continue;
+				if (!(cur.startsWith('http://') || cur.startsWith('https://'))) continue;
+				try {
+					const blobUrl = await fetchRemoteVideoAsBlobUrl(cur);
+					row[i] = blobUrl;
+				} catch (e) {
+					console.warn('[studio] could not materialize video for export', cur, e);
+					throw new Error(
+						e instanceof Error
+							? e.message
+							: 'Could not download background video for export. Try re-applying the Pexels video.',
+					);
+				}
+			}
+			next[key] = row;
+		}
+		bgVideosByTemplate = next;
+		await tick();
+		// Give <video> elements a moment to attach the new blob src.
+		await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 	}
 
 	async function rasterizeExportNode(
@@ -2520,7 +2603,31 @@ import JSZip from 'jszip';
 			backgroundColor?: string;
 		},
 	): Promise<string> {
+		// Wait for any background <video> to decode at least one frame.
+		await Promise.all(
+			Array.from(node.querySelectorAll('video')).map(
+				(video) =>
+					new Promise<void>((resolve) => {
+						if (video.readyState >= 2 && video.videoWidth > 0) {
+							resolve();
+							return;
+						}
+						const done = () => resolve();
+						video.addEventListener('loadeddata', done, { once: true });
+						video.addEventListener('canplay', done, { once: true });
+						video.addEventListener('error', done, { once: true });
+						try {
+							void video.play?.().then(() => video.pause?.()).catch(() => {});
+						} catch {
+							/* ignore */
+						}
+						// Safety timeout so export never hangs on a broken src.
+						setTimeout(done, 6000);
+					}),
+			),
+		);
 		const restoreVideos = await replaceVideosWithFrameImages(node);
+		const restoreImgs = await materializeDomImagesForExport(node, toExportSafeImageUrl);
 		try {
 			try {
 				await (document as any).fonts?.ready;
@@ -2533,9 +2640,10 @@ import JSZip from 'jszip';
 				pixelRatio: opts.pixelRatio ?? 1,
 				backgroundColor: opts.backgroundColor,
 				style: { transform: 'scale(1)', transformOrigin: 'top left' },
-				cacheBust: true,
+				...SAFE_HTML_TO_IMAGE_OPTS,
 			} as any);
 		} finally {
+			restoreImgs();
 			restoreVideos();
 		}
 	}
@@ -2561,6 +2669,11 @@ import JSZip from 'jszip';
 			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
 			);
+		}
+		// Cutout was derived from the photo — drop it when switching to video.
+		if (template === 'news') {
+			subjectCutouts = subjectCutouts.map((v, idx) => (idx === i ? '' : v));
+			showCutout = showCutout.map((v, idx) => (idx === i ? false : v));
 		}
 		// Reset trim to "full" until duration is known.
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
@@ -2593,6 +2706,10 @@ import JSZip from 'jszip';
 			newsSolidBgBySlide = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (newsSolidBgBySlide[idx] ?? '')
 			);
+		}
+		if (template === 'news') {
+			subjectCutouts = subjectCutouts.map((v, idx) => (idx === i ? '' : v));
+			showCutout = showCutout.map((v, idx) => (idx === i ? false : v));
 		}
 		videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0)));
 		videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) => (idx === i ? 0 : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0)));
@@ -4205,6 +4322,28 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		patchActiveStyle(patch);
 	}
 
+	/** Patch News source-label styles from the settings panel (no canvas selection required). */
+	function patchNewsSourceStyle(patch: Partial<TextStyle>) {
+		const slide = activeSlide;
+		pushUndo('news', slide);
+		const prevRow = stylesByTemplateBySlide.news ?? [];
+		const n = slides.length;
+		const base = Array.from({ length: n }, (_, i) => prevRow[i] ?? {});
+		stylesByTemplateBySlide = {
+			...stylesByTemplateBySlide,
+			news: base.map((m, i) => {
+				if (i !== slide) return m;
+				const cur = m ?? {};
+				const nextSource = { ...(cur.source ?? {}), ...patch };
+				if (patch.fontFamily === '') delete (nextSource as { fontFamily?: string }).fontFamily;
+				return { ...cur, source: nextSource };
+			}),
+		};
+		const family = patch.fontFamily || canvasSourceStyle.fontFamily;
+		const weight = patch.fontWeight ?? canvasSourceStyle.fontWeight ?? 700;
+		if (family) void tick().then(() => void loadGoogleFont(family, weight));
+	}
+
 	function patchActiveStyle(patch: Partial<TextStyle>) {
 		if (
 			selectedText === 'articleImage' ||
@@ -4324,7 +4463,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const canvasVideoMuted = $derived(videoMutedBySlide[paintSlide] ?? true);
 	const canvasVideoVolume = $derived(videoVolumeBySlide[paintSlide] ?? 0.8);
 	const canvasCutout = $derived(resolveMediaUrl(subjectCutouts[paintSlide] ?? ''));
-	const canvasShowCutout = $derived(showCutout[paintSlide] ?? false);
+	const canvasShowCutout = $derived(
+		(showCutout[paintSlide] ?? false) &&
+			!!canvasCutout &&
+			!String(canvasBackgroundVideo ?? '').trim(),
+	);
 	const canvasCircleImg = $derived(resolveMediaUrl(circleImages[paintSlide] ?? ''));
 	const canvasCircle2Img = $derived(resolveMediaUrl(circle2Images[paintSlide] ?? ''));
 	const canvasShowCircle2 = $derived(showCircle2BySlide[paintSlide] ?? false);
@@ -4370,10 +4513,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return false;
 	}
 
-	/** Full-canvas loading overlay: variant pass, paint flush, or the slide currently in the preview is generating a background. */
+	/** Full-canvas loading overlay: variant pass, paint flush, bg gen, or media apply/load. */
 	const studioCanvasBusyLoading = $derived(
 		generatingVariants ||
 			studioImageGenPaintHold ||
+			backgroundMediaLoading ||
 			!!(generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide],
 	);
 
@@ -4414,7 +4558,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		// Restore (best-effort) — shared by autosave draft + saved templates.
 		if (typeof s.formatId === 'string') formatId = normalizeStudioFormatId(s.formatId);
 		if (typeof s.lastTemplateUsed === 'string') lastTemplateUsed = coerceTemplateId(s.lastTemplateUsed);
-		if (Array.isArray(s.slides)) slides = s.slides;
+		if (Array.isArray(s.slides)) slides = s.slides.map((x: unknown) => stripEmDashes(String(x ?? '')));
 		if (typeof s.activeSlide === 'number') activeSlide = Math.max(0, Math.min((s.slides?.length ?? slides.length) - 1, s.activeSlide));
 		if (typeof s.category === 'string') category = s.category;
 		if (
@@ -4632,7 +4776,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 		if (Array.isArray(s.articleTextBySlide)) articleTextBySlide = s.articleTextBySlide;
 		if (Array.isArray((s as any).newsSubtextBySlide)) {
-			newsSubtextBySlide = (s as any).newsSubtextBySlide.map((x: unknown) => String(x ?? ''));
+			newsSubtextBySlide = (s as any).newsSubtextBySlide.map((x: unknown) =>
+				stripEmDashes(String(x ?? '')),
+			);
 		}
 		if (Array.isArray(s.textCarouselTextBySlide)) {
 			textCarouselTextBySlide = s.textCarouselTextBySlide.map((x: unknown) =>
@@ -6078,7 +6224,7 @@ tweetTopImagePanYBySlide,
 	}
 
 	function clampFetchedPlainLength(text: string, maxLen: number, preserveMarkup = false): string {
-		const raw = String(text ?? '').trim();
+		const raw = stripEmDashes(String(text ?? '').trim());
 		if (!maxLen) return '';
 		const plain = stripHighlightMarkers(raw).replace(/\s+/g, ' ').trim();
 		if (plain.length <= maxLen) return preserveMarkup ? raw : plain;
@@ -6087,7 +6233,7 @@ tweetTopImagePanYBySlide,
 
 	/** Text carousel: 1–3 paragraphs, fit to card (never rely on short news hooks). */
 	function clampFetchedTextCarouselBody(text: string, _maxLen: number, opts?: { padToMin?: boolean }): string {
-		const raw = String(text ?? '').trim();
+		const raw = stripEmDashes(String(text ?? '').trim());
 		if (!raw) return opts?.padToMin ? ensureTextCarouselBodyMinLength('') : '';
 		let s = fitTextCarouselBodyToCanvas(stripHighlightMarkers(raw));
 		const padToMin = opts?.padToMin ?? false;
@@ -7374,13 +7520,24 @@ tweetTopImagePanYBySlide,
 	// ── Subject cutout (AI background removal) ────────────────────────────
 	async function cutOutSubject(slideIdx: number = activeSlide) {
 		const t = coerceTemplateId(slideTemplates[slideIdx] ?? lastTemplateUsed);
-		const src = (bgImagesByTemplate[t] ?? [])[slideIdx];
-		if (!src) {
+		const raw = String((bgImagesByTemplate[t] ?? [])[slideIdx] ?? '').trim();
+		if (!raw) {
 			cutoutError = 'No background image on this slide to cut out.';
+			alert(cutoutError);
+			return;
+		}
+		await ensureR2Resolved(raw);
+		const src = resolveMediaUrl(raw);
+		if (!src || src.startsWith('r2:')) {
+			cutoutError = 'Background is still loading — try again in a moment.';
+			alert(cutoutError);
 			return;
 		}
 		cutoutError = '';
-		cuttingOut = cuttingOut.map((v, i) => (i === slideIdx ? true : v));
+		const n = Math.max(slides.length, slideIdx + 1, subjectCutouts.length, showCutout.length, cuttingOut.length);
+		const padStr = (arr: string[]) => Array.from({ length: n }, (_, i) => arr[i] ?? '');
+		const padBool = (arr: boolean[]) => Array.from({ length: n }, (_, i) => arr[i] ?? false);
+		cuttingOut = padBool(cuttingOut).map((v, i) => (i === slideIdx ? true : v));
 		cutoutProgress = 0;
 		cutoutMessage = 'Starting…';
 		try {
@@ -7388,13 +7545,14 @@ tweetTopImagePanYBySlide,
 				cutoutProgress = p.progress ?? cutoutProgress;
 				cutoutMessage = p.message ?? cutoutMessage;
 			});
-			subjectCutouts = subjectCutouts.map((v, i) => (i === slideIdx ? dataUrl : v));
+			subjectCutouts = padStr(subjectCutouts).map((v, i) => (i === slideIdx ? dataUrl : v));
 			// Auto-enable the toggle on first cutout so the user immediately sees the effect.
-			showCutout = showCutout.map((v, i) => (i === slideIdx ? true : v));
+			showCutout = padBool(showCutout).map((v, i) => (i === slideIdx ? true : v));
 		} catch (e: any) {
 			cutoutError = e?.message ?? 'Background removal failed';
+			alert(cutoutError);
 		} finally {
-			cuttingOut = cuttingOut.map((v, i) => (i === slideIdx ? false : v));
+			cuttingOut = padBool(cuttingOut).map((v, i) => (i === slideIdx ? false : v));
 			cutoutMessage = '';
 		}
 	}
@@ -7889,25 +8047,74 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	}) {
 		const src = String(photo?.url ?? '').trim();
 		if (!src) return;
-		// Guideline: ping download endpoint when a photo is used
-		if (photo.downloadLocation) {
-			void fetch('/api/unsplash/download', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ downloadLocation: photo.downloadLocation }),
-			}).catch(() => {});
-		}
-		const safe = await toExportSafeImageUrl(src);
-		const finalUrl = String(safe ?? '').trim() || src;
-		if (activeTemplate === 'news') applyNewsSeedBackgroundLayout();
-		setSlideImage(activeSlide, finalUrl, activeTemplate);
-		if (photo.photographer) {
-			// Soft credit in console — UI shows photographer on the Unsplash card
-			console.info(`[unsplash] Photo by ${photo.photographer} on Unsplash`);
+		backgroundMediaLoading = true;
+		freezePreviewShell();
+		try {
+			// Guideline: ping download endpoint when a photo is used
+			if (photo.downloadLocation) {
+				void fetch('/api/unsplash/download', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ downloadLocation: photo.downloadLocation }),
+				}).catch(() => {});
+			}
+			const safe = await toExportSafeImageUrl(src);
+			const finalUrl = String(safe ?? '').trim() || src;
+			if (activeTemplate === 'news') applyNewsSeedBackgroundLayout();
+			setSlideImage(activeSlide, finalUrl, activeTemplate);
+			if (photo.photographer) {
+				console.info(`[unsplash] Photo by ${photo.photographer} on Unsplash`);
+			}
+		} finally {
+			backgroundMediaLoading = false;
+			releasePreviewShellSoon();
+			studioSizeTransitions = false;
+			window.setTimeout(() => {
+				if (!backgroundMediaLoading) studioSizeTransitions = true;
+			}, 280);
 		}
 	}
 
-	/** Apply a Pexels stock video as the active slide background. */
+	/** Freeze the preview shell so loading media can't resize the canvas mid-apply. */
+	function freezePreviewShell() {
+		const w = previewDisplayW;
+		const h = previewDisplayH;
+		if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+			bootShellW = w;
+			bootShellH = h;
+		}
+	}
+
+	function releasePreviewShellSoon() {
+		requestAnimationFrame(() => {
+			bootShellW = null;
+			bootShellH = null;
+		});
+	}
+
+	/** Wait until the canvas `<video>` has a decoded frame (or timeout). */
+	async function waitForCanvasVideoReady(timeoutMs = 8000): Promise<void> {
+		await tick();
+		await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+		const node = exportRef;
+		const video = node?.querySelector?.('video') as HTMLVideoElement | null | undefined;
+		if (!video) return;
+		if (video.readyState >= 2 && video.videoWidth > 0) return;
+		await new Promise<void>((resolve) => {
+			const done = () => {
+				video.removeEventListener('loadeddata', done);
+				video.removeEventListener('canplay', done);
+				video.removeEventListener('error', done);
+				resolve();
+			};
+			video.addEventListener('loadeddata', done);
+			video.addEventListener('canplay', done);
+			video.addEventListener('error', done);
+			setTimeout(done, timeoutMs);
+		});
+	}
+
+	/** Apply a Pexels stock video as the active slide background (blob URL so export isn't CORS-blocked). */
 	async function applyPexelsVideoAsBackground(video: {
 		url: string;
 		thumb?: string;
@@ -7916,19 +8123,36 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	}) {
 		const src = String(video?.url ?? '').trim();
 		if (!src) throw new Error('Video URL missing');
-		if (activeTemplate === 'news' || activeTemplate === 'blank') applyNewsSeedBackgroundLayout();
-		setSlideVideo(activeSlide, src, activeTemplate);
-		const dur = Number(video?.duration ?? 0);
-		if (Number.isFinite(dur) && dur > 0) {
-			videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) =>
-				idx === activeSlide ? dur : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0),
-			);
-			videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) =>
-				idx === activeSlide ? dur : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0),
-			);
-		}
-		if (video.photographer) {
-			console.info(`[pexels] Video by ${video.photographer} on Pexels`);
+		backgroundMediaLoading = true;
+		freezePreviewShell();
+		try {
+			const blobUrl = await fetchRemoteVideoAsBlobUrl(src);
+			if (activeTemplate === 'news' || activeTemplate === 'blank') applyNewsSeedBackgroundLayout();
+			setSlideVideo(activeSlide, blobUrl, activeTemplate);
+			const dur = Number(video?.duration ?? 0);
+			if (Number.isFinite(dur) && dur > 0) {
+				videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) =>
+					idx === activeSlide ? dur : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0),
+				);
+				videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) =>
+					idx === activeSlide ? dur : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0),
+				);
+				videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) =>
+					idx === activeSlide ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0),
+				);
+			}
+			await waitForCanvasVideoReady();
+			if (video.photographer) {
+				console.info(`[pexels] Video by ${video.photographer} on Pexels`);
+			}
+		} finally {
+			backgroundMediaLoading = false;
+			releasePreviewShellSoon();
+			// Avoid a width/height tween right as the video appears.
+			studioSizeTransitions = false;
+			window.setTimeout(() => {
+				if (!backgroundMediaLoading) studioSizeTransitions = true;
+			}, 280);
 		}
 	}
 
@@ -7966,12 +8190,26 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		img.src = measureSrc;
 	}
 
-	function handleVideoUpload(e: Event) {
+	async function handleVideoUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		const t = activeTemplate;
-		const url = URL.createObjectURL(file);
-		setSlideVideo(activeSlide, url, t);
+		backgroundMediaLoading = true;
+		freezePreviewShell();
+		try {
+			if (t === 'news' || t === 'blank') applyNewsSeedBackgroundLayout();
+			const url = URL.createObjectURL(file);
+			setSlideVideo(activeSlide, url, t);
+			await waitForCanvasVideoReady();
+		} finally {
+			backgroundMediaLoading = false;
+			releasePreviewShellSoon();
+			studioSizeTransitions = false;
+			window.setTimeout(() => {
+				if (!backgroundMediaLoading) studioSizeTransitions = true;
+			}, 280);
+			(e.target as HTMLInputElement).value = '';
+		}
 	}
 
 	function handleCircleUpload(e: Event) {
@@ -8098,13 +8336,14 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		reader.readAsDataURL(file);
 	}
 
-	// ── Export PNGs (zip all slides) ──────────────────────────────────────
+	// ── Export (PNG for stills, WebM for video slides) ─────────────────────
 	async function exportPng() {
 		if (!exportRef) return;
 		if (!slides.length) return;
 		exporting = true;
 		try {
 			await materializeRemoteImagesForExport();
+			await materializeRemoteVideosForExport();
 			const zip = new JSZip();
 			const folder = zip.folder(`slides-${formatId}`) ?? zip;
 
@@ -8116,14 +8355,50 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				const node = exportRef;
 				if (!node) throw new Error('Preview not ready for export');
 
-				const dataUrl = await rasterizeExportNode(node, {
-					width: CANVAS_W,
-					height: CANVAS_H,
-					pixelRatio: 1,
-					backgroundColor: filmstripPngBackgroundForSlide(i),
-				});
-				const base64 = dataUrl.split(',')[1] ?? '';
-				folder.file(`slide-${i + 1}.png`, base64, { base64: true });
+				const clip = getSlideClipMedia(i);
+				const videoEl = node.querySelector('video');
+				const clipLen = clip
+					? slideExportDurationSec({
+							start: clip.start,
+							end: clip.end,
+							duration: clip.duration,
+							videoElDuration: videoEl?.duration,
+						})
+					: 0;
+				const hasVideo = !!(clip?.url && videoEl && clipLen >= 0.2);
+
+				if (hasVideo && clip && videoEl) {
+					let start = Math.max(0, clip.start || 0);
+					let end = clip.end > start ? clip.end : start + clipLen;
+					if (!(end > start)) {
+						const dur = Number(videoEl.duration);
+						end = Number.isFinite(dur) && dur > start ? dur : start + Math.max(clipLen, 3);
+					}
+					const bg = filmstripPngBackgroundForSlide(i);
+					const blob = await recordSlideAsVideo({
+						root: node,
+						video: videoEl,
+						width: CANVAS_W,
+						height: CANVAS_H,
+						startSec: start,
+						endSec: end,
+						backgroundColor: bg,
+						includeAudio: !(videoMutedBySlide[i] ?? true),
+						onProgress: (pct) => {
+							console.info(`[export] slide ${i + 1} video ${Math.round(pct)}%`);
+						},
+					});
+					folder.file(`slide-${i + 1}.webm`, blob);
+				} else {
+					const dataUrl = await rasterizeExportNode(node, {
+						width: CANVAS_W,
+						height: CANVAS_H,
+						pixelRatio: 1,
+						backgroundColor: filmstripPngBackgroundForSlide(i),
+					});
+					const base64 = dataUrl.split(',')[1] ?? '';
+					folder.file(`slide-${i + 1}.png`, base64, { base64: true });
+				}
 			}
 
 			const blob = await zip.generateAsync({ type: 'blob' });
@@ -8149,6 +8424,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		lastExportError = '';
 		try {
 			await materializeRemoteImagesForExport();
+			await materializeRemoteVideosForExport();
 			const out: string[] = [];
 			for (let i = 0; i < slides.length; i++) {
 				canvasRasterSlide = i;
@@ -8931,7 +9207,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						? skipLatestWorkspaceDraftRestore || forcedBlankFromQuery || forcedTemplateFromQuery
 							? 'Preparing template'
 							: 'Restoring your last edit'
-						: ''}
+						: backgroundMediaLoading
+							? 'Loading video'
+							: ''}
 				/>
 			</div>
 		{/if}
@@ -9102,7 +9380,9 @@ showSubjectCutout={canvasShowCutout}
 					onSubtextChange={(t) => {
 						if (!canvasInteractive) return;
 						pushUndo('news', paintSlide);
-						newsSubtextBySlide = newsSubtextBySlide.map((x, i) => (i === paintSlide ? t : x));
+						newsSubtextBySlide = newsSubtextBySlide.map((x, i) =>
+							i === paintSlide ? stripEmDashes(t) : x,
+						);
 					}}
 					onCircleMove={(x, y) => { if (!canvasInteractive) return; circleX = x; circleY = y; }}
 					onCircleImageChange={(src) => {
@@ -11141,6 +11421,62 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										</div>
 										{#if sourceLabelMode === 'text'}
 											<Input bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
+											<div class="flex flex-col gap-2 pt-0.5">
+												<div class="flex min-w-0 items-center gap-2">
+													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Font</Label>
+													<select
+														class="min-w-0 flex-1 rounded-lg border border-[#ebebeb] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#333] outline-none focus:border-[#ccc]"
+														value={canvasSourceStyle.fontFamily ?? ''}
+														onchange={(e) => {
+															const family = (e.currentTarget as HTMLSelectElement).value;
+															if (family) void loadGoogleFont(family, canvasSourceStyle.fontWeight ?? 700);
+															patchNewsSourceStyle({ fontFamily: family });
+														}}
+													>
+														<option value="">Default (italic)</option>
+														{#each GOOGLE_FONTS as f (f.family)}
+															<option value={f.family}>{f.family}</option>
+														{/each}
+													</select>
+												</div>
+												<div class="flex min-w-0 items-center gap-2">
+													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Size</Label>
+													<Slider
+														type="single"
+														value={canvasSourceStyle.fontSize ?? 34}
+														min={18}
+														max={72}
+														step={1}
+														onValueChange={(v) => {
+															const n = Array.isArray(v) ? v[0] : v;
+															if (typeof n === 'number' && Number.isFinite(n)) {
+																patchNewsSourceStyle({ fontSize: n });
+															}
+														}}
+														class="min-w-0 flex-1"
+													/>
+													<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{canvasSourceStyle.fontSize ?? 34}px</span>
+												</div>
+												<div class="flex min-w-0 items-center gap-2">
+													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Style</Label>
+													<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
+														<Button
+															type="button"
+															variant={(canvasSourceStyle.italic ?? true) ? 'secondary' : 'ghost'}
+															size="sm"
+															class="h-6 rounded-md px-2.5 text-[10px] font-semibold italic"
+															onclick={() => patchNewsSourceStyle({ italic: true })}
+														>Italic</Button>
+														<Button
+															type="button"
+															variant={canvasSourceStyle.italic === false ? 'secondary' : 'ghost'}
+															size="sm"
+															class="h-6 rounded-md px-2.5 text-[10px] font-semibold"
+															onclick={() => patchNewsSourceStyle({ italic: false })}
+														>Regular</Button>
+													</div>
+												</div>
+											</div>
 										{:else}
 											<div class="flex items-center gap-2">
 												<input type="file" accept="image/*" class="sr-only" tabindex={-1} aria-hidden="true" bind:this={sourceLogoInput}
@@ -11422,14 +11758,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		/>
 	</div>
 
-	<!-- Save / Post / Burn / Export — one row, floating bottom-right above the assets rail -->
+	<!-- Save / Post / Burn / Export — viewport-fixed bottom-right (portaled in component) -->
 	<FloatingActions
 		{...({
 			slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
 			inline: false,
-			rightOffsetPx: assetsCollapsed ? 68 : 288,
-			bottomOffsetPx: 24,
-			zIndex: 55,
+			rightOffsetPx: assetsCollapsed ? 20 : 288,
+			bottomOffsetPx: 20,
+			zIndex: 200,
 			posting: exportingAll,
 			exportingZip: exporting,
 			onExportZip: () => void exportPng(),
@@ -11985,21 +12321,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		text-overflow: ellipsis;
 	}
 	.filmstrip-skel {
-		background: color-mix(in oklab, var(--app-text, #fff) 8%, transparent);
+		background-image: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
+		background-size: 200% 100%;
+		animation: sk-shimmer 1.4s ease-in-out infinite;
 		overflow: hidden;
 	}
 	.filmstrip-skel::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		background: linear-gradient(
-			100deg,
-			transparent 20%,
-			color-mix(in oklab, var(--app-text, #fff) 12%, transparent) 45%,
-			transparent 70%
-		);
-		transform: translateX(-100%);
-		animation: filmstrip-skel-sweep 1.45s ease-in-out infinite;
+		display: none;
 	}
 	.filmstrip-label-skel {
 		display: block;
@@ -12007,8 +12335,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		height: 8px;
 		margin: 3px auto 0;
 		border-radius: 999px;
-		background: color-mix(in oklab, var(--app-text, #fff) 12%, transparent);
-		animation: filmstrip-label-pulse 1.2s ease-in-out infinite;
+		background-image: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
+		background-size: 200% 100%;
+		animation: sk-shimmer 1.4s ease-in-out infinite;
 	}
 	@keyframes filmstrip-skel-sweep {
 		to {
@@ -12025,9 +12354,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.filmstrip-skel::after,
+		.filmstrip-skel,
 		.filmstrip-label-skel {
 			animation: none;
+			background-image: none;
+			background-color: #ececec;
 		}
 	}
 

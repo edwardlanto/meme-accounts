@@ -304,13 +304,17 @@
 					(template === 'photoCaption'
 						? PHOTO_CAPTION_DEFAULTS.imageUrl
 						: PHOTO_TOPIC_DEFAULTS.imageUrl)}
-				headline={headline === ' '
-					? template === 'photoCaption'
-						? PHOTO_CAPTION_DEFAULTS.headline
-						: PHOTO_TOPIC_DEFAULTS.headline
-					: headline}
-				body={body ||
-					(template === 'photoCaption' ? PHOTO_CAPTION_DEFAULTS.body : PHOTO_TOPIC_DEFAULTS.body)}
+				headline={maybeStrip(
+					headline === ' '
+						? template === 'photoCaption'
+							? PHOTO_CAPTION_DEFAULTS.headline
+							: PHOTO_TOPIC_DEFAULTS.headline
+						: headline,
+				)}
+				body={maybeStrip(
+					body ||
+						(template === 'photoCaption' ? PHOTO_CAPTION_DEFAULTS.body : PHOTO_TOPIC_DEFAULTS.body),
+				)}
 				headlineStyle={{ ...PHOTO_TOPIC_HEADLINE_STYLE }}
 				bodyStyle={{ ...PHOTO_TOPIC_BODY_STYLE }}
 				w={CANVAS_W}
@@ -323,7 +327,7 @@
 			<TextCarouselTemplate
 				name={TEXT_CAROUSEL_DEFAULTS.name}
 				handle={TEXT_CAROUSEL_DEFAULTS.handle}
-				text={textCarouselBody}
+				text={maybeStrip(textCarouselBody)}
 				canvasW={CANVAS_W}
 				canvasH={CANVAS_H}
 				{scale}
@@ -335,7 +339,7 @@
 				name={template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.name : WHITE_THREAD_DEFAULTS.name}
 				handle={template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.handle : WHITE_THREAD_DEFAULTS.handle}
 				avatar={template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.avatarUrl : WHITE_THREAD_DEFAULTS.avatarUrl}
-				text={whiteBody}
+				text={maybeStrip(whiteBody)}
 				mediaImage={optimizeImageUrl(mediaUrl || WHITE_MEDIA_DEFAULTS.imageUrl, fetchW)}
 				w={CANVAS_W}
 				h={CANVAS_H}
@@ -440,8 +444,8 @@
 			/>
 		{:else if template === 'blackText'}
 			<BlackTextCarouselTemplate
-				headline={headline === ' ' ? BLACK_TEXT_CAROUSEL_DEFAULTS.headline : headline}
-				body={body || BLACK_TEXT_CAROUSEL_DEFAULTS.body}
+				headline={maybeStrip(headline === ' ' ? BLACK_TEXT_CAROUSEL_DEFAULTS.headline : headline)}
+				body={maybeStrip(body || BLACK_TEXT_CAROUSEL_DEFAULTS.body)}
 				backgroundImage={imageSrc}
 				canvasW={CANVAS_W}
 				canvasH={CANVAS_H}
@@ -451,7 +455,7 @@
 		{:else if template === 'imageQuote'}
 			<ImageQuoteTemplate
 				image={imageSrc || IMAGE_QUOTE_DEFAULTS.imageUrl}
-				text={headline === ' ' ? IMAGE_QUOTE_DEFAULTS.body : headline}
+				text={maybeStrip(headline === ' ' ? IMAGE_QUOTE_DEFAULTS.body : headline)}
 				footerLeft={IMAGE_QUOTE_DEFAULTS.footerLeft}
 				footerRight={IMAGE_QUOTE_DEFAULTS.footerRight}
 				topRatio={IMAGE_QUOTE_DEFAULTS.topRatio}
@@ -466,7 +470,7 @@
 		{:else if template === 'news'}
 			<NewsTemplate
 				text={newsTemplateText}
-				subtext={body}
+				subtext={maybeStrip(body)}
 				source={NEWS_DEFAULT_SOURCE}
 				sourceLogoSrc={String(sourceLogoSrc ?? '').trim()}
 				sourceLabelMode={String(sourceLogoSrc ?? '').trim() ? 'logo' : 'text'}

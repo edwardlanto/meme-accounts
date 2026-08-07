@@ -1152,7 +1152,7 @@
 	{#if loading}
 		<div class="carousel-grid" style="margin-bottom: 28px;">
 			{#each Array(6) as _}
-				<div class="skeleton-card"></div>
+				<div class="skeleton-card sk-shimmer"></div>
 			{/each}
 		</div>
 	{:else if libraryEmpty}
@@ -2229,14 +2229,7 @@
 	.skeleton-card {
 		aspect-ratio: 4 / 5;
 		border-radius: 18px;
-		background: var(--panel-bg-2);
 		border: 1px solid var(--panel-border);
-		animation: pulse 1.2s ease-in-out infinite;
-	}
-	@keyframes pulse {
-		50% {
-			opacity: 0.55;
-		}
 	}
 	.empty-state {
 		text-align: center;

@@ -200,14 +200,7 @@ export function audiencePromptText(id: string, custom: string): string {
 	return BULK_AUDIENCES.find((a) => a.id === id)?.label ?? '';
 }
 
-export function stripEmDashes(text: string): string {
-	return String(text ?? '')
-		.replace(/\u2014/g, ' - ')
-		.replace(/\u2013/g, '-')
-		.replace(/\s+-\s+/g, ' - ')
-		.replace(/ {2,}/g, ' ')
-		.trim();
-}
+export { stripEmDashes } from '$lib/strip-em-dashes';
 
 export function defaultRowCaptions(overrides?: Partial<BulkRowCaptions>): BulkRowCaptions {
 	return {

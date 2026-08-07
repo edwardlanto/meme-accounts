@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { prepareImageForUpload } from '$lib/client/image-upload-prep';
 	import { Film, ImagePlus, Loader, Pencil, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
+	import SkeletonGrid from '$lib/components/SkeletonGrid.svelte';
 
 	type StudioAsset = {
 		id: string;
@@ -669,10 +670,7 @@
 			ondrop={onDrop}
 		>
 			{#if loading}
-				<div class="assets-empty">
-					<Loader size={18} class="animate-spin opacity-50" />
-					<p>Loading assets…</p>
-				</div>
+				<SkeletonGrid count={6} ratio="3/4" />
 			{:else if !filtered.length}
 				<button type="button" class="assets-empty assets-empty-btn" onclick={() => fileInput?.click()} disabled={!userId || uploading}>
 					<div class="assets-empty-icon">
@@ -775,11 +773,8 @@
 		</div>
 	{:else if tab === 'unsplash'}
 		<div class="assets-drop">
-			{#if unsplashLoading}
-				<div class="assets-empty">
-					<Loader size={18} class="animate-spin opacity-50" />
-					<p>Searching Unsplash…</p>
-				</div>
+			{#if unsplashLoading && !unsplashPhotos.length}
+				<SkeletonGrid count={6} ratio="3/4" />
 			{:else if !unsplashSearched}
 				<div class="assets-empty">
 					<div class="assets-empty-icon"><Search size={18} /></div>
@@ -865,10 +860,7 @@
 	{:else if tab === 'pexels'}
 		<div class="assets-drop">
 			{#if pexelsLoading && !(pexelsKind === 'videos' ? pexelsVideos.length : pexelsPhotos.length)}
-				<div class="assets-empty">
-					<Loader size={18} class="animate-spin opacity-50" />
-					<p>{pexelsKind === 'videos' ? 'Searching Pexels videos…' : 'Searching Pexels…'}</p>
-				</div>
+				<SkeletonGrid count={6} ratio="3/4" />
 			{:else if !pexelsSearched}
 				<div class="assets-empty">
 					<div class="assets-empty-icon">

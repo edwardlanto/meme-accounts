@@ -104,6 +104,7 @@
 		VolumeX,
 		Highlighter,
 	} from 'lucide-svelte';
+	import { Switch } from '$lib/components/ui/switch';
 
 	type SlidePopoverKind = 'intel' | 'reframe' | 'captions';
 
@@ -1318,7 +1319,7 @@
 					imageCount: 0,
 					audience: audiencePromptText(audienceId, audience) || 'general audience',
 					emotion: emotion || undefined,
-					autoHighlight: brandKit.textHighlightsEnabled !== false,
+					autoHighlight: wordHighlightsOn,
 				}),
 			});
 			const data = await res.json();
@@ -1416,8 +1417,10 @@
 		setTimeout(() => (brandSavedNote = ''), 2000);
 	}
 
-	function toggleWordHighlights() {
-		brandKit = { ...brandKit, textHighlightsEnabled: !brandKit.textHighlightsEnabled };
+	const wordHighlightsOn = $derived(brandKit.textHighlightsEnabled !== false);
+
+	function setWordHighlights(on: boolean) {
+		brandKit = { ...brandKit, textHighlightsEnabled: on };
 		if (userId) saveBrandKit(userId, brandKit);
 	}
 
@@ -1754,19 +1757,24 @@
 					{/if}
 					Fill stock
 				</button>
-				<button
-					type="button"
-					class="btn-ghost sm"
-					class:btn-ghost-on={brandKit.textHighlightsEnabled}
-					onclick={toggleWordHighlights}
-					title={brandKit.textHighlightsEnabled
-						? 'Word highlights on — generate wraps key phrases; [[…]] shows colored accents'
-						: 'Word highlights off — headlines stay plain'}
-					aria-pressed={brandKit.textHighlightsEnabled}
+				<label
+					class="hl-toggle"
+					class:hl-toggle-on={wordHighlightsOn}
+					title={wordHighlightsOn
+						? 'Word highlights on — generate wraps key phrases; [[…]] shows colored accents on News slides'
+						: 'Word highlights off — new generates stay plain; existing [[…]] markup is hidden in previews'}
 				>
 					<Highlighter size={13} />
-					Word highlights
-				</button>
+					<span class="hl-toggle-label">Highlights</span>
+					<span class="hl-toggle-state" aria-hidden="true">{wordHighlightsOn ? 'On' : 'Off'}</span>
+					<Switch
+						id="bulk-word-highlights"
+						size="sm"
+						checked={wordHighlightsOn}
+						onCheckedChange={(v) => setWordHighlights(!!v)}
+						class="shrink-0"
+					/>
+				</label>
 				<button type="button" class="btn-ghost sm" onclick={() => (pasteOpen = !pasteOpen)} disabled={stackLoading}>
 					<Type size={13} /> Paste ideas
 				</button>
@@ -1909,7 +1917,7 @@
 									activeSlideId={show.activeSlideId}
 									width={BULK_CAROUSEL_WIDTH}
 									loadingSlideIds={show.slides.filter((s) => s.mediaLoading).map((s) => s.id)}
-									textHighlightsEnabled={brandKit.textHighlightsEnabled}
+									textHighlightsEnabled={wordHighlightsOn}
 									sourceLogoSrc={brandKit.logoUrl || undefined}
 									onselect={(slideId) => selectSlide(show.id, slideId)}
 								/>
@@ -1936,7 +1944,7 @@
 												width={BULK_FILMSTRIP_THUMB}
 												preferThumb={true}
 												mediaFetching={!!sl.mediaLoading}
-												textHighlightsEnabled={brandKit.textHighlightsEnabled}
+												textHighlightsEnabled={wordHighlightsOn}
 												sourceLogoSrc={brandKit.logoUrl || undefined}
 											/>
 											<span class="filmstrip-num">{si + 1}</span>
@@ -2969,6 +2977,47 @@
 		background: color-mix(in oklab, var(--app-text) 6%, transparent);
 		color: var(--app-text);
 	}
+	.hl-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		height: 1.85rem;
+		padding: 0 0.55rem 0 0.6rem;
+		border-radius: 999px;
+		border: 1px solid var(--bulk-border);
+		background: #fff;
+		font-size: 0.72rem;
+		font-weight: 650;
+		color: var(--app-text-2);
+		cursor: pointer;
+		user-select: none;
+		transition:
+			border-color 0.15s ease,
+			background 0.15s ease,
+			color 0.15s ease;
+	}
+	.hl-toggle:hover {
+		border-color: color-mix(in oklab, var(--app-text) 22%, var(--bulk-border));
+	}
+	.hl-toggle-on {
+		border-color: color-mix(in oklab, var(--app-text) 28%, var(--bulk-border));
+		background: color-mix(in oklab, var(--app-text) 5%, #fff);
+		color: var(--app-text);
+	}
+	.hl-toggle-label {
+		letter-spacing: -0.01em;
+	}
+	.hl-toggle-state {
+		font-size: 0.62rem;
+		font-weight: 750;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		opacity: 0.55;
+		min-width: 1.4rem;
+	}
+	.hl-toggle-on .hl-toggle-state {
+		opacity: 0.85;
+	}
 	.history-badge {
 		display: inline-flex;
 		align-items: center;
@@ -3454,10 +3503,14 @@
 			background-position: -100% 0;
 		}
 	}
-	.skeleton-block {
-		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
+	/* Prefer global `.sk-shimmer` — keep local aliases in sync with Bulk/site skeleton. */
+	.skeleton-block,
+	.skeleton-thumb,
+	.skeleton-line,
+	.skeleton-chips span {
+		background-image: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
 		background-size: 200% 100%;
-		animation: bulk-shimmer 1.4s ease-in-out infinite;
+		animation: sk-shimmer 1.4s ease-in-out infinite;
 	}
 	.skeleton-preview {
 		width: 100%;
@@ -3484,16 +3537,10 @@
 		flex: 1 1 0;
 		aspect-ratio: 4 / 5;
 		border-radius: 8px;
-		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
-		background-size: 200% 100%;
-		animation: bulk-shimmer 1.4s ease-in-out infinite;
 	}
 	.skeleton-line {
 		height: 0.72rem;
 		border-radius: 6px;
-		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
-		background-size: 200% 100%;
-		animation: bulk-shimmer 1.4s ease-in-out infinite;
 	}
 	.skeleton-title-row {
 		height: 1.85rem;
@@ -3523,8 +3570,15 @@
 		width: 4.5rem;
 		height: 1.5rem;
 		border-radius: 999px;
-		background: linear-gradient(110deg, #ececec 8%, #f8f8f8 18%, #ececec 33%);
-		background-size: 200% 100%;
-		animation: bulk-shimmer 1.4s ease-in-out infinite;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.skeleton-block,
+		.skeleton-thumb,
+		.skeleton-line,
+		.skeleton-chips span {
+			animation: none;
+			background-image: none;
+			background-color: #ececec;
+		}
 	}
 </style>

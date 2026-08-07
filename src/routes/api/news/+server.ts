@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
+import { stripEmDashes } from '$lib/strip-em-dashes';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
 /** Prefer /all when searching — category + keyword work more reliably than top-only. */
@@ -107,6 +108,7 @@ Rules:
 - Never wrap: articles (the, a, an), prepositions, conjunctions
 - Max 3 wrapped phrases
 - Keep the original text exactly — only add [[ and ]] around phrases — NEVER use grad(, marker(, pattern(, or #hex: inside brackets
+- NEVER use em dashes (—) or en dashes (–). Use a comma, period, or plain hyphen (-) only.
 - Example: "TESLA RAISES [[PRICES BY 12%]] ACROSS ALL MODELS"
 
 Text: "${overlayText}"
@@ -486,10 +488,10 @@ Rules for "context":
 	}
 
 	return {
-		text: overlayText,
+		text: stripEmDashes(overlayText),
 		imageUrl: null,
-		title,
-		description,
+		title: stripEmDashes(title),
+		description: stripEmDashes(description),
 		source:
 			mode === 'quote'
 				? 'Quotes'
@@ -627,6 +629,7 @@ Rules:
 - ALL CAPS (the template will uppercase it, but write in caps anyway)
 - No hashtags, no emojis
 - Short, punchy sentences
+- NEVER use em dashes (—) or en dashes (–). Use commas, periods, or a plain hyphen (-) only.
 - MUST END WITH A COMPLETE THOUGHT — do not cut off mid-sentence
 - If the full story won't fit in 28 words, write a shorter complete hook instead
 - Start with the most shocking/interesting fact
@@ -648,10 +651,10 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 	}
 
 	return json({
-		text: overlayText,
+		text: stripEmDashes(overlayText),
 		imageUrl: article.image_url ?? null,
-		title: article.title ?? '',
-		description: article.description ?? '',
+		title: stripEmDashes(article.title ?? ''),
+		description: stripEmDashes(article.description ?? ''),
 		source: article.source ?? null,
 		url: article.url ?? null,
 		uuid: article.uuid ?? null,

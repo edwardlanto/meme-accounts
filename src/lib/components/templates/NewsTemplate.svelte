@@ -1692,9 +1692,8 @@
 			></div>
 		{/if}
 
-		<!-- Gradient overlay — height/strength user-controlled. z=30 so it sits
-		     ABOVE the subject cutout (z=25) but BELOW the text (z=40), giving
-		     the text its legibility shelf even when a subject is cut out. -->
+		<!-- Gradient overlay — below the circle badge (z≈45) and subject cutout
+		     (z≈50) so the editorial overlap stays visible; above stickers/bg. -->
 		<div style="position: absolute; inset: 0; z-index: 36; pointer-events: none;
 			background: {shadowGradient};"></div>
 
@@ -2246,8 +2245,9 @@
 		{#if showSubjectCutout && subjectCutout}
 			<!-- Cutout must pan + zoom identically to the background (it was
 			     derived from the same pixels). Mirror the zoom/pan math above. -->
-			<!-- Above circles (z=31/32), below shadow shelf (z=36) and text (z=40). -->
-			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 34; pointer-events: none;">
+			<!-- Above circle badge (z≈45) so the subject overlaps the ring;
+			     below source/headline (z≈90). -->
+			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 50; pointer-events: none;">
 				{#if bgFitMode === 'contain'}
 					<div
 						style="
@@ -2537,11 +2537,7 @@
 												/>
 											{/if}
 										{:else if sourceLabelMode === 'text' && source}
-											{#if sourceStyle.fontFamily}
-												{source}
-											{:else}
-												<span style="font-style: italic;">{source.slice(0,1).toLowerCase()}</span>{source.slice(1)}
-											{/if}
+											{source}
 										{/if}
 									</span>
 									{#if sourceLabelMode === 'text'}

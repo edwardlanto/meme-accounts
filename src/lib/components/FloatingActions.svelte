@@ -37,6 +37,19 @@
 		defaultTemplateName = '',
 	} = ($props() as $$Props);
 
+	/** Host for fixed mode — portaled to `document.body` so nothing clips or re-parents the float. */
+	let rootEl = $state<HTMLDivElement | null>(null);
+
+	$effect(() => {
+		if (inline) return;
+		const el = rootEl;
+		if (!el || typeof document === 'undefined') return;
+		document.body.appendChild(el);
+		return () => {
+			el.remove();
+		};
+	});
+
 	interface SlideMusicSettings { song: string; seconds: number; }
 
 	let showMusicPanel = $state(false);
@@ -110,9 +123,10 @@
 
 {#if hasSlides}
 	<div
-		class="flex flex-row flex-nowrap items-end gap-2 {inline
+		bind:this={rootEl}
+		class="floating-actions flex flex-row flex-nowrap items-end gap-2 {inline
 			? 'w-full justify-end'
-			: 'fixed'}"
+			: 'fixed left-auto'}"
 		style={inline
 			? ''
 			: `right:${rightOffsetPx}px;bottom:${bottomOffsetPx}px;z-index:${zIndex};`}
@@ -334,7 +348,7 @@
 				onclick={() => void onExportZip?.()}
 				disabled={!!exportingZip || !!posting}
 				class="fa-btn"
-				title="Export all slides as PNG (ZIP)"
+				title="Export slides as ZIP — video slides as WebM (clip length), stills as PNG"
 			>
 				{#if exportingZip}
 					<LoaderCircle size={13} class="animate-spin" /> Export…
