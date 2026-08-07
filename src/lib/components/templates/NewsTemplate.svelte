@@ -409,7 +409,11 @@
 		lines.push(`color: ${s.color ?? textColor};`);
 		lines.push(`text-align: ${s.align ?? 'left'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
-		lines.push(`line-height: ${s.lineHeight ?? 1.06};`);
+		// Tight leading + trim so selection/edit rings hug glyph caps (Bebas leaves large em padding).
+		const lh = s.lineHeight != null ? Math.min(s.lineHeight, 0.9) : 0.82;
+		lines.push(`line-height: ${lh};`);
+		lines.push('text-box-trim: trim-both;');
+		lines.push('text-box-edge: cap alphabetic;');
 		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
 		return lines.join(' ');
 	});
@@ -603,7 +607,9 @@
 	const highlightParseDefaults = $derived(
 		highlightDefaults ?? { color: highlightColor },
 	);
-	let parsed   = $derived(parseHighlightMarkup(text, highlightParseDefaults));
+	let parsed = $derived(
+		parseHighlightMarkup(String(text ?? '').replace(/\n+$/g, ''), highlightParseDefaults),
+	);
 	let segments = $derived(segmentText(parsed));
 
 	let fontSize = $derived(
@@ -697,8 +703,10 @@
 	}
 
 	function commitHeadlineToParent() {
+		const cleaned = headlineDraft.replace(/\n+$/g, '');
+		if (cleaned !== headlineDraft) headlineDraft = cleaned;
 		if (onHeadlineLive) {
-			onTextChange?.(headlineDraft);
+			onTextChange?.(cleaned);
 			// Clear the Studio live buffer after paint so `slides` + static headline mount
 			// settle first — avoids a visible flash when swapping editor → read-only markup.
 			queueMicrotask(() => onHeadlineEditEnd?.());
@@ -2611,7 +2619,7 @@
 						onmouseenter={() => (hoveringText = true)}
 						onmouseleave={() => (hoveringText = false)}
 					>
-						{#if interactive && hoveringText && !editing}
+						{#if interactive && hoveringText && !editing && selectedText !== 'headline'}
 							<div style="
 								position: absolute;
 								inset: -8px;
@@ -2645,7 +2653,9 @@
 					ondblclick={onHeadlineDblClick}
 					onpointerup={onHeadlineMouseUp}
 					style="
-						margin: 0; padding: 0;
+						margin: 0;
+						padding: 0;
+						border: 0;
 						{headlineCss}
 						text-transform: uppercase;
 						word-break: break-word;
@@ -2655,7 +2665,7 @@
 							? 'position: absolute; left: 0; right: 0; top: 0; visibility: hidden; pointer-events: none; height: auto;'
 							: ''}
 						{selectedText === 'headline' && !(interactive && editing)
-							? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 4px;'
+							? 'outline: 2px solid rgba(139,92,246,0.75); outline-offset: 2px; border-radius: 2px;'
 							: ''}
 						{interactive ? 'cursor: text; user-select: text !important; -webkit-user-select: text !important;' : ''}
 					"
@@ -2701,12 +2711,16 @@
 						onmousedown={(e) => e.stopPropagation()}
 						style="
 							position: relative;
-							margin: 0; padding: 0;
+							display: block;
+							margin: 0;
+							padding: 0;
+							border: 0;
 							{headlineCss}
 							text-transform: uppercase;
 							word-break: break-word;
-							box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
-							border-radius: 4px;
+							outline: 2px solid rgba(139,92,246,0.75);
+							outline-offset: 2px;
+							border-radius: 2px;
 							cursor: text;
 							white-space: pre-wrap;
 						"
@@ -2718,6 +2732,7 @@
 							showToolbar={false}
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
+							lineHeight="inherit"
 							onChange={pushHeadlineChange}
 							onBlur={finishHeadlineEdit}
 							onSelectionChange={(has, r) => {
@@ -2751,9 +2766,6 @@
 							white-space: pre-line;
 							visibility: {interactive && editingSubtext ? 'hidden' : 'visible'};
 							pointer-events: {interactive && editingSubtext ? 'none' : 'auto'};
-							{selectedText === 'headline' && !editingSubtext && String(subtext ?? '').trim()
-								? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.35); border-radius: 4px;'
-								: ''}
 							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
 						"
 					>{String(subtext ?? '').trim()}</p>

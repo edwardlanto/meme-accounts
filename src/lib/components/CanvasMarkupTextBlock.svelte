@@ -77,6 +77,82 @@
 		return ghost;
 	}
 
+	/**
+	 * Prefer the painted text node over the thin outer `data-canvas-typography-root`
+	 * wrapper (often only sets font-size). POV / outlined templates put real
+	 * weight, align, and stroke on a descendant (or innermost typography root).
+	 */
+	function pickTypographySource(root: HTMLElement): HTMLElement {
+		const paint = root.querySelector('[data-canvas-paint-root]') as HTMLElement | null;
+		if (paint) return paint;
+
+		const roots = [...root.querySelectorAll('[data-canvas-typography-root]')];
+		// Innermost typography root is usually the real styled text (HighlightedText).
+		const wrap = (roots[roots.length - 1] as HTMLElement | undefined) ?? null;
+		if (wrap) {
+			const styled = wrap.querySelector(
+				'[style*="font-weight"], [style*="text-stroke"], [style*="-webkit-text-stroke"], [style*="letter-spacing"], [style*="line-height"]',
+			) as HTMLElement | null;
+			if (styled) return styled;
+			return wrap;
+		}
+
+		return (root.firstElementChild as HTMLElement | null) ?? root;
+	}
+
+	function snapshotTypography(el: HTMLElement): TypographySnapshot {
+		const cs = getComputedStyle(el);
+		const stroke =
+			(cs as CSSStyleDeclaration & { webkitTextStroke?: string }).webkitTextStroke?.trim() ||
+			[
+				cs.getPropertyValue('-webkit-text-stroke-width')?.trim(),
+				cs.getPropertyValue('-webkit-text-stroke-color')?.trim(),
+			]
+				.filter(Boolean)
+				.join(' ');
+		const shadow = cs.textShadow?.trim();
+		const paintOrder = cs.paintOrder?.trim();
+		return {
+			fontWeight: cs.fontWeight,
+			fontFamily: cs.fontFamily,
+			fontSize: cs.fontSize,
+			lineHeight: cs.lineHeight,
+			letterSpacing: cs.letterSpacing,
+			fontStyle: cs.fontStyle,
+			textDecoration: cs.textDecoration,
+			textAlign: cs.textAlign,
+			...(stroke && stroke !== '0px' && stroke !== 'none' ? { webkitTextStroke: stroke } : {}),
+			...(paintOrder && paintOrder !== 'normal' ? { paintOrder } : {}),
+			...(shadow && shadow !== 'none' ? { textShadow: shadow } : {}),
+		};
+	}
+
+	function typographyCss(snap: TypographySnapshot | null, fallbackFamily?: string, fallbackSize?: number): string {
+		if (!snap) {
+			return [
+				fallbackFamily ? `font-family: '${fallbackFamily}', sans-serif;` : '',
+				fallbackSize ? `font-size: ${fallbackSize}px;` : '',
+			]
+				.filter(Boolean)
+				.join(' ');
+		}
+		return [
+			`font-family: ${snap.fontFamily};`,
+			`font-size: ${snap.fontSize};`,
+			`font-weight: ${snap.fontWeight};`,
+			`line-height: ${snap.lineHeight};`,
+			`letter-spacing: ${snap.letterSpacing};`,
+			`font-style: ${snap.fontStyle};`,
+			`text-decoration: ${snap.textDecoration};`,
+			`text-align: ${snap.textAlign};`,
+			snap.webkitTextStroke ? `-webkit-text-stroke: ${snap.webkitTextStroke};` : '',
+			snap.paintOrder ? `paint-order: ${snap.paintOrder};` : '',
+			snap.textShadow ? `text-shadow: ${snap.textShadow};` : '',
+		]
+			.filter(Boolean)
+			.join(' ');
+	}
+
 	function getPlainSelectionRange(): { start: number; end: number } | null {
 		const root = displayRoot;
 		if (!root) return null;
@@ -111,27 +187,14 @@
 	function startEdit(e: MouseEvent) {
 		if (!canEdit) return;
 		e.stopPropagation();
-		// Match visible canvas typography (weight, size, line-height) — the editor wrapper
-		// does not repeat template CSS, so without this the contenteditable inherits from
-		// outer frames and looks bolder/lighter than the display layer.
+		// Match visible canvas typography (weight, size, stroke, align) — not the thin
+		// font-size wrapper — so POV / outlined text keep their look while editing.
 		try {
 			if (displayRoot) {
-				const typoEl =
-					(displayRoot.querySelector('[data-canvas-typography-root]') as HTMLElement | null) ??
-					(displayRoot.firstElementChild as HTMLElement | null) ??
-					displayRoot;
+				const typoEl = pickTypographySource(displayRoot);
 				const cs = getComputedStyle(typoEl);
 				editTextColor = cs.color;
-				editTypography = {
-					fontWeight: cs.fontWeight,
-					fontFamily: cs.fontFamily,
-					fontSize: cs.fontSize,
-					lineHeight: cs.lineHeight,
-					letterSpacing: cs.letterSpacing,
-					fontStyle: cs.fontStyle,
-					textDecoration: cs.textDecoration,
-					textAlign: cs.textAlign,
-				};
+				editTypography = snapshotTypography(typoEl);
 			} else {
 				editTextColor = null;
 				editTypography = null;
@@ -254,14 +317,7 @@
 					resize: none;
 					border: none; outline: none; background: transparent;
 					color: {editTextColor ?? 'inherit'};
-					font-family: {editTypography?.fontFamily ?? (fontFamily ? `'${fontFamily}', sans-serif` : 'inherit')};
-					font-size: {editTypography?.fontSize ?? (fontSize ? `${fontSize}px` : 'inherit')};
-					font-weight: {editTypography?.fontWeight ?? 'inherit'};
-					line-height: {editTypography?.lineHeight ?? 1.35};
-					letter-spacing: {editTypography?.letterSpacing ?? 'inherit'};
-					font-style: {editTypography?.fontStyle ?? 'inherit'};
-					text-decoration: {editTypography?.textDecoration ?? 'inherit'};
-					text-align: {editTypography?.textAlign ?? 'inherit'};
+					{typographyCss(editTypography, fontFamily, fontSize)}
 					{uppercase ? 'text-transform: uppercase;' : ''}
 				"
 				oninput={(e) => onTextChange?.((e.target as HTMLTextAreaElement).value)}

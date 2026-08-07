@@ -2,6 +2,7 @@
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
+	import DraggableMediaFrame from '$lib/components/DraggableMediaFrame.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { appendTextShadowCss } from '$lib/textStyleCss';
 
@@ -35,7 +36,7 @@
 		onHeadlineRangeSelect?: (start: number, end: number) => void;
 		headlineStyle?: TextStyle;
 		textOffsets?: Record<string, { x: number; y: number }>;
-		onTextOffsetChange?: (kind: TextElementKind, next: { x: number; y: number }) => void;
+		onTextOffsetChange?: (kind: string, next: { x: number; y: number }) => void;
 		showToolbar?: boolean;
 	}
 
@@ -121,6 +122,11 @@
 	});
 	const quoteSize = $derived(headlineStyle.fontSize ?? autoQuoteSize);
 
+	const mediaStretch = $derived(
+		Math.max(0.4, Math.min(1.75, Number(textOffsets.articleImageSize?.x ?? 1) || 1)),
+	);
+	const mediaSelected = $derived(selectedText === 'articleImage');
+
 	const useFilmStrip = $derived(
 		filmStripTopPct != null || filmStripBottomPct != null,
 	);
@@ -191,49 +197,44 @@
 
 			<!-- Top image — fills leftover space after the quote panel -->
 			<div
-				data-text-selectable={interactive ? 'articleImage' : undefined}
-				role={interactive ? 'button' : undefined}
-				tabindex={interactive ? 0 : undefined}
-				aria-label={interactive ? 'Quote image' : undefined}
-				onclick={(e) => {
-					if (!interactive || !onTextSelect) return;
-					e.stopPropagation();
-					onTextSelect('articleImage', e.currentTarget as HTMLElement);
-				}}
-				onkeydown={(e) => {
-					if (!interactive || !onTextSelect) return;
-					if (e.key === 'Enter' || e.key === ' ') {
-						e.preventDefault();
-						onTextSelect('articleImage', e.currentTarget as HTMLElement);
-					}
-				}}
 				style="
 					{useFilmStrip
 						? `flex: 1 1 auto; min-height: 0;`
 						: `flex: 1 1 ${preferredTopH}px; min-height: ${BASE_H - maxBottomH}px; max-height: ${BASE_H - minBottomH}px;`}
 					width: 100%;
 					position: relative;
-					overflow: hidden;
+					overflow: {interactive ? 'visible' : 'hidden'};
 					background: #111;
-					cursor: {interactive && onTextSelect ? 'pointer' : 'default'};
-					outline: {selectedText === 'articleImage' ? '3px solid rgba(167,139,250,0.85)' : 'none'};
-					outline-offset: -3px;
+					z-index: {mediaSelected ? 6 : 1};
 				"
 			>
 				{#if image}
-					<img
-						src={image}
-						alt=""
-						draggable="false"
-						style="
-							width: 100%;
-							height: 100%;
-							object-fit: cover;
-							object-position: center top;
-							display: block;
-							pointer-events: none;
-						"
-					/>
+					<DraggableMediaFrame
+						dx={textOffsets.articleImage?.x ?? 0}
+						dy={textOffsets.articleImage?.y ?? 0}
+						stretch={mediaStretch}
+						{interactive}
+						scale={dragScale}
+						selected={mediaSelected}
+						fill
+						onOffsetChange={(x, y) => onTextOffsetChange?.('articleImage', { x, y })}
+						onStretchChange={(s) => onTextOffsetChange?.('articleImageSize', { x: s, y: s })}
+						onSelect={(el) => onTextSelect?.('articleImage', el)}
+					>
+						<img
+							src={image}
+							alt=""
+							draggable="false"
+							style="
+								width: 100%;
+								height: 100%;
+								object-fit: cover;
+								object-position: center top;
+								display: block;
+								pointer-events: none;
+							"
+						/>
+					</DraggableMediaFrame>
 				{/if}
 			</div>
 

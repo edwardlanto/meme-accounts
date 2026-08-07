@@ -60,6 +60,10 @@ export interface TypographySnapshot {
 	fontStyle: string;
 	textDecoration: string;
 	textAlign: string;
+	/** Outlined canvas text (POV / text-on-video). */
+	webkitTextStroke?: string;
+	paintOrder?: string;
+	textShadow?: string;
 }
 
 /** A text element that can be edited/styled via the floating toolbar. */

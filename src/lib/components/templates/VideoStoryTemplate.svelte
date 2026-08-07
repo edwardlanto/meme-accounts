@@ -2,6 +2,7 @@
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
+	import DraggableMediaFrame from '$lib/components/DraggableMediaFrame.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { appendTextShadowCss } from '$lib/textStyleCss';
 	import { stripMarkup } from '$lib/highlight';
@@ -200,55 +201,14 @@
 	let storyVideoEl = $state<HTMLVideoElement | null>(null);
 	let lastDuration = 0;
 
-	/** Uniform stretch of the video frame (1 = fill parent). Stored in textOffsets.videoStoryMediaSize.x */
 	const mediaStretch = $derived(
 		Math.max(0.4, Math.min(1.75, Number(textOffsets.videoStoryMediaSize?.x ?? 1) || 1)),
 	);
 	const mediaSelected = $derived(selectedText === 'videoStoryMedia');
 
-	let mediaResizeStart: { x: number; y: number; stretch: number } | null = null;
-
-	function clampMediaStretch(v: number) {
-		return Math.max(0.4, Math.min(1.75, v));
-	}
-
-	function startMediaResize(e: PointerEvent) {
-		if (!interactive || !onTextOffsetChange) return;
-		e.preventDefault();
-		e.stopPropagation();
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-		mediaResizeStart = {
-			x: e.clientX,
-			y: e.clientY,
-			stretch: mediaStretch,
-		};
-	}
-
-	function moveMediaResize(e: PointerEvent) {
-		if (!mediaResizeStart || !onTextOffsetChange) return;
-		const dx = (e.clientX - mediaResizeStart.x) / Math.max(0.001, scale);
-		const dy = (e.clientY - mediaResizeStart.y) / Math.max(0.001, scale);
-		// Average axis so corner drag feels like uniform stretch.
-		const delta = (dx + dy) / 2;
-		const next = clampMediaStretch(mediaResizeStart.stretch + delta / 520);
-		onTextOffsetChange('videoStoryMediaSize', { x: next, y: next });
-	}
-
-	function endMediaResize() {
-		mediaResizeStart = null;
-	}
-
-	function onMediaFrameClick(e: MouseEvent) {
-		if (!interactive || !onTextSelect) return;
-		e.stopPropagation();
-		onTextSelect('videoStoryMedia', e.currentTarget as HTMLElement);
-	}
-
-	function onMediaFrameDblClick(e: MouseEvent) {
+	function onMediaFrameDblClick(detail: { clientX: number; clientY: number }) {
 		if (!interactive || !onBackgroundDblClick) return;
-		e.stopPropagation();
-		e.preventDefault();
-		onBackgroundDblClick({ clientX: e.clientX, clientY: e.clientY });
+		onBackgroundDblClick(detail);
 	}
 
 	function onStoryVideoMeta(e: Event) {
@@ -418,80 +378,27 @@
 {/snippet}
 
 {#snippet draggableMedia(objectFit: 'cover' | 'contain', frameStyle = '')}
-	<DraggableBlock
+	<DraggableMediaFrame
 		dx={textOffsets.videoStoryMedia?.x ?? 0}
 		dy={textOffsets.videoStoryMedia?.y ?? 0}
+		stretch={mediaStretch}
 		{interactive}
 		{scale}
+		selected={mediaSelected}
 		fill
-		onChange={(x, y) => onTextOffsetChange?.('videoStoryMedia', { x, y })}
+		{frameStyle}
+		title={interactive
+			? onBackgroundDblClick
+				? 'Drag to move · Corner to expand · Double-click for BG tools'
+				: 'Drag to move · Corner to expand'
+			: undefined}
+		onOffsetChange={(x, y) => onTextOffsetChange?.('videoStoryMedia', { x, y })}
+		onStretchChange={(s) => onTextOffsetChange?.('videoStoryMediaSize', { x: s, y: s })}
+		onSelect={(el) => onTextSelect?.('videoStoryMedia', el)}
+		onDblClick={onMediaFrameDblClick}
 	>
-		{#snippet children()}
-			<div
-				role="presentation"
-				data-text-selectable="videoStoryMedia"
-				onclick={onMediaFrameClick}
-				ondblclick={onMediaFrameDblClick}
-				onpointermove={moveMediaResize}
-				onpointerup={endMediaResize}
-				onpointercancel={endMediaResize}
-				title={interactive && onBackgroundDblClick ? 'Double-click for BG tools' : undefined}
-				style="
-					position: relative;
-					width: {mediaStretch * 100}%;
-					height: {mediaStretch * 100}%;
-					min-height: 0;
-					margin: 0 auto;
-					touch-action: none;
-					cursor: {interactive ? 'grab' : 'default'};
-					box-sizing: border-box;
-					{mediaSelected && interactive
-						? 'box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.7);'
-						: ''}
-					{frameStyle}
-				"
-			>
-				{@render mediaLayer(objectFit)}
-				{#if interactive && mediaSelected}
-					<div
-						data-draggable-no-pan
-						style="
-							position: absolute;
-							right: 10px;
-							bottom: 10px;
-							z-index: 4;
-							width: 22px;
-							height: 22px;
-							border-radius: 8px;
-							background: rgba(0,0,0,0.5);
-							border: 1px solid rgba(255,255,255,0.25);
-							display: flex;
-							align-items: center;
-							justify-content: center;
-							cursor: nwse-resize;
-							pointer-events: auto;
-							touch-action: none;
-						"
-						onpointerdown={startMediaResize}
-						title="Drag to stretch video"
-						role="button"
-						tabindex="0"
-						aria-label="Stretch video frame"
-					>
-						<div
-							style="
-								width: 10px;
-								height: 10px;
-								border-right: 2px solid rgba(255,255,255,0.8);
-								border-bottom: 2px solid rgba(255,255,255,0.8);
-								transform: translate(1px, 1px);
-							"
-						></div>
-					</div>
-				{/if}
-			</div>
-		{/snippet}
-	</DraggableBlock>
+		{@render mediaLayer(objectFit)}
+	</DraggableMediaFrame>
 {/snippet}
 
 {#snippet headlineBlock(pill = false)}
@@ -887,9 +794,10 @@
 							height: 100%;
 							min-height: {previewMode ? '72px' : '240px'};
 							border-radius: {previewMode ? '14px' : '28px'};
-							overflow: hidden;
+							overflow: {interactive ? 'visible' : 'hidden'};
 							background: #111;
 							box-shadow: 0 18px 48px rgba(0,0,0,0.45);
+							z-index: {mediaSelected ? 8 : 1};
 						"
 					>
 						{@render draggableMedia('contain')}
@@ -979,7 +887,8 @@
 						min-height: 0;
 						width: 100%;
 						background: #0a0a0a;
-						overflow: hidden;
+						overflow: {interactive ? 'visible' : 'hidden'};
+						z-index: {mediaSelected ? 8 : 1};
 					"
 				>
 					{@render draggableMedia('cover')}
@@ -1040,7 +949,23 @@
 								onHeadlineRangeSelect={onHeadlineRangeSelect}
 							>
 								{#snippet display()}
-									<div style="text-align: {headlineStyle.align ?? 'center'}; width: 100%;">
+									<div
+										data-canvas-paint-root
+										style="
+											text-align: {headlineStyle.align ?? 'center'};
+											width: 100%;
+											margin: 0;
+											white-space: pre-wrap;
+											word-break: break-word;
+											line-height: {headlineStyle.lineHeight ?? 1.15};
+											letter-spacing: -0.03em;
+											color: {headlineStyle.color ?? '#ffffff'};
+											font-weight: {headlineStyle.fontWeight ?? 800};
+											font-family: '{headlineStyle.fontFamily ?? 'Satoshi'}', ui-sans-serif, system-ui, sans-serif;
+											font-size: {textOnVideoFontSize}px;
+											{textOnVideoStroke}
+										"
+									>
 										<HighlightedText
 											as="div"
 											text={stripMarkup(headline)}
@@ -1048,14 +973,16 @@
 											defaultColor={highlightColor}
 											style="
 												margin: 0;
-												white-space: pre-wrap;
-												word-break: break-word;
-												line-height: 1.15;
-												letter-spacing: -0.03em;
-												color: #ffffff;
-												font-weight: {headlineStyle.fontWeight ?? 800};
-												font-size: {textOnVideoFontSize}px;
-												{textOnVideoStroke}
+												padding: 0;
+												font: inherit;
+												color: inherit;
+												letter-spacing: inherit;
+												line-height: inherit;
+												white-space: inherit;
+												word-break: inherit;
+												-webkit-text-stroke: inherit;
+												paint-order: inherit;
+												text-shadow: inherit;
 											"
 										/>
 									</div>
@@ -1482,7 +1409,8 @@
 						min-height: 0;
 						width: 100%;
 						background: #0a0a0a;
-						overflow: hidden;
+						overflow: {interactive ? 'visible' : 'hidden'};
+						z-index: {mediaSelected ? 8 : 1};
 					"
 				>
 					{@render draggableMedia('cover')}
@@ -1538,7 +1466,8 @@
 						margin: 0 auto;
 						aspect-ratio: auto;
 						background: #0a0a0a;
-						overflow: hidden;
+						overflow: {interactive ? 'visible' : 'hidden'};
+						z-index: {mediaSelected ? 8 : 1};
 					"
 				>
 					{@render draggableMedia('cover')}
@@ -1567,7 +1496,7 @@
 					justify-content: center;
 				"
 			>
-				<div style="position: relative; width: 100%; height: 56%; min-height: 0;">
+				<div style="position: relative; width: 100%; height: 56%; min-height: 0; overflow: {interactive ? 'visible' : 'hidden'}; z-index: {mediaSelected ? 8 : 1};">
 					{@render draggableMedia('contain')}
 				</div>
 			</div>
@@ -1642,9 +1571,10 @@
 						position: relative;
 						width: 100%;
 						aspect-ratio: 16 / 9;
-						overflow: hidden;
+						overflow: {interactive ? 'visible' : 'hidden'};
 						background: #000;
 						pointer-events: auto;
+						z-index: {mediaSelected ? 8 : 1};
 					"
 				>
 					{@render draggableMedia('cover')}
@@ -1693,9 +1623,10 @@
 						height: 100%;
 						min-height: 0;
 						border-radius: {previewMode ? '14px' : '20px'};
-						overflow: hidden;
+						overflow: {interactive ? 'visible' : 'hidden'};
 						background: #0a0a0a;
 						box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+						z-index: {mediaSelected ? 8 : 1};
 					"
 				>
 					{@render draggableMedia('cover')}

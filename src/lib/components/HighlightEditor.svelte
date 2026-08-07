@@ -32,6 +32,8 @@
 		rows?: number;
 		/** Override min-height CSS. Defaults to 0 so canvas text stays put while editing. */
 		minHeight?: string;
+		/** CSS line-height for the editor (e.g. `inherit` to match parent canvas typography). */
+		lineHeight?: string;
 		/** Font used for the editor content. */
 		fontFamily?: string;
 		fontSize?: number;
@@ -57,6 +59,7 @@
 		defaultStyle,
 		rows = 4,
 		minHeight,
+		lineHeight,
 		fontFamily,
 		fontSize,
 		typographySnapshot = null,
@@ -556,6 +559,7 @@
 				min-height: {minHeight ?? '0px'};
 				color: currentColor;
 				padding: 0;
+				margin: 0;
 				{typographySnapshot
 					? `
 						line-height: ${typographySnapshot.lineHeight};
@@ -566,9 +570,12 @@
 						font-style: ${typographySnapshot.fontStyle};
 						text-decoration: ${typographySnapshot.textDecoration};
 						text-align: ${typographySnapshot.textAlign};
+						${typographySnapshot.webkitTextStroke ? `-webkit-text-stroke: ${typographySnapshot.webkitTextStroke};` : ''}
+						${typographySnapshot.paintOrder ? `paint-order: ${typographySnapshot.paintOrder};` : ''}
+						${typographySnapshot.textShadow ? `text-shadow: ${typographySnapshot.textShadow};` : ''}
 					`
 					: `
-						line-height: 1.12;
+						line-height: ${lineHeight ?? 'inherit'};
 						${fontFamily ? `font-family: ${fontFamily};` : ''}
 						${fontSize ? `font-size: ${fontSize}px;` : ''}
 					`}
