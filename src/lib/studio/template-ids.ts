@@ -31,17 +31,16 @@ export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 	{ id: 'tweet', label: 'Tweet' },
 	// { id: 'article', label: 'Article' },
 	{ id: 'textCarousel', label: 'Text carousel' },
-	{ id: 'whiteThread', label: 'White thread' },
-	{ id: 'whiteMedia', label: 'White media' },
+	// { id: 'whiteThread', label: 'White thread' },
+	// { id: 'whiteMedia', label: 'White media' },
 	{ id: 'videoSource', label: 'Highlight' },
 	{ id: 'videoText', label: 'Text on video' },
 	{ id: 'videoCreator', label: 'Creator hook' },
-	{ id: 'videoHook', label: 'Hook video' },
-	{ id: 'videoSplit', label: 'Multi split' },
-	{ id: 'videoBlur', label: 'Blur' },
-	{ id: 'brandStack', label: 'Brand stack' },
-	{ id: 'imageQuote', label: 'Image quote' },
-	{ id: 'blackText', label: 'Black text' },
+	// { id: 'videoHook', label: 'Hook video' },
+	// { id: 'videoSplit', label: 'Multi split' },
+	// { id: 'videoBlur', label: 'Blur' },
+	// { id: 'brandStack', label: 'Brand stack' },
+	// { id: 'imageQuote', label: 'Image quote' },
 ];
 
 /** Keys must be lowercase — `mapQueryParamToTemplateId` lowercases before lookup. */
@@ -206,16 +205,20 @@ export function isWhitePostFamily(id: TemplateId): boolean {
 	return id === 'whiteThread' || id === 'whiteMedia';
 }
 
-/** Templates with adjustable black letterbox / film-strip bars. */
-export const FILM_STRIP_TEMPLATE_IDS = [
-	'imageQuote',
-	'videoHook',
-	'videoCreator',
-	'videoSource',
-] as const;
+/** Templates with adjustable black letterbox / film-strip bars (all of them). */
+export const FILM_STRIP_TEMPLATE_IDS: readonly TemplateId[] = CANONICAL_TEMPLATE_IDS;
 
-export type FilmStripTemplateId = (typeof FILM_STRIP_TEMPLATE_IDS)[number];
+export type FilmStripTemplateId = TemplateId;
 
-export function supportsFilmStrip(id: TemplateId): id is FilmStripTemplateId {
-	return (FILM_STRIP_TEMPLATE_IDS as readonly string[]).includes(id);
+/** Always available — letterbox control lives in the Studio dock for every template. */
+export function supportsFilmStrip(_id: TemplateId): _id is FilmStripTemplateId {
+	return true;
+}
+
+/**
+ * Templates that bake letterbox into their layout (content sits in the bars).
+ * Others use a canvas overlay so letterbox doesn't require per-template markup.
+ */
+export function usesStructuralFilmStrip(id: TemplateId): boolean {
+	return id === 'imageQuote' || id === 'videoHook' || id === 'videoCreator' || id === 'videoSource';
 }

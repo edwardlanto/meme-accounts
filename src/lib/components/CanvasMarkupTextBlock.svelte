@@ -1,20 +1,28 @@
 <script lang="ts">
 	/**
-	 * Inline [[...]] markup editing for canvas templates: double-click to edit,
+	 * Inline text editing for canvas templates: double-click to edit,
 	 * single click / text drag for floating toolbar (when callbacks are wired).
+	 *
+	 * Matches NewsTemplate chrome: violet outline rings, zero padding, text-box
+	 * trim, and a typography snapshot so edit mode keeps the painted look.
 	 */
 	import type { Snippet } from 'svelte';
 	import type { TextElementKind, TypographySnapshot } from '$lib/types';
 	import { plainRangeFromSelection } from '$lib/highlight';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
+	import {
+		CANVAS_TEXT_BOX_TRIM,
+		CANVAS_TEXT_FOCUS_RING,
+	} from '$lib/studio/canvas-text-chrome';
 
 	interface Props {
 		value: string;
 		interactive?: boolean;
 		defaultColor?: string;
 		/**
-		 * When true, double-click editing uses HighlightEditor (`[[…]]` markup).
-		 * News headline uses a different path; other templates keep this false.
+		 * When true (default), double-click editing uses HighlightEditor so
+		 * weight/size/stroke and `[[…]]` chips match the canvas. Set false only
+		 * for rare plain-textarea cases.
 		 */
 		allowHighlightMarkup?: boolean;
 		/** When true, show violet focus ring (toolbar selection). */
@@ -38,7 +46,7 @@
 		value,
 		interactive = false,
 		defaultColor = '#F59E0B',
-		allowHighlightMarkup = false,
+		allowHighlightMarkup = true,
 		selected = false,
 		toolbarKind = 'headline',
 		rows = 6,
@@ -87,15 +95,28 @@
 		if (paint) return paint;
 
 		const roots = [...root.querySelectorAll('[data-canvas-typography-root]')];
-		// Innermost typography root is usually the real styled text (HighlightedText).
 		const wrap = (roots[roots.length - 1] as HTMLElement | undefined) ?? null;
 		if (wrap) {
+			const wrapStyle = wrap.getAttribute('style') ?? '';
+			const wrapHasPaint =
+				/font-weight|line-height|letter-spacing|text-stroke|text-shadow|text-transform/i.test(
+					wrapStyle,
+				);
+			if (wrapHasPaint) return wrap;
+
 			const styled = wrap.querySelector(
-				'[style*="font-weight"], [style*="text-stroke"], [style*="-webkit-text-stroke"], [style*="letter-spacing"], [style*="line-height"]',
+				'[style*="font-weight"], [style*="text-stroke"], [style*="-webkit-text-stroke"], [style*="letter-spacing"], [style*="line-height"], [style*="text-transform"]',
 			) as HTMLElement | null;
 			if (styled) return styled;
 			return wrap;
 		}
+
+		const candidates = [
+			...root.querySelectorAll(
+				'[style*="font-weight"], [style*="font-size"], [style*="line-height"], [style*="letter-spacing"]',
+			),
+		] as HTMLElement[];
+		if (candidates.length) return candidates[candidates.length - 1];
 
 		return (root.firstElementChild as HTMLElement | null) ?? root;
 	}
@@ -112,6 +133,7 @@
 				.join(' ');
 		const shadow = cs.textShadow?.trim();
 		const paintOrder = cs.paintOrder?.trim();
+		const transform = cs.textTransform?.trim();
 		return {
 			fontWeight: cs.fontWeight,
 			fontFamily: cs.fontFamily,
@@ -121,6 +143,7 @@
 			fontStyle: cs.fontStyle,
 			textDecoration: cs.textDecoration,
 			textAlign: cs.textAlign,
+			...(transform && transform !== 'none' ? { textTransform: transform } : {}),
 			...(stroke && stroke !== '0px' && stroke !== 'none' ? { webkitTextStroke: stroke } : {}),
 			...(paintOrder && paintOrder !== 'normal' ? { paintOrder } : {}),
 			...(shadow && shadow !== 'none' ? { textShadow: shadow } : {}),
@@ -130,8 +153,9 @@
 	function typographyCss(snap: TypographySnapshot | null, fallbackFamily?: string, fallbackSize?: number): string {
 		if (!snap) {
 			return [
-				fallbackFamily ? `font-family: '${fallbackFamily}', sans-serif;` : '',
+				fallbackFamily ? `font-family: ${fallbackFamily.includes("'") || fallbackFamily.includes(',') ? fallbackFamily : `'${fallbackFamily}', sans-serif`};` : '',
 				fallbackSize ? `font-size: ${fallbackSize}px;` : '',
+				CANVAS_TEXT_BOX_TRIM,
 			]
 				.filter(Boolean)
 				.join(' ');
@@ -145,9 +169,11 @@
 			`font-style: ${snap.fontStyle};`,
 			`text-decoration: ${snap.textDecoration};`,
 			`text-align: ${snap.textAlign};`,
+			snap.textTransform ? `text-transform: ${snap.textTransform};` : '',
 			snap.webkitTextStroke ? `-webkit-text-stroke: ${snap.webkitTextStroke};` : '',
 			snap.paintOrder ? `paint-order: ${snap.paintOrder};` : '',
 			snap.textShadow ? `text-shadow: ${snap.textShadow};` : '',
+			CANVAS_TEXT_BOX_TRIM,
 		]
 			.filter(Boolean)
 			.join(' ');
@@ -156,13 +182,11 @@
 	function getPlainSelectionRange(): { start: number; end: number } | null {
 		const root = displayRoot;
 		if (!root) return null;
-		// Use shared mapping with News template (no strict DOM-vs-parser equality — that
-		// blocked second-pass highlights after markup/CSS subtle differences).
 		return plainRangeFromSelection(root);
 	}
 
 	function onDisplayMouseUp() {
-		if (!interactive || !onTextSelect) return;
+		if (!interactive || !onTextSelect || editing) return;
 		setTimeout(() => {
 			const sel = window.getSelection();
 			const hasRange =
@@ -187,8 +211,6 @@
 	function startEdit(e: MouseEvent) {
 		if (!canEdit) return;
 		e.stopPropagation();
-		// Match visible canvas typography (weight, size, stroke, align) — not the thin
-		// font-size wrapper — so POV / outlined text keep their look while editing.
 		try {
 			if (displayRoot) {
 				const typoEl = pickTypographySource(displayRoot);
@@ -220,8 +242,6 @@
 				const n = ta.value.length;
 				ta.setSelectionRange(n, n);
 			}
-			// Anchor the toolbar to a fixed rect at the top of the editable area
-			// during inline editing so it doesn't vanish as the editor expands.
 			if (editableEl) {
 				const rect = editableEl.getBoundingClientRect();
 				const fixedRect = new DOMRect(rect.left, rect.top, rect.width, 0);
@@ -253,6 +273,11 @@
 		});
 	}
 
+	function pushChange(v: string) {
+		const cleaned = v.replace(/\n+$/g, '');
+		onTextChange?.(cleaned);
+	}
+
 	function syncPlainTextareaSelection() {
 		const ta = editableEl?.querySelector<HTMLTextAreaElement>('textarea.plain-canvas-textarea');
 		if (!ta || !onHeadlineRangeSelect) return;
@@ -266,107 +291,133 @@
 
 	function onEditKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') exitEditMode();
-		if (e.key === 'Enter' && e.shiftKey) {
-			e.preventDefault();
-			exitEditMode();
-		}
 	}
 </script>
 
 {#if !interactive}
 	{@render display()}
-{:else if editing && canEdit}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		bind:this={editableEl}
-		data-text-selectable="true"
-		data-draggable-no-pan
-		onkeydown={onEditKeydown}
-		onclick={(e) => e.stopPropagation()}
-		onmousedown={(e) => e.stopPropagation()}
-		style="margin: 0; padding: 0; color: {editTextColor ?? 'inherit'}; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55); border-radius: 4px; cursor: text; touch-action: manipulation;"
-	>
-		{#if allowHighlightMarkup}
-			<HighlightEditor
-				value={value}
-				{rows}
-				{defaultColor}
-				{uppercase}
-				{fontFamily}
-				{fontSize}
-				typographySnapshot={editTypography}
-				{showToolbar}
-				{ariaLabel}
-				{minHeight}
-				onChange={(v) => onTextChange?.(v)}
-				onBlur={finishEdit}
-				onSelectionChange={(has, r) => {
-					if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
-					else onHeadlineRangeSelect?.(-1, -1);
-				}}
-			/>
-		{:else}
-			<textarea
-				{rows}
-				aria-label={ariaLabel}
-				class="plain-canvas-textarea"
-				value={value}
-				style="
-					display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 6px 8px;
-					min-height: {minHeight ?? '0px'};
-					resize: none;
-					border: none; outline: none; background: transparent;
-					color: {editTextColor ?? 'inherit'};
-					{typographyCss(editTypography, fontFamily, fontSize)}
-					{uppercase ? 'text-transform: uppercase;' : ''}
-				"
-				oninput={(e) => onTextChange?.((e.target as HTMLTextAreaElement).value)}
-				onselect={syncPlainTextareaSelection}
-				onkeyup={syncPlainTextareaSelection}
-				onmouseup={syncPlainTextareaSelection}
-				onblur={finishEdit}
-			></textarea>
-		{/if}
-	</div>
 {:else}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		bind:this={displayRoot}
-		data-draggable-no-pan
-		data-text-selectable={toolbarKind}
-		ondblclick={startEdit}
-		onmouseup={onDisplayMouseUp}
-		onpointerup={onDisplayMouseUp}
-		role="button"
-		aria-label={ariaLabel}
-		tabindex="0"
-		onkeydown={(e) => {
-			if (e.key === 'Enter' || e.key === ' ') {
-				e.preventDefault();
-				if (displayRoot) onTextSelect?.(toolbarKind, displayRoot);
-			}
-		}}
-		style="
-			position: relative;
-			{selected ? 'box-shadow: 0 0 0 2px rgba(255,235,59,0.92);' : ''}
-			border-radius: 4px;
-			{canEdit
-				? 'cursor: text; user-select: text !important; -webkit-user-select: text !important; touch-action: pan-x pan-y;'
-				: ''}
-		"
-		title={canEdit ? 'Double-click to edit text' : undefined}
-	>
-		{#if fontSize != null && Number.isFinite(fontSize)}
+	<div style="position: relative; margin: 0; padding: 0;">
+		<!--
+		  Keep display mounted (hidden) while editing — same as News — so blur
+		  swap does not flash and the editor can match painted metrics.
+		-->
+		<div
+			bind:this={displayRoot}
+			data-draggable-no-pan
+			data-text-selectable={toolbarKind}
+			ondblclick={startEdit}
+			onmouseup={onDisplayMouseUp}
+			onpointerup={onDisplayMouseUp}
+			role="button"
+			aria-label={ariaLabel}
+			aria-hidden={editing ? true : undefined}
+			tabindex={editing ? -1 : 0}
+			onkeydown={(e) => {
+				if (editing) return;
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					if (displayRoot) onTextSelect?.(toolbarKind, displayRoot);
+				}
+			}}
+			style="
+				position: relative;
+				margin: 0;
+				padding: 0;
+				{CANVAS_TEXT_BOX_TRIM}
+				{editing
+					? 'position: absolute; left: 0; right: 0; top: 0; visibility: hidden; pointer-events: none; height: auto;'
+					: ''}
+				{selected && !editing ? CANVAS_TEXT_FOCUS_RING : ''}
+				{canEdit && !editing
+					? 'cursor: text; user-select: text !important; -webkit-user-select: text !important; touch-action: pan-x pan-y;'
+					: ''}
+			"
+			title={canEdit && !editing ? 'Double-click to edit text' : undefined}
+		>
+			{#if fontSize != null && Number.isFinite(fontSize)}
+				<div
+					data-canvas-typography-root
+					data-design-font-px={String(fontSize)}
+					style="font-size: {fontSize}px; margin: 0; padding: 0;"
+				>
+					{@render display()}
+				</div>
+			{:else}
+				<div data-canvas-typography-root style="margin: 0; padding: 0;">
+					{@render display()}
+				</div>
+			{/if}
+		</div>
+
+		{#if editing && canEdit}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				data-canvas-typography-root
-				data-design-font-px={String(fontSize)}
-				style="font-size: {fontSize}px;"
+				bind:this={editableEl}
+				data-text-selectable="true"
+				data-draggable-no-pan
+				onkeydown={onEditKeydown}
+				onclick={(e) => e.stopPropagation()}
+				onmousedown={(e) => e.stopPropagation()}
+				style="
+					position: relative;
+					display: block;
+					margin: 0;
+					padding: 0;
+					border: 0;
+					color: {editTextColor ?? 'inherit'};
+					{typographyCss(editTypography, fontFamily, fontSize)}
+					{uppercase && !editTypography?.textTransform ? 'text-transform: uppercase;' : ''}
+					{CANVAS_TEXT_FOCUS_RING}
+					cursor: text;
+					touch-action: manipulation;
+					white-space: pre-wrap;
+					word-break: break-word;
+				"
 			>
-				{@render display()}
-			</div>
-		{:else}
-			<div data-canvas-typography-root>
-				{@render display()}
+				{#if allowHighlightMarkup}
+					<HighlightEditor
+						value={value}
+						{rows}
+						{defaultColor}
+						{uppercase}
+						{fontFamily}
+						{fontSize}
+						typographySnapshot={editTypography}
+						lineHeight="inherit"
+						{showToolbar}
+						{ariaLabel}
+						{minHeight}
+						onChange={pushChange}
+						onBlur={finishEdit}
+						onSelectionChange={(has, r) => {
+							if (has && r) onHeadlineRangeSelect?.(r.start, r.end);
+							else onHeadlineRangeSelect?.(-1, -1);
+						}}
+					/>
+				{:else}
+					<textarea
+						{rows}
+						aria-label={ariaLabel}
+						class="plain-canvas-textarea"
+						value={value}
+						style="
+							display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 0;
+							min-height: {minHeight ?? '0px'};
+							resize: none;
+							border: none; outline: none; background: transparent;
+							color: {editTextColor ?? 'inherit'};
+							{typographyCss(editTypography, fontFamily, fontSize)}
+							{uppercase && !editTypography?.textTransform ? 'text-transform: uppercase;' : ''}
+						"
+						oninput={(e) => pushChange((e.target as HTMLTextAreaElement).value)}
+						onselect={syncPlainTextareaSelection}
+						onkeyup={syncPlainTextareaSelection}
+						onmouseup={syncPlainTextareaSelection}
+						onblur={finishEdit}
+					></textarea>
+				{/if}
 			</div>
 		{/if}
 	</div>

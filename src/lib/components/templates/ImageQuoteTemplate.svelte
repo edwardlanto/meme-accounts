@@ -48,7 +48,7 @@
 		footerRight = 'OPERATOR\nNOTES',
 		onFooterLeftChange,
 		onFooterRightChange,
-		topRatio = 0.48,
+		topRatio = 0.63,
 		filmStripTopPct = undefined,
 		filmStripBottomPct = undefined,
 		bgColor = '',

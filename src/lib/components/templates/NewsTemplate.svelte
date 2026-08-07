@@ -8,6 +8,15 @@
 	import ImageStickerOverlayBox from '$lib/components/ImageStickerOverlayBox.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import ClassicLoader from '$lib/components/ClassicLoader.svelte';
+	import {
+		CANVAS_TEXT_BOX_TRIM,
+		CANVAS_TEXT_FOCUS_RING,
+	} from '$lib/studio/canvas-text-chrome';
+	import {
+		inkRingStyle,
+		measureTightTextBox,
+		type InkBox,
+	} from '$lib/studio/canvas-text-ink';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
 	import {
@@ -410,10 +419,10 @@
 		lines.push(`text-align: ${s.align ?? 'left'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
 		// Tight leading + trim so selection/edit rings hug glyph caps (Bebas leaves large em padding).
-		const lh = s.lineHeight != null ? Math.min(s.lineHeight, 0.9) : 0.82;
+		// Prefer author line-height when set; otherwise a compact default for display caps.
+		const lh = s.lineHeight != null ? s.lineHeight : 0.82;
 		lines.push(`line-height: ${lh};`);
-		lines.push('text-box-trim: trim-both;');
-		lines.push('text-box-edge: cap alphabetic;');
+		lines.push(CANVAS_TEXT_BOX_TRIM);
 		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
 		return lines.join(' ');
 	});
@@ -429,6 +438,7 @@
 		lines.push('letter-spacing: 0;');
 		lines.push('line-height: 1.4;');
 		lines.push('opacity: 0.86;');
+		lines.push(CANVAS_TEXT_BOX_TRIM);
 		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
 		return lines.join(' ');
 	});
@@ -631,6 +641,57 @@
 	let subtextDraft = $state('');
 	let subtextEl = $state<HTMLElement | null>(null);
 	let subtextEditableEl = $state<HTMLElement | null>(null);
+	/** Which news text block owns the violet ring (subtext used to report as `headline`). */
+	let newsTextTarget = $state<'headline' | 'subtext'>('headline');
+	let headlineInkWrap = $state<HTMLElement | null>(null);
+	let subtextInkWrap = $state<HTMLElement | null>(null);
+	let headlineInkBox = $state<InkBox | null>(null);
+	let subtextInkBox = $state<InkBox | null>(null);
+
+	function refreshHeadlineInk() {
+		const el = editing
+			? (editableEl?.querySelector<HTMLElement>('[contenteditable="true"]') ?? editableEl)
+			: headlineEl;
+		const wrap = headlineInkWrap;
+		if (!el || !wrap) {
+			headlineInkBox = null;
+			return;
+		}
+		headlineInkBox = measureTightTextBox(el, wrap, scale);
+	}
+
+	function refreshSubtextInk() {
+		const el = editingSubtext ? subtextEditableEl : subtextEl;
+		const wrap = subtextInkWrap;
+		if (!el || !wrap) {
+			subtextInkBox = null;
+			return;
+		}
+		subtextInkBox = measureTightTextBox(el, wrap, scale);
+	}
+
+	$effect(() => {
+		if (selectedText !== 'headline') {
+			headlineInkBox = null;
+			subtextInkBox = null;
+			return;
+		}
+		// Re-measure when selection, edit mode, text, or style changes.
+		void text;
+		void subtext;
+		void headlineStyle;
+		void editing;
+		void editingSubtext;
+		void newsTextTarget;
+		void scale;
+		const id = requestAnimationFrame(() => {
+			if (newsTextTarget === 'headline') refreshHeadlineInk();
+			else headlineInkBox = null;
+			if (newsTextTarget === 'subtext') refreshSubtextInk();
+			else subtextInkBox = null;
+		});
+		return () => cancelAnimationFrame(id);
+	});
 
 	$effect(() => {
 		if (!editingSubtext && subtext !== subtextDraft) subtextDraft = subtext;
@@ -639,6 +700,7 @@
 	function startSubtextEdit(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
+		newsTextTarget = 'subtext';
 		subtextDraft = String(subtext ?? '');
 		editingSubtext = true;
 		void tick().then(() => {
@@ -657,6 +719,7 @@
 				/* ignore */
 			}
 			onTextSelect?.('headline', ce);
+			refreshSubtextInk();
 		});
 	}
 
@@ -736,6 +799,7 @@
 	function startEdit(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
+		newsTextTarget = 'headline';
 		headlineDraft = text;
 		onHeadlineEditStart?.();
 		editing = true;
@@ -757,6 +821,7 @@
 				const fixedRect = new DOMRect(rect.left, rect.top, rect.width, 0);
 				onTextSelect?.('headline', wrapRectAsAnchor(fixedRect));
 			}
+			refreshHeadlineInk();
 		}, 10);
 	}
 
@@ -850,6 +915,7 @@
 		if (!interactive) return;
 		// Defer so the browser finalises the selection first.
 		setTimeout(() => {
+			newsTextTarget = 'headline';
 			const sel = window.getSelection();
 			const hasRange =
 				sel && sel.rangeCount > 0 && !sel.isCollapsed && headlineEl?.contains(sel.anchorNode);
@@ -873,6 +939,7 @@
 				if (headlineEl) onTextSelect?.('headline', headlineEl);
 				onHeadlineRangeSelect?.(-1, -1);
 			}
+			refreshHeadlineInk();
 		}, 0);
 	}
 
@@ -1796,11 +1863,12 @@
 					<div
 						style="
 							position: absolute; inset: 0;
-							padding: 8px;
+							padding: 0;
 							box-sizing: border-box;
-							border-radius: 10px;
+							border-radius: 2px;
 							background: transparent;
-							border: 1px solid rgba(255,255,255,0.22);
+							{CANVAS_TEXT_FOCUS_RING}
+							{CANVAS_TEXT_BOX_TRIM}
 						"
 						onclick={(e) => e.stopPropagation()}
 						role="presentation"
@@ -1812,6 +1880,7 @@
 							showToolbar={false}
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
+							lineHeight="inherit"
 							ariaLabel="Text overlay editor"
 							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
 							onBlur={() => finishTextOverlayEdit(t.id)}
@@ -1823,9 +1892,9 @@
 						ondblclick={(e) => startTextOverlayEdit(e, t.id)}
 						style="
 							position: absolute; inset: 0;
-							padding: 8px;
+							padding: 0;
 							box-sizing: border-box;
-							border-radius: 10px;
+							border-radius: 2px;
 							background: transparent;
 							border: 1px dashed rgba(255,255,255,0.28);
 							color: {css.color ?? '#FFFFFF'};
@@ -1836,6 +1905,7 @@
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
 							{css.textShadow ? `text-shadow: ${css.textShadow};` : ''}
+							{CANVAS_TEXT_BOX_TRIM}
 							overflow: hidden;
 							user-select: none;
 						"
@@ -2339,7 +2409,9 @@
 							dy={textOffsets.source?.y ?? 0}
 							{interactive}
 							{scale}
+							holdDragFromText={interactive}
 							immediateTextDrag={selectedText === 'source'}
+							holdMs={220}
 							onChange={(x, y) => onTextOffsetChange?.('source', { x, y })}
 						>
 							{#snippet children()}
@@ -2361,7 +2433,7 @@
 										overflow: visible;
 										{sourceLabelMode === 'logo' ? 'width: fit-content; max-width: 100%;' : 'width: 100%;'}
 										{interactive ? 'cursor: grab;' : ''}
-										{selectedText === 'source' && sourceLabelMode === 'text' ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.55); border-radius: 6px; padding: 4px;' : ''}
+										{selectedText === 'source' && sourceLabelMode === 'text' ? CANVAS_TEXT_FOCUS_RING : ''}
 									"
 									onmouseenter={() => (hoveringSource = true)}
 									onmouseleave={() => (hoveringSource = false)}
@@ -2607,15 +2679,17 @@
 				dy={textOffsets.headline?.y ?? 0}
 				{interactive}
 				{scale}
-				immediateTextDrag={selectedText === 'headline'}
+				holdDragFromText={interactive}
+				immediateTextDrag={selectedText === 'headline' && newsTextTarget === 'headline' && !editing}
+				holdMs={220}
 				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 			>
 				{#snippet children()}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						data-news-block="headline"
-						style="position: relative; overflow: visible; {interactive ? 'cursor: grab;' : ''}"
-						title={interactive ? 'Click to select · Drag to move · Drag text to highlight · Hold still or Alt+drag to move' : undefined}
+						style="position: relative; overflow: visible; {interactive ? (selectedText === 'headline' && newsTextTarget === 'headline' && !editing ? 'cursor: grab;' : 'cursor: text;') : ''}"
+						title={interactive ? 'Drag to move · Double-click to edit · Shift+drag to highlight' : undefined}
 						onmouseenter={() => (hoveringText = true)}
 						onmouseleave={() => (hoveringText = false)}
 					>
@@ -2644,7 +2718,7 @@
 			  In-flow edit swap (not a taller absolute overlay) so headline stays put.
 			  Keep the <p> mounted off-layout while editing to avoid markup flash on blur.
 			-->
-			<div style="position: relative;">
+			<div style="position: relative;" bind:this={headlineInkWrap}>
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<p
 					bind:this={headlineEl}
@@ -2663,9 +2737,6 @@
 						touch-action: pan-x;
 						{interactive && editing
 							? 'position: absolute; left: 0; right: 0; top: 0; visibility: hidden; pointer-events: none; height: auto;'
-							: ''}
-						{selectedText === 'headline' && !(interactive && editing)
-							? 'outline: 2px solid rgba(139,92,246,0.75); outline-offset: 2px; border-radius: 2px;'
 							: ''}
 						{interactive ? 'cursor: text; user-select: text !important; -webkit-user-select: text !important;' : ''}
 					"
@@ -2718,9 +2789,6 @@
 							{headlineCss}
 							text-transform: uppercase;
 							word-break: break-word;
-							outline: 2px solid rgba(139,92,246,0.75);
-							outline-offset: 2px;
-							border-radius: 2px;
 							cursor: text;
 							white-space: pre-wrap;
 						"
@@ -2743,10 +2811,14 @@
 						/>
 					</div>
 				{/if}
+
+				{#if selectedText === 'headline' && newsTextTarget === 'headline' && interactive}
+					<div aria-hidden="true" style={inkRingStyle(headlineInkBox)}></div>
+				{/if}
 			</div>
 
 			{#if String(subtext ?? '').trim() || editingSubtext}
-				<div style="position: relative; margin-top: 18px;">
+				<div style="position: relative; margin-top: 18px;" bind:this={subtextInkWrap}>
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<p
 						bind:this={subtextEl}
@@ -2756,7 +2828,9 @@
 						onclick={(e) => {
 							if (!interactive || textMoved) return;
 							e.stopPropagation();
+							newsTextTarget = 'subtext';
 							if (subtextEl) onTextSelect?.('headline', subtextEl);
+							requestAnimationFrame(() => refreshSubtextInk());
 						}}
 						style="
 							margin: 0;
@@ -2792,12 +2866,12 @@
 								opacity: 1;
 								word-break: break-word;
 								white-space: pre-wrap;
-								box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
-								border-radius: 4px;
 								cursor: text;
-								outline: none;
 							"
 						></div>
+					{/if}
+					{#if selectedText === 'headline' && newsTextTarget === 'subtext' && interactive}
+						<div aria-hidden="true" style={inkRingStyle(subtextInkBox)}></div>
 					{/if}
 				</div>
 			{/if}

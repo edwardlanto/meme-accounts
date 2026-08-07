@@ -560,6 +560,9 @@
 				color: currentColor;
 				padding: 0;
 				margin: 0;
+				border: 0;
+				text-box-trim: trim-both;
+				text-box-edge: cap alphabetic;
 				{typographySnapshot
 					? `
 						line-height: ${typographySnapshot.lineHeight};
@@ -570,6 +573,7 @@
 						font-style: ${typographySnapshot.fontStyle};
 						text-decoration: ${typographySnapshot.textDecoration};
 						text-align: ${typographySnapshot.textAlign};
+						${typographySnapshot.textTransform ? `text-transform: ${typographySnapshot.textTransform};` : ''}
 						${typographySnapshot.webkitTextStroke ? `-webkit-text-stroke: ${typographySnapshot.webkitTextStroke};` : ''}
 						${typographySnapshot.paintOrder ? `paint-order: ${typographySnapshot.paintOrder};` : ''}
 						${typographySnapshot.textShadow ? `text-shadow: ${typographySnapshot.textShadow};` : ''}
@@ -579,7 +583,7 @@
 						${fontFamily ? `font-family: ${fontFamily};` : ''}
 						${fontSize ? `font-size: ${fontSize}px;` : ''}
 					`}
-				{uppercase ? 'text-transform: uppercase;' : ''}
+				{uppercase && !typographySnapshot?.textTransform ? 'text-transform: uppercase;' : ''}
 			"
 		></div>
 		{#if isEmpty && placeholder}

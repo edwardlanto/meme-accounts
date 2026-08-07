@@ -60,6 +60,7 @@ export interface TypographySnapshot {
 	fontStyle: string;
 	textDecoration: string;
 	textAlign: string;
+	textTransform?: string;
 	/** Outlined canvas text (POV / text-on-video). */
 	webkitTextStroke?: string;
 	paintOrder?: string;

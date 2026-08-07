@@ -5,6 +5,10 @@
 	import type { TextOverlay } from '$lib/types';
 	import { patternStyleForUrl } from '$lib/components/textOverlayPattern';
 	import { textShadowStyleAttr } from '$lib/textStyleCss';
+	import {
+		CANVAS_TEXT_BOX_TRIM,
+		CANVAS_TEXT_FOCUS_RING,
+	} from '$lib/studio/canvas-text-chrome';
 
 	interface Props {
 		w: number;
@@ -475,12 +479,13 @@
 				{#if isEditing}
 					<div
 						style="
-							/* Let the editor define height so the box stays tight. */
-							padding: 6px 8px;
+							padding: 0;
+							margin: 0;
 							box-sizing: border-box;
-							border-radius: 10px;
+							border-radius: 2px;
 							background: transparent;
-							border: 1px solid rgba(255,255,255,0.22);
+							{CANVAS_TEXT_FOCUS_RING}
+							{CANVAS_TEXT_BOX_TRIM}
 							color: {css.color ?? '#FFFFFF'};
 							font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;
@@ -503,6 +508,7 @@
 								defaultColor={highlightColor}
 								fontFamily={css.fontFamily}
 								fontSize={css.fontSize ?? 42}
+								lineHeight="inherit"
 								ariaLabel="Text overlay editor"
 								onSelectionChange={(has, r) => {
 									if (!has || !r) onRangeSelect?.(-1, -1);
@@ -538,6 +544,9 @@
 									line-height: {css.lineHeight ?? 1.15};
 									letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
 									{textShadowStyleAttr(css)}
+									{CANVAS_TEXT_BOX_TRIM}
+									padding: 0;
+									margin: 0;
 								"
 								value={t.text}
 								oninput={(e) => {
@@ -578,14 +587,14 @@
 					<div
 						ondblclick={(e) => startEdit(e, t.id)}
 						style="
-							padding: 6px 8px;
+							padding: 0;
+							margin: 0;
 							box-sizing: border-box;
-							border-radius: 10px;
+							border-radius: 2px;
 							background: transparent;
 							border: 1px dashed rgba(255,255,255,0.28);
-							/* Use outline so selection styling never shifts layout/position. */
-							outline: {isSelected ? '2px solid color-mix(in oklab, var(--app-selection-bg) 70%, rgba(255,255,255,0.18))' : '2px solid transparent'};
-							outline-offset: 0px;
+							{isSelected ? CANVAS_TEXT_FOCUS_RING : ''}
+							{CANVAS_TEXT_BOX_TRIM}
 							color: {css.color ?? '#FFFFFF'};
 							font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 42}px;

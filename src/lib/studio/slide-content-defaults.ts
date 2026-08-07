@@ -115,17 +115,30 @@ export const IMAGE_QUOTE_DEFAULTS = {
  */
 export type FilmStripPct = { topPct: number; bottomPct: number };
 
+/** Structural templates keep their layout defaults; everyone else starts at 0. */
+export function filmStripDefaultsFor(id: TemplateId): FilmStripPct {
+	switch (id) {
+		case 'imageQuote':
+			return { topPct: 0, bottomPct: 37 };
+		case 'videoHook':
+			return { topPct: 26, bottomPct: 10 };
+		case 'videoCreator':
+			return { topPct: 28, bottomPct: 8 };
+		case 'videoSource':
+			return { topPct: 30, bottomPct: 8 };
+		default:
+			return { topPct: 0, bottomPct: 0 };
+	}
+}
+
+/** @deprecated Prefer `filmStripDefaultsFor` — kept for call sites that indexed by structural id. */
 export const FILM_STRIP_DEFAULTS: Record<
 	'imageQuote' | 'videoHook' | 'videoCreator' | 'videoSource',
 	FilmStripPct
 > = {
-	/** Image on top, quote panel on bottom — no top bar by default. */
-	imageQuote: { topPct: 0, bottomPct: Math.round((1 - (D['image-quote'].topRatio ?? 0.48)) * 100) },
-	/** Hook copy sits in the top bar above the clip. */
+	imageQuote: { topPct: 0, bottomPct: 37 },
 	videoHook: { topPct: 26, bottomPct: 10 },
-	/** Profile + headline in the top bar. */
 	videoCreator: { topPct: 28, bottomPct: 8 },
-	/** Multi-line highlight hook in the top bar. */
 	videoSource: { topPct: 30, bottomPct: 8 },
 };
 

@@ -101,7 +101,7 @@ const POSTS = [
 			footerLeft: '$',
 			footerRight: 'OPERATOR\nNOTES',
 			imageUrl: '/templates/demos/image-quote.jpg',
-			topRatio: 0.46,
+			topRatio: 0.63,
 		},
 	},
 	{
