@@ -165,7 +165,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, Layers, ListOrdered,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2, PanelBottom
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2, PanelBottom, Highlighter
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -3511,6 +3511,7 @@ import JSZip from 'jszip';
 	let filmStripBottomPctByTemplate = $state<Record<TemplateId, number[]>>(emptyFilmStripMap('bottom'));
 	let filmStripPopoverOpen = $state(false);
 	let bottomShadowPopoverOpen = $state(false);
+	let wordHighlightsPopoverOpen = $state(false);
 
 	const activeFilmStrip = $derived.by(() => {
 		const t = activeTemplate;
@@ -4221,6 +4222,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		// Switching to a non-highlightable field drops any stale word-range selection.
 		if (
 			kind !== 'headline' &&
+			kind !== 'newsSubtext' &&
 			kind !== 'articleBody' &&
 			kind !== 'textCarouselBody' &&
 			kind !== 'videoStoryHeadline' &&
@@ -4519,6 +4521,44 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const kindPre = selectedText;
 		const slotPre = kindPre ? canvasStyleMap[kindPre] : undefined;
 
+		/** Typography that should stay consistent across analogous fields / templates. */
+		const TYPO_KEYS = [
+			'fontSize',
+			'fontFamily',
+			'fontWeight',
+			'lineHeight',
+			'italic',
+			'underline',
+			'letterSpacing',
+			'align',
+			'textShadow',
+		] as const satisfies readonly (keyof TextStyle)[];
+		const typoPatch: Partial<TextStyle> = {};
+		for (const k of TYPO_KEYS) {
+			if (k in patch) (typoPatch as any)[k] = (patch as any)[k];
+		}
+		const hasTypo = Object.keys(typoPatch).length > 0;
+
+		const BODY_KINDS = new Set<TextElementKind>([
+			'newsSubtext',
+			'articleBody',
+			'textCarouselBody',
+			'blackTextBody',
+			'tweetTopText',
+			'tweetBottomText',
+		]);
+		const HEADLINE_KINDS = new Set<TextElementKind>([
+			'headline',
+			'videoStoryHeadline',
+			'blackTextHeadline',
+		]);
+
+		function mirrorGroupFor(kind: TextElementKind): TextElementKind[] | null {
+			if (BODY_KINDS.has(kind)) return [...BODY_KINDS];
+			if (HEADLINE_KINDS.has(kind)) return [...HEADLINE_KINDS];
+			return null;
+		}
+
 		if (isTweetKind(selectedText)) {
 			tweetStylesBySlide = tweetStylesBySlide.map((s, i) => {
 				if (i !== paintSlide) return s;
@@ -4549,7 +4589,67 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					return { ...cur, [k]: { ...(cur[k] ?? {}), ...patch } };
 				}),
 			};
+
+			/* Keep paragraph / headline typography in sync across templates so a News toolbar
+			   change isn’t stranded only on the News style map. Color/bg stay template-local. */
+			const group = hasTypo ? mirrorGroupFor(k) : null;
+			if (group) {
+				const slide = paintSlide;
+				const nextMap = { ...stylesByTemplateBySlide };
+				for (const t of Object.keys(nextMap) as TemplateId[]) {
+					const row = [...(nextMap[t] ?? [])];
+					while (row.length <= slide) row.push({});
+					const cur = { ...(row[slide] ?? {}) };
+					for (const gk of group) {
+						if (gk === 'tweetTopText' || gk === 'tweetBottomText') continue;
+						cur[gk] = { ...(cur[gk] ?? {}), ...typoPatch };
+					}
+					row[slide] = cur;
+					nextMap[t] = row;
+				}
+				stylesByTemplateBySlide = nextMap;
+
+				if (group.includes('tweetTopText') || group.includes('tweetBottomText')) {
+					tweetStylesBySlide = tweetStylesBySlide.map((s, i) => {
+						if (i !== slide) return s;
+						const cur = { ...(s ?? {}) };
+						if (group.includes('tweetTopText')) {
+							cur.tweetTopText = { ...(cur.tweetTopText ?? {}), ...typoPatch };
+						}
+						if (group.includes('tweetBottomText')) {
+							cur.tweetBottomText = { ...(cur.tweetBottomText ?? {}), ...typoPatch };
+						}
+						return cur;
+					});
+				}
+			}
 		}
+
+		/* Tweet selection: still mirror body typography into other templates’ body slots. */
+		if (hasTypo && isTweetKind(selectedText) && BODY_KINDS.has(selectedText as TextElementKind)) {
+			const slide = paintSlide;
+			const nextMap = { ...stylesByTemplateBySlide };
+			for (const t of Object.keys(nextMap) as TemplateId[]) {
+				const row = [...(nextMap[t] ?? [])];
+				while (row.length <= slide) row.push({});
+				const cur = { ...(row[slide] ?? {}) };
+				for (const gk of BODY_KINDS) {
+					if (gk === 'tweetTopText' || gk === 'tweetBottomText') continue;
+					cur[gk] = { ...(cur[gk] ?? {}), ...typoPatch };
+				}
+				row[slide] = cur;
+				nextMap[t] = row;
+			}
+			stylesByTemplateBySlide = nextMap;
+			tweetStylesBySlide = tweetStylesBySlide.map((s, i) => {
+				if (i !== slide) return s;
+				const cur = { ...(s ?? {}) };
+				cur.tweetTopText = { ...(cur.tweetTopText ?? {}), ...typoPatch };
+				cur.tweetBottomText = { ...(cur.tweetBottomText ?? {}), ...typoPatch };
+				return cur;
+			});
+		}
+
 		if (patch.fontFamily != null || patch.fontWeight != null) {
 			const family =
 				patch.fontFamily ??
@@ -9443,6 +9543,138 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</p>
 				</PopoverContent>
 			</Popover>
+			<Popover bind:open={wordHighlightsPopoverOpen}>
+				<PopoverTrigger
+					class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.05)] backdrop-blur-[14px] transition-colors
+						{studioTextHighlightsEnabled
+							? 'text-[#080808] hover:bg-white'
+							: 'text-[rgba(10,10,10,0.7)] hover:bg-white hover:text-[#111]'}"
+					title="Word highlights — [[markup]] for coloured words"
+					aria-label="Word highlights"
+				>
+					<Highlighter size={15} strokeWidth={1.8} />
+					<span class="hidden sm:inline">Highlights</span>
+					{#if studioTextHighlightsEnabled}
+						<span class="ml-0.5 h-1.5 w-1.5 rounded-full bg-[#7bf1a8]" aria-hidden="true"></span>
+					{/if}
+				</PopoverTrigger>
+				<PopoverContent
+					side="bottom"
+					sideOffset={10}
+					align="center"
+					portalProps={{ to: 'body' }}
+					class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+				>
+					<div class="mb-3 flex items-center justify-between gap-3">
+						<div class="min-w-0">
+							<p class="text-[12px] font-semibold tracking-tight">Word highlights</p>
+							<p class="mt-0.5 text-[10px] leading-snug text-[#999]">[[markup]] for coloured words in News.</p>
+						</div>
+						<Switch id="dock-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
+					</div>
+					{#if studioTextHighlightsEnabled}
+						<div class="space-y-2.5 border-t border-[#ebebeb] pt-2.5">
+							<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Default style</p>
+							<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#fafafa] p-0.5">
+								{#each (['solid', 'gradient', 'pattern'] as const) as kind}
+									<button
+										type="button"
+										onclick={() => (highlightStyleKind = kind)}
+										class="flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize transition-colors
+											{highlightStyleKind === kind
+												? 'bg-[#7bf1a8] text-[#080808]'
+												: 'text-[#666] hover:bg-white'}"
+									>
+										{kind}
+									</button>
+								{/each}
+							</div>
+							{#if highlightStyleKind === 'solid'}
+								<div class="grid grid-cols-4 gap-1.5">
+									{#each HIGHLIGHT_SOLID_PRESETS as c}
+										<button
+											type="button"
+											onclick={() => (highlightColor = c)}
+											class="h-7 rounded-lg border-2 transition-transform hover:scale-105
+												{highlightColor.toLowerCase() === c.toLowerCase()
+													? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
+													: 'border-transparent'}"
+											style="background: {c};"
+											aria-label="Default highlight {c}"
+											aria-pressed={highlightColor.toLowerCase() === c.toLowerCase()}
+										></button>
+									{/each}
+								</div>
+								<label class="flex items-center gap-2 pt-0.5">
+									<span class="text-[10px] text-[#aaa]">Custom</span>
+									<input
+										type="color"
+										value={highlightColor}
+										oninput={(e) => {
+											highlightColor = (e.currentTarget as HTMLInputElement).value;
+										}}
+										class="h-7 w-10 cursor-pointer rounded border border-[#ebebeb] bg-white p-0.5"
+									/>
+								</label>
+							{:else if highlightStyleKind === 'gradient'}
+								<div class="grid grid-cols-2 gap-1.5">
+									{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to]}
+										<button
+											type="button"
+											onclick={() => {
+												highlightGradientFrom = from;
+												highlightGradientTo = to;
+												highlightColor = from;
+											}}
+											class="h-8 rounded-lg border-2 transition-transform hover:scale-[1.02]
+												{highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
+												highlightGradientTo.toLowerCase() === to.toLowerCase()
+													? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
+													: 'border-transparent'}"
+											style="background: linear-gradient(90deg, {from}, {to});"
+											aria-label="Gradient {from} to {to}"
+											aria-pressed={highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
+												highlightGradientTo.toLowerCase() === to.toLowerCase()}
+										></button>
+									{/each}
+								</div>
+							{:else}
+								<div class="grid grid-cols-1 gap-1.5">
+									{#each AVAILABLE_PATTERNS as pat}
+										<button
+											type="button"
+											onclick={() => (highlightPattern = pat.name)}
+											class="relative h-11 overflow-hidden rounded-lg border-2 transition-all
+												{highlightPattern === pat.name
+													? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
+													: 'border-[#ebebeb] hover:border-[#ccc]'}"
+											title={pat.label}
+											aria-pressed={highlightPattern === pat.name}
+										>
+											<img src={pat.url} alt="" class="absolute inset-0 h-full w-full object-cover" />
+											<span
+												class="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wider"
+												style="
+													background-image: url('{pat.url}');
+													background-size: cover;
+													background-position: center;
+													-webkit-background-clip: text;
+													-webkit-text-fill-color: transparent;
+													background-clip: text;
+													filter: contrast(1.35) brightness(1.15);
+												"
+											>{pat.label.toUpperCase()}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+							<p class="text-[10px] leading-snug text-[#aaa]">
+								Applies to AI highlights and bare [[words]]. Toolbar picks still override per phrase.
+							</p>
+						</div>
+					{/if}
+				</PopoverContent>
+			</Popover>
 			</div>
 			{#if !studioRevealReady}
 				<div class="studio-dock-skel" aria-hidden="true">
@@ -9643,6 +9875,7 @@ showSubjectCutout={canvasShowCutout}
 					resolveSrc={resolveMediaUrl}
 					textOverlays={[]}
 					headlineStyle={canvasHeadlineStyle}
+					subtextStyle={canvasNewsSubtextStyle}
 					sourceStyle={canvasSourceStyle}
 					textOffsets={offsetsForTemplate(paintSlide, 'news')}
 					onTextOffsetChange={(kind, next) => {
@@ -11821,117 +12054,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 												<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Width</Label>
 												<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
 												<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{sourceLogoWidth}px</span>
-											</div>
-										{/if}
-									</div>
-									<!-- Word highlights -->
-									<div class="space-y-3 rounded-xl border border-[#ebebeb] bg-[#fafafa] px-3 py-2.5">
-										<div class="flex items-center justify-between gap-3">
-											<div class="min-w-0">
-												<Label for="settings-highlights-toggle" class="text-xs font-semibold text-[#333] block">Word highlights</Label>
-												<p class="text-[10px] text-[#aaa] leading-snug mt-0.5">[[markup]] for coloured words in News.</p>
-											</div>
-											<Switch id="settings-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
-										</div>
-										{#if studioTextHighlightsEnabled}
-											<div class="space-y-2.5 border-t border-[#ebebeb] pt-2.5">
-												<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Default style</p>
-												<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-white p-0.5">
-													{#each (['solid', 'gradient', 'pattern'] as const) as kind}
-														<button
-															type="button"
-															onclick={() => (highlightStyleKind = kind)}
-															class="flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize transition-colors
-																{highlightStyleKind === kind
-																	? 'bg-[#1a1a1a] text-white'
-																	: 'text-[#666] hover:bg-[#f5f5f5]'}"
-														>
-															{kind}
-														</button>
-													{/each}
-												</div>
-												{#if highlightStyleKind === 'solid'}
-													<div class="grid grid-cols-4 gap-1.5">
-														{#each HIGHLIGHT_SOLID_PRESETS as c}
-															<button
-																type="button"
-																onclick={() => (highlightColor = c)}
-																class="h-7 rounded-lg border-2 transition-transform hover:scale-105
-																	{highlightColor.toLowerCase() === c.toLowerCase()
-																		? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
-																		: 'border-transparent'}"
-																style="background: {c};"
-																aria-label="Default highlight {c}"
-																aria-pressed={highlightColor.toLowerCase() === c.toLowerCase()}
-															></button>
-														{/each}
-													</div>
-													<label class="flex items-center gap-2 pt-0.5">
-														<span class="text-[10px] text-[#aaa]">Custom</span>
-														<input
-															type="color"
-															value={highlightColor}
-															oninput={(e) => {
-																highlightColor = (e.currentTarget as HTMLInputElement).value;
-															}}
-															class="h-7 w-10 cursor-pointer rounded border border-[#ebebeb] bg-white p-0.5"
-														/>
-													</label>
-												{:else if highlightStyleKind === 'gradient'}
-													<div class="grid grid-cols-2 gap-1.5">
-														{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to]}
-															<button
-																type="button"
-																onclick={() => {
-																	highlightGradientFrom = from;
-																	highlightGradientTo = to;
-																	highlightColor = from;
-																}}
-																class="h-8 rounded-lg border-2 transition-transform hover:scale-[1.02]
-																	{highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
-																	highlightGradientTo.toLowerCase() === to.toLowerCase()
-																		? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
-																		: 'border-transparent'}"
-																style="background: linear-gradient(90deg, {from}, {to});"
-																aria-label="Gradient {from} to {to}"
-																aria-pressed={highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
-																	highlightGradientTo.toLowerCase() === to.toLowerCase()}
-															></button>
-														{/each}
-													</div>
-												{:else}
-													<div class="grid grid-cols-1 gap-1.5">
-														{#each AVAILABLE_PATTERNS as pat}
-															<button
-																type="button"
-																onclick={() => (highlightPattern = pat.name)}
-																class="relative h-11 overflow-hidden rounded-lg border-2 transition-all
-																	{highlightPattern === pat.name
-																		? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
-																		: 'border-[#ebebeb] hover:border-[#ccc]'}"
-																title={pat.label}
-																aria-pressed={highlightPattern === pat.name}
-															>
-																<img src={pat.url} alt="" class="absolute inset-0 h-full w-full object-cover" />
-																<span
-																	class="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wider"
-																	style="
-																		background-image: url('{pat.url}');
-																		background-size: cover;
-																		background-position: center;
-																		-webkit-background-clip: text;
-																		-webkit-text-fill-color: transparent;
-																		background-clip: text;
-																		filter: contrast(1.35) brightness(1.15);
-																	"
-																>{pat.label.toUpperCase()}</span>
-															</button>
-														{/each}
-													</div>
-												{/if}
-												<p class="text-[10px] leading-snug text-[#aaa]">
-													Applies to AI highlights and bare [[words]]. Toolbar picks still override per phrase.
-												</p>
 											</div>
 										{/if}
 									</div>

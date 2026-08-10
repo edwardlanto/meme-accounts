@@ -151,18 +151,18 @@
 	}
 
 	function typographyCss(snap: TypographySnapshot | null, fallbackFamily?: string, fallbackSize?: number): string {
+		const familyCss = fallbackFamily
+			? `font-family: ${fallbackFamily.includes("'") || fallbackFamily.includes(',') ? fallbackFamily : `'${fallbackFamily}', sans-serif`};`
+			: '';
+		const sizeCss =
+			fallbackSize != null && Number.isFinite(fallbackSize) ? `font-size: ${fallbackSize}px;` : '';
 		if (!snap) {
-			return [
-				fallbackFamily ? `font-family: ${fallbackFamily.includes("'") || fallbackFamily.includes(',') ? fallbackFamily : `'${fallbackFamily}', sans-serif`};` : '',
-				fallbackSize ? `font-size: ${fallbackSize}px;` : '',
-				CANVAS_TEXT_BOX_TRIM,
-			]
-				.filter(Boolean)
-				.join(' ');
+			return [familyCss, sizeCss, CANVAS_TEXT_BOX_TRIM].filter(Boolean).join(' ');
 		}
 		return [
-			`font-family: ${snap.fontFamily};`,
-			`font-size: ${snap.fontSize};`,
+			/* Live toolbar props win over the enter-edit snapshot (paragraph +/- while editing). */
+			familyCss || `font-family: ${snap.fontFamily};`,
+			sizeCss || `font-size: ${snap.fontSize};`,
 			`font-weight: ${snap.fontWeight};`,
 			`line-height: ${snap.lineHeight};`,
 			`letter-spacing: ${snap.letterSpacing};`,

@@ -430,12 +430,24 @@
 		return lines.join(' ');
 	});
 
+	/** Design-space px for toolbar + `data-design-font-px` (not scaled preview CSS). */
+	const effectiveSubtextFontSize = $derived.by(() => {
+		if (typeof subtextStyle.fontSize === 'number' && Number.isFinite(subtextStyle.fontSize)) {
+			return subtextStyle.fontSize;
+		}
+		const headlinePx =
+			typeof headlineStyle.fontSize === 'number' && Number.isFinite(headlineStyle.fontSize)
+				? headlineStyle.fontSize
+				: fontSize;
+		return Math.round(headlinePx * 0.3);
+	});
+
 	const subtextCss = $derived.by(() => {
 		const s = subtextStyle;
 		const lines: string[] = [];
 		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif;`);
 		else lines.push(`font-family: var(--font-sans), system-ui, -apple-system, sans-serif;`);
-		lines.push(`font-size: ${s.fontSize ?? Math.round((headlineStyle.fontSize ?? fontSize) * 0.3)}px;`);
+		lines.push(`font-size: ${effectiveSubtextFontSize}px;`);
 		lines.push(`font-weight: ${s.fontWeight ?? 500};`);
 		if (s.italic) lines.push('font-style: italic;');
 		if (s.underline) lines.push('text-decoration: underline;');
@@ -775,6 +787,27 @@
 
 	function onSubtextInput(e: Event) {
 		subtextDraft = (e.currentTarget as HTMLElement).innerText ?? '';
+	}
+
+	function onSubtextMouseUp() {
+		if (!interactive || editingSubtext || !subtextEl) return;
+		setTimeout(() => {
+			const sel = window.getSelection();
+			const hasRange =
+				sel &&
+				sel.rangeCount > 0 &&
+				!sel.isCollapsed &&
+				subtextEl?.contains(sel.anchorNode);
+			if (hasRange && subtextEl) {
+				onTextSelect?.('newsSubtext', subtextEl);
+				const r = plainRangeFromSelection(subtextEl);
+				onHeadlineRangeSelect?.(r?.start ?? -1, r?.end ?? -1);
+			} else if (subtextEl) {
+				onTextSelect?.('newsSubtext', subtextEl);
+				onHeadlineRangeSelect?.(-1, -1);
+			}
+			refreshSubtextInk();
+		}, 0);
 	}
 
 	function commitHeadlineToParent() {
@@ -2855,13 +2888,15 @@
 					<p
 						bind:this={subtextEl}
 						data-text-selectable="newsSubtext"
+						data-canvas-typography-root
+						data-design-font-px={String(effectiveSubtextFontSize)}
 						aria-hidden={interactive && editingSubtext ? true : undefined}
 						ondblclick={startSubtextEdit}
+						onmouseup={onSubtextMouseUp}
+						onpointerup={onSubtextMouseUp}
 						onclick={(e) => {
 							if (!interactive || textMoved) return;
 							e.stopPropagation();
-							if (subtextEl) onTextSelect?.('newsSubtext', subtextEl);
-							requestAnimationFrame(() => refreshSubtextInk());
 						}}
 						style="
 							margin: 0;

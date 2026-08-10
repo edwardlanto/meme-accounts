@@ -567,8 +567,13 @@
 					? `
 						line-height: ${typographySnapshot.lineHeight};
 						font-weight: ${typographySnapshot.fontWeight};
-						font-family: ${typographySnapshot.fontFamily};
-						font-size: ${typographySnapshot.fontSize};
+						font-family: ${fontFamily
+							? fontFamily.includes("'") || fontFamily.includes(',')
+								? fontFamily
+								: `'${fontFamily}', sans-serif`
+							: typographySnapshot.fontFamily};
+						/* Live toolbar size wins over the enter-edit snapshot so +/- works while editing. */
+						font-size: ${fontSize != null && Number.isFinite(fontSize) ? `${fontSize}px` : typographySnapshot.fontSize};
 						letter-spacing: ${typographySnapshot.letterSpacing};
 						font-style: ${typographySnapshot.fontStyle};
 						text-decoration: ${typographySnapshot.textDecoration};
@@ -581,7 +586,7 @@
 					: `
 						line-height: ${lineHeight ?? 'inherit'};
 						${fontFamily ? `font-family: ${fontFamily};` : ''}
-						${fontSize ? `font-size: ${fontSize}px;` : ''}
+						${fontSize != null && Number.isFinite(fontSize) ? `font-size: ${fontSize}px;` : ''}
 					`}
 				{uppercase && !typographySnapshot?.textTransform ? 'text-transform: uppercase;' : ''}
 			"
@@ -592,15 +597,19 @@
 				style="
 					{typographySnapshot
 						? `
-							font-family: ${typographySnapshot.fontFamily};
-							font-size: ${typographySnapshot.fontSize};
+							font-family: ${fontFamily
+								? fontFamily.includes("'") || fontFamily.includes(',')
+									? fontFamily
+									: `'${fontFamily}', sans-serif`
+								: typographySnapshot.fontFamily};
+							font-size: ${fontSize != null && Number.isFinite(fontSize) ? `${fontSize}px` : typographySnapshot.fontSize};
 							font-weight: ${typographySnapshot.fontWeight};
 							line-height: ${typographySnapshot.lineHeight};
 							letter-spacing: ${typographySnapshot.letterSpacing};
 						`
 						: `
 							${fontFamily ? `font-family: ${fontFamily};` : ''}
-							${fontSize ? `font-size: ${fontSize}px;` : ''}
+							${fontSize != null && Number.isFinite(fontSize) ? `font-size: ${fontSize}px;` : ''}
 						`}
 				"
 			>{placeholder}</span>

@@ -65,10 +65,11 @@
 		border-radius: 11px;
 		background: transparent;
 		cursor: pointer;
-		font-size: 8px;
+		/* Match top dock chips (Shadow / Letterbox): 10px bold caps */
+		font-size: 10px;
 		font-weight: 700;
 		line-height: 1.1;
-		letter-spacing: 0.07em;
+		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		white-space: nowrap;
 		color: rgba(10, 10, 10, 0.45);
@@ -85,13 +86,15 @@
 	}
 
 	.format-dock-btn--active {
-		color: #fff;
-		background: #111;
+		/* Soft mint — same transient green used elsewhere in Studio */
+		color: #080808;
+		background: #7bf1a8;
 		border-radius: 10px;
+		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
 	}
 
 	.format-dock-btn--active:hover {
-		background: #222;
-		color: #fff;
+		background: #8ff5b6;
+		color: #080808;
 	}
 </style>
