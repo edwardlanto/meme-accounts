@@ -33,6 +33,7 @@ import JSZip from 'jszip';
 		loadEnabledTemplateDevOverride,
 		saveTemplateDevOverride,
 		type TemplateDevOverride as TemplateDevOverrideSnapshot,
+		type TemplateDevStarterContent,
 	} from '$lib/studio/template-dev-override';
 	import {
 		captureNewsLayoutDocument,
@@ -217,7 +218,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, Layers, ListOrdered,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2, PanelBottom, User
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, ArrowUp, ChevronDown, Rows2, PanelBottom, User
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -6701,8 +6702,125 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 	}
 
+	/** Commit inline headline buffer so save/pin captures what’s on canvas. */
+	function commitInlineTextEditsBeforeSave() {
+		if (newsHeadlineLive !== null) {
+			const live = newsHeadlineLive;
+			slides = slides.map((x, i) => (i === activeSlide ? live : x));
+			newsHeadlineLive = null;
+		}
+	}
+
+	/** Primary copy field(s) per template — stored in override `starter.slides`. */
+	function starterSlidesForCapture(template: TemplateId): string[] {
+		const len = Math.max(slides.length, DEFAULT_STUDIO_SLIDE_COUNT);
+		const pad = (arr: string[]) => Array.from({ length: len }, (_, i) => String(arr[i] ?? ''));
+		if (template === 'news') return pad(slides);
+		if (isVideoStoryFamily(template) || isBrandStackFamily(template)) {
+			return pad(videoStoryHeadlineBySlide);
+		}
+		if (template === 'textCarousel' || isWhitePostFamily(template)) {
+			return pad(textCarouselTextBySlide);
+		}
+		if (template === 'tweet') return pad(tweetBottomTextBySlide);
+		if (template === 'article') return pad(articleTextBySlide);
+		if (template === 'imageQuote') return pad(imageQuoteTextBySlide);
+		if (template === 'blackText' || isPhotoStoryFamily(template)) {
+			return pad(blackTextHeadlineBySlide);
+		}
+		return pad(slides);
+	}
+
+	function applyStarterSlidesToTemplate(
+		template: TemplateId,
+		values: string[],
+		idxs: number[],
+		force: boolean,
+	) {
+		const write = (i: number, val: string) => {
+			const v = String(val ?? '');
+			if (!force && !v.trim()) return;
+			if (template === 'news') {
+				slides = slides.map((x, j) => (j === i ? v : x));
+			} else if (isVideoStoryFamily(template) || isBrandStackFamily(template)) {
+				videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, j) => (j === i ? v : x));
+			} else if (template === 'textCarousel' || isWhitePostFamily(template)) {
+				textCarouselTextBySlide = textCarouselTextBySlide.map((x, j) => (j === i ? v : x));
+			} else if (template === 'tweet') {
+				tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, j) => (j === i ? v : x));
+			} else if (template === 'article') {
+				articleTextBySlide = articleTextBySlide.map((x, j) => (j === i ? v : x));
+			} else if (template === 'imageQuote') {
+				imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, j) => (j === i ? v : x));
+			} else if (template === 'blackText' || isPhotoStoryFamily(template)) {
+				blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((x, j) => (j === i ? v : x));
+			} else {
+				slides = slides.map((x, j) => (j === i ? v : x));
+			}
+		};
+		for (const i of idxs) {
+			if (i < 0) continue;
+			const val = String(values[i] ?? '');
+			if (!force && !val.trim()) continue;
+			write(i, val);
+		}
+	}
+
+	function applyStarterContentFromOverride(
+		template: TemplateId,
+		starter: TemplateDevStarterContent | undefined,
+		idxs: number[],
+		force: boolean,
+	) {
+		if (!starter) return;
+		if (Array.isArray(starter.slides) && starter.slides.length) {
+			applyStarterSlidesToTemplate(template, starter.slides, idxs, force);
+		}
+		if (template === 'news' && Array.isArray(starter.newsSubtextBySlide)) {
+			for (const i of idxs) {
+				if (i < 0) continue;
+				const val = String(starter.newsSubtextBySlide[i] ?? '');
+				if (!force && !val.trim()) continue;
+				newsSubtextBySlide = newsSubtextBySlide.map((x, j) => (j === i ? val : x));
+			}
+		}
+		const hasBg =
+			Array.isArray(starter.bgVideos) ||
+			Array.isArray(starter.bgImages) ||
+			Array.isArray(starter.newsSolidBgBySlide);
+		if (hasBg) {
+			const vids = [...(bgVideosByTemplate[template] ?? [])];
+			const imgs = [...(bgImagesByTemplate[template] ?? [])];
+			const maxIdx = Math.max(0, ...idxs, (starter.bgVideos?.length ?? 0) - 1, (starter.bgImages?.length ?? 0) - 1);
+			while (vids.length <= maxIdx) vids.push('');
+			while (imgs.length <= maxIdx) imgs.push('');
+			for (const i of idxs) {
+				if (i < 0) continue;
+				if (starter.bgVideos && i < starter.bgVideos.length) {
+					const sv = String(starter.bgVideos[i] ?? '');
+					if (force || sv.trim() || !String(vids[i] ?? '').trim()) vids[i] = sv;
+				}
+				if (starter.bgImages && i < starter.bgImages.length) {
+					const si = String(starter.bgImages[i] ?? '');
+					if (force || si.trim() || !String(imgs[i] ?? '').trim()) imgs[i] = si;
+				}
+			}
+			bgVideosByTemplate = { ...bgVideosByTemplate, [template]: vids };
+			bgImagesByTemplate = { ...bgImagesByTemplate, [template]: imgs };
+		}
+		if (template === 'news' && Array.isArray(starter.newsSolidBgBySlide)) {
+			for (const i of idxs) {
+				if (i < 0) continue;
+				const val = String(starter.newsSolidBgBySlide[i] ?? '');
+				if (!force && !val.trim()) continue;
+				newsSolidBgBySlide = newsSolidBgBySlide.map((x, j) => (j === i ? val : x));
+			}
+		}
+	}
+
 	/** Snapshot the current slide’s design tokens for this built-in template (DEV pin). */
 	function captureTemplateDevSnapshot(template: TemplateId): TemplateDevOverrideSnapshot {
+		commitInlineTextEditsBeforeSave();
 		const styles = cloneDevJson((stylesByTemplateBySlide[template] ?? [])[activeSlide] ?? {});
 		const tweetStyles =
 			template === 'tweet' ? cloneDevJson(tweetStylesBySlide[activeSlide] ?? {}) : undefined;
@@ -6741,7 +6859,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textOverlays,
 			imageOverlays,
 			starter: {
-				slides: cloneDevJson(slides.map((x) => String(x ?? ''))),
+				slides: cloneDevJson(starterSlidesForCapture(template)),
 				newsSubtextBySlide: cloneDevJson(newsSubtextBySlide.map((x) => String(x ?? ''))),
 				source,
 				sourceLabelMode,
@@ -6829,6 +6947,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	async function persistActiveTemplateAsAccountDefault() {
 		const template = activeTemplate;
+		commitInlineTextEditsBeforeSave();
 		await materializeBlobUrlsForDraftSave();
 		let snap = captureTemplateDevSnapshot(template);
 		if (userId && snap.starter) {
@@ -6855,7 +6974,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 		accountTemplateOverrides = { ...accountTemplateOverrides, [template]: snap };
 		if (isTemplateDevToolsEnabled()) saveTemplateDevOverride(snap);
-		applyTemplateDevOverride(template, { slides: 'all' });
+		applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
 		if (!userId) return;
 		const { data: existing } = await (supabase as any)
 			.from('drafts')
@@ -6887,7 +7006,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function applyTemplateDevOverride(
 		template: TemplateId,
-		opts?: { slides?: 'all' | 'active' | number[] },
+		opts?: { slides?: 'all' | 'active' | number[]; forceStarter?: boolean },
 	) {
 		const ov = resolveTemplateOverride(template);
 		if (!ov) return;
@@ -6968,6 +7087,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const newsDoc = template === 'news' ? parseNewsLayoutDocument(ov.newsDocument) : null;
 		if (newsDoc) {
 			applyNewsLayoutDocumentToStudio(newsDoc, { slides: opts?.slides ?? 'all', overlays: true });
+			applyStarterContentFromOverride(
+				template,
+				ov.starter,
+				idxs,
+				opts?.forceStarter === true,
+			);
 			return;
 		}
 
@@ -7006,6 +7131,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (layout.circleShadow) circleShadow = normalizeCircleShadow(layout.circleShadow);
 			if (layout.circle2Shadow) circle2Shadow = normalizeCircleShadow(layout.circle2Shadow);
 		}
+
+		applyStarterContentFromOverride(
+			template,
+			ov.starter,
+			idxs,
+			opts?.forceStarter === true,
+		);
 	}
 
 	/** Seed default copy/media after Templates gallery / `?template=` opens (every starter layout). */
@@ -7024,7 +7156,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			seedNewsStarterPlaceholderLayout({ force: true });
 			canvasBgDark = true;
 			if (!textColorTouched) textColor = '#FFFFFF';
-			applyTemplateDevOverride(template, { slides: 'all' });
+			applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
 			// Starter may reset source chrome — restore last brand logo/position.
 			if (userId) {
 				try {
@@ -7036,7 +7168,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			return;
 		}
 		if (template === 'blank') {
-			applyTemplateDevOverride(template, { slides: 'all' });
+			applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
 			return;
 		}
 
@@ -7051,7 +7183,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			canvasBgDark = true;
 			if (!textColorTouched) textColor = '#FFFFFF';
 		}
-		applyTemplateDevOverride(template, { slides: 'all' });
+		applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
 	}
 
 	async function loadLatestDraft() {
@@ -14649,91 +14781,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							</button>
 						</PopoverContent>
 					</Popover>
-
-					<!-- Settings popover (non-news backgrounds) -->
-					{#if activeTemplate !== 'news'}
-					<Popover>
-						<PopoverTrigger
-							class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#e2e2e2] bg-white text-[#999] transition-all duration-150 hover:border-[#c8c8c8] hover:text-[#444]"
-							title="Settings"
-						>
-							<SlidersHorizontal size={12} />
-						</PopoverTrigger>
-						<PopoverContent
-							side="top"
-							sideOffset={12}
-							align="start"
-							avoidCollisions={false}
-							portalProps={{ to: 'body' }}
-							class="z-[400] max-h-[min(70vh,520px)] w-80 gap-0 overflow-y-auto rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
-						>
-							<div class="p-4 flex flex-col gap-4">
-								<!-- Background (non-news) -->
-								{#if activeTemplate !== 'news'}
-									<div class="pt-3.5 border-t border-[#f2f2f2] flex flex-col gap-2">
-										<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Background — Slide {activeSlide + 1}</p>
-										<div class="grid grid-cols-2 gap-2">
-											<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
-												<Image size={11} /> Photo
-												<input type="file" accept="image/*" class="sr-only" onchange={handleBgUpload} />
-											</label>
-											<label class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold text-muted-foreground rounded-xl border-[#ebebeb]')}>
-												<Play size={11} class="shrink-0" /> Video
-												<input type="file" accept="video/mp4,video/webm,video/quicktime" class="sr-only" onchange={handleVideoUpload} />
-											</label>
-										</div>
-										{#if effectiveBackgroundVideo}
-											<div class="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-cyan-50 border border-cyan-100">
-												<span class="text-cyan-500 text-[11px]">▶</span>
-												<span class="text-[11px] text-cyan-600 flex-1 truncate">Video active</span>
-												<Button type="button" variant="ghost" size="icon-xs" class="text-[#bbb] hover:text-red-500" onclick={() => clearSlideBackground(activeSlide)}>✕</Button>
-											</div>
-										{/if}
-										{#if backgroundImage || backgroundVideo}
-											<div class="flex flex-col gap-1.5 pt-1">
-												<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-0.5">Fit</p>
-												<div class="flex gap-1.5 mb-1">
-													<button
-														type="button"
-														class="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-colors {bgFitMode === 'cover' ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-[#ebebeb] text-[#888]'}"
-														onclick={() => (bgFitMode = 'cover')}
-													>Fill</button
-													>
-													<button
-														type="button"
-														class="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-colors {bgFitMode === 'contain' ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-[#ebebeb] text-[#888]'}"
-														onclick={() => (bgFitMode = 'contain')}
-													>Fit</button
-													>
-												</div>
-												<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0] mb-0.5">Position</p>
-												<div class="flex min-w-0 items-center gap-2.5">
-													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">←</span>
-													<Slider type="single" bind:value={bgOffsetX} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
-													<span class="w-3 text-right text-[10px] text-[#c0c0c0]">→</span>
-												</div>
-												<div class="flex min-w-0 items-center gap-2.5">
-													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">↑</span>
-													<Slider type="single" bind:value={bgOffsetY} min={-55} max={155} step={0.5} class="min-w-0 flex-1" />
-													<span class="w-3 text-right text-[10px] text-[#c0c0c0]">↓</span>
-												</div>
-												<div class="flex min-w-0 items-center gap-2.5">
-													<span class="w-3 shrink-0 text-[10px] text-[#c0c0c0]">−</span>
-													{#if bgFitMode === 'contain'}
-														<Slider type="single" bind:value={bgContainMagnify} min={50} max={400} step={1} class="min-w-0 flex-1" />
-													{:else}
-														<Slider type="single" bind:value={bgZoom} min={30} max={300} step={1} class="min-w-0 flex-1" />
-													{/if}
-													<span class="w-3 text-right text-[10px] text-[#c0c0c0]">+</span>
-												</div>
-											</div>
-										{/if}
-									</div>
-								{/if}
-							</div>
-						</PopoverContent>
-					</Popover>
-					{/if}
 
 					<div class="flex-1"></div>
 
