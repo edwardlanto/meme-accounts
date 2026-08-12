@@ -7,6 +7,7 @@
 		starterHoverClass,
 		type StarterTemplate,
 	} from '$lib/templates';
+	import StarterTemplateCover from './StarterTemplateCover.svelte';
 
 	interface Props {
 		templates?: StarterTemplate[];
@@ -80,13 +81,7 @@
 						>Opens Studio with no placeholder copy or media</span>
 					</div>
 				{:else if tmpl.previewBg}
-					<img
-						src={tmpl.previewBg}
-						alt=""
-						class="preview-img"
-						loading="lazy"
-						draggable="false"
-					/>
+					<StarterTemplateCover previewBg={tmpl.previewBg} />
 				{/if}
 			</div>
 
@@ -138,16 +133,6 @@
 		flex-shrink: 0;
 		position: relative;
 		background: #0a0a0c;
-	}
-
-	.preview-img {
-		display: block;
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-		object-position: center;
-		pointer-events: none;
-		user-select: none;
 	}
 
 	.blank-preview {

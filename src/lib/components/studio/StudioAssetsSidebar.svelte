@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { prepareImageForUpload } from '$lib/client/image-upload-prep';
-	import { Film, ImagePlus, Loader, Pencil, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
+	import { Film, Image, ImagePlus, Loader, Pencil, Play, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
 	import SkeletonGrid from '$lib/components/SkeletonGrid.svelte';
-	import { Button } from '$lib/components/ui/button';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Tabs from '$lib/components/ui/tabs';
+	import { cn } from '$lib/utils.js';
 
 	type StudioAsset = {
 		id: string;
@@ -47,6 +48,7 @@
 		userId = '',
 		collapsed = $bindable(false),
 		seedQuery = '',
+		seedPexelsKind = 'videos',
 		onUseAsBackground,
 		onUseAsBottomBackground,
 		onAddAsSticker,
@@ -57,6 +59,8 @@
 		collapsed?: boolean;
 		/** When Generate runs, fill Unsplash + Pexels search with this query and run both. */
 		seedQuery?: string;
+		/** Prefer photos or videos when seeding Pexels from Generate. */
+		seedPexelsKind?: 'photos' | 'videos';
 		onUseAsBackground?: (r2Ref: string) => void | Promise<void>;
 		onUseAsBottomBackground?: (r2Ref: string) => void | Promise<void>;
 		onAddAsSticker?: (r2Ref: string) => void | Promise<void>;
@@ -74,7 +78,7 @@
 	} = $props();
 
 	let tab = $state<'library' | 'unsplash' | 'pexels'>('library');
-	let pexelsKind = $state<'photos' | 'videos'>('photos');
+	let pexelsKind = $state<'photos' | 'videos'>('videos');
 
 	let assets = $state<StudioAsset[]>([]);
 	let loading = $state(false);
@@ -131,10 +135,11 @@
 		lastSeededQuery = q;
 		unsplashQuery = q;
 		pexelsQuery = q;
-		pexelsKind = 'videos';
+		const kind = seedPexelsKind === 'photos' ? 'photos' : 'videos';
+		pexelsKind = kind;
 		if (tab === 'library') tab = 'pexels';
 		void searchUnsplash();
-		void searchPexels(null, 'videos');
+		void searchPexels(null, kind);
 	});
 
 	$effect(() => {
@@ -642,18 +647,38 @@
 				</Button>
 			</form>
 		{:else if tab === 'pexels'}
-			<Tabs.Root
-				bind:value={pexelsKind}
-				class="gap-2"
-				onValueChange={(v) => {
-					if (v === 'photos' || v === 'videos') switchPexelsKind(v);
-				}}
-			>
-				<Tabs.List class="grid h-8 w-full grid-cols-2" aria-label="Pexels media type">
-					<Tabs.Trigger value="photos" class="text-xs">Photos</Tabs.Trigger>
-					<Tabs.Trigger value="videos" class="text-xs">Videos</Tabs.Trigger>
-				</Tabs.List>
-			</Tabs.Root>
+			<div class="grid grid-cols-2 gap-2" role="group" aria-label="Pexels media type">
+				<button
+					type="button"
+					aria-pressed={pexelsKind === 'photos'}
+					onclick={() => switchPexelsKind('photos')}
+					class={cn(
+						buttonVariants({ variant: 'outline', size: 'sm' }),
+						'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold rounded-xl border-[#ebebeb]',
+						pexelsKind === 'photos'
+							? 'border-violet-300 bg-violet-50 text-violet-700'
+							: 'text-muted-foreground',
+					)}
+				>
+					<Image size={11} class="shrink-0" />
+					Photo
+				</button>
+				<button
+					type="button"
+					aria-pressed={pexelsKind === 'videos'}
+					onclick={() => switchPexelsKind('videos')}
+					class={cn(
+						buttonVariants({ variant: 'outline', size: 'sm' }),
+						'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold rounded-xl border-[#ebebeb]',
+						pexelsKind === 'videos'
+							? 'border-violet-300 bg-violet-50 text-violet-700'
+							: 'text-muted-foreground',
+					)}
+				>
+					<Play size={11} class="shrink-0" />
+					Video
+				</button>
+			</div>
 			<form
 				class="flex gap-2"
 				onsubmit={(e) => {

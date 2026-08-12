@@ -38,6 +38,13 @@
 		fontSize?: number;
 		/** Live unitless line-height from the toolbar (updates while editing). */
 		lineHeight?: number;
+		/** Live font-weight from the toolbar (updates while editing). */
+		fontWeight?: number;
+		/**
+		 * Creator-hook style: `[[phrase]]` paints as bold weight in the editor
+		 * (and in HighlightedText when `emphasisBold` is set on display).
+		 */
+		emphasisBold?: boolean;
 		ariaLabel?: string;
 		onTextChange?: (v: string) => void;
 		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
@@ -59,6 +66,8 @@
 		fontFamily,
 		fontSize,
 		lineHeight,
+		fontWeight,
+		emphasisBold = false,
 		ariaLabel = 'Slide text',
 		onTextChange,
 		onTextSelect,
@@ -162,14 +171,16 @@
 			fallbackSize != null && Number.isFinite(fallbackSize) ? `font-size: ${fallbackSize}px;` : '';
 		const lhCss =
 			lineHeight != null && Number.isFinite(lineHeight) ? `line-height: ${lineHeight};` : '';
+		const weightCss =
+			fontWeight != null && Number.isFinite(fontWeight) ? `font-weight: ${fontWeight};` : '';
 		if (!snap) {
-			return [familyCss, sizeCss, lhCss, CANVAS_TEXT_BOX_TRIM].filter(Boolean).join(' ');
+			return [familyCss, sizeCss, weightCss, lhCss, CANVAS_TEXT_BOX_TRIM].filter(Boolean).join(' ');
 		}
 		return [
 			/* Live toolbar props win over the enter-edit snapshot (paragraph +/- while editing). */
 			familyCss || `font-family: ${snap.fontFamily};`,
 			sizeCss || `font-size: ${snap.fontSize};`,
-			`font-weight: ${snap.fontWeight};`,
+			weightCss || `font-weight: ${snap.fontWeight};`,
 			lhCss || `line-height: ${snap.lineHeight};`,
 			`letter-spacing: ${snap.letterSpacing};`,
 			`font-style: ${snap.fontStyle};`,
@@ -420,6 +431,8 @@
 						{fontFamily}
 						{fontSize}
 						liveLineHeight={lineHeight}
+						liveFontWeight={fontWeight}
+						{emphasisBold}
 						lineHeight="inherit"
 						typographySnapshot={editTypography}
 						{showToolbar}

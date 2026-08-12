@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { generateSlidesBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
+import { fitCopyBudget } from '$lib/studio/fit-copy';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -223,25 +224,10 @@ async function batchAddHighlights(headlines: string[]): Promise<string[]> {
 
 /**
  * Keep copy inside what the 1080x1350 canvas can render. Trims on a sentence
- * boundary when one exists, otherwise on a word boundary.
+ * boundary when one exists, otherwise on a word boundary. Never uses ellipsis.
  */
 function fitCopy(text: string, maxWords: number, maxChars: number): string {
-	const clean = String(text ?? '').trim();
-	if (!clean) return clean;
-
-	let out = clean;
-	const words = out.split(/\s+/);
-	if (words.length > maxWords) out = words.slice(0, maxWords).join(' ');
-
-	if (out.length > maxChars) {
-		const sentenceEnd = out.slice(0, maxChars).search(/[.!?][^.!?]*$/);
-		out =
-			sentenceEnd > maxChars * 0.5
-				? out.slice(0, sentenceEnd + 1)
-				: out.slice(0, maxChars).replace(/\s+\S*$/, '');
-	}
-
-	return out.replace(/[,;:\s]+$/, '').trim();
+	return fitCopyBudget(text, { maxWords, maxChars });
 }
 
 function stripDashes(text: string): string {

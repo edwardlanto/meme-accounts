@@ -19,7 +19,10 @@ export interface StarterTemplate {
 	name: string;
 	description: string;
 	href: string;
-	/** Static cover from `scripts/capture-template-previews.mjs`. */
+	/**
+	 * Canonical cover path under `/placeholders/carousel/` (usually `…-cover.png`).
+	 * UI resolves `….mp4` first when that file exists, then falls back to this image.
+	 */
 	previewBg: string;
 	previewText: string;
 	previewSource: string;
@@ -206,6 +209,20 @@ export const VIDEO_LAYOUT_TEMPLATES: { id: VideoLayoutId; label: string; studioI
 
 export function starterByStudioId(studioId: TemplateId): StarterTemplate | undefined {
 	return STARTER_TEMPLATES.find((t) => t.studioId === studioId);
+}
+
+/** Stem + mp4/png URLs for a carousel cover (`news-cover`, or a full `/placeholders/…/news-cover.png`). */
+export function carouselCoverUrls(previewBg: string): { stem: string; mp4: string; png: string } {
+	const raw = String(previewBg ?? '').trim();
+	const stripped = raw
+		.replace(/^\/placeholders\/carousel\//, '')
+		.replace(/\.(png|jpe?g|webp|gif|mp4)$/i, '');
+	const stem = stripped || 'cover';
+	return {
+		stem,
+		mp4: `/placeholders/carousel/${stem}.mp4`,
+		png: `/placeholders/carousel/${stem}.png`,
+	};
 }
 
 export function layoutIdForStudioId(studioId: TemplateId): VideoLayoutId | undefined {

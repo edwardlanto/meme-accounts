@@ -4,6 +4,7 @@
 	 * Used by video templates, image-quote, and any framed image/video.
 	 * Not marked `data-text-selectable` so drag starts immediately (unlike text blocks).
 	 */
+	import { onDestroy } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 
@@ -74,19 +75,7 @@
 		onDblClick({ clientX: e.clientX, clientY: e.clientY });
 	}
 
-	function startResize(e: PointerEvent) {
-		if (!interactive || !onStretchChange) return;
-		e.preventDefault();
-		e.stopPropagation();
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-		resizeStart = {
-			x: e.clientX,
-			y: e.clientY,
-			stretch: stretchClamped,
-		};
-	}
-
-	function moveResize(e: PointerEvent) {
+	function onWindowPointerMove(e: PointerEvent) {
 		if (!resizeStart || !onStretchChange) return;
 		const rdx = (e.clientX - resizeStart.x) / Math.max(0.001, scale);
 		const rdy = (e.clientY - resizeStart.y) / Math.max(0.001, scale);
@@ -94,9 +83,36 @@
 		onStretchChange(clampStretch(resizeStart.stretch + delta / 520));
 	}
 
-	function endResize() {
+	function onWindowPointerUp() {
+		if (!resizeStart) return;
 		resizeStart = null;
+		window.removeEventListener('pointermove', onWindowPointerMove);
+		window.removeEventListener('pointerup', onWindowPointerUp);
+		window.removeEventListener('pointercancel', onWindowPointerUp);
 	}
+
+	function startResize(e: PointerEvent) {
+		if (!interactive || !onStretchChange) return;
+		e.preventDefault();
+		e.stopPropagation();
+		selectFromEvent((e.currentTarget as HTMLElement).closest('[data-studio-media-frame]') as HTMLElement
+			?? (e.currentTarget as HTMLElement));
+		resizeStart = {
+			x: e.clientX,
+			y: e.clientY,
+			stretch: stretchClamped,
+		};
+		window.addEventListener('pointermove', onWindowPointerMove);
+		window.addEventListener('pointerup', onWindowPointerUp);
+		window.addEventListener('pointercancel', onWindowPointerUp);
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+	}
+
+	onDestroy(() => {
+		window.removeEventListener('pointermove', onWindowPointerMove);
+		window.removeEventListener('pointerup', onWindowPointerUp);
+		window.removeEventListener('pointercancel', onWindowPointerUp);
+	});
 </script>
 
 <DraggableBlock
@@ -115,9 +131,6 @@
 			onpointerdown={onFramePointerDown}
 			onclick={onFrameClick}
 			ondblclick={onFrameDblClick}
-			onpointermove={moveResize}
-			onpointerup={endResize}
-			onpointercancel={endResize}
 			title={title ?? (interactive ? 'Drag to move · Corner to expand · Double-click for BG tools' : undefined)}
 			style="
 				position: relative;
@@ -135,25 +148,27 @@
 			"
 		>
 			{@render children()}
-			{#if interactive && selected && onStretchChange}
+			{#if interactive && onStretchChange}
 				<div
 					data-draggable-no-pan
 					style="
 						position: absolute;
-						right: 10px;
-						bottom: 10px;
-						z-index: 4;
-						width: 22px;
-						height: 22px;
-						border-radius: 8px;
-						background: rgba(0,0,0,0.5);
-						border: 1px solid rgba(255,255,255,0.25);
+						right: 8px;
+						bottom: 8px;
+						z-index: 6;
+						width: {selected ? 30 : 26}px;
+						height: {selected ? 30 : 26}px;
+						border-radius: 9px;
+						background: {selected ? 'rgba(99, 158, 255, 0.95)' : 'rgba(0,0,0,0.78)'};
+						border: 1.5px solid rgba(255,255,255,{selected ? 0.95 : 0.65});
+						box-shadow: 0 2px 12px rgba(0,0,0,0.45);
 						display: flex;
 						align-items: center;
 						justify-content: center;
 						cursor: nwse-resize;
 						pointer-events: auto;
 						touch-action: none;
+						opacity: {selected ? 1 : 0.92};
 					"
 					onpointerdown={startResize}
 					title="Drag to expand media"
@@ -163,10 +178,10 @@
 				>
 					<div
 						style="
-							width: 10px;
-							height: 10px;
-							border-right: 2px solid rgba(255,255,255,0.8);
-							border-bottom: 2px solid rgba(255,255,255,0.8);
+							width: 12px;
+							height: 12px;
+							border-right: 2.5px solid rgba(255,255,255,0.98);
+							border-bottom: 2.5px solid rgba(255,255,255,0.98);
 							transform: translate(1px, 1px);
 						"
 					></div>

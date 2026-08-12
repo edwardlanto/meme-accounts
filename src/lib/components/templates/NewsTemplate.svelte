@@ -310,7 +310,10 @@
 	function onBgVideoMeta(e: Event) {
 		const el = e.currentTarget as HTMLVideoElement;
 		bgVideoEl = el;
-		rememberBgMediaSize(el.videoWidth, el.videoHeight);
+		const vw = el.videoWidth || 0;
+		const vh = el.videoHeight || 0;
+		// Some browsers report 0×0 until a later frame — fall back so handles still appear.
+		rememberBgMediaSize(vw > 0 && vh > 0 ? vw : W, vh > 0 && vw > 0 ? vh : H);
 		const d = Number(el.duration || 0);
 		if (Number.isFinite(d) && d > 0 && Math.abs(d - lastDuration) > 0.001) {
 			lastDuration = d;
@@ -442,9 +445,12 @@
 
 	// Preload display + override fonts (Bebas Neue = default news headline).
 	$effect(() => {
-		void loadGoogleFont('Bebas Neue', 400);
-		if (headlineStyle.fontFamily) void loadGoogleFont(headlineStyle.fontFamily);
-		if (sourceStyle.fontFamily) void loadGoogleFont(sourceStyle.fontFamily);
+		const family = headlineStyle.fontFamily || 'Bebas Neue';
+		const weight = headlineStyle.fontWeight ?? 400;
+		void loadGoogleFont(family, weight);
+		if (sourceStyle.fontFamily) {
+			void loadGoogleFont(sourceStyle.fontFamily, sourceStyle.fontWeight ?? 700);
+		}
 	});
 
 	// Build the effective CSS properties for each text element.
@@ -455,6 +461,10 @@
 		else lines.push(`font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;`);
 		lines.push(`font-size: ${s.fontSize ?? fontSize}px;`);
 		lines.push(`font-weight: ${s.fontWeight ?? 400};`);
+		// Bebas Neue is single-weight — allow synthetic bold so toolbar weight changes are visible.
+		if (!s.fontFamily || s.fontFamily === 'Bebas Neue') {
+			lines.push('font-synthesis: weight;');
+		}
 		if (s.italic) lines.push('font-style: italic;');
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? textColor};`);
@@ -1510,7 +1520,8 @@
 		e.stopPropagation();
 		e.preventDefault();
 		bgResizeActive = id;
-		bgResizeStartMagnify = bgContainMagnifyPct;
+		bgResizeStartMagnify =
+			bgFitMode === 'contain' ? bgContainMagnifyPct : Math.max(30, Number(bgZoom) || 100);
 		bgResizeStartX = e.clientX;
 		bgResizeStartY = e.clientY;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1525,12 +1536,36 @@
 		const proj = (nx * dx + ny * dy) / len;
 		// Scale change: how many pixels we moved relative to half-canvas width
 		const delta = (proj / (W * 0.5)) * bgResizeStartMagnify;
-		bgContainMagnify = Math.max(50, Math.min(400, Math.round(bgResizeStartMagnify + delta)));
+		if (bgFitMode === 'contain') {
+			bgContainMagnify = Math.max(50, Math.min(400, Math.round(bgResizeStartMagnify + delta)));
+		} else {
+			bgZoom = Math.max(30, Math.min(300, Math.round(bgResizeStartMagnify + delta)));
+		}
 	}
 
 	function bgHandlePointerUp() {
 		bgResizeActive = null;
 	}
+
+	/** Selection ring box in template px — contain uses natural aspect; cover uses zoom frame. */
+	const bgHandleBox = $derived.by(() => {
+		if (bgFitMode === 'contain' && bgImgNaturalW > 0) {
+			return { x: bgSelBoxX, y: bgSelBoxY, w: bgSelBoxW, h: bgSelBoxH };
+		}
+		if (bgIsShrunk) {
+			return {
+				x: (bgShrunkLeftPct / 100) * W,
+				y: (bgShrunkTopPct / 100) * H,
+				w: (bgZoomPct / 100) * W,
+				h: (bgZoomPct / 100) * H,
+			};
+		}
+		return { x: 0, y: 0, w: W, h: H };
+	});
+
+	const canShowBgHandles = $derived(
+		interactive && bgSelected && !!(backgroundImage || backgroundVideo) && (bgImgNaturalW > 0 || bgFitMode === 'cover'),
+	);
 
 	// Deselect bg when pressing Escape
 	$effect(() => {
@@ -1701,8 +1736,8 @@
 		} catch {
 			/* ignore */
 		}
-		// Click without drag → toggle selection (contain mode only)
-		if (!bgDragging && bgPanPressed && bgFitMode === 'contain' && backgroundImage) {
+		// Click without drag → toggle selection for image OR video (any fit mode).
+		if (!bgDragging && bgPanPressed && (backgroundImage || backgroundVideo)) {
 			bgSelected = !bgSelected;
 		} else if (!bgDragging && bgPanPressed) {
 			bgSelected = false;
@@ -1945,7 +1980,7 @@
 					touch-action: none;
 				"
 				title={hasBg
-					? 'Drag to pan · Double-click for BG tools · Alt+drag anywhere · Alt+scroll to zoom'
+					? 'Click to select · Drag corners to resize · Drag to pan · Double-click for BG tools · Alt+scroll to zoom'
 					: 'Double-click for BG tools'}
 				onpointerdown={hasBg ? bgPointerDown : undefined}
 				onpointermove={hasBg ? bgPointerMove : undefined}
@@ -3037,9 +3072,14 @@
 							{:else if seg.markerBg}
 								<span
 									style="
-										background: {seg.markerBg};
+										background-color: {seg.markerBg};
+										background-image: none;
+										-webkit-background-clip: border-box;
+										background-clip: border-box;
 										color: {textColor};
 										{TEXT_BG_CHIP_BOX_CSS}
+										text-box: normal; text-box-trim: none;
+										isolation: isolate;
 										{textPaddingCss(headlineStyle)}
 									"
 								>{seg.text}</span>
@@ -3082,6 +3122,7 @@
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
 							liveLineHeight={headlineStyle.lineHeight}
+							liveFontWeight={headlineStyle.fontWeight}
 							lineHeight="inherit"
 							onChange={pushHeadlineChange}
 							onBlur={finishHeadlineEdit}
@@ -3149,7 +3190,7 @@
 							pointer-events: {interactive && editingSubtext ? 'none' : 'auto'};
 							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
 						"
-					>{#each subtextSegments as seg}{#if seg.highlighted}<span data-hl-plain-start={seg.start ?? ''} data-hl-plain-end={seg.end ?? ''} style="cursor:text;pointer-events:auto;display:inline;">{#if seg.markerBg}<span style="background:{seg.markerBg};color:{textColor};{TEXT_BG_CHIP_BOX_CSS}{textPaddingCss(subtextStyle)}">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;pointer-events:none;">{seg.text}</span>{:else}<span style="color:{seg.color};">{seg.text}</span>{/if}</span>{:else}{seg.text}{/if}{/each}</p>
+					>{#each subtextSegments as seg}{#if seg.highlighted}<span data-hl-plain-start={seg.start ?? ''} data-hl-plain-end={seg.end ?? ''} style="cursor:text;pointer-events:auto;display:inline;">{#if seg.markerBg}<span style="background-color:{seg.markerBg};background-image:none;-webkit-background-clip:border-box;background-clip:border-box;color:{textColor};{TEXT_BG_CHIP_BOX_CSS}text-box:normal;text-box-trim:none;isolation:isolate;{textPaddingCss(subtextStyle)}">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;pointer-events:none;">{seg.text}</span>{:else}<span style="color:{seg.color};">{seg.text}</span>{/if}</span>{:else}{seg.text}{/if}{/each}</p>
 					{#if editingSubtext && interactive}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
@@ -3192,11 +3233,11 @@
 	</div><!-- /clip layer -->
 
 	<!-- ── Background resize handles — outside the clip layer so they overflow the canvas edge -->
-	{#if interactive && bgSelected && bgFitMode === 'contain' && backgroundImage && bgImgNaturalW}
-		{@const sx = bgSelBoxX * scale}
-		{@const sy = bgSelBoxY * scale}
-		{@const sw = bgSelBoxW * scale}
-		{@const sh = bgSelBoxH * scale}
+	{#if canShowBgHandles}
+		{@const sx = bgHandleBox.x * scale}
+		{@const sy = bgHandleBox.y * scale}
+		{@const sw = bgHandleBox.w * scale}
+		{@const sh = bgHandleBox.h * scale}
 		<div
 			style="
 				position: absolute;
@@ -3217,18 +3258,19 @@
 						position: absolute;
 						left: {h.fx * 100}%;
 						top: {h.fy * 100}%;
-						width: 14px;
-						height: 14px;
+						width: 16px;
+						height: 16px;
 						border-radius: 50%;
 						background: #fff;
-						border: 2px solid rgba(99, 158, 255, 0.9);
-						box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+						border: 2px solid rgba(99, 158, 255, 0.95);
+						box-shadow: 0 1px 6px rgba(0,0,0,0.4);
 						transform: translate(-50%, -50%);
 						cursor: {h.cursor};
 						pointer-events: all;
 						touch-action: none;
 					"
 					role="presentation"
+					title="Drag to resize"
 					onpointerdown={(e) => bgHandlePointerDown(e, h.id, h.nx, h.ny)}
 					onpointermove={(e) => bgHandlePointerMove(e, h.nx, h.ny)}
 					onpointerup={bgHandlePointerUp}

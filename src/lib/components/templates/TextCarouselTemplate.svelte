@@ -127,7 +127,7 @@
 			fontFamily: merged.fontFamily ?? DEFAULT_BODY_FONT,
 			fontWeight: merged.fontWeight ?? 400,
 			fontSize: merged.fontSize ?? autoTextCarouselFontPx(bodyPlainForSizing, toolbarBodyFontPx),
-			lineHeight: merged.lineHeight ?? 1.38,
+			lineHeight: merged.lineHeight ?? 1.48,
 			align: merged.align ?? 'left',
 		};
 	});
@@ -140,7 +140,7 @@
 		const bits: string[] = [];
 		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Lexend', -apple-system, 'SF Pro Display', sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
-		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
+		bits.push(`font-weight: ${s.fontWeight ?? 400};`);
 		if (s.italic) bits.push('font-style: italic;');
 		if (s.underline) bits.push('text-decoration: underline;');
 		if (s.color) bits.push(`color: ${s.color};`);
@@ -174,6 +174,17 @@
 	const letterInsetX = $derived((W - BASE_W * layoutScale) / 2);
 	const letterInsetY = $derived((H - BASE_H * layoutScale) / 2);
 	const dragScale = $derived(scale * layoutScale);
+
+	/** Prefer per-slot offsets; fall back to legacy whole-profile drag. */
+	const avatarOffset = $derived(
+		textOffsets.textCarouselAvatar ?? textOffsets.textCarouselProfile ?? { x: 0, y: 0 },
+	);
+	const nameOffset = $derived(
+		textOffsets.textCarouselName ?? textOffsets.textCarouselProfile ?? { x: 0, y: 0 },
+	);
+	const handleOffset = $derived(
+		textOffsets.textCarouselHandle ?? textOffsets.textCarouselProfile ?? { x: 0, y: 0 },
+	);
 
 	function initials(n: string) {
 		return n.replace(/[^\w\s]/g, '').trim().split(/\s+/).map(w => w[0]?.toUpperCase() ?? '').slice(0, 3).join('');
@@ -220,140 +231,170 @@
 				overflow: visible;
 			"
 		>
-		<!-- ── Profile row ─────────────────────────────────────────────────── -->
-		<DraggableBlock
-			dx={textOffsets.textCarouselProfile?.x ?? 0}
-			dy={textOffsets.textCarouselProfile?.y ?? 0}
-			{interactive}
-			scale={dragScale}
-			holdDragFromText={interactive}
-			snapToCenter={interactive}
-			snapRoot={exportRef}
-			onChange={(x, y) => onTextOffsetChange?.('textCarouselProfile', { x, y })}
-		>
-			{#snippet children()}
-				<div style="display: flex; align-items: center; gap: 36px; margin-bottom: 72px; flex-shrink: 0;">
-
-			<!-- Avatar circle with ring -->
-			<div style="
-				width: {avatarOuterSize}px; height: {avatarOuterSize}px; border-radius: 50%; flex-shrink: 0;
-				display: flex; align-items: center; justify-content: center;
-				padding: {ringPx}px;
-				box-sizing: border-box;
-				background: {ringPx > 0
-					? `linear-gradient(135deg, ${ringColor}, color-mix(in srgb, ${ringColor} 60%, white))`
-					: 'transparent'};
-			">
-				<div
-					role="button"
-					tabindex="0"
-					data-draggable-no-pan
-					data-text-selectable="textCarouselAvatar"
-					class="text-carousel-avatar-disc"
-					style="
-						width: 100%; height: 100%; border-radius: 50%; overflow: hidden;
-						background: {innerDiscBg};
+		<!-- ── Profile: avatar / name / handle are separate selectable + draggable slots ─ -->
+		<div style="display: flex; align-items: center; gap: 36px; margin-bottom: 72px; flex-shrink: 0;">
+			<DraggableBlock
+				dx={avatarOffset.x ?? 0}
+				dy={avatarOffset.y ?? 0}
+				{interactive}
+				scale={dragScale}
+				holdDragFromText={interactive}
+				immediateTextDrag={selectedText === 'textCarouselAvatar'}
+				snapToCenter={interactive}
+				snapRoot={exportRef}
+				onChange={(x, y) => onTextOffsetChange?.('textCarouselAvatar', { x, y })}
+			>
+				{#snippet children()}
+					<!-- Avatar circle with ring -->
+					<div style="
+						width: {avatarOuterSize}px; height: {avatarOuterSize}px; border-radius: 50%; flex-shrink: 0;
 						display: flex; align-items: center; justify-content: center;
+						padding: {ringPx}px;
 						box-sizing: border-box;
-						cursor: {interactive ? 'pointer' : 'default'};
-						outline: none;
-						{selectedText === 'textCarouselAvatar'
-							? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);'
-							: ''}
-					"
-					onclick={(e) => {
-						e.stopPropagation();
-						if (!interactive || !onTextSelect) return;
-						onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
-					}}
-					onkeydown={(e) => {
-						if (!interactive || !onTextSelect) return;
-						if (e.key === 'Enter' || e.key === ' ') {
-							e.preventDefault();
-							onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
-						}
-					}}
-				>
-					{#if avatar?.trim()}
-						<img src={avatar} alt="" style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;" />
-					{:else}
-						<span style="
-							color: {baseText};
-							font-size: 36px;
-							font-weight: 800;
-							letter-spacing: -1px;
-							line-height: 1;
-							pointer-events: none;
-						">{discText}</span>
-					{/if}
-				</div>
-			</div>
-
-			<!-- Name + handle -->
-			<div style="flex: 1; min-width: 0;">
-				<CanvasMarkupTextBlock
-					value={name}
-					interactive={!!interactive && typeof onNameChange === 'function'}
-					rows={1}
-					{showToolbar}
-					toolbarKind="textCarouselName"
-					selected={selectedText === 'textCarouselName'}
-					ariaLabel="Name"
-					fontFamily={textCarouselStyles.textCarouselName?.fontFamily ?? headlineStyle.fontFamily}
-					fontSize={textCarouselStyles.textCarouselName?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_NAME_SIZE}
-					onTextChange={onNameChange}
-					onTextSelect={onTextSelect}
-					onHeadlineRangeSelect={onHeadlineRangeSelect}
-				>
-					{#snippet display()}
-						<p
-							data-canvas-typography-root
+						background: {ringPx > 0
+							? `linear-gradient(135deg, ${ringColor}, color-mix(in srgb, ${ringColor} 60%, white))`
+							: 'transparent'};
+					">
+						<div
+							role="button"
+							tabindex="0"
+							data-text-selectable="textCarouselAvatar"
+							class="text-carousel-avatar-disc"
 							style="
-							margin: 0 0 8px;
-							font-size: {textCarouselStyles.textCarouselName?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_NAME_SIZE}px;
-							font-weight: 800;
-							color: {baseText};
-							line-height: 1.1;
-							letter-spacing: -0.5px;
-							{nameCss}
-						"
-						>{name.trim() ? name : TEXT_CAROUSEL_DEFAULTS.name}</p>
-					{/snippet}
-				</CanvasMarkupTextBlock>
+								width: 100%; height: 100%; border-radius: 50%; overflow: hidden;
+								background: {innerDiscBg};
+								display: flex; align-items: center; justify-content: center;
+								box-sizing: border-box;
+								cursor: {interactive ? 'pointer' : 'default'};
+								outline: none;
+								{selectedText === 'textCarouselAvatar'
+									? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);'
+									: ''}
+							"
+							onclick={(e) => {
+								e.stopPropagation();
+								if (!interactive || !onTextSelect) return;
+								onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
+							}}
+							onkeydown={(e) => {
+								if (!interactive || !onTextSelect) return;
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
+								}
+							}}
+						>
+							{#if avatar?.trim()}
+								<img src={avatar} alt="" style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;" />
+							{:else}
+								<span style="
+									color: {baseText};
+									font-size: 36px;
+									font-weight: 800;
+									letter-spacing: -1px;
+									line-height: 1;
+									pointer-events: none;
+								">{discText}</span>
+							{/if}
+						</div>
+					</div>
+				{/snippet}
+			</DraggableBlock>
 
-				<CanvasMarkupTextBlock
-					value={handle}
-					interactive={!!interactive && typeof onHandleChange === 'function'}
-					rows={1}
-					{showToolbar}
-					toolbarKind="textCarouselHandle"
-					selected={selectedText === 'textCarouselHandle'}
-					ariaLabel="Handle"
-					fontFamily={textCarouselStyles.textCarouselHandle?.fontFamily ?? headlineStyle.fontFamily}
-					fontSize={textCarouselStyles.textCarouselHandle?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_HANDLE_SIZE}
-					onTextChange={onHandleChange}
-					onTextSelect={onTextSelect}
-					onHeadlineRangeSelect={onHeadlineRangeSelect}
+			<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0;">
+				<DraggableBlock
+					dx={nameOffset.x ?? 0}
+					dy={nameOffset.y ?? 0}
+					{interactive}
+					scale={dragScale}
+					holdDragFromText={interactive}
+					immediateTextDrag={selectedText === 'textCarouselName'}
+					snapToCenter={interactive}
+					snapRoot={exportRef}
+					onChange={(x, y) => onTextOffsetChange?.('textCarouselName', { x, y })}
 				>
-					{#snippet display()}
-						<p
-							data-canvas-typography-root
-							style="
-							margin: 0;
-							font-size: {textCarouselStyles.textCarouselHandle?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_HANDLE_SIZE}px;
-							font-weight: 400;
-							font-style: italic;
-							color: {baseMuted};
-							letter-spacing: -0.2px;
-							{handleCss}
-						"
-						>{handle.trim() ? handle : TEXT_CAROUSEL_DEFAULTS.handle}</p>
+					{#snippet children()}
+						<div style="padding-bottom: 22px;">
+							<CanvasMarkupTextBlock
+								value={name}
+								interactive={!!interactive && typeof onNameChange === 'function'}
+								rows={1}
+								{showToolbar}
+								toolbarKind="textCarouselName"
+								selected={selectedText === 'textCarouselName'}
+								ariaLabel="Name"
+								fontFamily={textCarouselStyles.textCarouselName?.fontFamily ?? headlineStyle.fontFamily}
+								fontSize={textCarouselStyles.textCarouselName?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_NAME_SIZE}
+								fontWeight={textCarouselStyles.textCarouselName?.fontWeight ?? headlineStyle.fontWeight ?? 800}
+								onTextChange={onNameChange}
+								onTextSelect={onTextSelect}
+								onHeadlineRangeSelect={onHeadlineRangeSelect}
+							>
+								{#snippet display()}
+									<p
+										data-canvas-typography-root
+										style="
+										margin: 0;
+										font-size: {textCarouselStyles.textCarouselName?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_NAME_SIZE}px;
+										font-weight: {textCarouselStyles.textCarouselName?.fontWeight ?? headlineStyle.fontWeight ?? 800};
+										color: {baseText};
+										line-height: 1.15;
+										letter-spacing: -0.5px;
+										{nameCss}
+									"
+									>{name.trim() ? name : TEXT_CAROUSEL_DEFAULTS.name}</p>
+								{/snippet}
+							</CanvasMarkupTextBlock>
+						</div>
 					{/snippet}
-				</CanvasMarkupTextBlock>
+				</DraggableBlock>
+
+				<DraggableBlock
+					dx={handleOffset.x ?? 0}
+					dy={handleOffset.y ?? 0}
+					{interactive}
+					scale={dragScale}
+					holdDragFromText={interactive}
+					immediateTextDrag={selectedText === 'textCarouselHandle'}
+					snapToCenter={interactive}
+					snapRoot={exportRef}
+					onChange={(x, y) => onTextOffsetChange?.('textCarouselHandle', { x, y })}
+				>
+					{#snippet children()}
+						<CanvasMarkupTextBlock
+							value={handle}
+							interactive={!!interactive && typeof onHandleChange === 'function'}
+							rows={1}
+							{showToolbar}
+							toolbarKind="textCarouselHandle"
+							selected={selectedText === 'textCarouselHandle'}
+							ariaLabel="Handle"
+							fontFamily={textCarouselStyles.textCarouselHandle?.fontFamily ?? headlineStyle.fontFamily}
+							fontSize={textCarouselStyles.textCarouselHandle?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_HANDLE_SIZE}
+							onTextChange={onHandleChange}
+							onTextSelect={onTextSelect}
+							onHeadlineRangeSelect={onHeadlineRangeSelect}
+						>
+							{#snippet display()}
+								<p
+									data-canvas-typography-root
+									style="
+									margin: 0;
+									font-size: {textCarouselStyles.textCarouselHandle?.fontSize ?? headlineStyle.fontSize ?? DEFAULT_HANDLE_SIZE}px;
+									font-weight: 400;
+									font-style: italic;
+									color: {baseMuted};
+									line-height: 1.2;
+									letter-spacing: -0.2px;
+									{handleCss}
+								"
+								>{handle.trim() ? handle : TEXT_CAROUSEL_DEFAULTS.handle}</p>
+							{/snippet}
+						</CanvasMarkupTextBlock>
+					{/snippet}
+				</DraggableBlock>
 			</div>
-				</div>
-			{/snippet}
-		</DraggableBlock>
+		</div>
 
 		<!-- ── Body text ──────────────────────────────────────────────────── -->
 		<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; overflow: visible;">
@@ -379,6 +420,7 @@
 						fontFamily={mergedBodyStyle.fontFamily}
 						fontSize={mergedBodyStyle.fontSize}
 						lineHeight={mergedBodyStyle.lineHeight}
+						fontWeight={mergedBodyStyle.fontWeight}
 						{showToolbar}
 						onTextChange={onTextChange}
 						onTextSelect={onTextSelect}

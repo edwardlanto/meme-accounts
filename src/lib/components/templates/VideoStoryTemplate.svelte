@@ -458,6 +458,8 @@
 					fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
 					fontSize={headlineStyle.fontSize ?? (pill ? 36 : isHookLayout ? hookFontSize : 46)}
 					lineHeight={headlineStyle.lineHeight}
+					fontWeight={headlineStyle.fontWeight}
+					emphasisBold={isHookLayout}
 					{showToolbar}
 					onTextChange={onHeadlineChange}
 					onTextSelect={onTextSelect}
@@ -486,6 +488,7 @@
 									as="div"
 									text={headline}
 									parseHighlights={true}
+									emphasisBold={isHookLayout}
 									defaultColor={highlightColor}
 									style="
 										margin: 0;
@@ -512,6 +515,7 @@
 									as="div"
 									text={headline}
 									parseHighlights={true}
+									emphasisBold={isHookLayout}
 									defaultColor={highlightColor}
 									style="
 										margin: 0;
@@ -844,7 +848,7 @@
 						display: flex;
 						flex-direction: column;
 						justify-content: flex-end;
-						padding: {previewMode ? '10px' : '20px'} {letterboxPadX}px {previewMode ? '10px' : '22px'};
+						padding: {previewMode ? '10px' : '20px'} {letterboxPadX}px {previewMode ? '28px' : '56px'};
 						box-sizing: border-box;
 						overflow: hidden;
 					"
@@ -1392,6 +1396,9 @@
 							ariaLabel="Creator hook headline"
 							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
 							fontSize={creatorFontSize}
+							lineHeight={headlineStyle.lineHeight}
+							fontWeight={headlineStyle.fontWeight}
+							emphasisBold={true}
 							{showToolbar}
 							onTextChange={onHeadlineChange}
 							onTextSelect={onTextSelect}

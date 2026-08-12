@@ -49,7 +49,7 @@
 
 	const boldSpanStyle = $derived(
 		emphasisBold
-			? 'color: inherit; font-weight: 800; font-style: inherit; text-decoration: inherit;'
+			? 'color: inherit; font-weight: 700; font-style: inherit; text-decoration: inherit;'
 			: '',
 	);
 
@@ -70,8 +70,12 @@
 
 	function markerStyle(bg: string): string {
 		return (
-			`background: ${bg};` +
+			`background-color: ${bg};` +
+			`background-image: none;` +
+			`-webkit-background-clip: border-box; background-clip: border-box;` +
 			`${TEXT_BG_CHIP_BOX_CSS}` +
+			`text-box: normal; text-box-trim: none;` +
+			`isolation: isolate;` +
 			`color: inherit; font-weight: inherit; font-style: inherit; text-decoration: inherit;`
 		);
 	}

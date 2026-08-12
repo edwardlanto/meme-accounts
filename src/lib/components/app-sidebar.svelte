@@ -2,7 +2,6 @@
 	import { goto } from '$app/navigation';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import CreditCardIcon from '@lucide/svelte/icons/credit-card';
-	import GalleryVerticalEndIcon from '@lucide/svelte/icons/gallery-vertical-end';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import type { ComponentProps } from 'svelte';
 
@@ -53,11 +52,13 @@
 				<Sidebar.MenuButton size="lg">
 					{#snippet child({ props })}
 						<a href="/dashboard" {...props}>
-							<div
-								class="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg"
-							>
-								<GalleryVerticalEndIcon class="size-4" />
-							</div>
+							<img
+								src="/logo/favicon/android-chrome-192x192.png"
+								alt="Meme Accounts"
+								width="32"
+								height="32"
+								class="size-8 shrink-0 rounded-lg"
+							/>
 							<div class="grid flex-1 text-start text-sm leading-tight">
 								<span class="truncate font-semibold">Meme Accounts</span>
 								<span class="truncate text-xs">Studio</span>

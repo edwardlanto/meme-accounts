@@ -101,6 +101,8 @@ export function stripLegacyTextCarouselMomentum(body: string): string {
 /**
  * If body is shorter than {@link TEXT_CAROUSEL_BODY_MIN_CHARS}, append the default deck copy
  * so slides stay visually full. Empty input becomes the full default body.
+ *
+ * Do NOT use this when Studio word count is Short/Standard — padding fights the chip.
  */
 export function ensureTextCarouselBodyMinLength(body: string): string {
 	const min = TEXT_CAROUSEL_BODY_MIN_CHARS;

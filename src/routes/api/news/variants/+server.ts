@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { newsVariantsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
+import { clampToCompleteWords } from '$lib/studio/fit-copy';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'anthropic/claude-sonnet-4.5';
@@ -15,8 +16,7 @@ function clampMaxWords(raw: unknown): number {
 }
 
 function truncate(text: string, max = DEFAULT_MAX_WORDS): string {
-	const words = text.trim().split(/\s+/).filter(Boolean);
-	return words.length <= max ? text.trim() : words.slice(0, max).join(' ');
+	return clampToCompleteWords(stripEmDashes(String(text ?? '').trim()), max);
 }
 
 type VariantContentMode = 'news' | 'fact' | 'story' | 'quote' | 'steps';
@@ -73,7 +73,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	try {
 		const noEmDash =
-			` NEVER use em dashes (—) or en dashes (–); use commas, periods, or a plain hyphen (-) only.`;
+			` NEVER use em dashes (—) or en dashes (–); use commas, periods, or a plain hyphen (-) only.` +
+			` Each string MUST be a COMPLETE thought — never cut mid-sentence, never use ellipsis (…).` +
+			` If it will not fit in ${MAX_WORDS} words, write a shorter finished line instead.`;
 		// ── Generate all slide texts in one call ──────────────────────────────
 		const newsSystem =
 			`You write short Instagram carousel overlay copy. Output ONLY valid JSON. ` +
@@ -172,7 +174,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			headers: {
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
-				'HTTP-Referer': 'https://carousel-studio.app',
+				'HTTP-Referer': 'https://memeaccounts.com',
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
@@ -298,7 +300,7 @@ async function addHighlights(
 			headers: {
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
-				'HTTP-Referer': 'https://carousel-studio.app',
+				'HTTP-Referer': 'https://memeaccounts.com',
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({

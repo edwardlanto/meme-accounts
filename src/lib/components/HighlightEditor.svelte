@@ -37,9 +37,16 @@
 		lineHeight?: string;
 		/** Live toolbar line-height (unitless). Wins over the enter-edit snapshot. */
 		liveLineHeight?: number;
+		/** Live toolbar font-weight. Wins over the enter-edit snapshot. */
+		liveFontWeight?: number;
 		/** Font used for the editor content. */
 		fontFamily?: string;
 		fontSize?: number;
+		/**
+		 * Creator-hook style: bare `[[phrase]]` paints as bold (weight), not a color accent.
+		 * Matches `HighlightedText` `emphasisBold`.
+		 */
+		emphasisBold?: boolean;
 		/** When set (e.g. CanvasMarkupTextBlock entering edit), overrides fontFamily/fontSize and default line-height so weight/layout match the canvas. */
 		typographySnapshot?: TypographySnapshot | null;
 		/** If true, renders uppercase (does NOT modify underlying text). */
@@ -64,8 +71,10 @@
 		minHeight,
 		lineHeight,
 		liveLineHeight,
+		liveFontWeight,
 		fontFamily,
 		fontSize,
+		emphasisBold = false,
 		typographySnapshot = null,
 		uppercase = false,
 		showToolbar = false,
@@ -83,6 +92,12 @@
 		if (lineHeight === 'inherit') return 'inherit';
 		if (lineHeight) return lineHeight;
 		return typographySnapshot?.lineHeight ?? 'inherit';
+	});
+
+	/** Toolbar weight wins so Bold / weight presets update while editing. */
+	const resolvedFontWeight = $derived.by(() => {
+		if (liveFontWeight != null && Number.isFinite(liveFontWeight)) return String(liveFontWeight);
+		return typographySnapshot?.fontWeight ?? 'inherit';
 	});
 
 	let editorEl: HTMLDivElement | null = $state(null);
@@ -228,8 +243,14 @@
 			span.appendChild(fill);
 		} else {
 			// Regular color highlight: show colored text (matches template rendering).
+			// Creator-hook emphasis: bold weight, keep surrounding ink (not a color chip).
 			span.style.background = 'transparent';
-			span.style.color = s.color ?? defaultColor;
+			if (emphasisBold) {
+				span.style.color = 'inherit';
+				span.style.fontWeight = '700';
+			} else {
+				span.style.color = s.color ?? defaultColor;
+			}
 		}
 	}
 
@@ -315,6 +336,7 @@
 	$effect(() => {
 		if (!editorEl) return;
 		void parseDefaults;
+		void emphasisBold;
 		// Never replace innerHTML while the user is typing — avoids flicker on Enter when
 		// `value`/other deps churn before props catch up (or round-trip markup differs).
 		if (editorContainsFocus()) {
@@ -596,7 +618,7 @@
 				{typographySnapshot
 					? `
 						line-height: ${resolvedLineHeight};
-						font-weight: ${typographySnapshot.fontWeight};
+						font-weight: ${resolvedFontWeight};
 						font-family: ${fontFamily
 							? fontFamily.includes("'") || fontFamily.includes(',')
 								? fontFamily
@@ -615,6 +637,7 @@
 					`
 					: `
 						line-height: ${resolvedLineHeight};
+						font-weight: ${resolvedFontWeight};
 						${fontFamily ? `font-family: ${fontFamily};` : ''}
 						${fontSize != null && Number.isFinite(fontSize) ? `font-size: ${fontSize}px;` : ''}
 					`}
@@ -633,7 +656,7 @@
 									: `'${fontFamily}', sans-serif`
 								: typographySnapshot.fontFamily};
 							font-size: ${fontSize != null && Number.isFinite(fontSize) ? `${fontSize}px` : typographySnapshot.fontSize};
-							font-weight: ${typographySnapshot.fontWeight};
+							font-weight: ${resolvedFontWeight};
 							line-height: ${resolvedLineHeight};
 							letter-spacing: ${typographySnapshot.letterSpacing};
 						`
@@ -649,6 +672,7 @@
 
 <style>
 	.hl-editor :global(span[data-hl]) {
+		/* Color highlights keep the block weight; emphasisBold sets inline font-weight. */
 		font-weight: inherit;
 	}
 	.hl-editor {

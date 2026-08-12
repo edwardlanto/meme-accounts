@@ -104,8 +104,9 @@ export function textPaddingCss(style: TextStyle | undefined | null): string {
 }
 
 /**
- * Highlight pill around glyphs. Trim half-leading so the fill hugs the ink
- * and the letters sit in the middle (not low in the em-box).
+ * Highlight pill around glyphs.
+ * Do not use text-box-trim here — trimming the same box that paints `background`
+ * makes the chip disappear once an ancestor is composited / offset.
  */
 export const TEXT_BG_CHIP_BOX_CSS =
 	'display: inline-block; ' +
@@ -113,10 +114,7 @@ export const TEXT_BG_CHIP_BOX_CSS =
 	'padding: 0.16em 0.3em 0.18em; ' +
 	'border-radius: 0.16em; ' +
 	'box-decoration-break: clone; ' +
-	'-webkit-box-decoration-break: clone; ' +
-	'text-box: trim-both cap alphabetic; ' +
-	'text-box-trim: trim-both; ' +
-	'text-box-edge: cap alphabetic;';
+	'-webkit-box-decoration-break: clone;';
 
 /** Block / label fill from the toolbar BG chip. */
 export function appendTextBgCss(bits: string[], style: TextStyle | undefined | null) {
@@ -124,10 +122,19 @@ export function appendTextBgCss(bits: string[], style: TextStyle | undefined | n
 	const hasBg = !!bg && bg !== 'transparent' && bg !== 'none';
 	const hasPad = typeof style?.padding === 'number' && Number.isFinite(style.padding);
 	if (!hasBg && !hasPad) return;
-	if (hasBg) bits.push(`background: ${bg};`);
+	if (hasBg) {
+		// Prefer background-color (not the `background` shorthand) so clipped
+		// pattern/gradient children cannot wipe the chip under a scaled canvas.
+		bits.push(`background-color: ${bg};`);
+		bits.push('background-image: none;');
+		bits.push('-webkit-background-clip: border-box; background-clip: border-box;');
+	}
 	if (hasBg || hasPad) {
 		bits.push(TEXT_BG_CHIP_BOX_CSS);
 		bits.push(textPaddingCss(style));
+		// Win over earlier CANVAS_TEXT_BOX_TRIM on the same style attribute.
+		bits.push('text-box: normal; text-box-trim: none;');
+		bits.push('isolation: isolate;');
 	}
 }
 

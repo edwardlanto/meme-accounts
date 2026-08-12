@@ -732,14 +732,19 @@ let {
 								</div>
 							{/if}
 
-							{#if topVideo && topImageEditable && mediaFrameSelected && onTopImagePanChange}
+							{#if topVideo && topImageEditable && onTopImagePanChange}
 								<button
 									type="button"
-									style="position:absolute;left:12px;bottom:12px;z-index:3;width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;pointer-events:auto;"
+									style="position:absolute;left:12px;bottom:12px;z-index:3;width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;pointer-events:auto;opacity:{mediaFrameSelected ? 1 : 0.85};"
 									title="Drag to reposition video"
 									aria-label="Drag to reposition video in frame"
 									onpointerdown={(e) => {
 										e.stopPropagation();
+										onTextSelect?.(
+											'tweetTopMedia',
+											(e.currentTarget as HTMLElement).closest('[data-tweet-media-frame]') as HTMLElement ??
+												(e.currentTarget as HTMLElement),
+										);
 										(e.currentTarget as HTMLButtonElement).style.cursor = 'grabbing';
 										startTopVideoPanFromHandle(e);
 									}}
@@ -758,11 +763,16 @@ let {
 								</button>
 							{/if}
 
-							{#if topImageEditable && mediaFrameSelected}
+							{#if topImageEditable && (topVideo || topImage || mediaFrameSelected)}
 								<div
-									style="position:absolute;right:10px;bottom:10px;z-index:3;width:22px;height:22px;border-radius:8px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;cursor:nwse-resize;pointer-events:auto;touch-action:none;"
+									style="position:absolute;right:10px;bottom:10px;z-index:3;width:{mediaFrameSelected || topVideo ? 28 : 22}px;height:{mediaFrameSelected || topVideo ? 28 : 22}px;border-radius:8px;background:{mediaFrameSelected ? 'rgba(99,158,255,0.95)' : 'rgba(0,0,0,0.55)'};border:1.5px solid rgba(255,255,255,{mediaFrameSelected ? 0.95 : 0.35});display:flex;align-items:center;justify-content:center;cursor:nwse-resize;pointer-events:auto;touch-action:none;opacity:{topVideo || mediaFrameSelected ? 1 : 0.9};"
 									onpointerdown={(e) => {
 										e.stopPropagation();
+										onTextSelect?.(
+											'tweetTopMedia',
+											(e.currentTarget as HTMLElement).closest('[data-tweet-media-frame]') as HTMLElement ??
+												(e.currentTarget as HTMLElement),
+										);
 										startTopImageResize(e);
 									}}
 									title="Drag to resize frame"
@@ -770,7 +780,7 @@ let {
 									tabindex="0"
 									aria-label="Resize media frame"
 								>
-									<div style="width:10px;height:10px;border-right:2px solid rgba(255,255,255,0.75);border-bottom:2px solid rgba(255,255,255,0.75);transform:translate(1px,1px);"></div>
+									<div style="width:11px;height:11px;border-right:2.5px solid rgba(255,255,255,0.95);border-bottom:2.5px solid rgba(255,255,255,0.95);transform:translate(1px,1px);"></div>
 								</div>
 							{/if}
 						</div>

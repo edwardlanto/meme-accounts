@@ -244,10 +244,18 @@
 	}
 </script>
 
+<!--
+	Use relative left/top — not transform:translate.
+	Translate promotes a layer and makes text `background` / marker chips (and
+	background-clip:text pattern fills) vanish once the offset leaves 0,0.
+-->
 <div
 	bind:this={root}
 	style="
-		transform: translate({dx}px, {dy}px);
+		position: relative;
+		left: {dx}px;
+		top: {dy}px;
+		isolation: isolate;
 		touch-action: none;
 		cursor: {interactive ? (dragging ? 'grabbing' : 'grab') : 'default'};
 		{fill ? 'width:100%;height:100%;' : ''}

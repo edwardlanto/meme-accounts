@@ -19,6 +19,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import {
 		AlertTriangle, CheckCircle2, ExternalLink, KeyRound,
@@ -84,6 +85,7 @@
 	let brandDisplayName = $state(DEFAULT_BRAND_KIT.displayName);
 	let brandHandle = $state(DEFAULT_BRAND_KIT.handle);
 	let brandProfileNote = $state('');
+	let textHighlightsEnabled = $state(DEFAULT_BRAND_KIT.textHighlightsEnabled);
 	let highlightColor = $state(DEFAULT_BRAND_KIT.highlightColor);
 	let highlightStyleKind = $state(DEFAULT_BRAND_KIT.highlightStyleKind);
 	let highlightPattern = $state(DEFAULT_BRAND_KIT.highlightPattern);
@@ -99,6 +101,7 @@
 			...kit,
 			displayName: brandDisplayName.trim(),
 			handle: normalizeBrandHandle(brandHandle),
+			textHighlightsEnabled,
 			highlightColor,
 			highlightStyleKind,
 			highlightPattern,
@@ -112,13 +115,32 @@
 		setTimeout(() => (brandProfileNote = ''), 2400);
 	}
 
+	function persistHighlightsEnabled(on: boolean) {
+		textHighlightsEnabled = on;
+		if (!userId) return;
+		const kit = loadBrandKit(userId);
+		const ok = saveBrandKit(userId, { ...kit, textHighlightsEnabled: on });
+		highlightNote = ok
+			? on
+				? 'Saved - word highlights on in Studio and Bulk'
+				: 'Saved - word highlights off in Studio and Bulk'
+			: 'Could not save';
+		setTimeout(() => (highlightNote = ''), 2400);
+	}
+
 	function persistHighlightColor(nextRaw: string) {
 		const next = normalizeHighlightHex(nextRaw, highlightColor);
 		highlightColor = next;
 		highlightStyleKind = 'solid';
+		textHighlightsEnabled = true;
 		if (!userId) return;
 		const kit = loadBrandKit(userId);
-		const ok = saveBrandKit(userId, { ...kit, highlightColor: next, highlightStyleKind: 'solid' });
+		const ok = saveBrandKit(userId, {
+			...kit,
+			highlightColor: next,
+			highlightStyleKind: 'solid',
+			textHighlightsEnabled: true,
+		});
 		highlightNote = ok ? 'Saved - Studio uses this for new highlights' : 'Could not save';
 		setTimeout(() => (highlightNote = ''), 2400);
 	}
@@ -128,12 +150,14 @@
 		if (!AVAILABLE_PATTERNS.some((p) => p.name === next)) return;
 		highlightPattern = next;
 		highlightStyleKind = 'pattern';
+		textHighlightsEnabled = true;
 		if (!userId) return;
 		const kit = loadBrandKit(userId);
 		const ok = saveBrandKit(userId, {
 			...kit,
 			highlightPattern: next,
 			highlightStyleKind: 'pattern',
+			textHighlightsEnabled: true,
 		});
 		highlightNote = ok ? 'Saved - Studio uses this pattern for new highlights' : 'Could not save';
 		setTimeout(() => (highlightNote = ''), 2400);
@@ -144,6 +168,7 @@
 		const b = normalizeHighlightHex(to, DEFAULT_BRAND_KIT.highlightGradientTo);
 		highlightColor = a;
 		highlightStyleKind = 'gradient';
+		textHighlightsEnabled = true;
 		if (!userId) return;
 		const kit = loadBrandKit(userId);
 		const ok = saveBrandKit(userId, {
@@ -152,6 +177,7 @@
 			highlightStyleKind: 'gradient',
 			highlightGradientFrom: a,
 			highlightGradientTo: b,
+			textHighlightsEnabled: true,
 		});
 		highlightNote = ok
 			? `Saved - Studio uses ${from} → ${to} for new highlights`
@@ -227,6 +253,7 @@
 			const p = brandProfile(kit);
 			brandDisplayName = p.name;
 			brandHandle = p.handle;
+			textHighlightsEnabled = kit.textHighlightsEnabled !== false;
 			highlightColor = kit.highlightColor || DEFAULT_BRAND_KIT.highlightColor;
 			highlightStyleKind = normalizeHighlightStyleKind(kit.highlightStyleKind);
 			highlightPattern = kit.highlightPattern || DEFAULT_BRAND_KIT.highlightPattern;
@@ -689,10 +716,8 @@
 		{:else}
 		<div class="tab-content">
 			<div class="settings-card">
-				<h2 class="card-title">Branding</h2>
-				<p class="card-desc">
-					Username sits on the News gold line. Handle shows on Text Carousel, Creator hook, and other profile headers.
-				</p>
+				<h2 class="card-title">Identity</h2>
+				<p class="card-desc">Shown on News, Text Carousel, and Creator templates.</p>
 				<div class="form-grid">
 					<div class="form-field">
 						<Label class="form-label" for="brand-display-name">Username</Label>
@@ -721,75 +746,89 @@
 			</div>
 
 			<div class="settings-card">
-				<h2 class="card-title">Highlight</h2>
-				<p class="card-desc">
-					Default paint for highlighted words in Studio - solid color or a pattern fill. Applies to new <span class="mono">[[word]]</span> marks.
-				</p>
-				<div class="hl-preview" style="--hl:{highlightColor}">
-					<span class="hl-preview-kicker">Preview</span>
-					<p class="hl-preview-line">
-						SOFTBANK JUST PUT
-						{#if highlightStyleKind === 'pattern' && highlightPatternUrl}
-							<em
-								class="hl-preview-pattern"
-								style="background-image: url('{highlightPatternUrl}');"
-							>$40B</em>
-						{:else}
-							<em>$40B</em>
-						{/if}
-						INTO OPENAI
-					</p>
-				</div>
-				<div class="hl-swatches" role="listbox" aria-label="Highlight color">
-					{#each HIGHLIGHT_SOLID_PRESETS as c (c)}
-						<button
-							type="button"
-							role="option"
-							aria-selected={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
-							class="hl-swatch"
-							class:hl-swatch--on={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
-							style="background: {c};"
-							title={c}
-							onclick={() => persistHighlightColor(c)}
-						></button>
-					{/each}
-					<label class="hl-custom">
-						<span class="sr-only">Custom highlight color</span>
-						<input
-							type="color"
-							value={highlightColor}
-							oninput={(e) => persistHighlightColor((e.currentTarget as HTMLInputElement).value)}
+				<div class="hl-card-head">
+					<div>
+						<h2 class="card-title">Highlight</h2>
+						<p class="card-desc">Paint for <span class="mono">[[word]]</span> accents in Studio and Bulk.</p>
+					</div>
+					<label class="hl-toggle" class:hl-toggle-on={textHighlightsEnabled}>
+						<span class="hl-toggle-state" aria-hidden="true">{textHighlightsEnabled ? 'On' : 'Off'}</span>
+						<Switch
+							id="settings-word-highlights"
+							size="sm"
+							checked={textHighlightsEnabled}
+							onCheckedChange={(v) => persistHighlightsEnabled(!!v)}
+							class="shrink-0"
 						/>
 					</label>
 				</div>
-				<div class="hl-swatches" role="listbox" aria-label="Highlight gradient">
-					{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to] (`${from}-${to}`)}
-						<button
-							type="button"
-							role="option"
-							aria-selected={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
-							class="hl-swatch hl-swatch--grad"
-							class:hl-swatch--on={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
-							style="background: linear-gradient(90deg, {from}, {to});"
-							title="{from} → {to}"
-							onclick={() => persistHighlightGradient(from, to)}
-						></button>
-					{/each}
-				</div>
-				<div class="hl-swatches hl-swatches--patterns" role="listbox" aria-label="Highlight pattern">
-					{#each AVAILABLE_PATTERNS as pat (pat.name)}
-						<button
-							type="button"
-							role="option"
-							aria-selected={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
-							class="hl-swatch hl-swatch--pattern"
-							class:hl-swatch--on={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
-							style="background-image: url('{pat.url}'); background-size: cover; background-position: center;"
-							title={pat.label}
-							onclick={() => persistHighlightPattern(pat.name)}
-						></button>
-					{/each}
-				</div>
+				{#if textHighlightsEnabled}
+					<div class="hl-preview" style="--hl:{highlightColor}">
+						<span class="hl-preview-kicker">Preview</span>
+						<p class="hl-preview-line">
+							SOFTBANK JUST PUT
+							{#if highlightStyleKind === 'pattern' && highlightPatternUrl}
+								<em
+									class="hl-preview-pattern"
+									style="background-image: url('{highlightPatternUrl}');"
+								>$40B</em>
+							{:else}
+								<em>$40B</em>
+							{/if}
+							INTO OPENAI
+						</p>
+					</div>
+					<div class="hl-swatches" role="listbox" aria-label="Highlight color">
+						{#each HIGHLIGHT_SOLID_PRESETS as c (c)}
+							<button
+								type="button"
+								role="option"
+								aria-selected={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
+								class="hl-swatch"
+								class:hl-swatch--on={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
+								style="background: {c};"
+								title={c}
+								onclick={() => persistHighlightColor(c)}
+							></button>
+						{/each}
+						<label class="hl-custom">
+							<span class="sr-only">Custom highlight color</span>
+							<input
+								type="color"
+								value={highlightColor}
+								oninput={(e) => persistHighlightColor((e.currentTarget as HTMLInputElement).value)}
+							/>
+						</label>
+					</div>
+					<div class="hl-swatches" role="listbox" aria-label="Highlight gradient">
+						{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to] (`${from}-${to}`)}
+							<button
+								type="button"
+								role="option"
+								aria-selected={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
+								class="hl-swatch hl-swatch--grad"
+								class:hl-swatch--on={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
+								style="background: linear-gradient(90deg, {from}, {to});"
+								title="{from} → {to}"
+								onclick={() => persistHighlightGradient(from, to)}
+							></button>
+						{/each}
+					</div>
+					<div class="hl-swatches hl-swatches--patterns" role="listbox" aria-label="Highlight pattern">
+						{#each AVAILABLE_PATTERNS as pat (pat.name)}
+							<button
+								type="button"
+								role="option"
+								aria-selected={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
+								class="hl-swatch hl-swatch--pattern"
+								class:hl-swatch--on={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
+								style="background-image: url('{pat.url}'); background-size: cover; background-position: center;"
+								title={pat.label}
+								onclick={() => persistHighlightPattern(pat.name)}
+							></button>
+						{/each}
+					</div>
+				{/if}
 				{#if highlightNote}
 					<div class="card-note">{highlightNote}</div>
 				{/if}
@@ -797,9 +836,7 @@
 
 			<div class="settings-card">
 				<h2 class="card-title">Text background</h2>
-				<p class="card-desc">
-					Chip behind the News source label and other brand text. Same control as Studio → Branding.
-				</p>
+				<p class="card-desc">Chip behind the News source label.</p>
 				<div class="hl-swatches" role="listbox" aria-label="Text background">
 					{#each TEXT_BG_SWATCHES as c (c || 'none')}
 						<button
@@ -1365,6 +1402,38 @@
 		text-transform: uppercase;
 		color: var(--ap-text-3);
 	}
+
+	.hl-card-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
+	.hl-card-head .card-desc { margin-top: 4px; }
+	.hl-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		flex-shrink: 0;
+		padding: 6px 10px;
+		border-radius: 999px;
+		border: 1px solid var(--ap-line);
+		background: var(--ap-soft);
+		cursor: pointer;
+		user-select: none;
+	}
+	.hl-toggle-on {
+		border-color: color-mix(in srgb, var(--ap-text) 18%, transparent);
+		background: color-mix(in srgb, var(--ap-text) 6%, transparent);
+	}
+	.hl-toggle-state {
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--ap-text-2);
+	}
+	.hl-toggle-on .hl-toggle-state { color: var(--ap-text); }
 
 	.hl-preview {
 		border-radius: 16px;

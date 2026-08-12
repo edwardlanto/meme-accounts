@@ -375,6 +375,19 @@ export const newsTextCarouselBodySchema = z.object({
 		(val) => (val === undefined || val === null ? undefined : Number(val)),
 		z.number().finite().int().min(1).max(3).optional(),
 	),
+	slideIndex: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(0).max(20).optional(),
+	),
+	slideCount: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(1).max(20).optional(),
+	),
+	/** Studio Short≈12 / Standard≈28 / Default≈placeholder word budget. */
+	maxWords: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(6).max(120).optional(),
+	),
 	studioRegenAt: z.number().finite().optional(),
 });
 

@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
+import { clampToCompleteWords } from '$lib/studio/fit-copy';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
 /** Prefer /all when searching — category + keyword work more reliably than top-only. */
@@ -621,6 +622,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const article = pickNewsArticle(articles, pick, categoryParam);
 
 	let overlayText = article.title ?? '';
+	let supportingCopy = stripEmDashes(String(article.description ?? '').trim());
 
 	if (env.OPENROUTER_API_KEY) {
 		const snippet = [article.title, article.description].filter(Boolean).join(' ').slice(0, 600);
@@ -651,13 +653,42 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 		if (autoHighlight && overlayText) {
 			overlayText = await applyHighlightMarkup(overlayText);
 		}
+
+		const supportPrompt = `You write the SHORT supporting paragraph under an Instagram news meme headline.
+
+Rules:
+- 1 or 2 complete sentences only (never 3+)
+- Max ${Math.max(12, Math.min(45, maxWords <= 16 ? maxWords + 4 : maxWords <= 28 ? 28 : 45))} words total
+- Sentence case (not ALL CAPS)
+- Must end on a finished sentence with . ! or ?
+- NEVER use ellipsis (…) or cut a word short
+- NEVER use em dashes (—) or en dashes (–)
+- No hashtags, no emojis, no quotes around the whole blurb
+- Faithful to the source; do not invent facts
+
+Headline: "${stripEmDashes(article.title ?? '')}"
+Source blurb: "${stripEmDashes(String(article.description ?? '').slice(0, 500))}"
+
+Return ONLY the supporting paragraph.`;
+
+		const support = await openRouterComplete(
+			[{ role: 'user', content: supportPrompt }],
+			0.55,
+			maxWords <= 16 ? 80 : 120,
+		);
+		if (support) supportingCopy = stripEmDashes(support.replace(/\u2026/g, '').trim());
+		// Keep supporting copy in the same ballpark as the word-count chip.
+		{
+			const supportCap = Math.max(12, Math.min(45, maxWords <= 16 ? maxWords + 4 : maxWords <= 28 ? 28 : 45));
+			supportingCopy = clampToCompleteWords(supportingCopy, supportCap);
+		}
 	}
 
 	return json({
 		text: stripEmDashes(overlayText),
 		imageUrl: article.image_url ?? null,
 		title: stripEmDashes(article.title ?? ''),
-		description: stripEmDashes(article.description ?? ''),
+		description: supportingCopy,
 		source: article.source ?? null,
 		url: article.url ?? null,
 		uuid: article.uuid ?? null,

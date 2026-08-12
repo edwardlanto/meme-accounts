@@ -13,6 +13,7 @@
 		type FontCategory,
 	} from '$lib/fonts';
 	import { TEXT_PAD_DEFAULT, TEXT_PAD_MAX, TEXT_PAD_MIN, TEXT_SHADOW_PRESETS } from '$lib/textStyleCss';
+	import { normalizePaintColorKey } from '$lib/highlight';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import {
 		Bold, Italic, Underline,
@@ -196,6 +197,28 @@
 	}
 
 	const hasTextShadow = $derived(!!String(style.textShadow ?? '').trim());
+
+	const activeBgKey = $derived.by(() => {
+		const raw = String(style.bgColor ?? '').trim();
+		if (!raw || raw === 'transparent' || raw === 'none') return '';
+		return normalizePaintColorKey(raw);
+	});
+	const hasActiveBg = $derived(!!activeBgKey);
+
+	function bgPresetSelected(c: string): boolean {
+		if (c === 'transparent') return !hasActiveBg;
+		return normalizePaintColorKey(c) === activeBgKey;
+	}
+
+	const bgChipStyle = $derived.by(() => {
+		if (!hasActiveBg) {
+			return (
+				'background: linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), ' +
+				'linear-gradient(135deg, rgba(0,0,0,0.08), rgba(0,0,0,0.02));'
+			);
+		}
+		return `background-color: ${style.bgColor};`;
+	});
 
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
@@ -741,8 +764,9 @@
 					: 'Block background'}
 			>
 				<span
-					class="ftb-chip h-5 w-5 rounded border"
-					style="background: {style.bgColor ?? 'transparent'};"
+					class="ftb-chip h-5 w-5 rounded border {hasActiveBg ? 'border-black/35' : 'border-black/15'}"
+					style={bgChipStyle}
+					title={hasActiveBg ? `Background ${style.bgColor}` : 'No background'}
 				></span>
 				<span class="font-mono text-[10px] ftb-muted">BG</span>
 				<ChevronDown size={11} class="ftb-muted" />
@@ -760,11 +784,14 @@
 							type="button"
 							onclick={() => pickBackgroundPreset(c)}
 							class="h-7 w-7 rounded-lg border-2 transition-transform hover:scale-110
-								{style.bgColor === c ? 'border-black/40' : 'border-black/10'}"
+								{bgPresetSelected(c)
+									? 'border-black/70 ring-2 ring-black/25 scale-105'
+									: 'border-black/10'}"
 							style="background: {c === 'transparent'
 								? 'linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), linear-gradient(135deg, rgba(0,0,0,0.10), rgba(0,0,0,0.02))'
 								: c};"
 							aria-label="Set background {c === 'transparent' ? 'none' : c}"
+							aria-pressed={bgPresetSelected(c)}
 							title={c === 'transparent' ? 'Transparent' : c}
 						></button>
 					{/each}
@@ -772,7 +799,7 @@
 				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Custom</p>
 				<input
 					type="color"
-					value={style.bgColor ?? '#FFEB3B'}
+					value={hasActiveBg ? style.bgColor! : '#FFEB3B'}
 					oninput={onBgCustomColorInput}
 					class="h-8 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent"
 				/>

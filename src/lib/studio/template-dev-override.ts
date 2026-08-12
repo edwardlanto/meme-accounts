@@ -3,9 +3,10 @@
  * Pin a designed look in DEV, then fresh `?template=` opens reuse it.
  * Production builds ignore these (UI + apply are DEV-only).
  */
-import type { TextElementKind, TextStyle } from '$lib/types';
+import type { TextElementKind, TextStyle, Overlay, TextOverlay } from '$lib/types';
 import type { CircleShadow } from './circle-shadow';
 import { coerceTemplateId, type TemplateId } from './template-ids';
+import type { NewsLayoutDocument } from './news-layout-document';
 
 export type TemplateDevFilmStrip = { topPct: number; bottomPct: number };
 
@@ -76,7 +77,16 @@ export type TemplateDevOverride = {
 	highlightGradientTo?: string;
 	highlightPattern?: string;
 	studioTextHighlightsEnabled?: boolean;
+	/** @deprecated Prefer `newsDocument` — kept for older pins. */
 	newsLayout?: Partial<TemplateDevNewsLayout>;
+	/**
+	 * Canonical News structure (roles, present flags, geometry, overlays).
+	 * Save-template / account default / generate all read/write this.
+	 */
+	newsDocument?: NewsLayoutDocument;
+	/** Free overlays for any template (Gamma-style: keep stickers when regenerating into a default). */
+	textOverlays?: TextOverlay[];
+	imageOverlays?: Overlay[];
 	starter?: TemplateDevStarterContent;
 };
 

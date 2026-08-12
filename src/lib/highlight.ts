@@ -524,13 +524,29 @@ function stripHighlightsInRange(raw: string, plainStart: number, plainEnd: numbe
 	return result;
 }
 
-function normalizePaintColorKey(c: string): string {
+/** Normalize hex / color tokens for swatch equality (`#abc` → `#aabbcc`). */
+export function normalizePaintColorKey(c: string): string {
 	const s = c.trim().toLowerCase();
 	if (!s.startsWith('#')) return s;
 	if (s.length === 4) {
 		return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
 	}
 	return s;
+}
+
+/**
+ * Drop `[[marker(#hex): …]]` background chips; keep color / gradient / pattern highlights.
+ * Used when the toolbar applies a *block* `bgColor` so canvas + chip share one source of truth.
+ */
+export function stripMarkerBackgrounds(
+	raw: string,
+	defaultHighlight: string | HighlightDefaults = '#F59E0B',
+): string {
+	const defaults = normalizeHighlightDefaults(defaultHighlight);
+	const parsed = parseHighlightMarkup(raw, defaults);
+	const kept = parsed.ranges.filter((r) => !String(r.markerBg ?? '').trim());
+	if (kept.length === parsed.ranges.length) return raw;
+	return emitMarkupFromRanges(parsed.plain, kept, defaults.color);
 }
 
 /**
