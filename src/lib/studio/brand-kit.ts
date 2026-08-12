@@ -47,6 +47,14 @@ export type BrandKitSettings = {
 	displayName: string;
 	/** On-slide handle, with or without `@`. */
 	handle: string;
+	/** News source label: text byline vs logo image. */
+	sourceLabelMode: 'text' | 'logo';
+	sourceLogoWidth: number;
+	sourceBorderKind: 'none' | 'rules' | 'box';
+	sourceBorderColor: string;
+	/** Last drag position for the News source label (template px). */
+	sourceOffsetX: number;
+	sourceOffsetY: number;
 	/** True after the user finishes the identity onboarding sheet. */
 	onboardingComplete: boolean;
 	cta: BrandCtaSettings;
@@ -77,6 +85,12 @@ export const DEFAULT_BRAND_KIT: BrandKitSettings = {
 	textBgColor: '',
 	displayName: '',
 	handle: '',
+	sourceLabelMode: 'text',
+	sourceLogoWidth: 260,
+	sourceBorderKind: 'none',
+	sourceBorderColor: '',
+	sourceOffsetX: 0,
+	sourceOffsetY: 0,
 	onboardingComplete: false,
 	cta: { ...DEFAULT_BRAND_CTA },
 };
@@ -136,6 +150,24 @@ function normalizeKit(parsed: Partial<BrandKitSettings> | null | undefined, ctaF
 		textBgColor: normalizeTextBgHex(String(parsed?.textBgColor ?? DEFAULT_BRAND_KIT.textBgColor)),
 		displayName: String(parsed?.displayName ?? DEFAULT_BRAND_KIT.displayName),
 		handle: normalizeBrandHandle(String(parsed?.handle ?? DEFAULT_BRAND_KIT.handle)),
+		sourceLabelMode: parsed?.sourceLabelMode === 'logo' ? 'logo' : 'text',
+		sourceLogoWidth: (() => {
+			const w = Number(parsed?.sourceLogoWidth);
+			return Number.isFinite(w) ? Math.round(Math.max(80, Math.min(400, w))) : DEFAULT_BRAND_KIT.sourceLogoWidth;
+		})(),
+		sourceBorderKind:
+			parsed?.sourceBorderKind === 'rules' || parsed?.sourceBorderKind === 'box'
+				? parsed.sourceBorderKind
+				: 'none',
+		sourceBorderColor: String(parsed?.sourceBorderColor ?? ''),
+		sourceOffsetX: (() => {
+			const x = Number(parsed?.sourceOffsetX);
+			return Number.isFinite(x) ? Math.round(x) : 0;
+		})(),
+		sourceOffsetY: (() => {
+			const y = Number(parsed?.sourceOffsetY);
+			return Number.isFinite(y) ? Math.round(y) : 0;
+		})(),
 		onboardingComplete: parsed?.onboardingComplete === true,
 		cta: {
 			image: String(parsed?.cta?.image ?? ctaFallback.image),
@@ -327,7 +359,22 @@ export function newsSourceFromBrand(kit: BrandKitSettings | null | undefined): s
 
 export function isPlaceholderNewsSource(source: string): boolean {
 	const s = String(source ?? '').trim().toLowerCase();
-	return !s || s === 'markets' || s === 'news' || s === 'your name';
+	if (!s || s === 'markets' || s === 'news' || s === 'your name') return true;
+	// Category / mode tags that used to leak into the byline on generate.
+	return (
+		s === 'tech' ||
+		s === 'finance' ||
+		s === 'politics' ||
+		s === 'health' ||
+		s === 'science' ||
+		s === 'sports' ||
+		s === 'culture' ||
+		s === 'did you know' ||
+		s === 'quotes' ||
+		s === 'steps' ||
+		s === 'story' ||
+		s === 'general'
+	);
 }
 
 const DEMO_PROFILE_NAMES = new Set(

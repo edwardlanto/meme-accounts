@@ -3229,6 +3229,10 @@ import JSZip from 'jszip';
 				if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
 			});
 		}
+		// Remember News source position as the brand default for the next generate.
+		if (template === 'news' && kind === 'source') {
+			persistNewsSourceChrome({ sourceOffsetX: next.x, sourceOffsetY: next.y });
+		}
 	}
 
 	function getTextOffset(i: number, kind: string): TextOffset {
@@ -5660,10 +5664,104 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return String(brandDisplayName ?? '').trim() || NEWS_DEFAULT_SOURCE;
 	}
 
+	/** Prefer last byline the user set — never swap in category tags like “General” on generate. */
+	function resolveNewsSourceAfterFetch(): string {
+		const brand = String(brandDisplayName ?? '').trim();
+		const cur = String(source ?? '').trim();
+		if (cur && !isPlaceholderNewsSource(cur)) return cur;
+		if (brand) return brand;
+		return NEWS_DEFAULT_SOURCE;
+	}
+
 	function applyNewsSourceFromBrand(name: string) {
 		const next = String(name ?? '').trim();
 		if (!next) return;
 		if (isPlaceholderNewsSource(source)) source = next;
+	}
+
+	/** Push News source label chrome (logo/text/position) onto every slide from brand kit values. */
+	function applyNewsSourceOffsetsFromBrand(ox?: number, oy?: number) {
+		const x = Number.isFinite(ox) ? Math.round(ox!) : 0;
+		const y = Number.isFinite(oy) ? Math.round(oy!) : 0;
+		const key = offsetKey('news', 'source');
+		const n = Math.max(1, slides.length);
+		textOffsetsBySlide = Array.from({ length: n }, (_, i) => {
+			const row = { ...(textOffsetsBySlide[i] ?? {}) };
+			row[key] = { x, y };
+			return row;
+		});
+	}
+
+	function applyNewsSourceChromeFromKit(kit: {
+		displayName?: string;
+		logoUrl?: string;
+		sourceLabelMode?: 'text' | 'logo';
+		sourceLogoWidth?: number;
+		sourceBorderKind?: 'none' | 'rules' | 'box';
+		sourceBorderColor?: string;
+		sourceOffsetX?: number;
+		sourceOffsetY?: number;
+		textBgColor?: string;
+	}) {
+		const name = String(kit.displayName ?? brandDisplayName ?? '').trim();
+		if (name && (isPlaceholderNewsSource(source) || !String(source ?? '').trim())) {
+			source = name;
+		}
+		if (kit.sourceLabelMode === 'logo' || kit.sourceLabelMode === 'text') {
+			sourceLabelMode = kit.sourceLabelMode;
+		}
+		if (typeof kit.logoUrl === 'string') {
+			sourceLogoSrc = String(kit.logoUrl).trim();
+		}
+		const w = Number(kit.sourceLogoWidth);
+		if (Number.isFinite(w) && w > 0) sourceLogoWidth = Math.round(Math.max(80, Math.min(400, w)));
+		if (kit.sourceBorderKind === 'none' || kit.sourceBorderKind === 'rules' || kit.sourceBorderKind === 'box') {
+			sourceBorderKind = kit.sourceBorderKind;
+		}
+		if (typeof kit.sourceBorderColor === 'string') sourceBorderColor = kit.sourceBorderColor;
+		const ox = Number(kit.sourceOffsetX);
+		const oy = Number(kit.sourceOffsetY);
+		if (Number.isFinite(ox) || Number.isFinite(oy)) {
+			applyNewsSourceOffsetsFromBrand(Number.isFinite(ox) ? ox : 0, Number.isFinite(oy) ? oy : 0);
+		}
+		const bg = normalizeTextBgHex(String(kit.textBgColor ?? ''));
+		if (bg) patchNewsSourceStyle({ bgColor: bg });
+	}
+
+	function persistNewsSourceChrome(extra?: Partial<{
+		sourceLabelMode: 'text' | 'logo';
+		sourceLogoSrc: string;
+		sourceLogoWidth: number;
+		sourceBorderKind: 'none' | 'rules' | 'box';
+		sourceBorderColor: string;
+		sourceOffsetX: number;
+		sourceOffsetY: number;
+		displayName: string;
+	}>) {
+		if (!userId) return;
+		try {
+			const kit = loadBrandKit(userId);
+			const mode = extra?.sourceLabelMode ?? sourceLabelMode;
+			const logo =
+				extra && Object.prototype.hasOwnProperty.call(extra, 'sourceLogoSrc')
+					? String(extra.sourceLogoSrc ?? '').trim()
+					: String(sourceLogoSrc ?? '').trim();
+			const off = getTextOffset(activeSlide, offsetKey('news', 'source'));
+			saveBrandKit(userId, {
+				...kit,
+				displayName: String(extra?.displayName ?? brandDisplayName ?? kit.displayName).trim() || kit.displayName,
+				logoUrl: logo,
+				sourceLabelMode: mode,
+				sourceLogoWidth: extra?.sourceLogoWidth ?? sourceLogoWidth,
+				sourceBorderKind: extra?.sourceBorderKind ?? sourceBorderKind,
+				sourceBorderColor: extra?.sourceBorderColor ?? sourceBorderColor,
+				sourceOffsetX: extra?.sourceOffsetX ?? off.x,
+				sourceOffsetY: extra?.sourceOffsetY ?? off.y,
+				textBgColor: brandTextBgColor,
+			});
+		} catch {
+			/* ignore */
+		}
 	}
 
 	function applyBrandProfileToSlides(name: string, handle: string) {
@@ -6492,6 +6590,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			canvasBgDark = true;
 			if (!textColorTouched) textColor = '#FFFFFF';
 			applyTemplateDevOverride(template, { slides: 'all' });
+			// Starter may reset source chrome — restore last brand logo/position.
+			if (userId) {
+				try {
+					applyNewsSourceChromeFromKit(loadBrandKit(userId));
+				} catch {
+					/* ignore */
+				}
+			}
 			return;
 		}
 		if (template === 'blank') {
@@ -7315,11 +7421,7 @@ tweetTopImagePanYBySlide,
 		brandHandle = profile.handle;
 		applyBrandProfileToSlides(profile.name, profile.handle);
 		brandCta = kit.cta?.headline || kit.cta?.image ? kit.cta : loadBrandCta(user.id);
-		// Prefill logo asset if brand kit has one, but keep source label as text by default.
-		const kitLogo = String(kit.logoUrl ?? '').trim();
-		if (kitLogo && !String(sourceLogoSrc ?? '').trim()) {
-			sourceLogoSrc = kitLogo;
-		}
+		applyNewsSourceChromeFromKit(kit);
 		if (isPlaceholderNewsSource(source)) source = defaultNewsSource();
 		if (kit.highlightColor) highlightColor = kit.highlightColor;
 		highlightStyleKind = normalizeHighlightStyleKind(kit.highlightStyleKind);
@@ -7421,6 +7523,7 @@ tweetTopImagePanYBySlide,
 				brandTextBgColor = nextBg;
 				patchNewsSourceStyle({ bgColor: nextBg || undefined });
 			}
+			if (kit) applyNewsSourceChromeFromKit(kit);
 		};
 		window.addEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 		return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
@@ -7927,7 +8030,7 @@ tweetTopImagePanYBySlide,
 
 			// Only write metadata into the workspace when we are *owning the deck* (not filling a custom template).
 			if (!fillExistingDeck) {
-				source = brandDisplayName.trim() || nextSource;
+				source = resolveNewsSourceAfterFetch();
 				articleUrl = nextArticleUrl;
 				articleTitle = nextArticleTitle;
 				articleSnippet = rawText;
@@ -7952,7 +8055,7 @@ tweetTopImagePanYBySlide,
 				articleUrl = nextArticleUrl;
 				articleTitle = nextArticleTitle;
 				articleSnippet = rawText;
-				source = brandDisplayName.trim() || nextSource;
+				source = resolveNewsSourceAfterFetch();
 			} else if (
 				newsContentMode === 'news' ||
 				newsContentMode === 'fact' ||
@@ -8102,7 +8205,7 @@ tweetTopImagePanYBySlide,
 				if (targets.some((t) => t.template === 'blank')) {
 					articleSnippet = rawText;
 					articleTitle = nextArticleTitle || articleTitle;
-					source = brandDisplayName.trim() || nextSource;
+					source = resolveNewsSourceAfterFetch();
 					fillBlankTextFromFetch(hookText, rawText);
 				}
 			// Deck has news slides → regenerate their backgrounds on every Load & Fill.
@@ -8226,6 +8329,17 @@ tweetTopImagePanYBySlide,
 
 		} catch (e: any) {
 			newsError = e.message;
+		}
+
+		// Keep source logo/byline + last drag position after generate (don't reset to category tags).
+		source = resolveNewsSourceAfterFetch();
+		if (userId) {
+			try {
+				applyNewsSourceChromeFromKit(loadBrandKit(userId));
+				source = resolveNewsSourceAfterFetch();
+			} catch {
+				/* ignore */
+			}
 		}
 
 		await flushStudioLoadingPaint();
@@ -10979,15 +11093,24 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						<div class="flex items-center justify-between gap-2">
 							<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Source Label</Label>
 							<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
-								<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
+								<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => {
+									sourceLabelMode = 'text';
+									persistNewsSourceChrome({ sourceLabelMode: 'text' });
+								}}>Text</Button>
 								<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => {
 									sourceLabelMode = 'logo';
 									if (selectedText === 'source') closeToolbar();
+									persistNewsSourceChrome({ sourceLabelMode: 'logo' });
 								}}>Logo</Button>
 							</div>
 						</div>
 						{#if sourceLabelMode === 'text'}
-							<Input bind:value={source} placeholder={brandDisplayName || 'Your name'} class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
+							<Input
+								bind:value={source}
+								placeholder={brandDisplayName || 'Your name'}
+								class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]"
+								onchange={() => persistNewsSourceChrome()}
+							/>
 							<div class="flex flex-col gap-2 pt-0.5">
 								<div class="flex min-w-0 items-center gap-2">
 									<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Font</Label>
@@ -11056,13 +11179,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 											fr.readAsDataURL(file);
 										});
 										(e.currentTarget as HTMLInputElement).value = '';
+										persistNewsSourceChrome({ sourceLogoSrc, sourceLabelMode: 'logo' });
 									}}
 								/>
 								<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold border-[#ebebeb]" onclick={() => sourceLogoInput?.click()}>
 									{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
 								</Button>
 								{#if sourceLogoSrc}
-									<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => (sourceLogoSrc = '')}>Remove</Button>
+									<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => {
+										sourceLogoSrc = '';
+										persistNewsSourceChrome({ sourceLogoSrc: '' });
+									}}>Remove</Button>
 									<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
 										<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
 									</div>
@@ -11070,7 +11197,21 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							</div>
 							<div class="flex min-w-0 items-center gap-2 pt-1">
 								<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Width</Label>
-								<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
+								<Slider
+									type="single"
+									value={sourceLogoWidth}
+									min={80}
+									max={400}
+									step={4}
+									onValueChange={(v) => {
+										const n = Array.isArray(v) ? v[0] : v;
+										if (typeof n === 'number' && Number.isFinite(n)) {
+											sourceLogoWidth = Math.round(n);
+											persistNewsSourceChrome({ sourceLogoWidth });
+										}
+									}}
+									class="min-w-0 flex-1"
+								/>
 								<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{sourceLogoWidth}px</span>
 							</div>
 						{/if}
@@ -11083,7 +11224,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 										variant={sourceBorderKind === opt.id ? 'secondary' : 'ghost'}
 										size="sm"
 										class="h-6 flex-1 rounded-md px-1.5 text-[10px] font-semibold"
-										onclick={() => (sourceBorderKind = opt.id)}
+										onclick={() => {
+											sourceBorderKind = opt.id;
+											persistNewsSourceChrome({ sourceBorderKind: opt.id });
+										}}
 									>{opt.label}</Button>
 								{/each}
 							</div>
@@ -11097,7 +11241,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 											type="button"
 											title={sw.label}
 											aria-label={sw.label}
-											onclick={() => (sourceBorderColor = sw.hex)}
+											onclick={() => {
+												sourceBorderColor = sw.hex;
+												persistNewsSourceChrome({ sourceBorderColor: sw.hex });
+											}}
 											class="h-6 w-6 shrink-0 rounded-full border-2 transition-transform hover:scale-110
 												{sourceBorderColor === sw.hex ? 'border-[#111] scale-110' : 'border-black/10'}"
 											style="background: {sw.hex
@@ -11110,7 +11257,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 										value={sourceBorderColor || canvasSourceStyle.color || highlightColor || '#F5A623'}
 										title="Custom border color"
 										aria-label="Custom border color"
-										oninput={(e) => (sourceBorderColor = (e.currentTarget as HTMLInputElement).value)}
+										oninput={(e) => {
+											sourceBorderColor = (e.currentTarget as HTMLInputElement).value;
+											persistNewsSourceChrome({ sourceBorderColor });
+										}}
 										class="h-6 w-6 shrink-0 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
 									/>
 								</div>
@@ -11418,10 +11568,15 @@ showSubjectCutout={canvasShowCutout}
 						if (!canvasInteractive) return;
 						sourceLogoSrc = src;
 						if (src) sourceLabelMode = 'logo';
+						persistNewsSourceChrome({
+							sourceLogoSrc: src,
+							sourceLabelMode: src ? 'logo' : sourceLabelMode,
+						});
 					}}
 					onSourceLogoWidthChange={(w) => {
 						if (!canvasInteractive) return;
 						sourceLogoWidth = w;
+						persistNewsSourceChrome({ sourceLogoWidth: w });
 					}}
 					highlightColor={highlightColor}
 					highlightDefaults={studioHighlightDefaults}
