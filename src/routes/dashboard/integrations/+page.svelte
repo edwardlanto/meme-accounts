@@ -38,9 +38,10 @@
 		const u = conn.meta?.username ?? conn.meta?.handle;
 		if (u) return u.startsWith('@') ? u : `@${u}`;
 		const label = conn.provider_account_label ?? '';
-		const dash = label.indexOf(' — ');
+		const sep = label.includes(' — ') ? ' — ' : ' - ';
+		const dash = label.indexOf(sep);
 		if (dash >= 0) {
-			const tail = label.slice(dash + 3).trim();
+			const tail = label.slice(dash + sep.length).trim();
 			if (tail) return tail.startsWith('@') ? tail : `@${tail}`;
 		}
 		return label || 'Connected account';
@@ -128,7 +129,7 @@
 				kind: 'error',
 				message:
 					`Connection failed: ${zernioError}` +
-					(params.get('desc') ? ` — ${params.get('desc')}` : ''),
+					(params.get('desc') ? ` - ${params.get('desc')}` : ''),
 			};
 		} else if (zernioConnected === '1') {
 			banner = { kind: 'success', message: 'Account connected and synced.' };
@@ -165,7 +166,7 @@
 	});
 </script>
 
-<div class="integrations-shell">
+<div class="integrations-shell dash-page">
 	<div class="ambient" aria-hidden="true">
 		<div class="orb orb-a"></div>
 		<div class="orb orb-b"></div>
@@ -175,7 +176,7 @@
 	<div class="integrations-panel">
 		<header class="page-head">
 			<p class="eyebrow">Integrations</p>
-			<h1 class="page-title">Connect your accounts</h1>
+			<h1 class="page-title dash-page-title">Connect your accounts</h1>
 			<p class="page-sub">
 				Link your business profiles to publish and schedule from Carousel Studio.
 				<a href="https://docs.zernio.com/sdks" target="_blank" rel="noopener noreferrer" class="doc-link">Zernio API</a>
@@ -310,10 +311,6 @@
 	.integrations-shell {
 		position: relative;
 		min-height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 48px 24px 64px;
 		overflow: hidden;
 		font-family: var(--font-body), var(--font-sans), system-ui, sans-serif;
 		color: var(--app-text);
@@ -370,10 +367,9 @@
 		position: relative;
 		z-index: 1;
 		width: 100%;
-		max-width: 480px;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
+		align-items: flex-start;
 		gap: 20px;
 	}
 
@@ -413,21 +409,11 @@
 	}
 
 	.page-title {
-		margin: 0;
-		font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
-		font-size: clamp(26px, 4vw, 32px);
-		font-weight: 800;
-		letter-spacing: -0.04em;
-		line-height: 1.1;
 		color: var(--app-text);
 	}
 
 	.page-sub {
-		margin: 0;
-		font-size: 14px;
-		line-height: 1.65;
 		color: var(--app-text-2);
-		max-width: 38ch;
 	}
 
 	.doc-link {

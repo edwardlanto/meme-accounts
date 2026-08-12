@@ -120,8 +120,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		headers: {
 			Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 			'Content-Type': 'application/json',
-			'HTTP-Referer': 'https://carouselstudio.app',
-			'X-Title': 'Carousel Studio'
+			'HTTP-Referer': 'https://memeaccounts.com',
+			'X-Title': 'Meme Accounts'
 		},
 		body: JSON.stringify({
 			model: 'anthropic/claude-3.7-sonnet',

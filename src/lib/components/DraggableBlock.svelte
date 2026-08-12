@@ -25,16 +25,17 @@
 		 */
 		holdDragFromText?: boolean;
 		/**
-		 * When true, pointer-down on selectable text nudges into a block drag immediately
-		 * (same as chrome). Use after the element is already selected so a follow-up drag
-		 * repositions. Shift+drag still selects text; contenteditable is never stolen.
+		 * When true, pointer-down on selectable text starts a block drag
+		 * after a small nudge (use once the field is already selected).
+		 * Shift+drag still highlights; contenteditable is never stolen.
+		 * Default false so the first click / highlight gesture reaches the text.
 		 */
 		immediateTextDrag?: boolean;
 		/** Stretch to parent box (needed when wrapping absolutely-positioned media). */
 		fill?: boolean;
-		/** Snap block center to snapRoot (or viewport) center while dragging. */
+		/** Snap block center to snapRoot (or canvas root) center while dragging. Default on. */
 		snapToCenter?: boolean;
-		/** Canvas / export root used for center snap bounds. */
+		/** Canvas / export root used for center snap bounds. Auto-detected when omitted. */
 		snapRoot?: HTMLElement | null;
 		onChange?: (nextDx: number, nextDy: number) => void;
 		children: Snippet;
@@ -50,7 +51,7 @@
 		holdDragFromText = true,
 		immediateTextDrag = false,
 		fill = false,
-		snapToCenter = false,
+		snapToCenter = true,
 		snapRoot = null,
 		onChange,
 		children,
@@ -147,6 +148,9 @@
 		if (holdTimer) clearTimeout(holdTimer);
 		holdTimer = null;
 
+		// Never capture or preventDefault on down — that swallows click / dblclick
+		// and highlighted-word pointerup. Capture only when beginDrag() commits.
+
 		// Selected move-on-drag: no hold timer so a plain click / double-click stays a click.
 		// Hold-to-drag only when we are in text-selection gesture mode.
 		if (!(immediateTextDrag && !forceTextSelect && !startedOnText)) {
@@ -187,7 +191,11 @@
 
 		if (snapToCenter && root) {
 			const elRect = root.getBoundingClientRect();
-			const bounds = snapRoot?.getBoundingClientRect() ?? null;
+			const boundsEl =
+				snapRoot ??
+				root.closest<HTMLElement>('[data-studio-canvas-root]') ??
+				root.closest<HTMLElement>('[data-snap-root]');
+			const bounds = boundsEl?.getBoundingClientRect() ?? null;
 			if (bounds && bounds.width > 0 && bounds.height > 0) {
 				const midX = bounds.left + bounds.width / 2;
 				const midY = bounds.top + bounds.height / 2;
@@ -241,7 +249,7 @@
 	style="
 		transform: translate({dx}px, {dy}px);
 		touch-action: none;
-		cursor: {interactive ? (dragging ? 'grabbing' : 'default') : 'default'};
+		cursor: {interactive ? (dragging ? 'grabbing' : 'grab') : 'default'};
 		{fill ? 'width:100%;height:100%;' : ''}
 	"
 	onpointerdown={onPointerDown}

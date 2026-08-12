@@ -7,6 +7,7 @@
 		WHITE_MEDIA_DEFAULTS,
 		WHITE_THREAD_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
+	import { textBgCss, textShadowStyleAttr } from '$lib/textStyleCss';
 
 	interface Props {
 		/** `thread` = long copy only; `media` = short copy + rounded attachment */
@@ -102,6 +103,7 @@
 >
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {w}px;
 			height: {h}px;
@@ -209,6 +211,7 @@
 										line-height: 1.15;
 										letter-spacing: -0.02em;
 										color: {nameStyle.color ?? '#0f1419'};
+										{textBgCss(nameStyle)}
 										white-space: nowrap;
 										overflow: hidden;
 										text-overflow: ellipsis;
@@ -244,6 +247,7 @@
 										line-height: 1.2;
 										letter-spacing: -0.01em;
 										color: {handleStyle.color ?? '#536471'};
+										{textBgCss(handleStyle)}
 										white-space: nowrap;
 										overflow: hidden;
 										text-overflow: ellipsis;
@@ -293,6 +297,7 @@
 				dy={textOffsets.textCarouselBody?.y ?? 0}
 				{interactive}
 				{scale}
+				immediateTextDrag={selectedText === 'textCarouselBody'}
 				onChange={(x, y) => onTextOffsetChange?.('textCarouselBody', { x, y })}
 			>
 				{#snippet children()}
@@ -307,6 +312,7 @@
 						ariaLabel="Post text"
 						fontFamily={bodyStyle.fontFamily ?? 'Satoshi'}
 						fontSize={bodySize}
+						lineHeight={bodyStyle.lineHeight}
 						{showToolbar}
 						onTextChange={onTextChange}
 						onTextSelect={onTextSelect}
@@ -327,6 +333,8 @@
 									font-weight: {bodyStyle.fontWeight ?? 400};
 									font-size: {bodySize}px;
 									text-align: left;
+									{textShadowStyleAttr(bodyStyle)}
+									{textBgCss(bodyStyle)}
 								"
 							/>
 						{/snippet}

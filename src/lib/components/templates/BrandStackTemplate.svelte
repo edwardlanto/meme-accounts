@@ -7,6 +7,7 @@
 		BRAND_STACK_DEFAULTS,
 		BRAND_STACK_HEADLINE_STYLE,
 	} from '$lib/studio/slide-content-defaults';
+	import { textBgCss, textShadowStyleAttr } from '$lib/textStyleCss';
 
 	interface Props {
 		headline?: string;
@@ -91,6 +92,7 @@
 		const u = String(url ?? '').trim().toLowerCase();
 		if (!u) return false;
 		if (u.startsWith('data:video/')) return true;
+		if (u.startsWith('blob:') && /[?#].*\b(video|mp4|webm|mov|m4v|vid)\b/i.test(url)) return true;
 		return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u);
 	}
 
@@ -126,7 +128,10 @@
 		const el = topVideoEl;
 		if (!el) return;
 		el.muted = videoMuted;
+		el.loop = true;
+		el.playsInline = true;
 		el.volume = Math.max(0, Math.min(1, videoVolume));
+		void el.play().catch(() => {});
 	});
 
 	$effect(() => {
@@ -166,6 +171,7 @@
 >
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {w}px;
 			height: {h}px;
@@ -331,6 +337,7 @@
 					{interactive}
 					{scale}
 					holdDragFromText={interactive}
+					immediateTextDrag={selectedText === 'videoStoryHeadline'}
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}
@@ -375,6 +382,8 @@
 											color: #0f172a;
 											font-weight: {headlineStyle.fontWeight ?? BRAND_STACK_HEADLINE_STYLE.fontWeight};
 											font-size: {headlineSize}px;
+											{textShadowStyleAttr(headlineStyle)}
+											{textBgCss(headlineStyle)}
 										"
 									/>
 								</div>
@@ -451,6 +460,7 @@
 										font-weight: 700;
 										line-height: 1;
 										letter-spacing: -0.01em;
+										{textBgCss(brandStyle)}
 										white-space: nowrap;
 									"
 								>
@@ -485,6 +495,9 @@
 					loop
 					playsinline
 					muted
+					onloadeddata={(e) => {
+						void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
+					}}
 					style="
 						position: absolute;
 						inset: 0;

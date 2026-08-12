@@ -12,7 +12,7 @@
 		loadGoogleFont,
 		type FontCategory,
 	} from '$lib/fonts';
-	import { TEXT_SHADOW_PRESETS } from '$lib/textStyleCss';
+	import { TEXT_PAD_DEFAULT, TEXT_PAD_MAX, TEXT_PAD_MIN, TEXT_SHADOW_PRESETS } from '$lib/textStyleCss';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import {
 		Bold, Italic, Underline,
@@ -47,6 +47,17 @@
 		hasRangeSelection?: boolean;
 		/** Selection spans multiple foreground colors (show mixed swatch instead of one color). */
 		textColorMixed?: boolean;
+		/**
+		 * Brand / Studio default highlight — keeps paint + highlighter pickers in sync
+		 * with Settings → Branding and the left-rail Branding panel.
+		 */
+		activeHighlight?: {
+			styleKind: 'solid' | 'gradient' | 'pattern';
+			color: string;
+			pattern: string;
+			gradientFrom?: string;
+			gradientTo?: string;
+		};
 		onChange: (patch: Partial<TextStyle>) => void;
 		onHighlight?: (spec: HighlightSpec) => void;
 		/** When set, show delete: remove text overlays or clear the active template text field. */
@@ -63,12 +74,64 @@
 		supportsHighlights = false,
 		hasRangeSelection = false,
 		textColorMixed = false,
+		activeHighlight,
 		onChange,
 		onHighlight,
 		onDelete,
 		onClose,
 		deleteOnly = false,
 	}: Props = $props();
+
+	const hlSolidOn = $derived(
+		!!activeHighlight &&
+			activeHighlight.styleKind === 'solid' &&
+			!!String(activeHighlight.color ?? '').trim(),
+	);
+	const hlPatternOn = $derived(
+		!!activeHighlight && activeHighlight.styleKind === 'pattern',
+	);
+	const hlGradientOn = $derived(
+		!!activeHighlight && activeHighlight.styleKind === 'gradient',
+	);
+
+	function sameHex(a: string | undefined, b: string | undefined): boolean {
+		return String(a ?? '').trim().toUpperCase() === String(b ?? '').trim().toUpperCase();
+	}
+
+	function isSolidSelected(c: string): boolean {
+		return hlSolidOn && sameHex(activeHighlight?.color, c);
+	}
+
+	function isPatternSelected(name: string): boolean {
+		return (
+			hlPatternOn &&
+			String(activeHighlight?.pattern ?? '').toLowerCase() === String(name).toLowerCase()
+		);
+	}
+
+	function isGradientSelected(from: string, to: string): boolean {
+		return (
+			hlGradientOn &&
+			sameHex(activeHighlight?.gradientFrom, from) &&
+			sameHex(activeHighlight?.gradientTo, to)
+		);
+	}
+
+	const colorChipStyle = $derived.by(() => {
+		if (textColorMixed) return '';
+		if (hlPatternOn) {
+			const pat = AVAILABLE_PATTERNS.find(
+				(p) => p.name === String(activeHighlight?.pattern ?? '').toLowerCase(),
+			);
+			if (pat?.url) {
+				return `background-image: url('${pat.url}'); background-size: cover; background-position: center;`;
+			}
+		}
+		if (hlGradientOn && activeHighlight?.gradientFrom && activeHighlight?.gradientTo) {
+			return `background: linear-gradient(135deg, ${activeHighlight.gradientFrom}, ${activeHighlight.gradientTo});`;
+		}
+		return `background: ${style.color ?? activeHighlight?.color ?? '#FFFFFF'};`;
+	});
 
 	let fontPickerOpen = $state(false);
 	let fontSearch = $state('');
@@ -82,11 +145,25 @@
 	const FONT_WEIGHT_PRESETS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
 	// Position the toolbar above the anchored element, clamped to the viewport.
-	const TOOLBAR_W_FULL = 820;
+	const TOOLBAR_W_FULL = 900;
 	const TOOLBAR_W_DELETE = 52;
 	const TOOLBAR_H = 48;
 
 	const toolbarWidth = $derived(deleteOnly ? TOOLBAR_W_DELETE : TOOLBAR_W_FULL);
+	let shellEl = $state<HTMLElement | null>(null);
+	let measuredWidth = $state(0);
+
+	$effect(() => {
+		const el = shellEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const sync = () => {
+			measuredWidth = Math.round(el.getBoundingClientRect().width);
+		};
+		sync();
+		const ro = new ResizeObserver(sync);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 
 	/** App default highlight / `[[WORD]]` parse color is #F5A623 — not first in grid so it isn’t mistaken for “primary”. */
 	const HIGHLIGHT_PRESETS = HIGHLIGHT_SOLID_PRESETS;
@@ -123,7 +200,7 @@
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
 		const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
-		const w = toolbarWidth;
+		const w = measuredWidth > 0 ? measuredWidth : toolbarWidth;
 		let top = anchor.top - TOOLBAR_H - 12;
 		if (top < 12) top = anchor.bottom + 12; // flip below if no room above
 		let left = anchor.left + anchor.width / 2 - w / 2;
@@ -165,6 +242,25 @@
 		if (Number.isFinite(v)) onChange({ fontSize: Math.max(12, Math.min(400, v)) });
 	}
 
+	const effectiveLineHeight = $derived(style.lineHeight ?? 1.12);
+
+	function bumpLineHeight(delta: number) {
+		const next = Math.round((effectiveLineHeight + delta) * 100) / 100;
+		onChange({ lineHeight: Math.max(0.7, Math.min(2.4, next)) });
+	}
+
+	const effectivePadding = $derived(
+		typeof style.padding === 'number' && Number.isFinite(style.padding)
+			? Math.max(TEXT_PAD_MIN, Math.min(TEXT_PAD_MAX, Math.round(style.padding)))
+			: TEXT_PAD_DEFAULT,
+	);
+
+	function bumpPadding(delta: number) {
+		onChange({
+			padding: Math.max(TEXT_PAD_MIN, Math.min(TEXT_PAD_MAX, effectivePadding + delta)),
+		});
+	}
+
 	/** Always route through `onChange` so Studio can sync selection from the DOM / last range before applying block vs [[…]] color. */
 	function pickTextColor(c: string) {
 		onChange({ color: c });
@@ -174,6 +270,19 @@
 	function onTextColorCustomInput(e: Event) {
 		const v = (e.target as HTMLInputElement).value;
 		onChange({ color: v });
+	}
+
+	function pickTextPattern(name: string) {
+		if (onHighlight) {
+			applyHighlight({ kind: 'pattern', name });
+			return;
+		}
+	}
+
+	function pickTextGradient(from: string, to: string) {
+		if (onHighlight) {
+			applyHighlight({ kind: 'gradient', from, to });
+		}
 	}
 
 	// Preload top fonts once mounted so the picker previews render fast.
@@ -192,6 +301,7 @@
 		if (!target) return;
 		if (target.closest('[data-floating-toolbar]')) return;
 		if (target.closest('[data-text-selectable]')) return;
+		if (target.closest('[data-news-block]')) return;
 		/* Popover panels render in a portal — keep toolbar open while using them */
 		if (target.closest('[data-slot="popover-content"]')) return;
 		onClose();
@@ -239,9 +349,10 @@
 
 {#if pos.show}
 	<div
+		bind:this={shellEl}
 		data-floating-toolbar
-		class="fixed z-50 flex items-center gap-1 px-1.5 py-1.5 rounded-xl backdrop-blur-md shadow-2xl ftb-shell"
-		style="top: {pos.top}px; left: {pos.left}px; width: {toolbarWidth}px; height: {TOOLBAR_H}px;"
+		class="ftb-shell fixed z-50 flex h-12 w-max max-w-[calc(100vw-24px)] items-center gap-1 overflow-hidden rounded-2xl px-2 py-1.5 shadow-2xl backdrop-blur-md"
+		style="top: {pos.top}px; left: {pos.left}px;"
 		role="toolbar"
 		aria-label={deleteOnly ? 'Delete' : 'Text formatting'}
 	>
@@ -354,6 +465,15 @@
 		<div class="w-px h-6 ftb-div"></div>
 
 		<!-- Line height -->
+		<div class="flex items-center gap-0.5">
+		<button
+			type="button"
+			onclick={() => bumpLineHeight(-0.06)}
+			class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
+			title="Tighter line height"
+		>
+			<Minus size={13} />
+		</button>
 		<Popover
 			bind:open={lineHeightOpen}
 			onOpenChange={(o) => {
@@ -366,7 +486,7 @@
 			>
 				<span class="font-mono text-[10px] ftb-muted">LH</span>
 				<span class="ftb-strong min-w-[34px] text-center text-xs tabular-nums">
-					{(style.lineHeight ?? 1.12).toFixed(2)}
+					{effectiveLineHeight.toFixed(2)}
 				</span>
 				<ChevronDown size={11} class="ftb-muted" />
 			</PopoverTrigger>
@@ -406,6 +526,15 @@
 				</button>
 			</PopoverContent>
 		</Popover>
+		<button
+			type="button"
+			onclick={() => bumpLineHeight(0.06)}
+			class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
+			title="Looser line height"
+		>
+			<Plus size={13} />
+		</button>
+		</div>
 
 		<div class="w-px h-6 ftb-div"></div>
 
@@ -520,25 +649,25 @@
 				{:else}
 					<span
 						class="ftb-chip h-5 w-5 rounded border"
-						style="background: {style.color ?? '#FFFFFF'};"
+						style={colorChipStyle}
 					></span>
 				{/if}
 				<ChevronDown size={11} class="ftb-muted" />
 			</PopoverTrigger>
 			<PopoverContent
-				class="z-[70] ftb-pop w-52 gap-0 rounded-xl p-3 shadow-2xl"
+				class="z-[70] ftb-pop w-64 gap-0 rounded-xl p-3 shadow-2xl"
 				align="end"
 				side="bottom"
 				sideOffset={6}
 			>
 				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Presets</p>
 				<div class="mb-3 grid grid-cols-6 gap-1.5">
-					{#each ['#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#FFB347', '#B0A8B9'] as c}
+					{#each ['#7bf1a8', '#FFFFFF', '#000000', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#FFB347', '#B0A8B9'] as c}
 						<button
 							type="button"
 							onclick={() => pickTextColor(c)}
 							class="h-7 w-7 rounded-lg border-2 transition-transform hover:scale-110
-								{!textColorMixed && style.color === c ? 'border-black/40' : 'border-black/10'}"
+								{!textColorMixed && !hlPatternOn && !hlGradientOn && (style.color === c || isSolidSelected(c)) ? 'border-black/40' : 'border-black/10'}"
 							style="background: {c};"
 							aria-label="Set color {c}"
 						></button>
@@ -547,10 +676,52 @@
 				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Custom</p>
 				<input
 					type="color"
-					value={style.color ?? '#FFFFFF'}
+					value={style.color ?? activeHighlight?.color ?? '#FFFFFF'}
 					oninput={onTextColorCustomInput}
-					class="h-8 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent"
+					class="mb-3 h-8 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent"
 				/>
+				{#if onHighlight && supportsHighlights}
+					<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Gradient</p>
+					<div class="mb-3 grid grid-cols-4 gap-1.5">
+						{#each GRADIENT_PRESETS as [from, to]}
+							<button
+								type="button"
+								onclick={() => pickTextGradient(from, to)}
+								class="h-7 rounded-lg border-2 transition-transform hover:scale-105
+									{isGradientSelected(from, to) ? 'border-black/50 scale-105' : 'border-black/10'}"
+								style="background: linear-gradient(90deg, {from}, {to});"
+								aria-label="Fill text with {from} to {to} gradient"
+								title="Gradient fill"
+							></button>
+						{/each}
+					</div>
+					<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Pattern</p>
+					<div class="grid grid-cols-2 gap-1.5">
+						{#each AVAILABLE_PATTERNS as pat}
+							<button
+								type="button"
+								onclick={() => pickTextPattern(pat.name)}
+								class="relative h-11 overflow-hidden rounded-lg border-2 transition-all hover:border-black/30
+									{isPatternSelected(pat.name) ? 'border-black/50' : 'border-black/10'}"
+								title="Fill text with {pat.label}"
+							>
+								<img src={pat.url} alt="" class="absolute inset-0 h-full w-full object-cover" />
+								<span
+									class="absolute inset-0 flex items-center justify-center text-[10px] font-black tracking-wider"
+									style="
+										background-image: url('{pat.url}');
+										background-size: cover;
+										background-position: center;
+										-webkit-background-clip: text;
+										-webkit-text-fill-color: transparent;
+										background-clip: text;
+										filter: contrast(1.4) brightness(1.2);
+									"
+								>{pat.label.toUpperCase()}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
 			</PopoverContent>
 		</Popover>
 
@@ -562,14 +733,12 @@
 			}}
 		>
 			<PopoverTrigger
-				disabled={supportsHighlights && !hasRangeSelection}
-				class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn
-					{supportsHighlights && !hasRangeSelection ? 'cursor-not-allowed opacity-40' : ''}"
-				title={supportsHighlights && !hasRangeSelection
-					? 'Select part of the text first, then pick a background color'
-					: supportsHighlights
-						? 'Background on selected text'
-						: 'Block background'}
+				class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn"
+				title={supportsHighlights
+					? hasRangeSelection
+						? 'Background on selected words'
+						: 'Background on this text'
+					: 'Block background'}
 			>
 				<span
 					class="ftb-chip h-5 w-5 rounded border"
@@ -586,7 +755,7 @@
 			>
 				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Presets</p>
 				<div class="mb-3 grid grid-cols-6 gap-1.5">
-					{#each ['transparent', '#FFEB3B', '#FFFFFF', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#111827'] as c}
+					{#each ['transparent', '#7bf1a8', '#FFEB3B', '#FFFFFF', '#F5A623', '#08EBFF', '#FF3B5C', '#A855F7', '#10B981', '#FFD700', '#FF6B6B', '#4ECDC4', '#111827'] as c}
 						<button
 							type="button"
 							onclick={() => pickBackgroundPreset(c)}
@@ -605,20 +774,45 @@
 					type="color"
 					value={style.bgColor ?? '#FFEB3B'}
 					oninput={onBgCustomColorInput}
-					disabled={supportsHighlights && !hasRangeSelection}
 					class="h-8 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent"
 				/>
 				<button
 					type="button"
 					onclick={clearBackgroundFill}
-					disabled={supportsHighlights && !hasRangeSelection}
 					class="ftb-btn ftb-muted mt-2 w-full rounded-lg border py-2 font-mono text-[11px] transition-colors"
-					title="Clear background on selection"
+					title="Clear background"
 				>
 					Clear background
 				</button>
 			</PopoverContent>
 		</Popover>
+
+		<!-- Background / chip padding -->
+		<div class="flex items-center gap-0.5">
+			<button
+				type="button"
+				onclick={() => bumpPadding(-2)}
+				class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
+				title="Less padding"
+			>
+				<Minus size={13} />
+			</button>
+			<span
+				class="flex h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 font-mono text-[10px] ftb-muted"
+				title="Background padding"
+			>
+				PD
+				<span class="ftb-strong min-w-[18px] text-center text-xs tabular-nums">{effectivePadding}</span>
+			</span>
+			<button
+				type="button"
+				onclick={() => bumpPadding(2)}
+				class="w-7 h-9 rounded-lg flex items-center justify-center transition-colors ftb-btn ftb-muted"
+				title="More padding"
+			>
+				<Plus size={13} />
+			</button>
+		</div>
 
 		<!-- Text shadow -->
 		<Popover
@@ -692,10 +886,8 @@
 				}}
 			>
 				<PopoverTrigger
-					disabled={!hasRangeSelection}
-					class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn
-						{hasRangeSelection ? 'ftb-strong' : 'ftb-muted cursor-not-allowed opacity-40'}"
-					title={hasRangeSelection ? 'Highlight selected text' : 'Select text first, then highlight'}
+					class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn ftb-strong"
+					title={hasRangeSelection ? 'Highlight selected words' : 'Highlight this text'}
 				>
 					<Highlighter size={14} />
 					<ChevronDown size={11} class="ftb-muted" />
@@ -713,7 +905,8 @@
 							<button
 								type="button"
 								onclick={() => applyHighlight({ kind: 'color', color: c })}
-								class="h-7 rounded-lg border-2 border-white/10 transition-transform hover:scale-105"
+								class="h-7 rounded-lg border-2 transition-transform hover:scale-105
+									{isSolidSelected(c) ? 'border-black/50 scale-105' : 'border-black/10'}"
 								style="background: {c};"
 								aria-label="Highlight with {c}"
 							></button>
@@ -727,7 +920,8 @@
 							<button
 								type="button"
 								onclick={() => applyHighlight({ kind: 'gradient', from, to })}
-								class="h-7 rounded-lg border-2 border-white/10 transition-transform hover:scale-105"
+								class="h-7 rounded-lg border-2 transition-transform hover:scale-105
+									{isGradientSelected(from, to) ? 'border-black/50 scale-105' : 'border-black/10'}"
 								style="background: linear-gradient(90deg, {from}, {to});"
 								aria-label="Highlight with {from} to {to} gradient"
 							></button>
@@ -741,7 +935,8 @@
 							<button
 								type="button"
 								onclick={() => applyHighlight({ kind: 'pattern', name: pat.name })}
-								class="relative h-10 overflow-hidden rounded-lg border border-white/10 transition-all hover:border-white/40"
+								class="relative h-10 overflow-hidden rounded-lg border-2 transition-all hover:border-black/40
+									{isPatternSelected(pat.name) ? 'border-black/50' : 'border-black/10'}"
 								title={pat.label}
 							>
 								<img src={pat.url} alt={pat.label} class="absolute inset-0 h-full w-full object-cover" />
@@ -796,6 +991,7 @@
 	.ftb-shell {
 		background: var(--app-surface-2);
 		border: 1px solid var(--app-border);
+		border-radius: 16px;
 	}
 	:root[data-theme="dark"] .ftb-shell {
 		background: rgba(26,26,26,0.95);
@@ -813,12 +1009,12 @@
 	:root[data-theme="dark"] .ftb-muted { color: rgba(255,255,255,0.55); }
 
 	.ftb-on {
-		background: color-mix(in oklab, var(--color-violet) 18%, transparent);
-		color: var(--color-violet);
+		background: color-mix(in oklab, var(--app-text) 8%, transparent);
+		color: var(--app-text);
 	}
 	:root[data-theme="dark"] .ftb-on {
-		background: rgba(139,92,246,0.20);
-		color: rgba(167,139,250,1);
+		background: rgba(255,255,255,0.10);
+		color: rgba(255,255,255,0.92);
 	}
 
 	.ftb-input {
@@ -838,6 +1034,7 @@
 	:global([data-slot="popover-content"].ftb-pop) {
 		background: var(--app-surface-2) !important;
 		border: 1px solid var(--app-border) !important;
+		border-radius: 16px !important;
 	}
 	:global(:root[data-theme="dark"] [data-slot="popover-content"].ftb-pop) {
 		background: #141414 !important;
@@ -852,8 +1049,8 @@
 	.ftb-row:hover { background: color-mix(in oklab, var(--app-text) 4%, transparent); }
 	:root[data-theme="dark"] .ftb-row { color: rgba(255,255,255,0.80); }
 	:root[data-theme="dark"] .ftb-row:hover { background: rgba(255,255,255,0.04); }
-	.ftb-row-on { background: color-mix(in oklab, var(--color-violet) 12%, transparent); color: var(--color-violet); }
-	:root[data-theme="dark"] .ftb-row-on { background: rgba(139,92,246,0.10); color: rgba(196,181,253,1); }
+	.ftb-row-on { background: color-mix(in oklab, var(--app-text) 6%, transparent); color: var(--app-text); }
+	:root[data-theme="dark"] .ftb-row-on { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.92); }
 
 	.ftb-chip { border-color: color-mix(in oklab, var(--app-text) 20%, transparent); }
 	:root[data-theme="dark"] .ftb-chip { border-color: rgba(255,255,255,0.20); }

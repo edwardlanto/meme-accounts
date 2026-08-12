@@ -76,8 +76,8 @@ Respond with a JSON object (no markdown) with these exact keys:
 		headers: {
 			'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
 			'Content-Type': 'application/json',
-			'HTTP-Referer': 'https://carouselstudio.app',
-			'X-Title': 'Carousel Studio',
+			'HTTP-Referer': 'https://memeaccounts.com',
+			'X-Title': 'Meme Accounts',
 		},
 		body: JSON.stringify({
 			model: 'anthropic/claude-sonnet-4.5',

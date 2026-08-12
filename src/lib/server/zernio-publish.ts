@@ -47,7 +47,7 @@ export async function zernioCreateProfile(apiKey: string, userId: string): Promi
 		method: 'POST',
 		json: {
 			name: `Studio user ${userId.slice(0, 8)}`,
-			description: 'Carousel Studio — Zernio profile',
+			description: 'Meme Accounts — Zernio profile',
 		},
 	});
 	const id = data?.profile?._id ?? data?.profile?.id ?? data?._id;

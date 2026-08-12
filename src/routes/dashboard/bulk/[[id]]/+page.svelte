@@ -7,6 +7,7 @@
 	import { supabase } from '$lib/supabase';
 	import {
 		DEFAULT_BRAND_KIT,
+		hydrateBrandKit,
 		loadBrandKit,
 		saveBrandKit,
 		mergeCaptionDefaultsIntoKit,
@@ -444,7 +445,7 @@
 				return;
 			}
 			userId = user.id;
-			brandKit = loadBrandKit(user.id);
+			brandKit = await hydrateBrandKit(user.id);
 			const caps = captionDefaultsFromKit(brandKit);
 			const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
 
@@ -1508,10 +1509,10 @@
 
 <svelte:window onkeydown={onGenerateKeydown} />
 
-<div class="bulk">
-	<header class="bulk-header">
-		<div class="bulk-header-text">
-			<h1>Bulk editor</h1>
+<div class="bulk dash-page">
+	<header class="bulk-header page-hero">
+		<div class="bulk-header-text page-hero-text">
+			<h1 class="dash-page-title">Bulk</h1>
 		</div>
 	</header>
 
@@ -2242,9 +2243,6 @@
 	.bulk {
 		--bulk-border: color-mix(in oklab, var(--app-border) 65%, transparent);
 		--bulk-preview-width: 252px;
-		padding: 1.25rem 1.5rem 2.5rem;
-		max-width: 1200px;
-		margin: 0 auto;
 		color: var(--app-text);
 		background: #fff;
 	}
@@ -2256,8 +2254,6 @@
 		margin-bottom: 1rem;
 	}
 	.bulk-header h1 {
-		font-size: 1.35rem;
-		font-weight: 700;
 		margin: 0 0 0.25rem;
 	}
 	.bulk-header p {

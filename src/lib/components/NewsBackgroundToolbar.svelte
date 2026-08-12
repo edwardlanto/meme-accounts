@@ -108,9 +108,6 @@
 		aria-label="Background"
 		onmousedown={(e) => e.stopPropagation()}
 	>
-		<span class="text-muted-foreground shrink-0 pl-1 font-mono text-[9px] uppercase tracking-wider">
-			BG
-		</span>
 		<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
 		{#if onAi}
 			<Button
@@ -124,7 +121,7 @@
 				}}
 			>
 				<Sparkles size={18} class="text-[#7bf1a8]" strokeWidth={2} />
-				AI bg
+				AI
 			</Button>
 			<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
 		{/if}

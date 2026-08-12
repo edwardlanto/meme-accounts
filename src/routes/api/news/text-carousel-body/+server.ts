@@ -95,7 +95,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
 				'HTTP-Referer': 'https://carousel-studio.app',
-				'X-Title': 'Carousel Studio',
+				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
 				model: MODEL,

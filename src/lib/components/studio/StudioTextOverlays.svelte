@@ -31,7 +31,7 @@
 		highlightColor = '#F5A623',
 		textOverlays,
 		parseHighlightMarkup = false,
-		snapToCanvasCenter = false,
+		snapToCanvasCenter = true,
 		pointerScale,
 		activeTextKind,
 		activeTextOverlayId,

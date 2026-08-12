@@ -9,6 +9,7 @@
 	import NewsTemplate from '$lib/components/templates/NewsTemplate.svelte';
 	import ImageQuoteTemplate from '$lib/components/templates/ImageQuoteTemplate.svelte';
 	import { IMAGE_QUOTE_DEFAULTS } from '$lib/studio/slide-content-defaults';
+	import { isPlaceholderNewsSource, loadBrandKit, newsSourceFromBrand } from '$lib/studio/brand-kit';
 	// ImageQuoteTemplate removed from public templates
 	import { AVAILABLE_PATTERNS } from '$lib/highlight';
 	import type { Overlay } from '$lib/types';
@@ -73,8 +74,10 @@
 	function blankArticle(): ArticleData {
 		return { text:'', image:'', accentColor:'#3ecf8e', bgColor:'#000000', logoSrc:'', logoRingColor:'#c9b97a', showSwipe:true, swipeText:'«« Swipe' };
 	}
+	let brandNewsSource = $state('');
+
 	function blankNews(): NewsData {
-		return { text:'YOUR HEADLINE WILL APPEAR HERE', source:'Markets', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:0, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
+		return { text:'YOUR HEADLINE WILL APPEAR HERE', source: brandNewsSource || 'YOUR NAME', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:0, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
 	}
 function blankImageQuote(): ImageQuoteData {
 	return {
@@ -148,7 +151,15 @@ function defaultImageQuote(): ImageQuoteData {
 	// ── Auth ──────────────────────────────────────────────────────────────────
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
-		if (!user) goto('/login');
+		if (!user) { goto('/login'); return; }
+		brandNewsSource = newsSourceFromBrand(loadBrandKit(user.id));
+		if (brandNewsSource) {
+			slides = slides.map((slide) =>
+				isPlaceholderNewsSource(slide.news.source)
+					? { ...slide, news: { ...slide.news, source: brandNewsSource } }
+					: slide,
+			);
+		}
 	});
 
 	// ── Slides ────────────────────────────────────────────────────────────────
@@ -253,7 +264,7 @@ function defaultImageQuote(): ImageQuoteData {
 				const art = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
 				articleTitle = art.title; articleUrl = art.url;
 				slides[activeIdx].news.text = art.title;
-				slides[activeIdx].news.source = sourceLabels[newsCategory] ?? art.source;
+				slides[activeIdx].news.source = brandNewsSource || sourceLabels[newsCategory] ?? art.source;
 				slides[activeIdx].news.backgroundImage = art.image_url;
 				slides[activeIdx].news.backgroundVideo = '';
 			} else {
@@ -262,7 +273,7 @@ function defaultImageQuote(): ImageQuoteData {
 				if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
 				articleTitle = data.title ?? ''; articleUrl = data.url ?? '';
 				slides[activeIdx].news.text = data.text ?? data.title ?? '';
-				slides[activeIdx].news.source = sourceLabels[newsCategory] ?? 'News';
+				slides[activeIdx].news.source = brandNewsSource || sourceLabels[newsCategory] ?? 'News';
 				slides[activeIdx].news.backgroundImage = data.imageUrl ?? '';
 				slides[activeIdx].news.backgroundVideo = '';
 			}

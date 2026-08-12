@@ -10,7 +10,8 @@ export const NEWS_DEFAULT_SUBTEXT =
 		? D.news.body
 		: 'The largest AI check ever written - and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.';
 
-export const NEWS_DEFAULT_SOURCE = D.news.source;
+/** Last-resort News source if the user has no username yet. Prefer brand `displayName`. */
+export const NEWS_DEFAULT_SOURCE = 'YOUR NAME';
 
 /** Optional News source logo asset (user can switch source label to logo mode). */
 export const NEWS_DEFAULT_SOURCE_LOGO = '/logo/meme-accounts-logo.webp';
@@ -29,9 +30,24 @@ export const NEWS_DEFAULT_LAYOUT = {
 	bgFitMode: 'cover' as const,
 	bgContainMagnify: 140,
 	textPanelOffsetY: 0,
-	shadowHeight: 75,
+	shadowHeight: 92,
 	shadowStrength: 1,
 };
+
+/** Presets for the studio dock “Shadow” menu (bottom canvas fade). */
+export const BOTTOM_SHADOW_PRESETS: {
+	id: string;
+	label: string;
+	height: number;
+	strength: number;
+}[] = [
+	{ id: 'none', label: 'None', height: 0, strength: 0 },
+	{ id: 'soft', label: 'Soft', height: 36, strength: 0.55 },
+	{ id: 'natural', label: 'Natural', height: 52, strength: 0.82 },
+	{ id: 'news', label: 'News', height: 92, strength: 1 },
+	{ id: 'deep', label: 'Deep', height: 78, strength: 1 },
+	{ id: 'full', label: 'Full', height: 100, strength: 1 },
+];
 
 export const NEWS_DEMO_IMAGE = D.news.imageUrl;
 /** Default News canvas media — looping demo clip (preferred over {@link NEWS_DEMO_IMAGE}). */

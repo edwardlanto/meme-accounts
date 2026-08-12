@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { ArrowRight, Check, Grid3x3, Image, Ratio, Sparkles } from 'lucide-svelte';
+	import MarketingNav from '$lib/components/MarketingNav.svelte';
+	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
 
 	let { data } = $props();
 	const signedIn = $derived(Boolean(data.user));
@@ -25,32 +27,32 @@
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'WebApplication',
-		name: 'Carousel Studio — Instagram Grid Maker',
+		name: 'Meme Accounts — Instagram Grid Maker',
 		applicationCategory: 'DesignApplication',
 		operatingSystem: 'Web',
 		description:
-			'Free Instagram grid maker. Plan a cohesive feed, design square and Feed posts, and export a polished profile grid from Carousel Studio.',
+			'Free Instagram grid maker. Plan a cohesive feed, design square and Feed posts, and export a polished profile grid from Meme Accounts.',
 		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 	};
 </script>
 
 <svelte:head>
-	<title>Instagram Grid Maker — Free Feed Grid Planner &amp; Post Designer | Carousel Studio</title>
+	<title>Instagram Grid Maker — Free Feed Grid Planner &amp; Post Designer | Meme Accounts</title>
 	<meta
 		name="description"
 		content="Make a cohesive Instagram feed grid. Design square and 4:5 posts, align a 3×3 profile look, export PNGs, and schedule. Free trial — then unlimited on Pro."
 	/>
 	<meta
 		name="keywords"
-		content="instagram grid maker, instagram feed planner, profile grid maker, 3x3 instagram grid, feed aesthetic maker, carousel studio"
+		content="instagram grid maker, instagram feed planner, profile grid maker, 3x3 instagram grid, feed aesthetic maker, meme accounts"
 	/>
-	<link rel="canonical" href="https://carouselstudio.app/instagram-grid-maker" />
-	<meta property="og:title" content="Instagram Grid Maker — Carousel Studio" />
+	<link rel="canonical" href="https://memeaccounts.com/instagram-grid-maker" />
+	<meta property="og:title" content="Instagram Grid Maker — Meme Accounts" />
 	<meta
 		property="og:description"
 		content="Plan and design a cohesive Instagram profile grid. Square &amp; Feed sizes, templates, AI backgrounds — free trial."
 	/>
-	<meta property="og:image" content="https://carouselstudio.app/images/seo/carousel-maker-studio.png" />
+	<meta property="og:image" content="https://memeaccounts.com/images/seo/carousel-maker-studio.png" />
 	<meta property="og:type" content="website" />
 	{@html `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`}
 </svelte:head>
@@ -58,32 +60,7 @@
 <div class="page">
 	<div class="atmosphere" aria-hidden="true"><div class="blob"></div></div>
 
-	<nav class="nav">
-		<a href="/" class="logo">
-			<img
-				src="/logo/meme-accounts-logo.webp"
-				alt="Meme Accounts"
-				class="logo-img"
-				width="180"
-				height="28"
-			/>
-		</a>
-		<div class="nav-links">
-			<a href="/pricing">Pricing</a>
-			<a href="/fake-tweet-maker">Tweet Maker</a>
-			<a href="/instagram-carousel-maker">Carousel</a>
-			<a href="/instagram-grid-maker" aria-current="page">Grid</a>
-			<a href="/linkedin-carousel-maker">LinkedIn</a>
-		</div>
-		<div class="nav-actions">
-			{#if signedIn}
-				<a href="/dashboard" class="nav-ghost">Dashboard</a>
-			{:else}
-				<a href="/?auth=login&next=/instagram-grid-maker" class="nav-ghost">Sign in</a>
-				<a href={studioHref} class="btn-nav">Start free</a>
-			{/if}
-		</div>
-	</nav>
+	<MarketingNav ctaHref={studioHref} />
 
 	<header class="hero container">
 		<span class="eyebrow"><Grid3x3 size={12} /> Instagram Grid Maker</span>
@@ -91,8 +68,12 @@
 			Design a feed that looks <span class="accent">intentional</span>
 		</h1>
 		<p class="lead">
-			Build posts that tile into a clean profile grid — square or Feed 4:5, shared templates and
-			palette, then export or schedule. Public page; sign in to open Grid Studio (1 free trial export).
+			Build posts that tile into a clean profile grid - square or Feed 4:5, shared templates and
+			palette, then export or schedule. Pair a grid with
+			<a href="/instagram-carousel-maker">Instagram carousels</a>
+			or a
+			<a href="/fake-tweet-maker">tweet graphic</a>
+			when a tile needs a hook. Public page; sign in to open Grid Studio (1 free trial export).
 		</p>
 		<div class="cta-row">
 			<a href={studioHref} class="cta-primary">
@@ -121,7 +102,7 @@
 				{ icon: Grid3x3, title: 'Think in tiles', body: 'Design each post so the profile read as one composition — not nine random squares.' },
 				{ icon: Ratio, title: 'Square & Feed', body: 'Switch 1:1 and 4:5 without rebuilding. Match what Instagram actually crops.' },
 				{ icon: Image, title: 'Shared assets', body: 'Reuse brand photos, stickers, and AI backgrounds across every tile in the set.' },
-				{ icon: Sparkles, title: 'Templates that ship', body: 'News, quote, blank, and more — same dock tools as Carousel Studio.' },
+				{ icon: Sparkles, title: 'Templates that ship', body: 'News, quote, blank, and more - same dock tools as the rest of Meme Accounts.' },
 			] as f}
 				<article class="feat">
 					<f.icon size={18} />
@@ -136,7 +117,7 @@
 		<figure class="strip-frame">
 			<img
 				src="/images/seo/carousel-maker-studio.png"
-				alt="Carousel Studio editor used to design Instagram feed posts"
+				alt="Meme Accounts editor used to design Instagram feed posts"
 				width="1200"
 				height="720"
 				loading="lazy"
@@ -145,7 +126,7 @@
 		<div class="strip-copy">
 			<h2>One studio for the whole grid</h2>
 			<p>
-				Grid Studio is Carousel Studio focused for feed posts — filmstrip for multi-slide tiles,
+				Grid Studio is Meme Accounts focused for feed posts - filmstrip for multi-slide tiles,
 				library assets, and export ready for a cohesive profile.
 			</p>
 			<ul>
@@ -161,7 +142,7 @@
 		{#each [
 			['Is this free?', 'Yes to try — sign in and get one trial export. Pro unlocks unlimited exports and AI.'],
 			['Is this a 3×3 planner?', 'You design posts in Studio sized for Instagram; arrange the live profile grid when you publish in order.'],
-			['Carousel vs grid?', 'Carousels are multi-slide posts. Grid maker is for the profile mosaic — both use the same studio.'],
+			['Carousel vs grid?', 'Carousels are multi-slide posts. Grid maker is for the profile mosaic - both use the same studio.'],
 			['Can I schedule posts?', 'Yes. Export or send to the post scheduler after connecting Instagram.'],
 		] as [q, a]}
 			<details class="faq-item">
@@ -182,14 +163,7 @@
 		</div>
 	</section>
 
-	<footer class="footer container">
-		<a href="/privacy">Privacy</a>
-		<a href="/terms">Terms</a>
-		<a href="/refund-policy">Refunds</a>
-		<a href="/instagram-carousel-maker">Instagram Carousel</a>
-		<a href="/fake-tweet-maker">Tweet Maker</a>
-		<span>© Carousel Studio</span>
-	</footer>
+	<MarketingFooter />
 </div>
 
 <style>
@@ -228,68 +202,6 @@
 		padding: 0 clamp(20px, 4vw, 48px);
 	}
 
-	.nav {
-		position: sticky;
-		top: 0;
-		z-index: 50;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		padding: 14px clamp(20px, 4vw, 48px);
-		background: color-mix(in oklch, var(--paper) 85%, transparent);
-		backdrop-filter: blur(18px);
-		border-bottom: 1px solid rgba(10, 5, 5, 0.07);
-	}
-	.logo {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
-	}
-	.logo-img {
-		display: block;
-		height: 28px;
-		width: auto;
-		max-width: min(200px, 52vw);
-		object-fit: contain;
-	}
-	.nav-links {
-		display: flex;
-		gap: 22px;
-	}
-	.nav-links a {
-		font-size: 14px;
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-	.nav-links a[aria-current='page'],
-	.nav-links a:hover {
-		color: var(--ink);
-	}
-	.nav-actions {
-		display: flex;
-		gap: 12px;
-		align-items: center;
-	}
-	.nav-ghost {
-		font-size: 14px;
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-	.btn-nav {
-		padding: 9px 18px;
-		border-radius: 999px;
-		background: #080808;
-		color: #fff;
-		font-size: 13px;
-		font-weight: 700;
-		text-decoration: none;
-	}
-
 	.hero {
 		padding: 56px 0 28px;
 	}
@@ -323,6 +235,12 @@
 		line-height: 1.55;
 		color: rgba(10, 5, 5, 0.62);
 		max-width: 54ch;
+	}
+	.lead a {
+		color: var(--ink);
+		font-weight: 700;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 	.cta-row {
 		display: flex;
@@ -520,24 +438,7 @@
 		color: rgba(255, 255, 255, 0.55);
 	}
 
-	.footer {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 20px;
-		padding: 32px 0 48px;
-		font-size: 13px;
-		color: rgba(10, 5, 5, 0.45);
-	}
-	.footer a {
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-
 	@media (max-width: 900px) {
-		.nav-links {
-			display: none;
-		}
 		.feat-grid,
 		.strip {
 			grid-template-columns: 1fr;

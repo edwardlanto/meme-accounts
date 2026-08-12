@@ -1147,11 +1147,11 @@
 	}
 </script>
 
-<div class="page-wrap" class:mounted>
+<div class="page-wrap dash-page" class:mounted>
 	<header class="page-hero">
 		<div class="page-hero-text">
-			<h1 class="page-title">Carousels</h1>
-			<p class="page-sub">Bulk generations, YouTube clips, Studio drafts, and named saves — open one to keep editing.</p>
+			<h1 class="page-title dash-page-title">Carousels</h1>
+			<p class="page-sub dash-page-sub">Bulk generations, YouTube clips, Studio drafts, and named saves - open one to keep editing.</p>
 		</div>
 		<div class="hero-actions">
 			<a href="/dashboard/templates" class="ma-btn ma-btn-ghost">Browse templates</a>
@@ -1170,7 +1170,7 @@
 			<div class="empty-icon"><ImagePlus size={22} /></div>
 			<h3 class="empty-title">No carousels yet</h3>
 			<p class="empty-desc">
-				Generate in Bulk, clip a YouTube video, or edit in Studio — then save when you’re ready. Use Save template for a named Studio copy.
+				Generate in Bulk, clip a YouTube video, or edit in Studio - then save when you're ready. Use Save template for a named Studio copy.
 			</p>
 			<div class="empty-actions">
 				<a href="/dashboard/bulk" class="ma-btn ma-btn-primary"><Rows3 size={14} /> Open Bulk</a>
@@ -1191,7 +1191,7 @@
 							{#if clipGroups.length > 1}
 								· {clipGroups.length} videos
 							{/if}
-							— select to clean up, or open one to edit.
+							- select to clean up, or open one to edit.
 						</p>
 					</div>
 					<div class="draft-select-bar">
@@ -1689,9 +1689,6 @@
 	}
 
 	.page-wrap {
-		padding: 32px 32px 64px;
-		max-width: 1560px;
-		margin: 0 auto;
 		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 	}
 	.reveal {
@@ -1742,19 +1739,10 @@
 		box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
 	}
 	.page-title {
-		font-size: clamp(28px, 3.4vw, 42px);
-		font-weight: 800;
-		letter-spacing: -0.025em;
 		color: var(--t-strong);
-		margin: 0;
-		line-height: 1.05;
 	}
 	.page-sub {
-		font-size: 14px;
-		line-height: 1.55;
 		color: var(--t);
-		margin: 0;
-		max-width: 60ch;
 	}
 	.hero-actions {
 		display: flex;

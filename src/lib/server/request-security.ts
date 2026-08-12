@@ -339,6 +339,10 @@ export const newsBodySchema = z.object({
 		z.number().finite().int().min(3).max(8),
 	),
 	studioRegenAt: z.number().finite().optional(),
+	maxWords: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(6).max(40).optional(),
+	),
 });
 
 export const newsVariantsBodySchema = z.object({
@@ -356,6 +360,10 @@ export const newsVariantsBodySchema = z.object({
 		z.number().finite().int().min(1).max(8).optional(),
 	),
 	includeReplies: z.boolean().optional(),
+	maxWords: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(6).max(40).optional(),
+	),
 });
 
 export const newsTextCarouselBodySchema = z.object({

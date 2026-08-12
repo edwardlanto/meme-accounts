@@ -28,7 +28,7 @@ export type StudioTemplateDef = { id: TemplateId; label: string };
 export const STUDIO_TEMPLATES: StudioTemplateDef[] = [
 	{ id: 'blank', label: 'Blank' },
 	{ id: 'news', label: 'News' },
-	{ id: 'tweet', label: 'Tweet' },
+	// { id: 'tweet', label: 'Tweet' },
 	// { id: 'article', label: 'Article' },
 	{ id: 'textCarousel', label: 'Text carousel' },
 	// { id: 'whiteThread', label: 'White thread' },

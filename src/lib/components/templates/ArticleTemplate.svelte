@@ -3,7 +3,7 @@
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
-	import { appendTextShadowCss } from '$lib/textStyleCss';
+	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 
 	interface Props {
 		// Content
@@ -99,10 +99,7 @@
 		if (s.underline) bits.push('text-decoration: underline;');
 		if (s.color) bits.push(`color: ${s.color};`);
 		if (s.bgColor && !opts?.omitBlockBg) {
-			bits.push(`background: ${s.bgColor};`);
-			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
-			bits.push('padding: 0.08em 0.18em;');
-			bits.push('border-radius: 0.18em;');
+			appendTextBgCss(bits, s);
 		}
 		if (s.align) bits.push(`text-align: ${s.align};`);
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
@@ -145,6 +142,7 @@
 ">
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {W}px;
 			height: {H}px;
@@ -187,6 +185,7 @@
 				dy={textOffsets.articleBody?.y ?? 0}
 				{interactive}
 				scale={dragScale}
+				immediateTextDrag={selectedText === 'articleBody'}
 				onChange={(x, y) => onTextOffsetChange?.('articleBody', { x, y })}
 			>
 				{#snippet children()}

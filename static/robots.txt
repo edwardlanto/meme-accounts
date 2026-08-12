@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://carouselstudio.app/sitemap.xml
+Sitemap: https://memeaccounts.com/sitemap.xml

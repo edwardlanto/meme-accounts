@@ -226,7 +226,7 @@
 	});
 </script>
 
-<div class="dash">
+<div class="dash dash-page">
 	<!-- ── Hero ─────────────────────────────────────────── -->
 	<section class="hero">
 		<div class="hero-glow" aria-hidden="true"></div>
@@ -235,9 +235,9 @@
 				<span class="hero-dot"></span>
 				<span>Studio</span>
 			</div>
-			<h1 class="hero-title">Create your next post</h1>
-			<p class="hero-sub">
-				Pick a template, build a carousel, or pull clips from a video — then ship from Studio.
+			<h1 class="hero-title dash-page-title">Create your next post</h1>
+			<p class="hero-sub dash-page-sub">
+				Pick a template, build a carousel, or pull clips from a video - then ship from Studio.
 			</p>
 			<div class="hero-actions">
 				<a href="/dashboard/templates" class="ma-btn ma-btn-primary">
@@ -268,14 +268,13 @@
 		{/each}
 	</section>
 
-	{#if !loading}
-		<!-- ── Recent carousels ───────────────────────────────── -->
-		<section class="saved-section" aria-labelledby="recent-carousels-heading">
+	<!-- ── Recent carousels ───────────────────────────────── -->
+	<section class="saved-section" aria-labelledby="recent-carousels-heading" aria-busy={loading}>
 			<div class="saved-section-head saved-section-head--row">
 				<div class="saved-section-titles">
 					<h2 id="recent-carousels-heading" class="saved-section-title">Recent carousels</h2>
 					<p class="saved-section-sub">
-						Your latest Studio drafts — open one to keep editing.
+						Your latest Studio drafts - open one to keep editing.
 					</p>
 				</div>
 				<a class="ma-btn ma-btn-ghost ma-btn-sm" href="/dashboard/carousels">
@@ -284,7 +283,15 @@
 				</a>
 			</div>
 
-			{#if recentCarousels.length > 0}
+			{#if loading}
+				<div class="saved-templates-grid" aria-hidden="true">
+					{#each [0, 1, 2, 3] as i (i)}
+						<div class="saved-template-tile saved-template-skel">
+							<div class="saved-template-skel-bar"></div>
+						</div>
+					{/each}
+				</div>
+			{:else if recentCarousels.length > 0}
 				<div class="saved-templates-grid">
 					{#each recentCarousels as row (row.id)}
 						{@const pv = draftPreviewUrl(row, recentCarouselThumbById)}
@@ -330,13 +337,13 @@
 				<p class="saved-empty">
 					No carousels yet.
 					<a class="saved-section-link" href="/dashboard/templates">Pick a template</a>
-					to start one — it will show up here.
+					to start one - it will show up here.
 				</p>
 			{/if}
 		</section>
 
 		<!-- ── Saved templates ────────────────────────────────── -->
-		<section class="saved-section" aria-labelledby="saved-templates-heading">
+		<section class="saved-section" aria-labelledby="saved-templates-heading" aria-busy={loading}>
 			<div class="saved-section-head">
 				<div class="saved-section-titles">
 					<h2 id="saved-templates-heading" class="saved-section-title">Saved templates</h2>
@@ -347,7 +354,15 @@
 				</div>
 			</div>
 
-			{#if studioSavedTemplates.length > 0}
+			{#if loading}
+				<div class="saved-templates-grid" aria-hidden="true">
+					{#each [0, 1, 2, 3] as i (`saved-${i}`)}
+						<div class="saved-template-tile saved-template-skel">
+							<div class="saved-template-skel-bar"></div>
+						</div>
+					{/each}
+				</div>
+			{:else if studioSavedTemplates.length > 0}
 				<div class="saved-templates-grid">
 					{#each studioSavedTemplates as row (row.id)}
 						{@const pv = draftPreviewUrl(row, studioSavedTemplateThumbById)}
@@ -393,11 +408,6 @@
 				</p>
 			{/if}
 		</section>
-	{/if}
-
-	{#if loading}
-		<p class="loading">Loading…</p>
-	{/if}
 </div>
 
 <style>
@@ -414,9 +424,6 @@
 		--ap-accent: #7bf1a8;
 
 		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
-		max-width: 1180px;
-		margin: 0 auto;
-		padding: 32px 32px 64px;
 		letter-spacing: -0.01em;
 		-webkit-font-smoothing: antialiased;
 		color: var(--ap-text);
@@ -478,19 +485,11 @@
 	}
 	.hero-title {
 		margin: 0 0 14px;
-		font-family: 'Satoshi', sans-serif;
-		font-weight: 800;
-		font-size: clamp(30px, 3.2vw, 44px);
-		line-height: 1.04;
-		letter-spacing: -0.025em;
 		color: var(--ap-text);
 	}
 	.hero-sub {
 		margin: 0 0 24px;
-		font-size: 15px;
-		line-height: 1.55;
 		color: var(--ap-text-2);
-		max-width: 56ch;
 		font-weight: 400;
 	}
 	.hero-actions {
@@ -627,6 +626,26 @@
 		transform: translateY(-3px);
 		border-color: var(--ap-line-2);
 		box-shadow: 0 18px 40px -18px rgba(15, 15, 16, 0.16);
+	}
+	.saved-template-skel {
+		pointer-events: none;
+		background:
+			linear-gradient(110deg, #eef1f5 8%, #f7f8fa 18%, #eef1f5 33%);
+		background-size: 200% 100%;
+		animation: dash-skel 1.15s ease-in-out infinite;
+	}
+	.saved-template-skel-bar {
+		position: absolute;
+		left: 12px;
+		right: 12px;
+		bottom: 14px;
+		height: 10px;
+		border-radius: 6px;
+		background: rgba(15, 15, 16, 0.08);
+	}
+	@keyframes dash-skel {
+		0% { background-position: 100% 0; }
+		100% { background-position: -100% 0; }
 	}
 	.saved-template-link {
 		display: block; width: 100%; height: 100%; text-decoration: none;

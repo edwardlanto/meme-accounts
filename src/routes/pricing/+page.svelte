@@ -2,6 +2,8 @@
 	import { page } from '$app/stores';
 	import { ArrowRight, Check, Lock, ShieldCheck, Sparkles } from 'lucide-svelte';
 	import { PLAN_CATALOG } from '$lib/pricing-catalog';
+	import MarketingNav from '$lib/components/MarketingNav.svelte';
+	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
 
 	let interval = $state<'month' | 'year'>('month');
 	let checkoutBusy = $state<string | null>(null);
@@ -48,7 +50,7 @@
 </script>
 
 <svelte:head>
-	<title>Pricing — Carousel Studio</title>
+	<title>Pricing — Meme Accounts</title>
 	<meta name="description" content="Simple creator-first pricing. Start free, upgrade to Pro or Agency when you grow." />
 </svelte:head>
 
@@ -59,30 +61,7 @@
 		<div class="grain"></div>
 	</div>
 
-	<nav class="nav">
-		<a href="/" class="logo">
-			<img
-				src="/logo/meme-accounts-logo.webp"
-				alt="Meme Accounts"
-				class="logo-img"
-				width="180"
-				height="28"
-			/>
-		</a>
-		<div class="nav-links">
-			<a href="/#features">Features</a>
-			<a href="/#how">How it works</a>
-			<a href="/pricing" aria-current="page">Pricing</a>
-		</div>
-		<div class="nav-actions">
-			{#if user}
-				<a href="/dashboard" class="nav-signin">Dashboard</a>
-			{:else}
-				<a href="/?auth=login" class="nav-signin">Sign in</a>
-				<a href="/?auth=signup" class="btn-cta-nav">Start free →</a>
-			{/if}
-		</div>
-	</nav>
+	<MarketingNav />
 
 	<section class="hero">
 		<div class="container hero-grid">
@@ -90,8 +69,12 @@
 				<span class="eyebrow"><Sparkles size={12} /> Pricing</span>
 				<h1 class="title">Ship more posts.<br /><span class="title-accent">Pay for what scales.</span></h1>
 				<p class="sub">
-					Start free with real studio tools. Upgrade when unlimited carousels,
-					news-to-post, and multi-brand workflows earn their keep.
+					Start free with real studio tools. Upgrade when unlimited
+					<a href="/instagram-carousel-maker">Instagram carousels</a>,
+					<a href="/instagram-grid-maker">feed grids</a>,
+					news-to-post, and
+					<a href="/linkedin-carousel-maker">LinkedIn decks</a>
+					earn their keep.
 				</p>
 
 				<div class="toggle" role="group" aria-label="Billing interval">
@@ -272,7 +255,7 @@
 			<h2>Questions, answered</h2>
 			<div class="faq-grid">
 				{#each [
-					['Is checkout secure?', 'Yes. Payments run on Stripe Checkout — card numbers never hit Carousel Studio servers. We only store your plan status and Stripe customer id.'],
+					['Is checkout secure?', 'Yes. Payments run on Stripe Checkout - card numbers never hit Meme Accounts servers. We only store your plan status and Stripe customer id.'],
 					['Can I change plans later?', 'Anytime. Upgrade from Pricing or manage cancel / invoices in Settings → Billing via the Stripe Customer Portal.'],
 					['Do you offer refunds?', 'If something goes wrong in the first 7 days of a paid plan, email support and we’ll make it right.'],
 					['What happens if I cancel?', 'You keep access until the period ends, then drop back to Free. Your projects stay in your account.'],
@@ -291,11 +274,13 @@
 			<h2 class="cta-h">Ready when you are.</h2>
 			<p class="cta-p">Start free in minutes. Upgrade the moment your pipeline needs it.</p>
 			<a href={user ? '/dashboard' : '/?auth=signup'} class="btn-lime-xl">
-				{user ? 'Back to studio' : 'Get started free — no card needed'}
+				{user ? 'Back to studio' : 'Get started free - no card needed'}
 				<ArrowRight size={20} />
 			</a>
 		</div>
 	</section>
+
+	<MarketingFooter />
 </div>
 
 <style>
@@ -354,77 +339,6 @@
 		padding: 0 clamp(20px, 4vw, 48px);
 	}
 
-	.nav {
-		position: sticky;
-		top: 0;
-		z-index: 50;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		padding: 14px clamp(20px, 4vw, 48px);
-		background: color-mix(in oklch, var(--paper) 82%, transparent);
-		backdrop-filter: blur(20px);
-		-webkit-backdrop-filter: blur(20px);
-		border-bottom: 1px solid rgba(10, 5, 5, 0.07);
-	}
-	.logo {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
-	}
-	.logo-img {
-		display: block;
-		height: 28px;
-		width: auto;
-		max-width: min(200px, 52vw);
-		object-fit: contain;
-	}
-	.nav-links {
-		display: flex;
-		gap: 28px;
-	}
-	.nav-links a {
-		font-size: 14px;
-		color: var(--muted);
-		text-decoration: none;
-		font-weight: 500;
-	}
-	.nav-links a:hover,
-	.nav-links a[aria-current='page'] {
-		color: var(--ink);
-	}
-	.nav-actions {
-		display: flex;
-		align-items: center;
-		gap: 14px;
-	}
-	.nav-signin {
-		font-size: 14px;
-		color: var(--muted);
-		text-decoration: none;
-	}
-	.nav-signin:hover {
-		color: var(--ink);
-	}
-	.btn-cta-nav {
-		display: inline-flex;
-		align-items: center;
-		padding: 9px 20px;
-		background: #080808;
-		color: #fff;
-		border-radius: 999px;
-		font-size: 13px;
-		font-weight: 600;
-		text-decoration: none;
-		transition: transform 0.2s;
-	}
-	.btn-cta-nav:hover {
-		transform: translateY(-1px);
-	}
-
 	.hero {
 		padding: clamp(48px, 8vw, 88px) 0 28px;
 	}
@@ -463,6 +377,12 @@
 		line-height: 1.55;
 		color: var(--muted);
 		max-width: 42ch;
+	}
+	.sub a {
+		color: var(--ink);
+		font-weight: 700;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 
 	.toggle {
@@ -846,9 +766,6 @@
 	@media (max-width: 960px) {
 		.hero-grid {
 			grid-template-columns: 1fr;
-		}
-		.nav-links {
-			display: none;
 		}
 		.pricing-grid {
 			grid-template-columns: 1fr;

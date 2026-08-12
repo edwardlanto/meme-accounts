@@ -44,6 +44,7 @@
 <!-- Minimal canvas shell: background + stickers. Parent Studio shell wraps this + StudioTextOverlays for export. -->
 <div
 	class="relative overflow-hidden rounded-2xl"
+	data-studio-canvas-root
 	style="
 		width: {w}px;
 		height: {h}px;
@@ -57,12 +58,22 @@
 >
 	{#if showVideo}
 		<video
-			class="absolute inset-0 w-full h-full object-cover"
+			class="absolute inset-0 h-full w-full object-cover"
+			data-studio-bg-video="1"
 			src={backgroundVideo}
 			playsinline
 			muted
 			loop
 			autoplay
+			onloadeddata={(e) => {
+				const el = e.currentTarget as HTMLVideoElement;
+				el.loop = true;
+				el.playsInline = true;
+				void el.play().catch(() => {});
+			}}
+			oncanplay={(e) => {
+				void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
+			}}
 		></video>
 	{:else if showImage}
 		<img

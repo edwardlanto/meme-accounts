@@ -53,7 +53,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
 				'HTTP-Referer': 'https://carousel-studio.app',
-				'X-Title': 'Carousel Studio',
+				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
 				model: 'anthropic/claude-sonnet-4.5',
@@ -193,7 +193,7 @@ async function batchAddHighlights(headlines: string[]): Promise<string[]> {
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
 				'HTTP-Referer': 'https://carousel-studio.app',
-				'X-Title': 'Carousel Studio',
+				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
 				model: 'anthropic/claude-sonnet-4.5',

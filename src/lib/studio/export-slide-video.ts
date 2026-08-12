@@ -1,11 +1,14 @@
 /**
- * Export a Studio slide that has a video background as a real WebM clip
+ * Export a Studio slide that has a video background as a real clip
  * (trim length), compositing the designed overlays on top of the playing video.
+ * Browser capture is WebM; `transcodeSlideVideoToMp4` turns it into H.264 MP4.
  */
 import { toPng } from 'html-to-image';
 import { SAFE_HTML_TO_IMAGE_OPTS, TRANSPARENT_PIXEL } from '$lib/studio/export-capture';
 
-const CHROMA = { r: 255, g: 0, b: 255 };
+/** Dual-pass hole colors — never flatten semi-transparent overlays onto a single chroma. */
+const HOLE_A = { css: '#FF00FF', r: 255, g: 0, b: 255 };
+const HOLE_B = { css: '#00FF00', r: 0, g: 255, b: 0 };
 
 function pickRecorderMime(): string {
 	const types = [
@@ -27,24 +30,89 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 	});
 }
 
-/** Punch near-magenta pixels to transparent (video hole). */
-function punchChromaToAlpha(
-	ctx: CanvasRenderingContext2D,
+function clampByte(n: number): number {
+	return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+/**
+ * Recover overlay RGBA from two flattened captures (hole A vs hole B).
+ * Opaque pixels match in both passes; video-hole / glass pixels differ and
+ * solve to the real foreground + alpha (keeps shadows and circle borders).
+ */
+function matteFromDualHoles(
+	imgA: HTMLImageElement,
+	imgB: HTMLImageElement,
 	w: number,
 	h: number,
-	tolerance = 48,
-): void {
-	const id = ctx.getImageData(0, 0, w, h);
-	const d = id.data;
-	for (let i = 0; i < d.length; i += 4) {
-		const dr = Math.abs(d[i] - CHROMA.r);
-		const dg = Math.abs(d[i + 1] - CHROMA.g);
-		const db = Math.abs(d[i + 2] - CHROMA.b);
-		if (dr <= tolerance && dg <= tolerance && db <= tolerance) {
-			d[i + 3] = 0;
+): HTMLCanvasElement {
+	const canvas = document.createElement('canvas');
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext('2d', { willReadFrequently: true });
+	if (!ctx) throw new Error('Could not create overlay canvas');
+
+	ctx.drawImage(imgA, 0, 0, w, h);
+	const aData = ctx.getImageData(0, 0, w, h);
+	ctx.clearRect(0, 0, w, h);
+	ctx.drawImage(imgB, 0, 0, w, h);
+	const bData = ctx.getImageData(0, 0, w, h);
+
+	const a = aData.data;
+	const b = bData.data;
+	for (let i = 0; i < a.length; i += 4) {
+		const tR = (a[i] - b[i]) / 255;
+		const tG = (b[i + 1] - a[i + 1]) / 255;
+		const tB = (a[i + 2] - b[i + 2]) / 255;
+		const t = Math.max(0, Math.min(1, (tR + tG + tB) / 3));
+		const alpha = 1 - t;
+		if (alpha <= 0.012) {
+			a[i] = 0;
+			a[i + 1] = 0;
+			a[i + 2] = 0;
+			a[i + 3] = 0;
+			continue;
 		}
+		const inv = 1 - alpha;
+		a[i] = clampByte((a[i] - HOLE_A.r * inv) / alpha);
+		a[i + 1] = clampByte((a[i + 1] - HOLE_A.g * inv) / alpha);
+		a[i + 2] = clampByte((a[i + 2] - HOLE_A.b * inv) / alpha);
+		a[i + 3] = clampByte(alpha * 255);
 	}
-	ctx.putImageData(id, 0, 0);
+	ctx.putImageData(aData, 0, 0);
+	return canvas;
+}
+
+function collectSlideVideos(root: HTMLElement, primary?: HTMLVideoElement | null): HTMLVideoElement[] {
+	const found = Array.from(root.querySelectorAll('video'));
+	if (primary && !found.includes(primary)) found.unshift(primary);
+	return found;
+}
+
+function withVideoHoles<T>(
+	videos: HTMLVideoElement[],
+	holeCss: string,
+	fn: () => Promise<T>,
+): Promise<T> {
+	const placeholders: HTMLElement[] = [];
+	const prevVis: string[] = [];
+	for (const video of videos) {
+		const host = video.parentElement;
+		if (!host) continue;
+		prevVis.push(video.style.visibility);
+		video.style.visibility = 'hidden';
+		const placeholder = document.createElement('div');
+		placeholder.setAttribute('data-export-chroma', '1');
+		placeholder.style.cssText =
+			`position:absolute;inset:0;width:100%;height:100%;background:${holeCss};pointer-events:none;z-index:2;`;
+		host.appendChild(placeholder);
+		placeholders.push(placeholder);
+	}
+	return fn().finally(() => {
+		for (const ph of placeholders) ph.remove();
+		videos.forEach((video, i) => {
+			if (prevVis[i] !== undefined) video.style.visibility = prevVis[i]!;
+		});
+	});
 }
 
 /**
@@ -61,14 +129,43 @@ function drawVideoInSlideBox(
 	const rootRect = root.getBoundingClientRect();
 	const vidRect = video.getBoundingClientRect();
 	if (rootRect.width <= 0 || rootRect.height <= 0) return;
+	if (video.videoWidth <= 0 || video.videoHeight <= 0) return;
 	const scaleX = canvasW / rootRect.width;
 	const scaleY = canvasH / rootRect.height;
 	const x = (vidRect.left - rootRect.left) * scaleX;
 	const y = (vidRect.top - rootRect.top) * scaleY;
 	const w = Math.max(1, vidRect.width * scaleX);
 	const h = Math.max(1, vidRect.height * scaleY);
-	if (video.videoWidth <= 0 || video.videoHeight <= 0) return;
+
+	ctx.save();
+	const clipEl = video.parentElement;
+	if (clipEl) {
+		const cs = getComputedStyle(clipEl);
+		const overflowHidden = cs.overflow === 'hidden' || cs.overflow === 'clip';
+		if (overflowHidden) {
+			const cr = clipEl.getBoundingClientRect();
+			const cx = (cr.left - rootRect.left) * scaleX;
+			const cy = (cr.top - rootRect.top) * scaleY;
+			const cw = Math.max(1, cr.width * scaleX);
+			const ch = Math.max(1, cr.height * scaleY);
+			const radiusRaw = String(cs.borderRadius || '').split(/\s+/)[0] ?? '0';
+			ctx.beginPath();
+			if (radiusRaw.includes('%') && parseFloat(radiusRaw) >= 49) {
+				ctx.ellipse(cx + cw / 2, cy + ch / 2, cw / 2, ch / 2, 0, 0, Math.PI * 2);
+			} else {
+				const br = parseFloat(radiusRaw) || 0;
+				const r = Math.min(br * ((scaleX + scaleY) / 2), cw / 2, ch / 2);
+				if (r > 0.5 && typeof ctx.roundRect === 'function') {
+					ctx.roundRect(cx, cy, cw, ch, r);
+				} else {
+					ctx.rect(cx, cy, cw, ch);
+				}
+			}
+			ctx.clip();
+		}
+	}
 	ctx.drawImage(video, x, y, w, h);
+	ctx.restore();
 }
 
 async function waitSeeked(video: HTMLVideoElement, t: number): Promise<void> {
@@ -101,46 +198,33 @@ export async function captureSlideOverlayWithVideoHole(opts: {
 	backgroundColor?: string;
 }): Promise<HTMLCanvasElement> {
 	const { root, video, width, height, backgroundColor } = opts;
-	const host = video.parentElement;
-	if (!host) throw new Error('Video has no parent');
+	const videos = collectSlideVideos(root, video);
+	if (!videos.length) throw new Error('Video has no parent');
 
-	const placeholder = document.createElement('div');
-	placeholder.setAttribute('data-export-chroma', '1');
-	placeholder.style.cssText =
-		'position:absolute;inset:0;width:100%;height:100%;background:#FF00FF;pointer-events:none;z-index:2;';
-	const prevVisibility = video.style.visibility;
-	video.style.visibility = 'hidden';
-	host.appendChild(placeholder);
-
-	let dataUrl = TRANSPARENT_PIXEL;
 	try {
-		try {
-			await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
-		} catch {
-			/* ignore */
-		}
-		dataUrl = await toPng(root, {
-			width,
-			height,
-			pixelRatio: 1,
-			backgroundColor,
-			style: { transform: 'scale(1)', transformOrigin: 'top left' },
-			...SAFE_HTML_TO_IMAGE_OPTS,
-		} as Parameters<typeof toPng>[1]);
-	} finally {
-		placeholder.remove();
-		video.style.visibility = prevVisibility;
+		await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
+	} catch {
+		/* ignore */
 	}
 
-	const img = await loadImage(dataUrl);
-	const canvas = document.createElement('canvas');
-	canvas.width = width;
-	canvas.height = height;
-	const ctx = canvas.getContext('2d');
-	if (!ctx) throw new Error('Could not create overlay canvas');
-	ctx.drawImage(img, 0, 0, width, height);
-	punchChromaToAlpha(ctx, width, height);
-	return canvas;
+	const pngOpts = {
+		width,
+		height,
+		pixelRatio: 1,
+		backgroundColor,
+		style: { transform: 'scale(1)', transformOrigin: 'top left' },
+		...SAFE_HTML_TO_IMAGE_OPTS,
+	} as Parameters<typeof toPng>[1];
+
+	const capture = (holeCss: string) =>
+		withVideoHoles(videos, holeCss, async () => {
+			const dataUrl = await toPng(root, pngOpts);
+			return loadImage(dataUrl || TRANSPARENT_PIXEL);
+		});
+
+	const imgA = await capture(HOLE_A.css);
+	const imgB = await capture(HOLE_B.css);
+	return matteFromDualHoles(imgA, imgB, width, height);
 }
 
 export type RecordSlideVideoProgress = (pct: number) => void;
@@ -201,6 +285,8 @@ export async function recordSlideAsVideo(opts: {
 		});
 	}
 
+	const videos = collectSlideVideos(root, video);
+
 	const overlay = await captureSlideOverlayWithVideoHole({
 		root,
 		video,
@@ -255,6 +341,13 @@ export async function recordSlideAsVideo(opts: {
 		video.muted = true;
 		await video.play();
 	}
+	for (const v of videos) {
+		if (v === video) continue;
+		v.loop = true;
+		v.muted = true;
+		v.playsInline = true;
+		void v.play().catch(() => {});
+	}
 
 	const wallStart = performance.now();
 	await new Promise<void>((resolve) => {
@@ -267,7 +360,9 @@ export async function recordSlideAsVideo(opts: {
 			ctx.fillStyle = backgroundColor;
 			ctx.fillRect(0, 0, width, height);
 			try {
-				drawVideoInSlideBox(ctx, root, video, width, height);
+				for (const v of videos) {
+					drawVideoInSlideBox(ctx, root, v, width, height);
+				}
 			} catch {
 				/* frame skip */
 			}
@@ -331,4 +426,16 @@ export function slideExportDurationSec(clip: {
 		end = clip.videoElDuration!;
 	}
 	return Math.max(0, end - start);
+}
+
+/** Server ffmpeg: WebM → compressed H.264 MP4 (Instagram-ready). */
+export async function transcodeSlideVideoToMp4(webm: Blob): Promise<Blob> {
+	const fd = new FormData();
+	fd.set('file', webm, 'slide.webm');
+	const res = await fetch('/api/studio/export-mp4', { method: 'POST', body: fd });
+	if (!res.ok) {
+		const err = (await res.json().catch(() => null)) as { error?: string } | null;
+		throw new Error(err?.error || `MP4 encode failed (${res.status})`);
+	}
+	return await res.blob();
 }

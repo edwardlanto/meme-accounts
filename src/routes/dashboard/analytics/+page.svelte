@@ -164,7 +164,7 @@
 			const errDesc = sp.get('desc');
 			if (err) {
 				let t = decodeURIComponent(err.replace(/\+/g, ' '));
-				if (errDesc) t += ` — ${decodeURIComponent(errDesc.replace(/\+/g, ' '))}`;
+				if (errDesc) t += ` - ${decodeURIComponent(errDesc.replace(/\+/g, ' '))}`;
 				banner = { kind: 'err', text: t };
 			}
 			if (sp.get('zernio_connected') || sp.get('linkedin_connected') || sp.get('gmb_connected') || sp.get('tiktok_connected')) {
@@ -172,7 +172,7 @@
 				if (!err) {
 					const loc = sp.get('locations');
 					let msg = 'Connected successfully.';
-					if (sp.get('zernio_connected')) msg = 'Zernio connected — accounts synced.';
+					if (sp.get('zernio_connected')) msg = 'Zernio connected - accounts synced.';
 					if (sp.get('linkedin_connected')) msg = 'LinkedIn connected.';
 					if (sp.get('gmb_connected')) msg = loc ? `Google Business Profile connected (${loc} locations).` : 'Google Business Profile connected.';
 					if (sp.get('tiktok_connected')) msg = 'TikTok connected.';
@@ -246,7 +246,7 @@
 	const maxEng = Math.max(...engagementByPlatform.map(e => e.rate));
 </script>
 
-<div class="page">
+	<div class="page dash-page">
 
 	<!-- Page header -->
 	<div class="page-head">
@@ -255,8 +255,8 @@
 				<BarChart3 size={20} />
 			</div>
 			<div>
-				<h1 class="page-title">Analytics</h1>
-				<p class="page-sub">Publishing performance across all your channels</p>
+				<h1 class="page-title dash-page-title">Analytics</h1>
+				<p class="page-sub dash-page-sub">Publishing performance across all your channels</p>
 			</div>
 		</div>
 		<div class="page-head-right">
@@ -399,7 +399,7 @@
 						</div>
 						<div class="insight-chip">
 							<Eye size={12} class="text-violet-400" />
-							<span>Best reach: <strong>Mar W3</strong> — 7,100 avg</span>
+							<span>Best reach: <strong>Mar W3</strong> - 7,100 avg</span>
 						</div>
 						<div class="insight-chip">
 							<Repeat2 size={12} class="text-cyan-400" />
@@ -470,7 +470,7 @@
 			<!-- Heatmap -->
 			{:else if chartTab === 'timing'}
 				<div class="heatmap-wrap">
-					<p class="chart-label">Engagement heatmap by posting hour and day — darker = higher engagement</p>
+					<p class="chart-label">Engagement heatmap by posting hour and day - darker = higher engagement</p>
 					<div class="heatmap">
 						<div class="heat-col heat-col--labels">
 							<div class="heat-hour-spacer"></div>
@@ -508,7 +508,7 @@
 						</div>
 						<div class="insight-chip">
 							<Award size={12} class="text-orange-400" />
-							<span>Worst: <strong>Sun 6–8am</strong> — avoid</span>
+							<span>Worst: <strong>Sun 6-8am</strong> - avoid</span>
 						</div>
 					</div>
 				</div>
@@ -675,7 +675,7 @@
 				<div class="empty-accounts">
 					<Link2 size={20} class="empty-icon" />
 					<p class="empty-title">No {tabLabel} accounts linked yet</p>
-					<p class="empty-body">Use Connect above — you can link multiple accounts by running through OAuth again.</p>
+					<p class="empty-body">Use Connect above - you can link multiple accounts by running through OAuth again.</p>
 				</div>
 			{:else}
 				<ul class="acct-list">
@@ -714,8 +714,7 @@
 		--t-muted: rgba(255,255,255,0.38);
 	}
 
-	.page { color: var(--app-text); }
-	.page { padding: 2rem 2.5rem; max-width: 1100px; display: flex; flex-direction: column; gap: 2rem; }
+	.page { color: var(--app-text); display: flex; flex-direction: column; gap: 2rem; }
 
 	/* ── Page header ────────────────────────────────────────────── */
 	.page-head {
@@ -732,10 +731,10 @@
 		color: #0a0a0a; flex-shrink: 0;
 	}
 	.page-title {
-		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem;
-		font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.2rem;
+		color: var(--t-strong);
+		margin: 0 0 0.2rem;
 	}
-	.page-sub { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
+	.page-sub { color: var(--t-muted); }
 
 	.date-range {
 		display: flex; align-items: center; gap: 0.4rem;

@@ -3,14 +3,14 @@
 </script>
 
 <svelte:head>
-	<title>Privacy Policy — Carousel Studio</title>
-	<meta name="description" content="How Carousel Studio collects, uses, and protects your data — including payments, AI features, and connected social accounts." />
+	<title>Privacy Policy — Meme Accounts</title>
+	<meta name="description" content="How Meme Accounts collects, uses, and protects your data — including payments, AI features, and connected social accounts." />
 </svelte:head>
 
-<LegalDoc title="Carousel Studio — Privacy Policy" effectiveDate="August 5, 2026">
+<LegalDoc title="Meme Accounts — Privacy Policy" effectiveDate="August 5, 2026">
 	<h2>1. Who we are</h2>
 	<p>
-		Carousel Studio (&ldquo;we&rdquo;, &ldquo;us&rdquo;) provides tools to design social posts,
+		Meme Accounts (&ldquo;we&rdquo;, &ldquo;us&rdquo;) provides tools to design social posts,
 		carousels, tweet-style graphics, and scheduled publishing. This policy explains what we
 		collect and how we use it.
 	</p>
@@ -57,7 +57,7 @@
 	<h2>7. Your rights</h2>
 	<p>
 		You may access, correct, or delete your data by contacting
-		<a href="mailto:support@carouselstudio.app">support@carouselstudio.app</a>.
+		<a href="mailto:support@memeaccounts.com">support@memeaccounts.com</a>.
 		You can revoke third-party access in each platform&apos;s settings at any time.
 	</p>
 
@@ -68,13 +68,13 @@
 	</p>
 
 	<h2>9. Children</h2>
-	<p>Carousel Studio is not directed at children under 13. We do not knowingly collect data from children.</p>
+	<p>Meme Accounts is not directed at children under 13. We do not knowingly collect data from children.</p>
 
 	<h2>10. Changes</h2>
 	<p>We may update this policy. Material changes will be posted here with a new effective date.</p>
 
 	<h2>11. Contact</h2>
 	<p>
-		Questions: <a href="mailto:support@carouselstudio.app">support@carouselstudio.app</a>
+		Questions: <a href="mailto:support@memeaccounts.com">support@memeaccounts.com</a>
 	</p>
 </LegalDoc>

@@ -3,7 +3,7 @@
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
-	import { appendTextShadowCss } from '$lib/textStyleCss';
+	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 	import { BLACK_TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import { loadGoogleFont } from '$lib/fonts';
 
@@ -123,6 +123,7 @@
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
 		bits.push(`text-align: ${s.align ?? 'left'};`);
 		appendTextShadowCss(bits, s);
+		appendTextBgCss(bits, s);
 		return bits.join(' ');
 	}
 
@@ -154,6 +155,7 @@
 >
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {W}px;
 			height: {H}px;
@@ -272,6 +274,7 @@
 						dy={textOffsets.blackTextHeadline?.y ?? 0}
 						{interactive}
 						scale={dragScale}
+						immediateTextDrag={selectedText === 'blackTextHeadline'}
 						onChange={(x, y) => onTextOffsetChange?.('blackTextHeadline', { x, y })}
 					>
 						{#snippet children()}
@@ -285,6 +288,7 @@
 								{showToolbar}
 								fontFamily={mergedHeadlineStyle.fontFamily}
 								fontSize={mergedHeadlineStyle.fontSize}
+								lineHeight={mergedHeadlineStyle.lineHeight}
 								ariaLabel="Slide headline"
 								onTextChange={onHeadlineChange}
 								onTextSelect={onTextSelect}
@@ -308,6 +312,7 @@
 						dy={textOffsets.blackTextBody?.y ?? 0}
 						{interactive}
 						scale={dragScale}
+						immediateTextDrag={selectedText === 'blackTextBody'}
 						onChange={(x, y) => onTextOffsetChange?.('blackTextBody', { x, y })}
 					>
 						{#snippet children()}
@@ -322,6 +327,7 @@
 								{showToolbar}
 								fontFamily={mergedBodyStyle.fontFamily}
 								fontSize={mergedBodyStyle.fontSize}
+								lineHeight={mergedBodyStyle.lineHeight}
 								ariaLabel="Slide body"
 								onTextChange={onBodyChange}
 								onTextSelect={onTextSelect}

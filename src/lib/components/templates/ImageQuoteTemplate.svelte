@@ -4,7 +4,7 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import DraggableMediaFrame from '$lib/components/DraggableMediaFrame.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
-	import { appendTextShadowCss } from '$lib/textStyleCss';
+	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 	import { FILM_STRIP_MAX_SIDE_PCT } from '$lib/studio/slide-content-defaults';
 
 	interface Props {
@@ -87,6 +87,7 @@
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.align) bits.push(`text-align: ${s.align};`);
 		appendTextShadowCss(bits, s);
+		appendTextBgCss(bits, s);
 		return bits.join(' ');
 	});
 
@@ -160,6 +161,7 @@
 >
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {W}px;
 			height: {H}px;
@@ -263,6 +265,7 @@
 					dy={textOffsets.headline?.y ?? 0}
 					{interactive}
 					scale={dragScale}
+					immediateTextDrag={selectedText === 'headline'}
 					onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 				>
 					{#snippet children()}

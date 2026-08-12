@@ -111,7 +111,7 @@
 	}
 </script>
 
-<div class="page">
+<div class="page dash-page">
 	<!-- Header -->
 	<div class="page-head">
 		<div class="head-left">
@@ -119,8 +119,8 @@
 				<Search size={16} />
 			</div>
 			<div>
-				<h1 class="page-title">Discover</h1>
-				<p class="page-sub">Track competitors · Scrape viral posts · Generate AI hooks</p>
+				<h1 class="page-title dash-page-title">Discover</h1>
+				<p class="page-sub dash-page-sub">Track competitors · Scrape viral posts · Generate AI hooks</p>
 			</div>
 		</div>
 		<button onclick={() => showAddForm = !showAddForm} class="add-btn">
@@ -319,8 +319,6 @@
 <style>
 	/* ── Layout (theme-aware: uses global --app-* from app.css) ── */
 	.page {
-		padding: 32px 40px;
-		max-width: 900px;
 		display: flex;
 		flex-direction: column;
 		gap: 24px;
@@ -348,17 +346,10 @@
 		flex-shrink: 0;
 	}
 	.page-title {
-		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif;
-		font-size: 22px;
-		font-weight: 900;
-		letter-spacing: -0.03em;
 		color: var(--app-text);
-		margin: 0;
 	}
 	.page-sub {
-		font-size: 12px;
 		color: var(--app-text-3);
-		margin: 0;
 		margin-top: 2px;
 	}
 

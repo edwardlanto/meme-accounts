@@ -27,10 +27,23 @@ import JSZip from 'jszip';
 	import StudioImageStickers from '$lib/components/studio/StudioImageStickers.svelte';
 	import StudioAssetsSidebar from '$lib/components/studio/StudioAssetsSidebar.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
+	import TemplateDevOverride from '$lib/components/TemplateDevOverride.svelte';
+	import {
+		isTemplateDevToolsEnabled,
+		loadEnabledTemplateDevOverride,
+		saveTemplateDevOverride,
+		type TemplateDevOverride as TemplateDevOverrideSnapshot,
+	} from '$lib/studio/template-dev-override';
 	import StudioCanvasSkeleton from '$lib/components/studio/StudioCanvasSkeleton.svelte';
 	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
 	import { formatExportError, replaceVideosWithFrameImages, fetchRemoteVideoAsBlobUrl, materializeDomImagesForExport, SAFE_HTML_TO_IMAGE_OPTS } from '$lib/studio/export-capture';
-	import { recordSlideAsVideo, slideExportDurationSec } from '$lib/studio/export-slide-video';
+	import { isVideoFile, objectUrlForVideoFile, playMediaVideo } from '$lib/studio/media-url';
+	import { fetchStockMediaPool, type StockPick } from '$lib/studio/bulk-stock';
+	import {
+		recordSlideAsVideo,
+		slideExportDurationSec,
+		transcodeSlideVideoToMp4,
+	} from '$lib/studio/export-slide-video';
 	import { fade } from 'svelte/transition';
 	import FloatingTextToolbar from '$lib/components/FloatingTextToolbar.svelte';
 	import TextCarouselAvatarToolbar from '$lib/components/TextCarouselAvatarToolbar.svelte';
@@ -74,11 +87,13 @@ import JSZip from 'jszip';
 		plainRangeFromSelection,
 		plainRangeHasMixedForegroundPaint,
 		rangeForegroundSwatchColor,
+		inspectPlainRangePaint,
 		stripMarkup,
 		AVAILABLE_PATTERNS,
 		HIGHLIGHT_SOLID_PRESETS,
 		HIGHLIGHT_GRADIENT_PRESETS,
 	} from '$lib/highlight';
+	import { TEXT_BG_SWATCHES } from '$lib/textStyleCss';
 	import { stripEmDashes } from '$lib/strip-em-dashes';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
@@ -100,10 +115,15 @@ import JSZip from 'jszip';
 		type FilmStripTemplateId,
 	} from '$lib/studio/template-ids';
 	import {
+		DEFAULT_CIRCLE_SHADOW,
+		normalizeCircleShadow,
+	} from '$lib/studio/circle-shadow';
+	import {
 		NEWS_PLACEHOLDER_HEADLINE,
 		NEWS_DEFAULT_SOURCE,
 		NEWS_DEFAULT_SUBTEXT,
 		NEWS_DEFAULT_LAYOUT,
+		BOTTOM_SHADOW_PRESETS,
 		NEWS_DEMO_VIDEO,
 		TWEET_DEFAULTS,
 		ARTICLE_DEFAULT_BODY,
@@ -153,7 +173,21 @@ import JSZip from 'jszip';
 		type StudioClipCaptionImport,
 	} from '$lib/studio/clip-import';
 	import { takeBulkImport, peekBulkImport } from '$lib/studio/bulk-to-studio';
-	import { loadBrandKit, saveBrandKit } from '$lib/studio/brand-kit';
+	import {
+		BRAND_KIT_UPDATED_EVENT,
+		DEFAULT_BRAND_KIT,
+		brandProfile,
+		hydrateBrandKit,
+		isPlaceholderNewsSource,
+		isPlaceholderProfileHandle,
+		isPlaceholderProfileName,
+		loadBrandKit,
+		normalizeBrandHandle,
+		normalizeHighlightHex,
+		normalizeHighlightStyleKind,
+		normalizeTextBgHex,
+		saveBrandKit,
+	} from '$lib/studio/brand-kit';
 	import VideoCaptionOverlay from '$lib/components/video-clips/VideoCaptionOverlay.svelte';
 	import { getCaptionTemplate } from '$lib/video-clips/caption-templates';
 	import {
@@ -165,7 +199,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
 		Image, Type, Search, Layers, ListOrdered,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2, PanelBottom, Highlighter
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Flame, Music, Play, X, Undo2, Redo2, Circle, Palette, Trash2, RotateCcw, Wallpaper, SlidersHorizontal, ArrowUp, ChevronDown, Rows2, PanelBottom, User
 	} from 'lucide-svelte';
 
 	/** Default full-bleed asset for the Black text carousel template. */
@@ -225,15 +259,202 @@ import JSZip from 'jszip';
 	// News controls
 	let search = $state('');
 	// Fill-in-text uses the same topic input (`search`) as Generate/Fetch.
-	let category = $state('business');
+	let category = $state('general');
 	/** Sidebar mode for the News template generator: live articles vs synthetic fact/story/steps. */
 	type NewsStudioContentMode = 'news' | 'fact' | 'story' | 'quote' | 'steps';
 	let newsContentMode = $state<NewsStudioContentMode>('news');
 	/** How Load & Fill fills backgrounds in News studio (News / fact / story / quote / steps). */
-	type NewsImageSourceMode = 'pull' | 'ai';
-	let newsImageSourceMode = $state<NewsImageSourceMode>('pull');
+	type NewsImageSourceMode = 'assets' | 'pull' | 'ai';
+	let newsImageSourceMode = $state<NewsImageSourceMode>('assets');
+	/** Pushed into the assets sidebar search when Generate runs. */
+	let assetsSidebarSeedQuery = $state('');
 	/** Whether to generate/pull images at all (when off, only text is generated). */
 	let newsGenerateImages = $state(true);
+	type NewsCopyLength = 'default' | 'standard' | 'short';
+	let newsCopyLength = $state<NewsCopyLength>('default');
+	function placeholderCopyForWordBudget(): string {
+		const kind = selectedText;
+		const tpl = previewTemplate;
+		if (kind === 'newsSubtext') return NEWS_DEFAULT_SUBTEXT;
+		if (kind === 'source') return NEWS_DEFAULT_SOURCE;
+		if (kind === 'tweetTopText') return TWEET_DEFAULTS.topText;
+		if (kind === 'tweetBottomText') return TWEET_DEFAULTS.bottomText;
+		if (kind === 'articleBody') return ARTICLE_DEFAULT_BODY;
+		if (kind === 'textCarouselBody') return TEXT_CAROUSEL_DEFAULTS.body;
+		if (kind === 'blackTextHeadline') return BLACK_TEXT_CAROUSEL_DEFAULTS.headline;
+		if (kind === 'blackTextBody') return BLACK_TEXT_CAROUSEL_DEFAULTS.body;
+		if (kind === 'videoStoryHeadline') {
+			if (tpl === 'videoHook') return VIDEO_HOOK_DEFAULTS.headline;
+			if (tpl === 'videoCreator') return VIDEO_CREATOR_DEFAULTS.headline;
+			if (tpl === 'videoText') return VIDEO_TEXT_DEFAULTS.headline;
+			if (tpl === 'videoSource') return VIDEO_SOURCE_DEFAULTS.headline;
+			if (tpl === 'videoFeature') return VIDEO_FEATURE_DEFAULTS.headline;
+			if (tpl === 'videoPost') return VIDEO_POST_DEFAULTS.headline;
+			if (tpl === 'brandStack') return BRAND_STACK_DEFAULTS.headline;
+			if (tpl === 'photoTopic') return PHOTO_TOPIC_DEFAULTS.headline;
+			if (tpl === 'photoCaption') return PHOTO_CAPTION_DEFAULTS.headline;
+			return VIDEO_STORY_DEFAULTS.headline;
+		}
+		if (kind === 'imageQuoteFooterLeft') return IMAGE_QUOTE_DEFAULTS.footerLeft;
+		if (kind === 'imageQuoteFooterRight') return IMAGE_QUOTE_DEFAULTS.footerRight;
+		switch (tpl) {
+			case 'tweet':
+				return TWEET_DEFAULTS.topText;
+			case 'article':
+				return ARTICLE_DEFAULT_BODY;
+			case 'textCarousel':
+				return TEXT_CAROUSEL_DEFAULTS.body;
+			case 'imageQuote':
+				return IMAGE_QUOTE_DEFAULTS.body;
+			case 'videoStory':
+				return VIDEO_STORY_DEFAULTS.headline;
+			case 'videoHook':
+				return VIDEO_HOOK_DEFAULTS.headline;
+			case 'videoCreator':
+				return VIDEO_CREATOR_DEFAULTS.headline;
+			case 'videoText':
+				return VIDEO_TEXT_DEFAULTS.headline;
+			case 'videoSource':
+				return VIDEO_SOURCE_DEFAULTS.headline;
+			case 'videoFeature':
+				return VIDEO_FEATURE_DEFAULTS.headline;
+			case 'videoPost':
+				return VIDEO_POST_DEFAULTS.headline;
+			case 'brandStack':
+				return BRAND_STACK_DEFAULTS.headline;
+			case 'photoTopic':
+				return PHOTO_TOPIC_DEFAULTS.headline;
+			case 'photoCaption':
+				return PHOTO_CAPTION_DEFAULTS.headline;
+			case 'whiteThread':
+				return WHITE_THREAD_DEFAULTS.body;
+			case 'whiteMedia':
+				return WHITE_MEDIA_DEFAULTS.body;
+			case 'blackText':
+				return BLACK_TEXT_CAROUSEL_DEFAULTS.headline;
+			default:
+				return NEWS_PLACEHOLDER_HEADLINE;
+		}
+	}
+
+	const studioMaxWords = $derived.by(() => {
+		if (newsCopyLength === 'short') return 12;
+		if (newsCopyLength === 'standard') return 28;
+		const words = stripMarkup(placeholderCopyForWordBudget())
+			.replace(/\s+/g, ' ')
+			.trim()
+			.split(' ')
+			.filter(Boolean);
+		return Math.max(6, Math.min(40, words.length || 28));
+	});
+
+	function studioStockQuery(): string {
+		const bar = String(search ?? '').trim();
+		if (bar) return bar.slice(0, 80);
+		if (newsContentMode === 'fact') {
+			const t = String(factTopicPrompt ?? '').trim();
+			if (t) return t.slice(0, 80);
+		} else if (newsContentMode === 'story') {
+			const t = String(storyTopicPrompt ?? '').trim();
+			if (t) return t.slice(0, 80);
+		} else if (newsContentMode === 'quote') {
+			const t = String(quoteTopicPrompt ?? '').trim();
+			if (t) return t.slice(0, 80);
+		} else if (newsContentMode === 'steps') {
+			const t = String(stepsTopicPrompt ?? '').trim();
+			if (t) return t.slice(0, 80);
+		}
+		const title = String(articleTitle ?? '').trim();
+		if (title) return title.slice(0, 80);
+		return 'editorial photo';
+	}
+
+	function seedAssetsSidebarSearch(query = studioStockQuery()) {
+		const q = String(query ?? '').trim();
+		if (q) assetsSidebarSeedQuery = q;
+	}
+
+	let stockPool: StockPick[] = [];
+	let stockPoolKey = '';
+	let stockPoolCursor = 0;
+
+	async function applyStockUrlsToSlides(
+		template: TemplateId,
+		slideIdxs: number[],
+		query: string,
+	) {
+		seedAssetsSidebarSearch(query);
+		const q = query.trim() || 'editorial photo';
+		if (stockPoolKey !== q || stockPool.length < slideIdxs.length) {
+			stockPool = await fetchStockMediaPool(q, Math.max(24, slideIdxs.length));
+			stockPoolKey = q;
+			stockPoolCursor = 0;
+		}
+		const start = slideIdxs.length === 1 ? stockPoolCursor : 0;
+		const picks = slideIdxs.map((_, i) =>
+			stockPool.length ? stockPool[(start + i) % stockPool.length]! : null,
+		);
+		if (stockPool.length) {
+			stockPoolCursor = (start + slideIdxs.length) % stockPool.length;
+		}
+		const imageFallback = stockPool.find((p) => p.kind === 'image') ?? null;
+		await Promise.all(
+			slideIdxs.map(async (slideIdx, i) => {
+				const pick = picks[i];
+				if (!pick?.url) {
+					setBgGeneratingFlag(template, slideIdx, false);
+					return;
+				}
+				if (pick.kind === 'video') {
+					try {
+						if (template === 'news' || template === 'blank') applyNewsSeedBackgroundLayout();
+						const blobUrl = await fetchRemoteVideoAsBlobUrl(pick.url);
+						setSlideVideo(slideIdx, blobUrl, template);
+						const dur = Number(pick.duration ?? 0);
+						if (Number.isFinite(dur) && dur > 0) {
+							videoDurationBySlide = Array.from({ length: slides.length }, (_, idx) =>
+								idx === slideIdx ? dur : (Number.isFinite(videoDurationBySlide[idx]) ? Math.max(0, videoDurationBySlide[idx]) : 0),
+							);
+							videoTrimEndSecBySlide = Array.from({ length: slides.length }, (_, idx) =>
+								idx === slideIdx ? dur : (Number.isFinite(videoTrimEndSecBySlide[idx]) ? Math.max(0, videoTrimEndSecBySlide[idx]) : 0),
+							);
+							videoTrimStartSecBySlide = Array.from({ length: slides.length }, (_, idx) =>
+								idx === slideIdx ? 0 : (Number.isFinite(videoTrimStartSecBySlide[idx]) ? Math.max(0, videoTrimStartSecBySlide[idx]) : 0),
+							);
+						}
+						return;
+					} catch {
+						/* video proxy failed — fall through to a still */
+					}
+					const still = imageFallback;
+					if (!still?.url) {
+						setBgGeneratingFlag(template, slideIdx, false);
+						return;
+					}
+					const safeVidFallback = await toExportSafeImageUrl(still.url);
+					if (String(safeVidFallback ?? '').trim()) {
+						setSlideImage(slideIdx, safeVidFallback, template);
+					} else {
+						setBgGeneratingFlag(template, slideIdx, false);
+					}
+					return;
+				}
+				if (pick.source === 'unsplash' && pick.downloadLocation) {
+					void fetch('/api/unsplash/download', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ downloadLocation: pick.downloadLocation }),
+					}).catch(() => {});
+				}
+				const safe = await toExportSafeImageUrl(pick.url);
+				if (String(safe ?? '').trim()) {
+					setSlideImage(slideIdx, safe, template);
+				} else {
+					setBgGeneratingFlag(template, slideIdx, false);
+				}
+			}),
+		);
+	}
 	let storyCategory = $state('health');
 	/** Sent to /api/news as syntheticHint when Random fact is selected. */
 	let factTopicPrompt = $state('');
@@ -264,6 +485,8 @@ import JSZip from 'jszip';
 
 	// Preview/edit view toggle for the canvas area.
 	let fetchingNews = $state(false);
+	/** Stays true for the whole Generate / Load & Fill run so the canvas skeleton does not flicker between steps. */
+	let studioGenerating = $state(false);
 	let generatingVariants = $state(false);
 	/** Keeps the full-canvas loader up for one paint flush after Vertex flags drop (avoids a one-frame flash). */
 	let studioImageGenPaintHold = $state(false);
@@ -403,7 +626,7 @@ import JSZip from 'jszip';
 					i === idx ? NEWS_DEFAULT_SUBTEXT : x,
 				);
 			}
-			if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
+			if (isPlaceholderNewsSource(source)) source = defaultNewsSource();
 			const newsVids = bgVideosByTemplate.news ?? [];
 			const newsImgs = bgImagesByTemplate.news ?? [];
 			const hasVid = String(newsVids[idx] ?? '').trim();
@@ -451,14 +674,14 @@ import JSZip from 'jszip';
 					textCarouselTextBySlide = textCarouselTextBySlide.map((x, i) => (i === idx ? ensured : x));
 				}
 			}
-			if (!String(textCarouselNameBySlide[idx] ?? '').trim()) {
+			if (isPlaceholderProfileName(textCarouselNameBySlide[idx] ?? '')) {
 				textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) =>
-					i === idx ? TEXT_CAROUSEL_DEFAULTS.name : x,
+					i === idx ? brandDisplayName || TEXT_CAROUSEL_DEFAULTS.name : x,
 				);
 			}
-			if (!String(textCarouselHandleBySlide[idx] ?? '').trim()) {
+			if (isPlaceholderProfileHandle(textCarouselHandleBySlide[idx] ?? '')) {
 				textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) =>
-					i === idx ? TEXT_CAROUSEL_DEFAULTS.handle : x,
+					i === idx ? brandHandle || TEXT_CAROUSEL_DEFAULTS.handle : x,
 				);
 			}
 			return;
@@ -470,14 +693,14 @@ import JSZip from 'jszip';
 					i === idx ? defaults.body : x,
 				);
 			}
-			if (!String(textCarouselNameBySlide[idx] ?? '').trim()) {
+			if (isPlaceholderProfileName(textCarouselNameBySlide[idx] ?? '')) {
 				textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) =>
-					i === idx ? defaults.name : x,
+					i === idx ? brandDisplayName || defaults.name : x,
 				);
 			}
-			if (!String(textCarouselHandleBySlide[idx] ?? '').trim()) {
+			if (isPlaceholderProfileHandle(textCarouselHandleBySlide[idx] ?? '')) {
 				textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) =>
-					i === idx ? defaults.handle : x,
+					i === idx ? brandHandle || defaults.handle : x,
 				);
 			}
 			if (!String(textCarouselAvatarImageBySlide[idx] ?? '').trim()) {
@@ -565,15 +788,14 @@ import JSZip from 'jszip';
 				);
 			}
 			if (t === 'videoCreator' || t === 'videoPost') {
-				const defaults = t === 'videoPost' ? VIDEO_POST_DEFAULTS : VIDEO_CREATOR_DEFAULTS;
-				if (!String(textCarouselNameBySlide[idx] ?? '').trim()) {
+				if (isPlaceholderProfileName(textCarouselNameBySlide[idx] ?? '')) {
 					textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) =>
-						i === idx ? defaults.name : x,
+						i === idx ? brandDisplayName || VIDEO_CREATOR_DEFAULTS.name : x,
 					);
 				}
-				if (!String(textCarouselHandleBySlide[idx] ?? '').trim()) {
+				if (isPlaceholderProfileHandle(textCarouselHandleBySlide[idx] ?? '')) {
 					textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) =>
-						i === idx ? defaults.handle : x,
+						i === idx ? brandHandle || VIDEO_CREATOR_DEFAULTS.handle : x,
 					);
 				}
 				if (t === 'videoPost' && !String(textCarouselAvatarImageBySlide[idx] ?? '').trim()) {
@@ -695,7 +917,7 @@ import JSZip from 'jszip';
 				i === idx ? NEWS_DEFAULT_SUBTEXT : x,
 			);
 		}
-		if (!String(source ?? '').trim() && idx === 0) source = NEWS_DEFAULT_SOURCE;
+		if (isPlaceholderNewsSource(source) && idx === 0) source = defaultNewsSource();
 		while (newsSolidBgBySlide.length <= idx) newsSolidBgBySlide = [...newsSolidBgBySlide, ''];
 		if (isBlankCanvasSolidFill(newsSolidBgBySlide[idx] ?? '')) {
 			newsSolidBgBySlide = newsSolidBgBySlide.map((c, i) => (i === idx ? '' : c));
@@ -737,6 +959,7 @@ import JSZip from 'jszip';
 		if (t === 'blank') {
 			slides = slides.map((s, i) => (i === idx ? '' : s));
 		}
+		if (t === 'news') newsHeadlineLive = null;
 		ensureTemplateDefaultsForSlide(t, idx);
 		finalizeTemplateSwitch(from, t, idx);
 		// Letterbox video layouts (Highlight, etc.) default to a black canvas fill.
@@ -835,6 +1058,7 @@ import JSZip from 'jszip';
 				bgImagesByTemplate = { ...bgImagesByTemplate, imageQuote: row };
 			}
 		}
+		applyTemplateDevOverride(t, { slides: 'active' });
 	}
 	function applyTemplateToAll(t: TemplateId, opts?: { skipNewsSeed?: boolean }) {
 		const prevPerSlide = slideTemplates.map((x) => coerceTemplateId(x));
@@ -848,6 +1072,7 @@ import JSZip from 'jszip';
 		}
 		if (t === 'news' && !opts?.skipNewsSeed) seedNewsStarterPlaceholderLayout();
 		if (t === 'news') {
+			newsHeadlineLive = null;
 			const n = slides.length;
 			const prevVids = bgVideosByTemplate.news ?? [];
 			const prevImgs = bgImagesByTemplate.news ?? [];
@@ -925,6 +1150,7 @@ import JSZip from 'jszip';
 			);
 			bgImagesByTemplate = { ...bgImagesByTemplate, imageQuote: row };
 		}
+		applyTemplateDevOverride(t, { slides: 'all' });
 	}
 
 	/** Apply video + headlines from Videos page "Edit in Studio". */
@@ -987,9 +1213,9 @@ import JSZip from 'jszip';
 			const template = templates[i]!;
 			if (template === 'news' || template === 'imageQuote') {
 				if (payload.newsSource?.trim()) source = payload.newsSource.trim();
-				else if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
+				else if (isPlaceholderNewsSource(source)) source = defaultNewsSource();
 				if (template === 'news' && !multi) {
-					seedNewsStarterPlaceholderLayout();
+					seedNewsStarterPlaceholderLayout({ force: true });
 					if (hook) slides = slides.map((s, si) => (si === 0 ? hook : s));
 				} else if (template === 'news' && multi) {
 					slides = slides.map((s, si) =>
@@ -1765,7 +1991,7 @@ import JSZip from 'jszip';
 				disabled: !canBgTools,
 			},
 			// { icon: Scissors, label: 'Trim', onClick: toggleTrim, disabled: !effectiveBackgroundVideo },
-			{ icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !effectiveBackgroundVideo },
+			// { icon: VolumeX, label: 'Mute', onClick: toggleMute, disabled: !effectiveBackgroundVideo },
 			// {
 			// 	icon: Sparkles,
 			// 	label: 'AI',
@@ -1825,8 +2051,9 @@ import JSZip from 'jszip';
 
 		if (t === 'news') {
 			slides = slides.map((x, idx) => (idx === i ? NEWS_PLACEHOLDER_HEADLINE : x));
-			source = NEWS_DEFAULT_SOURCE;
+			source = defaultNewsSource();
 			sourceLabelMode = 'text';
+			sourceBorderKind = 'none';
 			circleImages = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (circleImages[idx] ?? ''),
 			);
@@ -2142,12 +2369,8 @@ import JSZip from 'jszip';
 				bootShellH = CANVAS_H * s;
 			}
 			applyBlankCanvas();
-			applyTemplateToAll(next);
-			if (isVideoStoryFamily(next)) {
-				canvasBgDark = true;
-				if (!textColorTouched) textColor = '#FFFFFF';
-			}
-			seedNewsStarterPlaceholderLayout();
+			applyTemplateToAll(next, { skipNewsSeed: true });
+			seedFreshTemplateSession(next);
 		} else {
 			applyTemplateToAll(next);
 			if (isVideoStoryFamily(next)) {
@@ -2166,11 +2389,26 @@ import JSZip from 'jszip';
 	}
 
 	// Post data
-	let source = $state('Markets');
+	let source = $state('');
 	let sourceLogoSrc = $state(''); // optional — user can switch News source to logo mode
 	let sourceLabelMode = $state<'text' | 'logo'>('text');
+	/** News source chrome: none (default), hairlines, or pill outline. */
+	let sourceBorderKind = $state<'none' | 'rules' | 'box'>('none');
+	/** Empty = follow source text / highlight color. */
+	let sourceBorderColor = $state('');
 	/** Max width in px for source logo (News template). */
 	let sourceLogoWidth = $state(260);
+
+	const SOURCE_BORDER_SWATCHES = [
+		{ id: 'match', hex: '', label: 'Match text' },
+		{ id: 'white', hex: '#FFFFFF', label: 'White' },
+		{ id: 'cream', hex: '#F4E8D0', label: 'Cream' },
+		{ id: 'gold', hex: '#F5A623', label: 'Gold' },
+		{ id: 'ember', hex: '#FF6B2C', label: 'Ember' },
+		{ id: 'ink', hex: '#0A0A0A', label: 'Ink' },
+		{ id: 'cyan', hex: '#08EBFF', label: 'Cyan' },
+		{ id: 'lime', hex: '#C8F050', label: 'Lime' },
+	] as const;
 	let articleUrl = $state('');
 	let articleTitle = $state('');
 
@@ -2398,10 +2636,12 @@ import JSZip from 'jszip';
 	// Circle images are per-slide (so each slide can have its own badge photo).
 	let circleImages = $state<string[]>([]);
 	let circleBorderColor = $state('#FFFFFF');
+	let circleShadow = $state({ ...DEFAULT_CIRCLE_SHADOW });
 	// Optional second circle is also per-slide.
 	let showCircle2BySlide = $state<boolean[]>([]);
 	let circle2Images = $state<string[]>([]);
 	let circle2BorderColor = $state('#FFFFFF');
+	let circle2Shadow = $state({ ...DEFAULT_CIRCLE_SHADOW });
 	let generatingCircle = $state(false);
 	let bgError = $state('');
 
@@ -2817,6 +3057,7 @@ import JSZip from 'jszip';
 
 	// Style
 	let highlightColor = $state('#F5A623');
+	let brandTextBgColor = $state('');
 	/** Default look for bare `[[phrase]]` from AI / Load & Fill. */
 	let highlightStyleKind = $state<StudioHighlightStyleKind>('solid');
 	let highlightGradientFrom = $state('#FFFFFF');
@@ -2913,8 +3154,17 @@ import JSZip from 'jszip';
 	// Text panel drag (template px)
 	let textPanelOffsetY = $state(0);
 	let assetsCollapsed = $state(false);
-	let shadowHeight = $state(75);   // % of canvas covered by bottom shadow
+	let shadowHeight = $state(NEWS_DEFAULT_LAYOUT.shadowHeight);   // % of canvas covered by bottom shadow
 	let shadowStrength = $state(1);  // 0–1 opacity multiplier
+
+	function applyBottomShadowPreset(p: (typeof BOTTOM_SHADOW_PRESETS)[number]) {
+		shadowHeight = p.height;
+		shadowStrength = p.strength;
+	}
+
+	function bottomShadowPresetActive(p: (typeof BOTTOM_SHADOW_PRESETS)[number]) {
+		return Math.abs(shadowHeight - p.height) < 2 && Math.abs(shadowStrength - p.strength) < 0.04;
+	}
 
 	// Image overlays — per slide, per template (so templates are independent)
 	let slideOverlaysByTemplate = $state<Record<TemplateId, Overlay[][]>>({
@@ -2972,6 +3222,13 @@ import JSZip from 'jszip';
 			pushUndo(template, i);
 		}
 		setTextOffset(i, offsetKey(template, kind), next);
+		// Follow the block while dragging so the bar stays on-screen with the text.
+		// Font-size edits do not go through here, so the toolbar stays put then.
+		if (selectedText && String(selectedText) === String(kind) && toolbarTarget) {
+			requestAnimationFrame(() => {
+				if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
+			});
+		}
 	}
 
 	function getTextOffset(i: number, kind: string): TextOffset {
@@ -2981,6 +3238,13 @@ import JSZip from 'jszip';
 	}
 	function setTextOffset(i: number, kind: string, next: TextOffset) {
 		const cur = textOffsetsBySlide[i] ?? {};
+		if (textOffsetsBySlide.length <= i) {
+			const nextArr = textOffsetsBySlide.slice();
+			while (nextArr.length <= i) nextArr.push({});
+			nextArr[i] = { ...cur, [kind]: { x: next.x, y: next.y } };
+			textOffsetsBySlide = nextArr;
+			return;
+		}
 		textOffsetsBySlide = textOffsetsBySlide.map((r, idx) => {
 			if (idx !== i) return r;
 			return { ...cur, [kind]: { x: next.x, y: next.y } };
@@ -3370,6 +3634,7 @@ import JSZip from 'jszip';
 			i === newIdx ? nextTemplate : coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed),
 		);
 		ensureTemplateDefaultsForSlide(nextTemplate, newIdx);
+		applyTemplateDevOverride(nextTemplate, { slides: [newIdx] });
 
 		if (clip) {
 			putClipOnSlide(newIdx, clip);
@@ -3511,7 +3776,9 @@ import JSZip from 'jszip';
 	let filmStripBottomPctByTemplate = $state<Record<TemplateId, number[]>>(emptyFilmStripMap('bottom'));
 	let filmStripPopoverOpen = $state(false);
 	let bottomShadowPopoverOpen = $state(false);
-	let wordHighlightsPopoverOpen = $state(false);
+	let brandProfilePopoverOpen = $state(false);
+	let brandDisplayName = $state(DEFAULT_BRAND_KIT.displayName);
+	let brandHandle = $state(DEFAULT_BRAND_KIT.handle);
 
 	const activeFilmStrip = $derived.by(() => {
 		const t = activeTemplate;
@@ -3877,10 +4144,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			return (current.find((o) => o.id === selectedTextOverlayId)?.style ?? {});
 		}
 		if (!selectedText) return canvasHeadlineStyle;
-		return (
-			canvasStyleMap[selectedText] ??
-			(selectedText === 'source' ? canvasSourceStyle : canvasHeadlineStyle)
-		);
+		// Never fall back to headline styles — that made the toolbar show 80px on a 24px paragraph.
+		return canvasStyleMap[selectedText] ?? {};
 	}
 
 	// Currently selected text element + DOM anchor for the floating toolbar.
@@ -3890,13 +4155,39 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let toolbarTarget = $state<HTMLElement | null>(null);
 	let toolbarAutoFontSize = $state<number | undefined>(undefined);
 
+	function newsAutoHeadlinePx(raw: string): number {
+		const len = stripMarkup(raw).length;
+		if (len < 60) return 108;
+		if (len < 90) return 92;
+		if (len < 120) return 78;
+		return 66;
+	}
+
 	function defaultFontSizeForKind(kind: TextElementKind): number | undefined {
+		const tpl = previewTemplate;
+		const headlinePx =
+			typeof canvasHeadlineStyle.fontSize === 'number' && canvasHeadlineStyle.fontSize > 0
+				? canvasHeadlineStyle.fontSize
+				: undefined;
 		// These reflect the templates' visual defaults (used when no style override exists).
 		switch (kind) {
 			// News
 			case 'source': return 34;
-			case 'headline': return undefined; // News headline auto-sizes based on length
-			case 'newsSubtext': return 32;
+			case 'headline':
+				if (tpl === 'news' || tpl === 'blank') return newsAutoHeadlinePx(slides[paintSlide] ?? '');
+				if (tpl === 'imageQuote') {
+					const n = stripMarkup(slides[paintSlide] ?? '').length;
+					if (n <= 70) return 68;
+					if (n <= 110) return 58;
+					if (n <= 160) return 50;
+					if (n <= 220) return 44;
+					return 38;
+				}
+				return headlinePx;
+			case 'newsSubtext': {
+				const h = headlinePx ?? newsAutoHeadlinePx(slides[paintSlide] ?? '');
+				return Math.round(h * 0.3);
+			}
 
 			// Article
 			case 'articleBody': return 46;
@@ -3905,24 +4196,29 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			case 'articleLogo':
 				return undefined;
 
-			// Text carousel
-			case 'textCarouselName': return 46;
-			case 'textCarouselHandle': return 36;
-			case 'textCarouselBody': return 72;
+			// Text carousel / white post (shared kinds)
+			case 'textCarouselName':
+				return tpl === 'whiteThread' || tpl === 'whiteMedia' ? 40 : 46;
+			case 'textCarouselHandle':
+				return tpl === 'whiteThread' || tpl === 'whiteMedia' ? 34 : 36;
+			case 'textCarouselBody':
+				if (tpl === 'whiteMedia') return 42;
+				if (tpl === 'whiteThread') return 44;
+				return 72;
 			case 'textCarouselAvatar': return undefined;
 
 			// Image quote
-			case 'imageQuoteFooterLeft': return 40;
-			case 'imageQuoteFooterRight': return 18;
+			case 'imageQuoteFooterLeft': return 44;
+			case 'imageQuoteFooterRight': return 22;
 			// headline kind is used for the quote body in that template; leave undefined here.
 
 			// Tweet
-			case 'tweetTopName': return 44;
-			case 'tweetTopHandle': return 32;
-			case 'tweetTopText': return 44;
-			case 'tweetBottomName': return 44;
-			case 'tweetBottomHandle': return 32;
-			case 'tweetBottomText': return 44;
+			case 'tweetTopName': return 36;
+			case 'tweetTopHandle': return 28;
+			case 'tweetTopText': return 42;
+			case 'tweetBottomName': return 34;
+			case 'tweetBottomHandle': return 26;
+			case 'tweetBottomText': return 40;
 			case 'tweetReplyCount': return 32;
 			case 'tweetRepostCount': return 32;
 			case 'tweetLikeCount': return 32;
@@ -3936,11 +4232,25 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			// Overlays
 			case 'textOverlay': return 42;
 
-			case 'videoStoryHeadline': return 52;
-			case 'videoStoryWatermark': return 22;
+			case 'videoStoryHeadline':
+				if (tpl === 'brandStack') return BRAND_STACK_HEADLINE_STYLE.fontSize;
+				if (tpl === 'videoHook') return 56;
+				if (tpl === 'videoCreator') return 48;
+				if (tpl === 'videoText') return 64;
+				if (tpl === 'videoFeature') return 44;
+				if (tpl === 'videoPost') return 44;
+				return 46;
+			case 'videoStoryWatermark': return tpl === 'brandStack' ? 30 : 32;
 			case 'brandStackBrand': return 34;
-			case 'blackTextHeadline': return 52;
-			case 'blackTextBody': return 34;
+			case 'blackTextHeadline':
+				if (tpl === 'photoTopic') return PHOTO_TOPIC_HEADLINE_STYLE.fontSize;
+				if (tpl === 'photoCaption') return 36;
+				return 46;
+			case 'blackTextBody':
+				if (tpl === 'photoTopic') return PHOTO_TOPIC_BODY_STYLE.fontSize;
+				if (tpl === 'photoCaption') return 36;
+				if (tpl === 'videoFeature') return VIDEO_FEATURE_BODY_STYLE.fontSize;
+				return 36;
 		}
 	}
 
@@ -3990,11 +4300,28 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return plainRangeHasMixedForegroundPaint(raw, range.start, range.end, highlightColor, base);
 	});
 
-	/** Text swatch reflects the selected range’s actual ink (not stale block `headlineStyle.color`, often #F5A623). */
+	/** Text swatch + highlight pickers reflect the selected range’s actual paint. */
+	const toolbarSelectionPaint = $derived.by(() => {
+		if (!hasRangeSelection || !studioMarkupFieldActive()) return null;
+		const raw = toolbarHighlightableRaw();
+		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+		if (!raw || !range || range.end <= range.start) return null;
+		const blockInk = getActiveStyleForSelection().color ?? textColor;
+		return inspectPlainRangePaint(raw, range.start, range.end, studioHighlightDefaults, blockInk);
+	});
+
 	const toolbarFloatingStyle = $derived.by(() => {
 		const base = getActiveStyleForSelection();
+		const paint = toolbarSelectionPaint;
+		if (paint?.markerBg) {
+			return { ...base, bgColor: paint.markerBg };
+		}
 		if (!hasRangeSelection || toolbarTextColorMixed) return base;
 		if (!studioMarkupFieldActive()) return base;
+		if (paint?.styleKind === 'pattern' || paint?.styleKind === 'gradient') {
+			// Solid swatch is misleading for pattern/gradient — keep block color; chip uses activeHighlight.
+			return base;
+		}
 		const raw = toolbarHighlightableRaw();
 		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
 		if (!raw || !range || range.end <= range.start) return base;
@@ -4009,6 +4336,55 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		);
 		if (sw === undefined) return base;
 		return { ...base, color: sw };
+	});
+
+	/** Prefer selection paint in the toolbar; fall back to brand default when nothing is selected. */
+	const toolbarActiveHighlight = $derived.by(() => {
+		const paint = toolbarSelectionPaint;
+		if (paint?.styleKind === 'pattern' && paint.pattern) {
+			return {
+				styleKind: 'pattern' as const,
+				color: paint.color || highlightColor,
+				pattern: paint.pattern,
+				gradientFrom: highlightGradientFrom,
+				gradientTo: highlightGradientTo,
+			};
+		}
+		if (paint?.styleKind === 'gradient' && paint.gradientFrom && paint.gradientTo) {
+			return {
+				styleKind: 'gradient' as const,
+				color: paint.gradientFrom,
+				pattern: highlightPattern,
+				gradientFrom: paint.gradientFrom,
+				gradientTo: paint.gradientTo,
+			};
+		}
+		if (paint?.styleKind === 'solid' && paint.color) {
+			return {
+				styleKind: 'solid' as const,
+				color: paint.color,
+				pattern: highlightPattern,
+				gradientFrom: highlightGradientFrom,
+				gradientTo: highlightGradientTo,
+			};
+		}
+		// Selection exists but paint is mixed / unmarked — don't pretend brand orange is "on".
+		if (paint) {
+			return {
+				styleKind: 'solid' as const,
+				color: paint.color || '',
+				pattern: '',
+				gradientFrom: '',
+				gradientTo: '',
+			};
+		}
+		return {
+			styleKind: highlightStyleKind,
+			color: highlightColor,
+			pattern: highlightPattern,
+			gradientFrom: highlightGradientFrom,
+			gradientTo: highlightGradientTo,
+		};
 	});
 
 	function onHeadlineRangeSelect(start: number, end: number) {
@@ -4055,13 +4431,30 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 	}
 
+	/** Word range if the user dragged one; otherwise the whole clicked field. */
+	function resolveMarkupRange(raw: string): { start: number; end: number } | null {
+		if (selectedText === 'textOverlay') {
+			if (textOverlayRange && textOverlayRange.end > textOverlayRange.start) return textOverlayRange;
+			const len = stripMarkup(raw).length;
+			return len > 0 ? { start: 0, end: len } : null;
+		}
+		ensurePlainRangeForMarkupTools(raw);
+		if (headlineRange && headlineRange.end > headlineRange.start) return headlineRange;
+		const len = stripMarkup(raw).length;
+		if (len <= 0) return null;
+		const full = { start: 0, end: len };
+		headlineRange = full;
+		lastCommittedPlainRange = full;
+		return full;
+	}
+
 	function onHighlight(spec: HighlightSpec) {
 		if (!studioTextHighlightsEnabled) return;
-		if (selectedText !== 'textOverlay') {
-			const raw = toolbarHighlightableRaw();
-			ensurePlainRangeForMarkupTools(raw);
-		}
-		const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+		// Update Branding / Settings highlight as soon as a swatch is picked
+		// (even if the range apply below bails) so both UIs stay in sync.
+		syncBrandHighlightFromToolbar(spec);
+		const raw = toolbarHighlightableRaw();
+		const range = resolveMarkupRange(raw);
 		if (!range) return;
 		const start = range.start;
 		const end = range.end;
@@ -4132,6 +4525,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, text: applyHighlight(o.text ?? '', start, end, spec) } : o)),
 				activeTemplate,
 			);
+		} else {
+			return;
 		}
 
 		if (
@@ -4182,6 +4577,28 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return fromAttr(nested);
 	}
 
+	/** Design-space px currently painted for the selected field (not a sibling field’s size). */
+	function resolvePaintedFontSize(): number | undefined {
+		const kind = selectedText;
+		if (!kind) return undefined;
+		const own = getActiveStyleForSelection().fontSize;
+		if (typeof own === 'number' && Number.isFinite(own) && own > 0) return Math.round(own);
+		const fromDom = toolbarTarget ? readDesignFontPx(toolbarTarget) : undefined;
+		if (fromDom != null) return Math.round(fromDom);
+		return defaultFontSizeForKind(kind);
+	}
+
+	const toolbarPaintedFontSize = $derived.by(() => {
+		void selectedText;
+		void selectedTextOverlayId;
+		void toolbarTarget;
+		void canvasStyleMap;
+		void canvasTweetStyles;
+		void previewTemplate;
+		void paintSlide;
+		return resolvePaintedFontSize();
+	});
+
 	function onTextSelect(kind: TextElementKind, el: HTMLElement) {
 		selectedText = kind;
 		selectedTextOverlayId = kind === 'textOverlay' ? (el.dataset.textOverlayId ?? null) : null;
@@ -4193,28 +4610,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		toolbarAutoFontSize = defaultFontSizeForKind(kind);
 		requestAnimationFrame(() => {
 			try {
-				const existing = getActiveStyleForSelection().fontSize;
-				if (typeof existing === 'number' && Number.isFinite(existing) && existing > 0) {
-					toolbarAutoFontSize = defaultFontSizeForKind(kind) ?? existing;
-					return;
-				}
-				const fromData = readDesignFontPx(el);
-				if (fromData != null) {
-					toolbarAutoFontSize = Math.round(fromData);
-					return;
-				}
-				const typo = resolveTypographyEl(el);
-				const fs = getComputedStyle(typo).fontSize;
-				const n = parseFloat(fs);
-				if (Number.isFinite(n) && n > 0) {
-					const rounded = Math.round(n);
-					const kindDefault = defaultFontSizeForKind(kind);
-					if (kindDefault != null && rounded < 20 && kindDefault >= 20) {
-						toolbarAutoFontSize = kindDefault;
-					} else {
-						toolbarAutoFontSize = rounded;
-					}
-				}
+				toolbarAutoFontSize = resolvePaintedFontSize() ?? defaultFontSizeForKind(kind);
 			} catch {
 				// keep fallback
 			}
@@ -4465,8 +4861,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				}
 			}
 			if ('bgColor' in patch) {
-				ensurePlainRangeForMarkupTools(raw);
-				if (headlineRange) {
+				const range = resolveMarkupRange(raw);
+				if (range) {
 					const bg = patch.bgColor;
 					if (bg === undefined || bg === 'transparent') onHighlight({ kind: 'clear' });
 					else {
@@ -4659,10 +5055,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			/* Run font hints after Svelte flushes the new `font-weight` to the canvas so the change feels instant. */
 			if (family) void tick().then(() => void loadGoogleFont(family, weight));
 		}
-		// Re-anchor on next frame so the toolbar follows size changes.
-		requestAnimationFrame(() => {
-			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
-		});
+		// Keep the toolbar where the user opened it — size / weight / LH
+		// changes must not shove the bar as the text box grows.
 	}
 
 	// Export
@@ -4741,7 +5135,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const canvasStyleMap = $derived((stylesByTemplateBySlide[previewTemplate] ?? [])[paintSlide] ?? {});
 	const canvasHeadlineStyle = $derived(canvasStyleMap.headline ?? {});
 	const canvasNewsSubtextStyle = $derived(canvasStyleMap.newsSubtext ?? {});
-	const canvasSourceStyle = $derived(canvasStyleMap.source ?? {});
+	const canvasSourceStyle = $derived({ align: 'right' as const, ...(canvasStyleMap.source ?? {}) });
 	const canvasVideoStoryHeadlineStyle = $derived(canvasStyleMap.videoStoryHeadline ?? {});
 	const canvasVideoStoryWatermarkStyle = $derived(canvasStyleMap.videoStoryWatermark ?? {});
 	const canvasBrandStackBrandStyle = $derived(canvasStyleMap.brandStackBrand ?? {});
@@ -4780,12 +5174,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		);
 	}
 
-	/** Full-canvas loading overlay: variant pass, paint flush, bg gen, or media apply/load. */
+	/** Full-canvas loading overlay: generate/fetch, variant pass, paint flush, bg gen, or media apply/load. */
 	const studioCanvasBusyLoading = $derived(
-		generatingVariants ||
+		studioGenerating ||
+			fetchingNews ||
+			generatingVariants ||
 			studioImageGenPaintHold ||
 			backgroundMediaLoading ||
-			!!(generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide],
+			!!(generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide] ||
+			!!(cuttingOut[paintSlide] ?? false),
 	);
 
 	// ── Draft persistence (Supabase) ──────────────────────────────────────
@@ -4794,6 +5191,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const DRAFT_KIND = 'news_studio';
 	/** Named snapshots from Studio — listed on the dashboard; open with `?saved=<id>`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
+	const STUDIO_TEMPLATE_OVERRIDE_KIND = 'studio_template_override';
+	const BUILTIN_TEMPLATE_OVERWRITE_ID = '__builtin__';
+	let accountTemplateOverrides = $state<Partial<Record<TemplateId, TemplateDevOverrideSnapshot>>>({});
 	let draftId = $state<string>('');
 	let showSaveTemplatePanel = $state(false);
 	let showImportJsonPanel = $state(false);
@@ -4836,8 +5236,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		) {
 			newsContentMode = s.newsContentMode;
 		}
-		if (s.newsImageSourceMode === 'pull' || s.newsImageSourceMode === 'ai') {
+		if (s.newsImageSourceMode === 'assets' || s.newsImageSourceMode === 'pull' || s.newsImageSourceMode === 'ai') {
 			newsImageSourceMode = s.newsImageSourceMode;
+		}
+		if (s.newsCopyLength === 'short' || s.newsCopyLength === 'standard' || s.newsCopyLength === 'default') {
+			newsCopyLength = s.newsCopyLength;
 		}
 		if (typeof s.storyCategory === 'string') storyCategory = s.storyCategory;
 		if (typeof (s as any).factTopicPrompt === 'string') factTopicPrompt = String((s as any).factTopicPrompt ?? '');
@@ -4851,10 +5254,18 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (Number.isFinite(sc)) stepsCount = Math.max(3, Math.min(8, Math.floor(sc)));
 		}
 		if (typeof s.search === 'string') search = s.search;
-		if (typeof s.source === 'string') source = s.source;
+		if (typeof s.source === 'string') {
+			source = isPlaceholderNewsSource(s.source) ? defaultNewsSource() : s.source;
+		}
 		if (typeof (s as any).sourceLogoSrc === 'string') sourceLogoSrc = String((s as any).sourceLogoSrc ?? '').trim();
 		if ((s as any).sourceLabelMode === 'text' || (s as any).sourceLabelMode === 'logo') {
 			sourceLabelMode = (s as any).sourceLabelMode;
+		}
+		if ((s as any).sourceBorderKind === 'none' || (s as any).sourceBorderKind === 'rules' || (s as any).sourceBorderKind === 'box') {
+			sourceBorderKind = (s as any).sourceBorderKind;
+		}
+		if (typeof (s as any).sourceBorderColor === 'string') {
+			sourceBorderColor = String((s as any).sourceBorderColor ?? '');
 		}
 		const slw = Number((s as any).sourceLogoWidth);
 		if (Number.isFinite(slw)) sourceLogoWidth = Math.round(Math.max(80, Math.min(400, slw)));
@@ -5169,6 +5580,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			circleImages = Array.from({ length: n }, (_, i) => (i === 0 ? first : ''));
 		}
 		if (typeof s.circleBorderColor === 'string') circleBorderColor = s.circleBorderColor;
+		if (s.circleShadow) circleShadow = normalizeCircleShadow(s.circleShadow);
 		if (Array.isArray(s.circle2Images)) circle2Images = s.circle2Images;
 		else if (typeof s.circle2Image === 'string') {
 			const first = s.circle2Image;
@@ -5181,6 +5593,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			showCircle2BySlide = Array.from({ length: n }, (_, i) => (i === 0 ? s.showCircle2 : false));
 		}
 		if (typeof s.circle2BorderColor === 'string') circle2BorderColor = s.circle2BorderColor;
+		if (s.circle2Shadow) circle2Shadow = normalizeCircleShadow(s.circle2Shadow);
 		if (typeof s.circleX === 'number') circleX = s.circleX;
 		if (typeof s.circleY === 'number') circleY = s.circleY;
 		if (typeof s.circleSize === 'number') circleSize = s.circleSize;
@@ -5233,6 +5646,133 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		if (typeof (s as any).brandCtaEnabled === 'boolean') {
 			brandCtaEnabled = (s as any).brandCtaEnabled;
+		}
+
+		if (brandDisplayName || brandHandle) {
+			applyBrandProfileToSlides(
+				brandDisplayName || DEFAULT_BRAND_KIT.displayName,
+				brandHandle || DEFAULT_BRAND_KIT.handle,
+			);
+		}
+	}
+
+	function defaultNewsSource(): string {
+		return String(brandDisplayName ?? '').trim() || NEWS_DEFAULT_SOURCE;
+	}
+
+	function applyNewsSourceFromBrand(name: string) {
+		const next = String(name ?? '').trim();
+		if (!next) return;
+		if (isPlaceholderNewsSource(source)) source = next;
+	}
+
+	function applyBrandProfileToSlides(name: string, handle: string) {
+		const n = slides.length;
+		textCarouselNameBySlide = Array.from({ length: n }, (_, i) => {
+			const cur = textCarouselNameBySlide[i] ?? '';
+			return isPlaceholderProfileName(cur) ? name : cur;
+		});
+		textCarouselHandleBySlide = Array.from({ length: n }, (_, i) => {
+			const cur = textCarouselHandleBySlide[i] ?? '';
+			return isPlaceholderProfileHandle(cur) ? handle : cur;
+		});
+		applyNewsSourceFromBrand(name);
+	}
+
+	function persistBrandProfile(nextName?: string, nextHandle?: string) {
+		const name = String(nextName ?? brandDisplayName).trim();
+		const handle = normalizeBrandHandle(String(nextHandle ?? brandHandle));
+		if (name) brandDisplayName = name;
+		if (handle) brandHandle = handle;
+		applyBrandProfileToSlides(brandDisplayName, brandHandle);
+		if (!userId || !brandDisplayName.trim()) return;
+		try {
+			const kit = loadBrandKit(userId);
+			saveBrandKit(userId, {
+				...kit,
+				displayName: brandDisplayName,
+				handle: brandHandle,
+				highlightColor,
+				highlightStyleKind,
+				highlightPattern,
+				highlightGradientFrom,
+				highlightGradientTo,
+				textBgColor: brandTextBgColor,
+				onboardingComplete: true,
+			});
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function applyBrandTextBg(next: string) {
+		const hex = normalizeTextBgHex(next);
+		brandTextBgColor = hex;
+		patchNewsSourceStyle({ bgColor: hex || undefined });
+	}
+
+	function persistBrandHighlight(nextRaw: string) {
+		highlightColor = normalizeHighlightHex(nextRaw, highlightColor);
+		highlightStyleKind = 'solid';
+		if (!userId) return;
+		try {
+			const kit = loadBrandKit(userId);
+			saveBrandKit(userId, { ...kit, highlightColor, highlightStyleKind: 'solid' });
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function persistBrandHighlightPattern(name: string) {
+		const next = String(name ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+		if (!AVAILABLE_PATTERNS.some((p) => p.name === next)) return;
+		highlightPattern = next;
+		highlightStyleKind = 'pattern';
+		if (!userId) return;
+		try {
+			const kit = loadBrandKit(userId);
+			saveBrandKit(userId, { ...kit, highlightPattern: next, highlightStyleKind: 'pattern' });
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function persistBrandHighlightGradient(from: string, to: string) {
+		const a = normalizeHighlightHex(from, highlightGradientFrom);
+		const b = normalizeHighlightHex(to, highlightGradientTo);
+		highlightGradientFrom = a;
+		highlightGradientTo = b;
+		highlightStyleKind = 'gradient';
+		if (!userId) return;
+		try {
+			const kit = loadBrandKit(userId);
+			saveBrandKit(userId, {
+				...kit,
+				highlightColor: a,
+				highlightStyleKind: 'gradient',
+				highlightGradientFrom: a,
+				highlightGradientTo: b,
+			});
+		} catch {
+			/* ignore */
+		}
+	}
+
+	/** Keep Branding panel + Settings highlight in sync when the text toolbar paints. */
+	function syncBrandHighlightFromToolbar(spec: HighlightSpec) {
+		if (spec.kind === 'color') persistBrandHighlight(spec.color);
+		else if (spec.kind === 'pattern') persistBrandHighlightPattern(spec.name);
+		else if (spec.kind === 'gradient') persistBrandHighlightGradient(spec.from, spec.to);
+	}
+
+	function persistBrandTextBg(nextRaw: string) {
+		applyBrandTextBg(nextRaw);
+		if (!userId) return;
+		try {
+			const kit = loadBrandKit(userId);
+			saveBrandKit(userId, { ...kit, textBgColor: brandTextBgColor });
+		} catch {
+			/* ignore */
 		}
 	}
 
@@ -5551,49 +6091,426 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		draftError = '';
 		draftPreviewUrl = '';
 		draftPreviewKey = '';
+		newsHeadlineLive = null;
 		closeToolbar();
 	}
 
-	/** `applyBlankCanvas()` resets headline/solid fills, kills shadow, and hides the circle chrome — restore readable News starters (gradient, hook circle ring, vignette). */
-	function seedNewsStarterPlaceholderLayout() {
-		if (coerceTemplateId(slideTemplates[0] ?? 'news') !== 'news') return;
-		while (slides.length < DEFAULT_STUDIO_SLIDE_COUNT) addSlide();
-		const n = Math.max(1, slides.length);
-		slides = slides.map((row, i) =>
-			String(row ?? '').trim() ? row : i === 0 ? NEWS_PLACEHOLDER_HEADLINE : row
+	/**
+	 * `applyBlankCanvas()` resets headline/solid fills, kills shadow, and hides the circle chrome —
+	 * restore readable News starters (gradient, hook circle ring, vignette, SoftBank placeholder copy).
+	 * Pass `{ force: true }` for `?template=news` / Templates gallery opens so demo copy always shows
+	 * (also clears a stuck `newsHeadlineLive` buffer that can hide `slides[0]`).
+	 */
+	function seedNewsStarterPlaceholderLayout(opts?: { force?: boolean }) {
+		const force = opts?.force === true;
+		if (coerceTemplateId(slideTemplates[0] ?? lastTemplateUsed ?? 'news') !== 'news') return;
+
+		const starter = resolveTemplateOverride('news')?.starter;
+		const demoHeadline =
+			String(starter?.slides?.[0] ?? '').trim() || NEWS_PLACEHOLDER_HEADLINE;
+		const demoSub =
+			String(starter?.newsSubtextBySlide?.[0] ?? '').trim() || NEWS_DEFAULT_SUBTEXT;
+		const demoVid = String(starter?.bgVideos?.[0] ?? '').trim();
+		const demoImg = String(starter?.bgImages?.[0] ?? '').trim();
+		const demoSolid = String(starter?.newsSolidBgBySlide?.[0] ?? '').trim();
+
+		// Avoid addSlide() here — it moves activeSlide to the newest empty card.
+		lastTemplateUsed = 'news';
+		const targetLen = Math.max(
+			slides.length,
+			starter?.slides?.length || 0,
+			DEFAULT_STUDIO_SLIDE_COUNT,
 		);
-		newsSubtextBySlide = Array.from({ length: n }, (_, i) => {
-			const cur = String(newsSubtextBySlide[i] ?? '').trim();
-			if (cur) return newsSubtextBySlide[i]!;
-			return i === 0 ? NEWS_DEFAULT_SUBTEXT : '';
+		const padStr = (arr: string[] | undefined, fill = '') =>
+			Array.from({ length: targetLen }, (_, i) => arr?.[i] ?? fill);
+		const padBool = (arr: boolean[] | undefined, fill = false) =>
+			Array.from({ length: targetLen }, (_, i) => arr?.[i] ?? fill);
+
+		slideTemplates = Array.from({ length: targetLen }, () => 'news');
+		slideCount = targetLen;
+
+		slides = Array.from({ length: targetLen }, (_, i) => {
+			const fromStarter = String(starter?.slides?.[i] ?? '').trim();
+			const cur = String(slides[i] ?? '').trim();
+			if (i === 0) return force || !cur ? fromStarter || demoHeadline : cur;
+			return force && fromStarter ? fromStarter : cur;
 		});
-		if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
-		sourceLabelMode = 'text';
-		newsSolidBgBySlide = Array.from({ length: n }, () => '');
-		// Match default hook behaviour: badge on slide 1 only until user adds elsewhere.
-		showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
+		newsSubtextBySlide = Array.from({ length: targetLen }, (_, i) => {
+			const fromStarter = String(starter?.newsSubtextBySlide?.[i] ?? '').trim();
+			const cur = String(newsSubtextBySlide[i] ?? '').trim();
+			if (i === 0) return force || !cur ? fromStarter || demoSub : cur;
+			return force && fromStarter ? fromStarter : String(newsSubtextBySlide[i] ?? '');
+		});
+
+		// Stuck inline-edit buffer wins over `slides[]` in the canvas derived — always clear on seed.
+		newsHeadlineLive = null;
+		activeSlide = 0;
+
+		if (force || isPlaceholderNewsSource(source)) {
+			const starterSource = String(starter?.source ?? '').trim();
+			source = starterSource || defaultNewsSource();
+		}
+		if (starter?.sourceLabelMode === 'text' || starter?.sourceLabelMode === 'logo') {
+			sourceLabelMode = starter.sourceLabelMode;
+		} else if (force) {
+			sourceLabelMode = 'text';
+		}
+		if (starter?.sourceBorderKind === 'none' || starter?.sourceBorderKind === 'rules' || starter?.sourceBorderKind === 'box') {
+			sourceBorderKind = starter.sourceBorderKind;
+		} else if (force) {
+			sourceBorderKind = 'none';
+		}
+		if (typeof starter?.sourceBorderColor === 'string') sourceBorderColor = starter.sourceBorderColor;
+		const slw = Number(starter?.sourceLogoWidth);
+		if (Number.isFinite(slw) && slw > 0) sourceLogoWidth = Math.round(slw);
+		if (String(starter?.sourceLogoSrc ?? '').trim()) sourceLogoSrc = String(starter.sourceLogoSrc).trim();
+		newsSolidBgBySlide = Array.from({ length: targetLen }, (_, i) =>
+			String(starter?.newsSolidBgBySlide?.[i] ?? (force ? demoSolid : newsSolidBgBySlide[i] ?? '')),
+		);
+		showCircleBySlide = starter?.showCircleBySlide?.length
+			? padBool(starter.showCircleBySlide, false)
+			: Array.from({ length: targetLen }, (_, i) => i === 0);
+		circleImages = padStr(starter?.circleImages ?? circleImages);
+		circle2Images = padStr(starter?.circle2Images ?? circle2Images);
+		showCircle2BySlide = padBool(starter?.showCircle2BySlide ?? showCircle2BySlide);
 		shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
 		shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
-		// Demo cover clip — blank canvas wiped media to ''.
+		circleX = NEWS_DEFAULT_LAYOUT.circleX;
+		circleY = NEWS_DEFAULT_LAYOUT.circleY;
+		circleSize = NEWS_DEFAULT_LAYOUT.circleSize;
+		textPanelOffsetY = NEWS_DEFAULT_LAYOUT.textPanelOffsetY;
+
 		const prevVids = bgVideosByTemplate.news ?? [];
 		const prevImgs = bgImagesByTemplate.news ?? [];
 		bgVideosByTemplate = {
 			...bgVideosByTemplate,
-			news: Array.from({ length: n }, (_, i) => {
+			news: Array.from({ length: targetLen }, (_, i) => {
+				const fromStarter = String(starter?.bgVideos?.[i] ?? '').trim();
 				const v = String(prevVids[i] ?? '').trim();
-				if (v) return v;
-				const img = String(prevImgs[i] ?? '').trim();
-				return img ? '' : NEWS_DEMO_VIDEO;
+				if (v && !force) return v;
+				const img = String(prevImgs[i] ?? starter?.bgImages?.[i] ?? '').trim();
+				if (img && !force) return '';
+				if (fromStarter) return fromStarter;
+				if (String(starter?.bgImages?.[i] ?? demoImg).trim()) return '';
+				return NEWS_DEMO_VIDEO;
 			}),
 		};
 		bgImagesByTemplate = {
 			...bgImagesByTemplate,
-			news: Array.from({ length: n }, (_, i) => {
+			news: Array.from({ length: targetLen }, (_, i) => {
 				if (String((bgVideosByTemplate.news ?? [])[i] ?? '').trim()) return '';
-				return String(prevImgs[i] ?? '').trim() || '';
+				const fromStarter = String(starter?.bgImages?.[i] ?? '').trim();
+				const img = String(prevImgs[i] ?? '').trim();
+				if (force) return fromStarter || demoImg;
+				return img || fromStarter;
 			}),
 		};
 		applyNewsSeedBackgroundLayout();
+	}
+
+	function cloneDevJson<T>(value: T): T {
+		return JSON.parse(JSON.stringify(value)) as T;
+	}
+
+	/** Snapshot the current slide’s design tokens for this built-in template (DEV pin). */
+	function captureTemplateDevSnapshot(template: TemplateId): TemplateDevOverrideSnapshot {
+		const styles = cloneDevJson((stylesByTemplateBySlide[template] ?? [])[activeSlide] ?? {});
+		const tweetStyles =
+			template === 'tweet' ? cloneDevJson(tweetStylesBySlide[activeSlide] ?? {}) : undefined;
+		const film = clampFilmStripPct(
+			filmStripTopPctByTemplate[template]?.[activeSlide] ?? filmStripDefaultsFor(template).topPct,
+			filmStripBottomPctByTemplate[template]?.[activeSlide] ?? filmStripDefaultsFor(template).bottomPct,
+		);
+		const textOffsets = cloneDevJson(offsetsForTemplate(activeSlide, template));
+		const pruneUrl = (u: unknown) => {
+			const s = String(u ?? '').trim();
+			if (!s || s.startsWith('blob:')) return '';
+			return s;
+		};
+		return {
+			v: 1,
+			templateId: template,
+			updatedAt: new Date().toISOString(),
+			enabled: true,
+			styles,
+			tweetStyles,
+			filmStrip: film,
+			textOffsets,
+			starter: {
+				slides: cloneDevJson(slides.map((x) => String(x ?? ''))),
+				newsSubtextBySlide: cloneDevJson(newsSubtextBySlide.map((x) => String(x ?? ''))),
+				source,
+				sourceLabelMode,
+				sourceLogoSrc: pruneUrl(sourceLogoSrc),
+				sourceLogoWidth,
+				sourceBorderKind,
+				sourceBorderColor,
+				bgImages: cloneDevJson((bgImagesByTemplate[template] ?? []).map(pruneUrl)),
+				bgVideos: cloneDevJson((bgVideosByTemplate[template] ?? []).map(pruneUrl)),
+				newsSolidBgBySlide: cloneDevJson(newsSolidBgBySlide.map((x) => String(x ?? ''))),
+				showCircleBySlide: cloneDevJson(showCircleBySlide.map(Boolean)),
+				circleImages: cloneDevJson(circleImages.map(pruneUrl)),
+				showCircle2BySlide: cloneDevJson(showCircle2BySlide.map(Boolean)),
+				circle2Images: cloneDevJson(circle2Images.map(pruneUrl)),
+			},
+			textColor,
+			canvasBgDark,
+			highlightColor,
+			highlightStyleKind,
+			highlightGradientFrom,
+			highlightGradientTo,
+			highlightPattern,
+			studioTextHighlightsEnabled,
+			newsLayout:
+				template === 'news'
+					? {
+							circleX,
+							circleY,
+							circleSize,
+							circle2X,
+							circle2Y,
+							circle2Size,
+							bgOffsetX,
+							bgOffsetY,
+							bgZoom,
+							bgFitMode,
+							bgContainMagnify,
+							textPanelOffsetY,
+							shadowHeight,
+							shadowStrength,
+							circleBorderColor,
+							circle2BorderColor,
+							circleShadow: cloneDevJson(circleShadow),
+							circle2Shadow: cloneDevJson(circle2Shadow),
+							sourceLabelMode,
+							sourceLogoSrc,
+							sourceLogoWidth,
+							sourceBorderKind,
+							sourceBorderColor,
+						}
+					: undefined,
+		};
+	}
+
+	function pinCurrentTemplateDesign() {
+		if (!isTemplateDevToolsEnabled()) return;
+		const snap = captureTemplateDevSnapshot(activeTemplate);
+		saveTemplateDevOverride(snap);
+		applyTemplateDevOverride(activeTemplate, { slides: 'all' });
+	}
+
+	function resolveTemplateOverride(template: TemplateId): TemplateDevOverrideSnapshot | null {
+		return accountTemplateOverrides[template] ?? loadEnabledTemplateDevOverride(template);
+	}
+
+	async function loadAccountTemplateOverrides() {
+		if (!userId) return;
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.select('state')
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_TEMPLATE_OVERRIDE_KIND)
+			.limit(40);
+		if (error || !Array.isArray(data)) return;
+		const next: Partial<Record<TemplateId, TemplateDevOverrideSnapshot>> = {};
+		for (const row of data) {
+			const snap = row?.state as TemplateDevOverrideSnapshot | undefined;
+			if (!snap || snap.v !== 1 || !snap.templateId) continue;
+			const id = coerceTemplateId(snap.templateId);
+			next[id] = snap;
+		}
+		accountTemplateOverrides = next;
+	}
+
+	async function persistActiveTemplateAsAccountDefault() {
+		const template = activeTemplate;
+		await materializeBlobUrlsForDraftSave();
+		let snap = captureTemplateDevSnapshot(template);
+		if (userId && snap.starter) {
+			try {
+				const uploaded = await uploadTemplateMediaToR2AndRewriteState(`default-${template}`, {
+					bgImagesByTemplate: { [template]: snap.starter.bgImages ?? [] },
+					circleImages: snap.starter.circleImages ?? [],
+					circle2Images: snap.starter.circle2Images ?? [],
+					sourceLogoSrc: snap.starter.sourceLogoSrc ?? '',
+				});
+				snap = {
+					...snap,
+					starter: {
+						...snap.starter,
+						bgImages: uploaded.bgImagesByTemplate?.[template] ?? snap.starter.bgImages,
+						circleImages: uploaded.circleImages ?? snap.starter.circleImages,
+						circle2Images: uploaded.circle2Images ?? snap.starter.circle2Images,
+						sourceLogoSrc: String(uploaded.sourceLogoSrc ?? snap.starter.sourceLogoSrc ?? ''),
+					},
+				};
+			} catch (e) {
+				console.warn('[studio] starter media upload failed', e);
+			}
+		}
+		accountTemplateOverrides = { ...accountTemplateOverrides, [template]: snap };
+		if (isTemplateDevToolsEnabled()) saveTemplateDevOverride(snap);
+		applyTemplateDevOverride(template, { slides: 'all' });
+		if (!userId) return;
+		const { data: existing } = await (supabase as any)
+			.from('drafts')
+			.select('id,state')
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_TEMPLATE_OVERRIDE_KIND)
+			.limit(40);
+		const match = (existing ?? []).find(
+			(row: { state?: { templateId?: string } }) =>
+				coerceTemplateId(String(row?.state?.templateId ?? '')) === template,
+		) as { id?: string } | undefined;
+		if (match?.id) {
+			const { error } = await (supabase as any)
+				.from('drafts')
+				.update({ state: snap })
+				.eq('id', match.id)
+				.eq('user_id', userId)
+				.eq('kind', STUDIO_TEMPLATE_OVERRIDE_KIND);
+			if (error) throw new Error(error.message ?? 'Could not update template default');
+			return;
+		}
+		const { error } = await (supabase as any).from('drafts').insert({
+			user_id: userId,
+			kind: STUDIO_TEMPLATE_OVERRIDE_KIND,
+			state: snap,
+		});
+		if (error) throw new Error(error.message ?? 'Could not save template default');
+	}
+
+	function applyTemplateDevOverride(
+		template: TemplateId,
+		opts?: { slides?: 'all' | 'active' | number[] },
+	) {
+		const ov = resolveTemplateOverride(template);
+		if (!ov) return;
+		const n = Math.max(1, slides.length);
+		const idxs =
+			opts?.slides === 'active'
+				? [activeSlide]
+				: Array.isArray(opts?.slides)
+					? opts.slides
+					: Array.from({ length: n }, (_, i) => i);
+
+		if (ov.styles) {
+			const row = [...(stylesByTemplateBySlide[template] ?? [])];
+			while (row.length < n) row.push({});
+			for (const i of idxs) {
+				if (i < 0 || i >= n) continue;
+				row[i] = cloneDevJson(ov.styles);
+			}
+			stylesByTemplateBySlide = { ...stylesByTemplateBySlide, [template]: row };
+		}
+
+		if (template === 'tweet' && ov.tweetStyles) {
+			const row = [...tweetStylesBySlide];
+			while (row.length < n) row.push({});
+			for (const i of idxs) {
+				if (i < 0 || i >= n) continue;
+				row[i] = cloneDevJson(ov.tweetStyles);
+			}
+			tweetStylesBySlide = row;
+		}
+
+		if (ov.filmStrip && supportsFilmStrip(template)) {
+			const clamped = clampFilmStripPct(ov.filmStrip.topPct, ov.filmStrip.bottomPct);
+			const top = [...(filmStripTopPctByTemplate[template] ?? [])];
+			const bottom = [...(filmStripBottomPctByTemplate[template] ?? [])];
+			while (top.length < n) top.push(clamped.topPct);
+			while (bottom.length < n) bottom.push(clamped.bottomPct);
+			for (const i of idxs) {
+				if (i < 0 || i >= n) continue;
+				top[i] = clamped.topPct;
+				bottom[i] = clamped.bottomPct;
+			}
+			filmStripTopPctByTemplate = { ...filmStripTopPctByTemplate, [template]: top };
+			filmStripBottomPctByTemplate = { ...filmStripBottomPctByTemplate, [template]: bottom };
+		}
+
+		if (ov.textOffsets && Object.keys(ov.textOffsets).length) {
+			const next = textOffsetsBySlide.slice();
+			while (next.length < n) next.push({});
+			for (const i of idxs) {
+				if (i < 0 || i >= n) continue;
+				const row = { ...(next[i] ?? {}) };
+				for (const [kind, off] of Object.entries(ov.textOffsets)) {
+					if (!off) continue;
+					row[offsetKey(template, kind)] = { x: Number(off.x) || 0, y: Number(off.y) || 0 };
+				}
+				next[i] = row;
+			}
+			textOffsetsBySlide = next;
+		}
+
+		if (typeof ov.textColor === 'string' && ov.textColor.trim()) {
+			textColor = ov.textColor;
+			textColorTouched = true;
+		}
+		if (typeof ov.canvasBgDark === 'boolean') canvasBgDark = ov.canvasBgDark;
+		if (typeof ov.highlightColor === 'string') highlightColor = ov.highlightColor;
+		if (ov.highlightStyleKind === 'solid' || ov.highlightStyleKind === 'gradient' || ov.highlightStyleKind === 'pattern') {
+			highlightStyleKind = ov.highlightStyleKind;
+		}
+		if (typeof ov.highlightGradientFrom === 'string') highlightGradientFrom = ov.highlightGradientFrom;
+		if (typeof ov.highlightGradientTo === 'string') highlightGradientTo = ov.highlightGradientTo;
+		if (typeof ov.highlightPattern === 'string') highlightPattern = ov.highlightPattern;
+		if (typeof ov.studioTextHighlightsEnabled === 'boolean') {
+			studioTextHighlightsEnabled = ov.studioTextHighlightsEnabled;
+		}
+
+		const layout = ov.newsLayout;
+		if (template === 'news' && layout) {
+			if (typeof layout.circleX === 'number') circleX = layout.circleX;
+			if (typeof layout.circleY === 'number') circleY = layout.circleY;
+			if (typeof layout.circleSize === 'number') circleSize = layout.circleSize;
+			if (typeof layout.circle2X === 'number') circle2X = layout.circle2X;
+			if (typeof layout.circle2Y === 'number') circle2Y = layout.circle2Y;
+			if (typeof layout.circle2Size === 'number') circle2Size = layout.circle2Size;
+			if (typeof layout.bgOffsetX === 'number') bgOffsetX = layout.bgOffsetX;
+			if (typeof layout.bgOffsetY === 'number') bgOffsetY = layout.bgOffsetY;
+			if (typeof layout.bgZoom === 'number') bgZoom = layout.bgZoom;
+			if (layout.bgFitMode === 'cover' || layout.bgFitMode === 'contain') bgFitMode = layout.bgFitMode;
+			if (typeof layout.bgContainMagnify === 'number') bgContainMagnify = layout.bgContainMagnify;
+			if (typeof layout.textPanelOffsetY === 'number') textPanelOffsetY = layout.textPanelOffsetY;
+			if (typeof layout.shadowHeight === 'number') shadowHeight = layout.shadowHeight;
+			if (typeof layout.shadowStrength === 'number') shadowStrength = layout.shadowStrength;
+			if (typeof layout.circleBorderColor === 'string') circleBorderColor = layout.circleBorderColor;
+			if (typeof layout.circle2BorderColor === 'string') circle2BorderColor = layout.circle2BorderColor;
+			if (layout.circleShadow) circleShadow = normalizeCircleShadow(layout.circleShadow);
+			if (layout.circle2Shadow) circle2Shadow = normalizeCircleShadow(layout.circle2Shadow);
+		}
+	}
+
+	/** Seed default copy/media after Templates gallery / `?template=` opens (every starter layout). */
+	function seedFreshTemplateSession(template: TemplateId) {
+		newsHeadlineLive = null;
+		activeSlide = 0;
+		if (template === 'news') {
+			seedNewsStarterPlaceholderLayout({ force: true });
+			canvasBgDark = true;
+			if (!textColorTouched) textColor = '#FFFFFF';
+			applyTemplateDevOverride(template, { slides: 'all' });
+			return;
+		}
+		if (template === 'blank') {
+			applyTemplateDevOverride(template, { slides: 'all' });
+			return;
+		}
+
+		const n = Math.max(1, slides.length);
+		for (let i = 0; i < n; i++) {
+			ensureTemplateDefaultsForSlide(template, i);
+		}
+		if (template === 'tweet') {
+			for (let i = 0; i < n; i++) ensureTweetSlideProfileDefaults(i);
+		}
+		if (isVideoStoryFamily(template)) {
+			canvasBgDark = true;
+			if (!textColorTouched) textColor = '#FFFFFF';
+		}
+		applyTemplateDevOverride(template, { slides: 'all' });
 	}
 
 	async function loadLatestDraft() {
@@ -5725,11 +6642,47 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		});
 	}
 
-	async function saveStudioTemplateNamed(nameOverride?: string) {
+	async function listSavedStudioTemplates(): Promise<
+		{ id: string; name: string; updatedAt: string }[]
+	> {
+		if (!userId) return [];
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.select('id,updated_at,state')
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+			.order('updated_at', { ascending: false })
+			.limit(40);
+		if (error) throw new Error(error.message ?? 'Could not load templates');
+		return ((data ?? []) as { id: string; updated_at?: string; state?: Record<string, unknown> }[]).map(
+			(row) => ({
+				id: String(row.id ?? ''),
+				name: String(row.state?._templateName ?? '').trim() || 'Untitled template',
+				updatedAt: String(row.updated_at ?? ''),
+			}),
+		).filter((row) => row.id);
+	}
+
+	async function saveStudioTemplateNamed(
+		nameOverride?: string,
+		opts?: { overwriteId?: string },
+	) {
 		if (!userId) throw new Error('Sign in to save a template.');
 		const name =
 			(nameOverride ?? studioTemplateName).trim() ||
 			`Studio template ${new Date().toLocaleDateString()}`;
+		const overwriteId = String(opts?.overwriteId ?? '').trim();
+		if (overwriteId === BUILTIN_TEMPLATE_OVERWRITE_ID) {
+			studioTemplateSaving = true;
+			studioTemplateFeedback = '';
+			try {
+				await persistActiveTemplateAsAccountDefault();
+				studioTemplateFeedback = `Saved as your ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'template'} default.`;
+			} finally {
+				studioTemplateSaving = false;
+			}
+			return;
+		}
 		studioTemplateName = name;
 		studioTemplateSaving = true;
 		studioTemplateFeedback = '';
@@ -5763,16 +6716,45 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		await materializeBlobUrlsForDraftSave();
 		let state: Record<string, any> = { ...buildDraftState('template'), _templateName: name };
-		const { data, error } = await (supabase as any).from('drafts').insert({
-			user_id: userId,
-			kind: STUDIO_SAVED_TEMPLATE_KIND,
-			state,
-		}).select('id').single();
-		if (error) {
-			studioTemplateSaving = false;
-			throw new Error(error.message ?? 'Save failed');
+		let templateId = overwriteId;
+		if (templateId) {
+			const { data: existing, error: findErr } = await (supabase as any)
+				.from('drafts')
+				.select('id')
+				.eq('id', templateId)
+				.eq('user_id', userId)
+				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+				.maybeSingle();
+			if (findErr) {
+				studioTemplateSaving = false;
+				throw new Error(findErr.message ?? 'Could not find that template');
+			}
+			if (!existing) {
+				studioTemplateSaving = false;
+				throw new Error('That template is gone — save a new one instead.');
+			}
+			const { error } = await (supabase as any)
+				.from('drafts')
+				.update({ state })
+				.eq('id', templateId)
+				.eq('user_id', userId)
+				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+			if (error) {
+				studioTemplateSaving = false;
+				throw new Error(error.message ?? 'Replace failed');
+			}
+		} else {
+			const { data, error } = await (supabase as any).from('drafts').insert({
+				user_id: userId,
+				kind: STUDIO_SAVED_TEMPLATE_KIND,
+				state,
+			}).select('id').single();
+			if (error) {
+				studioTemplateSaving = false;
+				throw new Error(error.message ?? 'Save failed');
+			}
+			templateId = String(data?.id ?? '').trim();
 		}
-		const templateId = String(data?.id ?? '').trim();
 
 		let r2Note = '';
 		// Upload all embedded images to R2 and rewrite template state to `r2:<key>` refs.
@@ -5819,6 +6801,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					const msg = e instanceof Error ? e.message : String(e);
 					r2Note = ` R2 error: ${msg}. Check .env R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET — restart dev after changes.`;
 				}
+			}
+		}
+		if (overwriteId) {
+			try {
+				await persistActiveTemplateAsAccountDefault();
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : 'Could not set template default';
+				r2Note = `${r2Note} Default override: ${msg}`;
 			}
 		}
 		studioTemplateSaving = false;
@@ -5935,6 +6925,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			out.slideOverlaysByTemplate = next;
 		}
 
+		if (isImageDataUrl(out.sourceLogoSrc)) {
+			const u = String(out.sourceLogoSrc);
+			const mime = u.slice(5, u.indexOf(';'));
+			const key = `${base}/asset/sourceLogo.${extFromMime(mime)}`;
+			await uploadDataUrlToR2Key(u, key);
+			out.sourceLogoSrc = `r2:${key}`;
+		}
+
 		// Avatar / logo images used by templates (best effort)
 		for (const field of [
 			'tweetTopAvatarImageBySlide',
@@ -5993,6 +6991,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			category,
 			newsContentMode,
 			newsImageSourceMode,
+			newsCopyLength,
 			storyCategory,
 		factTopicPrompt,
 		factTopicCategory,
@@ -6005,6 +7004,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			source,
 			sourceLogoSrc,
 			sourceLabelMode,
+			sourceBorderKind,
+			sourceBorderColor,
 			sourceLogoWidth,
 			articleUrl,
 			articleTitle,
@@ -6077,9 +7078,11 @@ tweetTopImagePanYBySlide,
 			showCircleBySlide,
 			circleImages,
 			circleBorderColor,
+			circleShadow,
 			showCircle2BySlide,
 			circle2Images,
 			circle2BorderColor,
+			circle2Shadow,
 			circleX,
 			circleY,
 			circleSize,
@@ -6305,14 +7308,26 @@ tweetTopImagePanYBySlide,
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
 		userId = user.id;
-		const kit = loadBrandKit(user.id);
+		await loadAccountTemplateOverrides();
+		const kit = await hydrateBrandKit(user.id);
+		const profile = brandProfile(kit);
+		brandDisplayName = profile.name;
+		brandHandle = profile.handle;
+		applyBrandProfileToSlides(profile.name, profile.handle);
 		brandCta = kit.cta?.headline || kit.cta?.image ? kit.cta : loadBrandCta(user.id);
 		// Prefill logo asset if brand kit has one, but keep source label as text by default.
 		const kitLogo = String(kit.logoUrl ?? '').trim();
 		if (kitLogo && !String(sourceLogoSrc ?? '').trim()) {
 			sourceLogoSrc = kitLogo;
 		}
-		if (!String(source ?? '').trim()) source = NEWS_DEFAULT_SOURCE;
+		if (isPlaceholderNewsSource(source)) source = defaultNewsSource();
+		if (kit.highlightColor) highlightColor = kit.highlightColor;
+		highlightStyleKind = normalizeHighlightStyleKind(kit.highlightStyleKind);
+		if (kit.highlightPattern) highlightPattern = kit.highlightPattern;
+		if (kit.highlightGradientFrom) highlightGradientFrom = kit.highlightGradientFrom;
+		if (kit.highlightGradientTo) highlightGradientTo = kit.highlightGradientTo;
+		brandTextBgColor = kit.textBgColor ?? '';
+		if (brandTextBgColor) patchNewsSourceStyle({ bgColor: brandTextBgColor });
 		draftRestoring = true;
 		const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 		const savedParam = sp?.get('saved') ?? null;
@@ -6370,12 +7385,8 @@ tweetTopImagePanYBySlide,
 						} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
 							// Fresh session from template carousel / `?template=` — never overlay last autosave.
 							applyBlankCanvas();
-							applyTemplateToAll(forcedTemplateFromQuery);
-							if (isVideoStoryFamily(forcedTemplateFromQuery)) {
-								canvasBgDark = true;
-								if (!textColorTouched) textColor = '#FFFFFF';
-							}
-							seedNewsStarterPlaceholderLayout();
+							applyTemplateToAll(forcedTemplateFromQuery, { skipNewsSeed: true });
+							seedFreshTemplateSession(forcedTemplateFromQuery);
 						}
 						// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
 					} finally {
@@ -6387,8 +7398,37 @@ tweetTopImagePanYBySlide,
 			});
 	});
 
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const onBrandKit = (ev: Event) => {
+			const kit = (ev as CustomEvent).detail;
+			const p = brandProfile(kit);
+			if (p.name) {
+				brandDisplayName = p.name;
+				brandHandle = p.handle;
+				applyBrandProfileToSlides(p.name, p.handle);
+			}
+			const nextHi = String(kit?.highlightColor ?? '').trim();
+			if (nextHi) highlightColor = nextHi;
+			if (kit?.highlightStyleKind) {
+				highlightStyleKind = normalizeHighlightStyleKind(kit.highlightStyleKind);
+			}
+			if (kit?.highlightPattern) highlightPattern = String(kit.highlightPattern);
+			if (kit?.highlightGradientFrom) highlightGradientFrom = String(kit.highlightGradientFrom);
+			if (kit?.highlightGradientTo) highlightGradientTo = String(kit.highlightGradientTo);
+			if ('textBgColor' in (kit ?? {})) {
+				const nextBg = normalizeTextBgHex(String(kit?.textBgColor ?? ''));
+				brandTextBgColor = nextBg;
+				patchNewsSourceStyle({ bgColor: nextBg || undefined });
+			}
+		};
+		window.addEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+		return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+	});
+
 	// ── Categories ────────────────────────────────────────────────────────
 	const categories = [
+		{ id: 'general', label: 'General' },
 		{ id: 'business', label: 'Business' },
 		{ id: 'tech', label: 'Tech' },
 		{ id: 'finance', label: 'Finance' },
@@ -6397,7 +7437,6 @@ tweetTopImagePanYBySlide,
 		{ id: 'science', label: 'Science' },
 		{ id: 'sports', label: 'Sports' },
 		{ id: 'entertainment', label: 'Entertainment' },
-		{ id: 'general', label: 'General' },
 	];
 
 	const sourceLabels: Record<string, string> = {
@@ -6652,9 +7691,28 @@ tweetTopImagePanYBySlide,
 	}
 
 	/** Apply carousel headline strings to the template the user had selected (not always News). */
+	function resetNewsSourceOffsets() {
+		if (!textOffsetsBySlide.length) return;
+		let changed = false;
+		const next = textOffsetsBySlide.map((row) => {
+			if (!row || !('news:source' in row)) return row;
+			changed = true;
+			const copy = { ...row };
+			delete copy['news:source'];
+			return copy;
+		});
+		if (changed) textOffsetsBySlide = next;
+	}
+
+	function fitNewsShadowFromStack(info: { topPct: number; heightPct: number }) {
+		const cover = Math.round(Math.max(42, Math.min(96, 100 - info.topPct + 12)));
+		if (Math.abs(cover - shadowHeight) >= 2) shadowHeight = cover;
+	}
+
 	function applyHeadlineStringsToTemplate(template: TemplateId, strings: string[], replies?: string[]) {
 		const clipped = strings.map((s) => clampFetchedPrimaryForTemplate(template, s));
 		slides = [...clipped];
+		if (template === 'news') resetNewsSourceOffsets();
 		if (template === 'tweet') {
 			tweetTopTextBySlide = [...clipped];
 			applyTweetReplyStrings(replies ?? []);
@@ -6752,6 +7810,7 @@ tweetTopImagePanYBySlide,
 
 	async function fetchNews(opts: { fillOnly?: boolean; preferExistingDeck?: boolean } = {}) {
 		fetchingNews = true;
+		await tick();
 		newsError = '';
 		activeSlide = 0;
 		const contentTemplate: TemplateId = slideTemplates[0] ?? lastTemplateUsed ?? 'news';
@@ -6842,6 +7901,7 @@ tweetTopImagePanYBySlide,
 					syntheticHint: syntheticHintStr || undefined,
 					stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
 					studioRegenAt: Date.now(),
+					maxWords: studioMaxWords,
 				}),
 			});
 			const data = await res.json();
@@ -6867,7 +7927,7 @@ tweetTopImagePanYBySlide,
 
 			// Only write metadata into the workspace when we are *owning the deck* (not filling a custom template).
 			if (!fillExistingDeck) {
-				source = nextSource;
+				source = brandDisplayName.trim() || nextSource;
 				articleUrl = nextArticleUrl;
 				articleTitle = nextArticleTitle;
 				articleSnippet = rawText;
@@ -6892,7 +7952,7 @@ tweetTopImagePanYBySlide,
 				articleUrl = nextArticleUrl;
 				articleTitle = nextArticleTitle;
 				articleSnippet = rawText;
-				source = nextSource;
+				source = brandDisplayName.trim() || nextSource;
 			} else if (
 				newsContentMode === 'news' ||
 				newsContentMode === 'fact' ||
@@ -6952,6 +8012,7 @@ tweetTopImagePanYBySlide,
 								contentMode: newsContentMode,
 								stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
 								includeReplies: wantsTweetReplies,
+								maxWords: studioMaxWords,
 							}),
 						});
 						const data = await res.json();
@@ -6999,14 +8060,14 @@ tweetTopImagePanYBySlide,
 				let blackTextBodyFilled = false;
 				for (const t of targets) {
 					pushUndo(t.template, t.slide);
+					let primaryForPlaceholders = hookText;
 					if (t.template === 'textCarousel') {
-						applyPrimaryClampedToSlide(
-							t.slide,
-							'textCarousel',
-							carouselBodies[carouselIdx++] ?? '',
-						);
+						const body = carouselBodies[carouselIdx++] ?? '';
+						primaryForPlaceholders = body;
+						applyPrimaryClampedToSlide(t.slide, 'textCarousel', body);
 					} else {
 						const primary = copyStrings[copyIdx] ?? hookText;
+						primaryForPlaceholders = primary;
 						const reply =
 							t.template === 'tweet' ? tweetReplies[copyIdx] ?? TWEET_DEFAULTS.bottomText : undefined;
 						copyIdx++;
@@ -7023,6 +8084,13 @@ tweetTopImagePanYBySlide,
 							);
 						}
 					}
+					// Replace starter text boxes / clear News overlay stacks — never leave “SLIDE 2” etc.
+					syncFetchedPlaceholdersForSlide(
+						t.template,
+						t.slide,
+						primaryForPlaceholders,
+						String(rawText || articleSnippet || '').trim(),
+					);
 				}
 				// Blank never renders `slides[]` — drop stale News headline strings after fetch.
 				for (let i = 0; i < n; i++) {
@@ -7034,7 +8102,7 @@ tweetTopImagePanYBySlide,
 				if (targets.some((t) => t.template === 'blank')) {
 					articleSnippet = rawText;
 					articleTitle = nextArticleTitle || articleTitle;
-					source = nextSource;
+					source = brandDisplayName.trim() || nextSource;
 					fillBlankTextFromFetch(hookText, rawText);
 				}
 			// Deck has news slides → regenerate their backgrounds on every Load & Fill.
@@ -7075,6 +8143,10 @@ tweetTopImagePanYBySlide,
 						news: Array.from({ length: n }, () => []),
 					};
 					showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
+					const sub0 = String(rawText || '').trim()
+						? clampFetchedPlainLength(String(rawText), Math.min(220, FETCH_TEXT_CLIP.news), false)
+						: '';
+					newsSubtextBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? sub0 : ''));
 				} else {
 					const heroBgRow =
 						templateAcceptsArticleHeroBackground(contentTemplate) && newsImageSourceMode === 'pull' && newsGenerateImages
@@ -7165,6 +8237,22 @@ tweetTopImagePanYBySlide,
 		| { kind: 'textOverlay'; template: TemplateId; slide: number; overlayId: string }
 		| { kind: 'primary'; template: TemplateId; slide: number };
 
+	/** Decorative “SLIDE 2” labels from starter decks — drop on Load & Fill, never treat as content. */
+	function isSlideNumberPlaceholder(text: string): boolean {
+		return /^slide\s*\d+$/i.test(String(text ?? '').replace(/\s+/g, ' ').trim());
+	}
+
+	function splitBodyIntoPlaceholderLines(hookText: string, rawText: string): string[] {
+		const hook = String(hookText ?? '').trim();
+		const body = String(rawText ?? '').trim();
+		const extraLines = body
+			.split(/(?<=[.!?])\s+/)
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.slice(0, 7);
+		return [hook, ...extraLines.filter((l) => l !== hook)].filter(Boolean);
+	}
+
 	function setTextOverlayText(template: TemplateId, slide: number, overlayId: string, text: string) {
 		const rows = slideTextOverlaysByTemplate[template] ?? [];
 		const nextRows = rows.map((r) => [...r]);
@@ -7173,37 +8261,109 @@ tweetTopImagePanYBySlide,
 		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: nextRows };
 	}
 
+	/**
+	 * Treat free-form text boxes as placeholders: drop “SLIDE N” labels, replace remaining
+	 * copy in one write (avoids mid-loop $state races leaving old layers visible).
+	 */
+	function replaceTextOverlaysAsPlaceholders(
+		template: TemplateId,
+		slide: number,
+		lines: string[],
+	) {
+		const rows = [...(slideTextOverlaysByTemplate[template] ?? [])];
+		while (rows.length <= slide) rows.push([]);
+		const prev = rows[slide] ?? [];
+		if (!prev.length) return;
+		const content = lines.map((l) => String(l ?? '').trim()).filter(Boolean);
+		if (!content.length) {
+			rows[slide] = prev.filter((o) => !isSlideNumberPlaceholder(o.text));
+			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: rows };
+			return;
+		}
+		let lineIdx = 0;
+		const next: TextOverlay[] = [];
+		for (const o of prev) {
+			if (isSlideNumberPlaceholder(o.text)) continue;
+			next.push({ ...o, text: content[lineIdx % content.length]! });
+			lineIdx++;
+		}
+		rows[slide] = next;
+		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: rows };
+	}
+
+	/**
+	 * After primary copy is applied: sync placeholder overlays + News subtext so Load & Fill
+	 * replaces (never stacks) starter/demo text.
+	 */
+	function syncFetchedPlaceholdersForSlide(
+		template: TemplateId,
+		slide: number,
+		primaryText: string,
+		bodyText: string,
+	) {
+		const primary = String(primaryText ?? '').trim();
+		const body = String(bodyText ?? '').trim();
+		const lines = splitBodyIntoPlaceholderLines(primary, body);
+
+		if (template === 'news') {
+			// Built-in News headline owns the copy — clear stacked StudioTextOverlays (incl. “SLIDE 2”).
+			const rows = [...(slideTextOverlaysByTemplate.news ?? [])];
+			while (rows.length <= slide) rows.push([]);
+			if ((rows[slide] ?? []).length) {
+				rows[slide] = [];
+				slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: rows };
+			}
+			const sub = body
+				? clampFetchedPlainLength(body, Math.min(220, FETCH_TEXT_CLIP.news), false)
+				: '';
+			while (newsSubtextBySlide.length <= slide) {
+				newsSubtextBySlide = [...newsSubtextBySlide, ''];
+			}
+			newsSubtextBySlide = newsSubtextBySlide.map((x, i) => (i === slide ? sub : x));
+			return;
+		}
+
+		if (template === 'blank') {
+			replaceTextOverlaysAsPlaceholders('blank', slide, lines.length ? lines : [primary]);
+			return;
+		}
+
+		// Other templates: keep layout boxes, swap copy, drop slide-number labels.
+		replaceTextOverlaysAsPlaceholders(template, slide, lines.length ? lines : [primary]);
+	}
+
 	/** Apply fetched hook/body copy onto existing blank-canvas text boxes (Quote/Fact/Story/News). */
 	function fillBlankTextFromFetch(hookText: string, rawText: string) {
-		const hook = String(hookText ?? '').trim();
-		const body = String(rawText ?? '').trim();
-		if (!hook && !body) return;
-
-		const extraLines = body
-			.split(/(?<=[.!?])\s+/)
-			.map((s) => s.trim())
-			.filter(Boolean)
-			.slice(0, 7);
-		const lines = [hook, ...extraLines.filter((l) => l !== hook)].filter(Boolean);
+		const lines = splitBodyIntoPlaceholderLines(hookText, rawText);
 		if (!lines.length) return;
 
 		const n = Math.max(1, slides.length);
+		const blankRows = [...(slideTextOverlaysByTemplate.blank ?? [])];
+		let changed = false;
 		let lineIdx = 0;
 		for (let i = 0; i < n; i++) {
 			if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) !== 'blank') continue;
-			const overlays = (slideTextOverlaysByTemplate.blank ?? [])[i] ?? [];
-			for (const o of overlays) {
-				const text = lines[lineIdx % lines.length] ?? hook;
+			while (blankRows.length <= i) blankRows.push([]);
+			const prev = blankRows[i] ?? [];
+			if (!prev.length) continue;
+			pushUndo('blank', i);
+			const next: TextOverlay[] = [];
+			for (const o of prev) {
+				if (isSlideNumberPlaceholder(o.text)) continue;
+				next.push({ ...o, text: lines[lineIdx % lines.length]! });
 				lineIdx++;
-				pushUndo('blank', i);
-				setTextOverlayText('blank', i, o.id, text);
 			}
+			blankRows[i] = next;
+			changed = true;
+		}
+		if (changed) {
+			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, blank: blankRows };
 		}
 	}
 
 	function collectFillSlots(
 		skipPrimary = false,
-		opts?: { skipBlankOverlays?: boolean },
+		opts?: { skipBlankOverlays?: boolean; skipNewsOverlays?: boolean },
 	): FillSlot[] {
 		// Collect fill targets across ALL slides so every template gets populated correctly.
 		const out: FillSlot[] = [];
@@ -7216,8 +8376,10 @@ tweetTopImagePanYBySlide,
 			}
 			// All text overlays on this slide (blank canvas / custom text boxes).
 			if (opts?.skipBlankOverlays && tpl === 'blank') continue;
+			if (opts?.skipNewsOverlays && tpl === 'news') continue;
 			const overlays = (slideTextOverlaysByTemplate[tpl] ?? [])[i] ?? [];
 			for (const o of overlays) {
+				if (isSlideNumberPlaceholder(o.text)) continue;
 				out.push({ kind: 'textOverlay', template: tpl, slide: i, overlayId: o.id });
 			}
 		}
@@ -7281,9 +8443,10 @@ tweetTopImagePanYBySlide,
 	 *  `skipPrimary`: only fill text overlays — use after `fetchNews` so headlines stay article/variant copy. */
 	async function fillInTextFromTopic(
 		explicitTopic?: string,
-		opts?: { skipPrimary?: boolean; skipBlankOverlays?: boolean },
+		opts?: { skipPrimary?: boolean; skipBlankOverlays?: boolean; skipNewsOverlays?: boolean },
 	) {
 		fetchingNews = true;
+		await tick();
 		newsError = '';
 		try {
 			const topic = (explicitTopic ?? String(search || '')).trim();
@@ -7294,6 +8457,7 @@ tweetTopImagePanYBySlide,
 
 			const slots = collectFillSlots(!!opts?.skipPrimary, {
 				skipBlankOverlays: !!opts?.skipBlankOverlays,
+				skipNewsOverlays: !!opts?.skipNewsOverlays,
 			});
 			if (!slots.length) {
 				const onBlank = slideTemplates.some((t) => coerceTemplateId(t) === 'blank');
@@ -7332,6 +8496,27 @@ tweetTopImagePanYBySlide,
 			// If the user is mid-inline-edit on News, clear the live buffer so replacements show immediately.
 			if (newsHeadlineLive !== null) newsHeadlineLive = null;
 
+			// Drop leftover “SLIDE N” labels on any template touched by this fill.
+			{
+				const nextOverlays = { ...slideTextOverlaysByTemplate };
+				let overlaysChanged = false;
+				for (let i = 0; i < slides.length; i++) {
+					const tpl = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
+					if (opts?.skipBlankOverlays && tpl === 'blank') continue;
+					if (opts?.skipNewsOverlays && tpl === 'news') continue;
+					const row = [...(nextOverlays[tpl] ?? [])];
+					while (row.length <= i) row.push([]);
+					const prev = row[i] ?? [];
+					const filtered = prev.filter((o) => !isSlideNumberPlaceholder(o.text));
+					if (filtered.length !== prev.length) {
+						row[i] = filtered;
+						nextOverlays[tpl] = row;
+						overlaysChanged = true;
+					}
+				}
+				if (overlaysChanged) slideTextOverlaysByTemplate = nextOverlays;
+			}
+
 			for (let i = 0; i < slots.length; i++) {
 				const slot = slots[i];
 				const text = lines[i % lines.length];
@@ -7345,7 +8530,9 @@ tweetTopImagePanYBySlide,
 			}
 
 			const hasBlankSlides = slideTemplates.some((t) => coerceTemplateId(t) === 'blank');
-			if (hasBlankSlides) {
+			// Standalone topic-fill refreshes blank photos here. Load & Fill does it separately
+			// after fetchNews so we don't double-hit Vertex when skipBlankOverlays is set.
+			if (hasBlankSlides && !opts?.skipBlankOverlays) {
 				await fillBlankImagesFromTopic(topic, lines);
 			}
 		} catch (e: any) {
@@ -7359,53 +8546,80 @@ tweetTopImagePanYBySlide,
 	/** Load an article (or generate content) then immediately fill every template text slot.
 	 *  This combines the old two-step workflow into one action. */
 	async function loadAndFill() {
-		await fetchNews({ preferExistingDeck: true });
-		// After the article is loaded, also fill all template slots using the article content
-		// so every slide (including custom text overlays) gets populated in one click.
-		const syntheticTopic =
-			newsContentMode === 'quote'
-				? [quoteTopicCategory !== 'any' ? factTopics.find((t) => t.id === quoteTopicCategory)?.label ?? '' : '', quoteTopicPrompt.trim()]
-						.filter(Boolean)
-						.join(': ')
-				: newsContentMode === 'fact'
-					? [factTopicCategory !== 'any' ? factTopics.find((t) => t.id === factTopicCategory)?.label ?? '' : '', factTopicPrompt.trim()]
+		studioGenerating = true;
+		fetchingNews = true;
+		await tick();
+		// Load & Fill must always refresh media with live article/AI assets — never keep demo/test bgs.
+		const prevGenerateImages = newsGenerateImages;
+		newsGenerateImages = true;
+		try {
+			await fetchNews({ preferExistingDeck: true });
+			// After the article is loaded, also fill remaining non-News / non-blank text slots.
+			// News + blank placeholders are already replaced inside fetchNews — do not stack a second
+			// /api/generate-slides pass on those layers (that caused overlapping headlines).
+			const syntheticTopic =
+				newsContentMode === 'quote'
+					? [quoteTopicCategory !== 'any' ? factTopics.find((t) => t.id === quoteTopicCategory)?.label ?? '' : '', quoteTopicPrompt.trim()]
 							.filter(Boolean)
 							.join(': ')
-					: newsContentMode === 'story'
-						? storyTopicPrompt.trim()
-						: newsContentMode === 'steps'
-							? stepsTopicPrompt.trim()
-							: '';
-		const fillTopic = (articleSnippet || articleTitle || syntheticTopic || search || '').trim();
-		if (fillTopic) {
-			// Blank text boxes are filled inside fetchNews; avoid overwriting with /api/generate-slides.
-			await fillInTextFromTopic(fillTopic, { skipPrimary: true, skipBlankOverlays: true });
-		}
-		// Second pass: parallel slide Vertex calls can 429 the circle; overlay fill can also shift
-		// scheduling. If any News badge is still empty, retry those slides after everything settles.
-		const n = Math.max(1, slides.length);
-		if (
-			newsContentMode === 'news' ||
-			newsContentMode === 'fact' ||
-			newsContentMode === 'story' ||
-			newsContentMode === 'quote' ||
-			newsContentMode === 'steps'
-		) {
-			await tick();
-			const needCircle: number[] = [];
-			for (let i = 0; i < n; i++) {
-				if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) !== 'news') continue;
-				if (!(showCircleBySlide[i] ?? false)) continue;
-				const hasCircleMedia = String(resolveMediaUrl(circleImages[i] ?? '')).trim().length > 0;
-				if (!hasCircleMedia) needCircle.push(i);
+					: newsContentMode === 'fact'
+						? [factTopicCategory !== 'any' ? factTopics.find((t) => t.id === factTopicCategory)?.label ?? '' : '', factTopicPrompt.trim()]
+								.filter(Boolean)
+								.join(': ')
+						: newsContentMode === 'story'
+							? storyTopicPrompt.trim()
+							: newsContentMode === 'steps'
+								? stepsTopicPrompt.trim()
+								: '';
+			const fillTopic = (articleSnippet || articleTitle || syntheticTopic || search || '').trim();
+			if (fillTopic) {
+				await fillInTextFromTopic(fillTopic, {
+					skipPrimary: true,
+					skipBlankOverlays: true,
+					skipNewsOverlays: true,
+				});
 			}
-			for (let k = 0; k < needCircle.length; k++) {
-				await new Promise<void>((r) => setTimeout(r, 400));
-				await generateCircleImage(needCircle[k], true);
-				if (k < needCircle.length - 1) {
-					await new Promise<void>((r) => setTimeout(r, 350));
+
+			// Blank decks skip overlay fill above — still force live background/sticker regeneration.
+			const hasBlankSlides = slideTemplates.some((t) => coerceTemplateId(t) === 'blank');
+			if (hasBlankSlides) {
+				const lines = splitBodyIntoPlaceholderLines(
+					slides.find((s) => String(s ?? '').trim()) || articleTitle || fillTopic,
+					articleSnippet || fillTopic,
+				);
+				await fillBlankImagesFromTopic(fillTopic || search || 'editorial photo', lines.length ? lines : [fillTopic || search || 'editorial photo']);
+			}
+
+			// Second pass: parallel slide Vertex calls can 429 the circle; overlay fill can also shift
+			// scheduling. If any News badge is still empty, retry those slides after everything settles.
+			const n = Math.max(1, slides.length);
+			if (
+				newsContentMode === 'news' ||
+				newsContentMode === 'fact' ||
+				newsContentMode === 'story' ||
+				newsContentMode === 'quote' ||
+				newsContentMode === 'steps'
+			) {
+				await tick();
+				const needCircle: number[] = [];
+				for (let i = 0; i < n; i++) {
+					if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) !== 'news') continue;
+					if (!(showCircleBySlide[i] ?? false)) continue;
+					const hasCircleMedia = String(resolveMediaUrl(circleImages[i] ?? '')).trim().length > 0;
+					if (!hasCircleMedia) needCircle.push(i);
+				}
+				for (let k = 0; k < needCircle.length; k++) {
+					await new Promise<void>((r) => setTimeout(r, 400));
+					await generateCircleImage(needCircle[k], true);
+					if (k < needCircle.length - 1) {
+						await new Promise<void>((r) => setTimeout(r, 350));
+					}
 				}
 			}
+		} finally {
+			newsGenerateImages = prevGenerateImages;
+			studioGenerating = false;
+			fetchingNews = false;
 		}
 	}
 
@@ -7434,6 +8648,7 @@ tweetTopImagePanYBySlide,
 					contentMode: newsContentMode,
 					stepCount: newsContentMode === 'steps' ? stepsCount : undefined,
 					includeReplies: template === 'tweet',
+					maxWords: studioMaxWords,
 				}),
 			});
 			const data = await res.json();
@@ -7501,6 +8716,10 @@ tweetTopImagePanYBySlide,
 				slideText ||
 				title ||
 				'editorial news photo';
+			if (newsImageSourceMode === 'assets') {
+				await applyStockUrlsToSlides(template, [slideIdx], studioStockQuery() || prompt);
+				return;
+			}
 			const res = await fetch('/api/vertex', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -7635,6 +8854,13 @@ tweetTopImagePanYBySlide,
 		await tick();
 
 		const articleSrc = String(articleImageUrl ?? '').trim();
+		if (newsImageSourceMode === 'assets') {
+			await applyStockUrlsToSlides(
+				template,
+				Array.from({ length: n }, (_, i) => i),
+				studioStockQuery(),
+			);
+		} else {
 		const skipSlide0Gen =
 			newsImageSourceMode === 'pull' &&
 			!!articleSrc &&
@@ -7657,6 +8883,7 @@ tweetTopImagePanYBySlide,
 			return generateBackground(i, prompt, template, true);
 		});
 	await Promise.all(promises);
+		}
 
 	// Space out circle vs N parallel slide requests so Vertex quota is less likely to 429 the badge.
 	await new Promise<void>((r) => setTimeout(r, 1200));
@@ -7698,6 +8925,9 @@ tweetTopImagePanYBySlide,
 			generatingImagesByTemplate = { ...generatingImagesByTemplate, tweet: genRow };
 
 			const primaryTweetSlide = tweetSlideIdxs[0]!;
+			if (newsImageSourceMode === 'assets') {
+				await applyStockUrlsToSlides('tweet', tweetSlideIdxs, studioStockQuery());
+			} else {
 			const skipPrimaryGen =
 				newsImageSourceMode === 'pull' && !!articleSrc;
 			if (skipPrimaryGen) {
@@ -7718,6 +8948,7 @@ tweetTopImagePanYBySlide,
 					return generateBackground(slideIdx, prompt, 'tweet', true);
 				}),
 			);
+			}
 
 			studioImageGenPaintHold = true;
 			await flushStudioLoadingPaint();
@@ -7780,8 +9011,15 @@ tweetTopImagePanYBySlide,
 		}
 		slideTemplates = Array.from({ length: slides.length }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 
-		// Slide 0: use article image when "Pull first image from news"; otherwise AI-generate all slides
+		// Slide 0: use article image when "Pull first image from news"; assets = Unsplash+Pexels; else AI
 		const articleSrc = String(articleImageUrl ?? '').trim();
+		if (newsImageSourceMode === 'assets' && template !== 'blackText') {
+			await applyStockUrlsToSlides(
+				template,
+				slides.map((_, i) => i),
+				studioStockQuery(),
+			);
+		} else {
 		const usePulledHero =
 			newsImageSourceMode === 'pull' &&
 			!!articleSrc &&
@@ -7807,6 +9045,7 @@ tweetTopImagePanYBySlide,
 		});
 
 		await Promise.all(promises);
+		}
 
 		studioImageGenPaintHold = true;
 		await flushStudioLoadingPaint();
@@ -8212,6 +9451,46 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		circleAIGenerating = false;
 	}
 
+	// ── Background AI modal ───────────────────────────────────────────────
+	let bgAIModalOpen = $state(false);
+	let bgAIPrompt = $state('');
+	let bgAIRecommended = $state('');
+	let bgAIGenerating = $state(false);
+
+	function recommendedBgPrompt(
+		template: TemplateId = previewTemplate,
+		slideIdx: number = paintSlide,
+	): string {
+		const slideText = primarySlideTextForPrompt(template, slideIdx);
+		const title = String(articleTitle ?? '').trim();
+		return slideText || title || 'editorial news photo';
+	}
+
+	function openBgAIModal() {
+		closeNewsBgToolbar();
+		bgAIRecommended = recommendedBgPrompt();
+		bgAIPrompt = '';
+		bgAIModalOpen = true;
+	}
+
+	function closeBgAIModal() {
+		bgAIModalOpen = false;
+		bgAIPrompt = '';
+		bgAIGenerating = false;
+	}
+
+	async function submitBgAIModal() {
+		const prompt = bgAIPrompt.trim() || bgAIRecommended;
+		if (!prompt) return;
+		bgAIGenerating = true;
+		try {
+			await generateBackground(paintSlide, prompt, previewTemplate);
+			closeBgAIModal();
+		} finally {
+			bgAIGenerating = false;
+		}
+	}
+
 	async function submitCircleAIModal() {
 		if (!circleAIModalFor) return;
 		const which = circleAIModalFor;
@@ -8317,6 +9596,13 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
+	function looksLikeVideoUrl(url: string): boolean {
+		const u = String(url ?? '').trim().toLowerCase();
+		if (!u) return false;
+		if (u.startsWith('data:video/')) return true;
+		return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u);
+	}
+
 	/** Apply a saved library asset (`r2:…`) as the active slide background. */
 	async function applyAssetAsBackground(r2Ref: string) {
 		const ref = String(r2Ref ?? '').trim();
@@ -8328,11 +9614,31 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				alert('Could not load this asset — try again or re-upload it.');
 				return;
 			}
+			const t = activeTemplate;
+			const i = activeSlide;
+			if (looksLikeVideoUrl(resolved) || looksLikeVideoUrl(ref)) {
+				backgroundMediaLoading = true;
+				freezePreviewShell();
+				try {
+					if (t === 'news' || t === 'blank') applyNewsSeedBackgroundLayout();
+					const blobUrl = resolved.startsWith('blob:') || resolved.startsWith('data:')
+						? resolved
+						: await fetchRemoteVideoAsBlobUrl(resolved);
+					setSlideVideo(i, blobUrl, t);
+					await waitForCanvasVideoReady();
+				} finally {
+					backgroundMediaLoading = false;
+					releasePreviewShellSoon();
+					studioSizeTransitions = false;
+					window.setTimeout(() => {
+						if (!backgroundMediaLoading) studioSizeTransitions = true;
+					}, 280);
+				}
+				return;
+			}
 			// Prefer a data URL so Save template / Export aren't blocked by R2 CORS.
 			const safe = await toExportSafeImageUrl(ref.startsWith('r2:') ? ref : resolved);
 			const finalUrl = String(safe ?? '').trim() || resolved;
-			const t = activeTemplate;
-			const i = activeSlide;
 			// Clear video without wiping the image slot (setSlideVideo blanks images).
 			const vids = templateMediaArraysPadded(t, i).videos;
 			bgVideosByTemplate = {
@@ -8407,26 +9713,35 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		});
 	}
 
-	/** Wait until the canvas `<video>` has a decoded frame (or timeout). */
+	/** Wait until the canvas `<video>` has a decoded frame (or timeout), then play. */
 	async function waitForCanvasVideoReady(timeoutMs = 8000): Promise<void> {
 		await tick();
 		await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 		const node = exportRef;
-		const video = node?.querySelector?.('video') as HTMLVideoElement | null | undefined;
-		if (!video) return;
-		if (video.readyState >= 2 && video.videoWidth > 0) return;
-		await new Promise<void>((resolve) => {
-			const done = () => {
-				video.removeEventListener('loadeddata', done);
-				video.removeEventListener('canplay', done);
-				video.removeEventListener('error', done);
-				resolve();
-			};
-			video.addEventListener('loadeddata', done);
-			video.addEventListener('canplay', done);
-			video.addEventListener('error', done);
-			setTimeout(done, timeoutMs);
-		});
+		const videos = Array.from(node?.querySelectorAll?.('video') ?? []) as HTMLVideoElement[];
+		if (!videos.length) return;
+		await Promise.all(
+			videos.map(
+				(video) =>
+					new Promise<void>((resolve) => {
+						const done = () => {
+							video.removeEventListener('loadeddata', done);
+							video.removeEventListener('canplay', done);
+							video.removeEventListener('error', done);
+							resolve();
+						};
+						if (video.readyState >= 2 && video.videoWidth > 0) {
+							resolve();
+							return;
+						}
+						video.addEventListener('loadeddata', done);
+						video.addEventListener('canplay', done);
+						video.addEventListener('error', done);
+						setTimeout(done, timeoutMs);
+					}),
+			),
+		);
+		for (const video of videos) playMediaVideo(video);
 	}
 
 	/** Apply a Pexels stock video as the active slide background (blob URL so export isn't CORS-blocked). */
@@ -8482,10 +9797,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			return;
 		}
 		const measureSrc = resolved;
-		const img = new window.Image();
-		img.onload = () => {
-			const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
-			const w = Math.min(300, img.naturalWidth || 300);
+		const placeOverlay = (naturalW: number, naturalH: number) => {
+			const aspect = naturalW / Math.max(1, naturalH);
+			const w = Math.min(300, naturalW || 300);
 			const h = w / aspect;
 			const idx = activeSlide;
 			const newOverlay: Overlay = {
@@ -8498,6 +9812,22 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			};
 			const current = (slideOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
 			setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
+		};
+		if (looksLikeVideoUrl(resolved) || looksLikeVideoUrl(ref)) {
+			const video = document.createElement('video');
+			video.preload = 'metadata';
+			video.onloadedmetadata = () => {
+				placeOverlay(video.videoWidth || 300, video.videoHeight || 300);
+			};
+			video.onerror = () => {
+				alert('Could not load this asset video.');
+			};
+			video.src = measureSrc;
+			return;
+		}
+		const img = new window.Image();
+		img.onload = () => {
+			placeOverlay(img.naturalWidth || 300, img.naturalHeight || 300);
 		};
 		img.onerror = () => {
 			alert('Could not load this asset image.');
@@ -8530,8 +9860,14 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	function handleCircleUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
-		const reader = new FileReader();
 		const idx = activeSlide;
+		if (isVideoFile(file)) {
+			const url = objectUrlForVideoFile(file);
+			circleImages = circleImages.map((v, i) => (i === idx ? url : v));
+			void waitForCanvasVideoReady();
+			return;
+		}
+		const reader = new FileReader();
 		reader.onload = () => { circleImages = circleImages.map((v, i) => (i === idx ? (reader.result as string) : v)); };
 		reader.readAsDataURL(file);
 	}
@@ -8539,8 +9875,15 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	function handleCircle2Upload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
-		const reader = new FileReader();
 		const idx = activeSlide;
+		if (isVideoFile(file)) {
+			const url = objectUrlForVideoFile(file);
+			circle2Images = circle2Images.map((v, i) => (i === idx ? url : v));
+			showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === idx ? true : v));
+			void waitForCanvasVideoReady();
+			return;
+		}
+		const reader = new FileReader();
 		reader.onload = () => {
 			circle2Images = circle2Images.map((v, i) => (i === idx ? (reader.result as string) : v));
 			showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === idx ? true : v));
@@ -8605,6 +9948,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (isVideo) {
 			const url = URL.createObjectURL(file);
 			setSlideVideo(idx, url, t);
+			void waitForCanvasVideoReady();
 		} else {
 			const reader = new FileReader();
 			reader.onload = () => {
@@ -8619,39 +9963,53 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		closeNewsBgToolbar();
 	});
 
+	function addOverlayAtSize(src: string, naturalW: number, naturalH: number) {
+		const aspect = Math.max(1, naturalW) / Math.max(1, naturalH);
+		const w = Math.min(300, Math.max(80, naturalW));
+		const h = w / aspect;
+		const idx = activeSlide;
+		const newOverlay: Overlay = {
+			id: crypto.randomUUID(),
+			src,
+			x: Math.round((CANVAS_W - w) / 2),
+			y: Math.round((CANVAS_H - h) / 2),
+			w: Math.round(w),
+			h: Math.round(h),
+		};
+		const current = (slideOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
+		setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
+	}
+
 	function handleOverlayUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		// Reset input so same file can be re-uploaded
 		(e.target as HTMLInputElement).value = '';
+		if (isVideoFile(file)) {
+			const src = objectUrlForVideoFile(file);
+			const video = document.createElement('video');
+			video.preload = 'metadata';
+			video.muted = true;
+			video.playsInline = true;
+			video.onloadedmetadata = () => {
+				addOverlayAtSize(src, video.videoWidth || 300, video.videoHeight || 300);
+				void waitForCanvasVideoReady();
+			};
+			video.onerror = () => addOverlayAtSize(src, 300, 300);
+			video.src = src;
+			return;
+		}
 		const reader = new FileReader();
 		reader.onload = () => {
 			const src = reader.result as string;
-			// Measure natural dimensions to lock aspect ratio
 			const img = new window.Image();
-			img.onload = () => {
-				const aspect = img.naturalWidth / img.naturalHeight;
-				const w = Math.min(300, img.naturalWidth);
-				const h = w / aspect;
-				const idx = activeSlide;
-				const newOverlay: Overlay = {
-					id: crypto.randomUUID(),
-					src,
-					// Centre on canvas
-					x: Math.round((CANVAS_W - w) / 2),
-					y: Math.round((CANVAS_H - h) / 2),
-					w: Math.round(w),
-					h: Math.round(h),
-				};
-				const current = (slideOverlaysByTemplate[activeTemplate] ?? [])[idx] ?? [];
-				setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
-			};
+			img.onload = () => addOverlayAtSize(src, img.naturalWidth, img.naturalHeight);
 			img.src = src;
 		};
 		reader.readAsDataURL(file);
 	}
 
-	// ── Export (PNG for stills, WebM for video slides) ─────────────────────
+	// ── Export (PNG for stills, MP4 for video slides) ─────────────────────
 	async function exportPng() {
 		if (!exportRef) return;
 		if (!slides.length) return;
@@ -8671,7 +10029,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				if (!node) throw new Error('Preview not ready for export');
 
 				const clip = getSlideClipMedia(i);
-				const videoEl = node.querySelector('video');
+				const videoEl =
+					node.querySelector<HTMLVideoElement>('video[data-studio-bg-video]') ??
+					node.querySelector('video');
 				const clipLen = clip
 					? slideExportDurationSec({
 							start: clip.start,
@@ -8690,7 +10050,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						end = Number.isFinite(dur) && dur > start ? dur : start + Math.max(clipLen, 3);
 					}
 					const bg = filmstripPngBackgroundForSlide(i);
-					const blob = await recordSlideAsVideo({
+					const webm = await recordSlideAsVideo({
 						root: node,
 						video: videoEl,
 						width: CANVAS_W,
@@ -8703,7 +10063,15 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							console.info(`[export] slide ${i + 1} video ${Math.round(pct)}%`);
 						},
 					});
-					folder.file(`slide-${i + 1}.webm`, blob);
+					let out = webm;
+					let ext = 'webm';
+					try {
+						out = await transcodeSlideVideoToMp4(webm);
+						ext = 'mp4';
+					} catch (e) {
+						console.warn('[export] MP4 encode failed, keeping WebM', e);
+					}
+					folder.file(`slide-${i + 1}.${ext}`, out);
 				} else {
 					const dataUrl = await rasterizeExportNode(node, {
 						width: CANVAS_W,
@@ -9375,7 +10743,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<!-- Hidden picker for dock “Image” (image stickers / logos) — must stay in DOM for bind:this -->
 			<input
 				type="file"
-				accept="image/*"
+				accept="image/*,video/mp4,video/webm,video/quicktime,video/x-m4v"
 				class="sr-only"
 				tabindex={-1}
 				aria-hidden="true"
@@ -9499,7 +10867,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					sideOffset={10}
 					align="center"
 					portalProps={{ to: 'body' }}
-					class="z-[400] w-[260px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+					class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 				>
 					<div class="mb-3 flex items-center justify-between gap-2">
 						<p class="text-[12px] font-semibold tracking-tight">Bottom shadow</p>
@@ -9507,12 +10875,33 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							type="button"
 							class="text-[10px] font-medium text-[#888] hover:text-[#111]"
 							onclick={() => {
-								shadowHeight = 75;
-								shadowStrength = 1;
+								shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
+								shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
 							}}
 						>
 							Reset
 						</button>
+					</div>
+					<p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#888]">Style</p>
+					<div class="mb-3 grid grid-cols-3 gap-1.5">
+						{#each BOTTOM_SHADOW_PRESETS as preset (preset.id)}
+							{@const on = bottomShadowPresetActive(preset)}
+							<button
+								type="button"
+								onclick={() => applyBottomShadowPreset(preset)}
+								class="flex flex-col items-center gap-1 rounded-lg border px-1 pb-1.5 pt-1.5 transition-colors
+									{on ? 'border-[#1a1a1a] bg-[#f3f3f4]' : 'border-[#ebebeb] hover:bg-[#fafafa]'}"
+								aria-pressed={on}
+							>
+								<span
+									class="h-8 w-full rounded-md border border-black/5"
+									style="background: linear-gradient(to bottom, #d7d2c8 0%, #d7d2c8 {Math.max(0, 100 - preset.height)}%, rgba(0,0,0,{(0.15 * preset.strength).toFixed(2)}) {100 - preset.height * 0.45}%, rgba(0,0,0,{preset.strength.toFixed(2)}) 100%);"
+								></span>
+								<span class="text-[8px] font-semibold uppercase tracking-wide {on ? 'text-[#111]' : 'text-[#666]'}">
+									{preset.label}
+								</span>
+							</button>
+						{/each}
 					</div>
 					<label class="mb-1 flex items-center justify-between text-[11px] font-medium text-[#555]">
 						<span>Height</span>
@@ -9543,136 +10932,280 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</p>
 				</PopoverContent>
 			</Popover>
-			<Popover bind:open={wordHighlightsPopoverOpen}>
+			<Popover bind:open={brandProfilePopoverOpen}>
 				<PopoverTrigger
-					class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.05)] backdrop-blur-[14px] transition-colors
-						{studioTextHighlightsEnabled
-							? 'text-[#080808] hover:bg-white'
-							: 'text-[rgba(10,10,10,0.7)] hover:bg-white hover:text-[#111]'}"
-					title="Word highlights — [[markup]] for coloured words"
-					aria-label="Word highlights"
+					class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.7)] shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.05)] backdrop-blur-[14px] transition-colors hover:bg-white hover:text-[#111]"
+					title="Branding — name, colors, and News source label"
+					aria-label="Branding"
 				>
-					<Highlighter size={15} strokeWidth={1.8} />
-					<span class="hidden sm:inline">Highlights</span>
-					{#if studioTextHighlightsEnabled}
-						<span class="ml-0.5 h-1.5 w-1.5 rounded-full bg-[#7bf1a8]" aria-hidden="true"></span>
-					{/if}
+					<User size={15} strokeWidth={1.8} />
+					<span class="hidden sm:inline">Branding</span>
 				</PopoverTrigger>
 				<PopoverContent
 					side="bottom"
 					sideOffset={10}
 					align="center"
 					portalProps={{ to: 'body' }}
-					class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+					class="z-[400] max-h-[min(70vh,640px)] w-[320px] gap-0 overflow-y-auto rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 				>
-					<div class="mb-3 flex items-center justify-between gap-3">
-						<div class="min-w-0">
-							<p class="text-[12px] font-semibold tracking-tight">Word highlights</p>
-							<p class="mt-0.5 text-[10px] leading-snug text-[#999]">[[markup]] for coloured words in News.</p>
+					<p class="text-[12px] font-semibold tracking-tight">Branding</p>
+					<p class="mt-0.5 mb-3 text-[10px] leading-snug text-[#999]">
+						Username on the News gold line. Handle on Text Carousel and Creator hooks.
+					</p>
+					<label class="mb-1 block text-[11px] font-medium text-[#555]" for="studio-brand-name">Username</label>
+					<input
+						id="studio-brand-name"
+						class="mb-2.5 w-full rounded-lg border border-[#ebebeb] bg-[#fafafa] px-2.5 py-1.5 text-[12px] text-[#111] outline-none focus:border-[#ccc]"
+						value={brandDisplayName}
+						placeholder="MEME ACCOUNTS"
+						oninput={(e) => {
+							brandDisplayName = (e.currentTarget as HTMLInputElement).value;
+						}}
+						onchange={() => persistBrandProfile()}
+					/>
+					<label class="mb-1 block text-[11px] font-medium text-[#555]" for="studio-brand-handle">Handle</label>
+					<input
+						id="studio-brand-handle"
+						class="w-full rounded-lg border border-[#ebebeb] bg-[#fafafa] px-2.5 py-1.5 text-[12px] text-[#111] outline-none focus:border-[#ccc]"
+						value={brandHandle}
+						placeholder="@memeaccounts"
+						oninput={(e) => {
+							brandHandle = (e.currentTarget as HTMLInputElement).value;
+						}}
+						onchange={() => persistBrandProfile()}
+					/>
+
+					<div class="mt-3.5 space-y-2.5 border-t border-[#f2f2f2] pt-3.5">
+						<div class="flex items-center justify-between gap-2">
+							<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Source Label</Label>
+							<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
+								<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
+								<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => {
+									sourceLabelMode = 'logo';
+									if (selectedText === 'source') closeToolbar();
+								}}>Logo</Button>
+							</div>
 						</div>
-						<Switch id="dock-highlights-toggle" bind:checked={studioTextHighlightsEnabled} class="shrink-0" />
-					</div>
-					{#if studioTextHighlightsEnabled}
-						<div class="space-y-2.5 border-t border-[#ebebeb] pt-2.5">
-							<p class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Default style</p>
-							<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#fafafa] p-0.5">
-								{#each (['solid', 'gradient', 'pattern'] as const) as kind}
-									<button
-										type="button"
-										onclick={() => (highlightStyleKind = kind)}
-										class="flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize transition-colors
-											{highlightStyleKind === kind
-												? 'bg-[#7bf1a8] text-[#080808]'
-												: 'text-[#666] hover:bg-white'}"
+						{#if sourceLabelMode === 'text'}
+							<Input bind:value={source} placeholder={brandDisplayName || 'Your name'} class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
+							<div class="flex flex-col gap-2 pt-0.5">
+								<div class="flex min-w-0 items-center gap-2">
+									<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Font</Label>
+									<select
+										class="min-w-0 flex-1 rounded-lg border border-[#ebebeb] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#333] outline-none focus:border-[#ccc]"
+										value={canvasSourceStyle.fontFamily ?? ''}
+										onchange={(e) => {
+											const family = (e.currentTarget as HTMLSelectElement).value;
+											if (family) void loadGoogleFont(family, canvasSourceStyle.fontWeight ?? 700);
+											patchNewsSourceStyle({ fontFamily: family });
+										}}
 									>
-										{kind}
-									</button>
+										<option value="">Default (italic)</option>
+										{#each GOOGLE_FONTS as f (f.family)}
+											<option value={f.family}>{f.family}</option>
+										{/each}
+									</select>
+								</div>
+								<div class="flex min-w-0 items-center gap-2">
+									<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Size</Label>
+									<Slider
+										type="single"
+										value={canvasSourceStyle.fontSize ?? 34}
+										min={18}
+										max={72}
+										step={1}
+										onValueChange={(v) => {
+											const n = Array.isArray(v) ? v[0] : v;
+											if (typeof n === 'number' && Number.isFinite(n)) {
+												patchNewsSourceStyle({ fontSize: n });
+											}
+										}}
+										class="min-w-0 flex-1"
+									/>
+									<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{canvasSourceStyle.fontSize ?? 34}px</span>
+								</div>
+								<div class="flex min-w-0 items-center gap-2">
+									<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Pad</Label>
+									<Slider
+										type="single"
+										value={canvasSourceStyle.padding ?? 6}
+										min={0}
+										max={48}
+										step={1}
+										onValueChange={(v) => {
+											const n = Array.isArray(v) ? v[0] : v;
+											if (typeof n === 'number' && Number.isFinite(n)) {
+												patchNewsSourceStyle({ padding: n });
+											}
+										}}
+										class="min-w-0 flex-1"
+									/>
+									<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{canvasSourceStyle.padding ?? 6}px</span>
+								</div>
+							</div>
+						{:else}
+							<div class="flex items-center gap-2">
+								<input type="file" accept="image/*" class="sr-only" tabindex={-1} aria-hidden="true" bind:this={sourceLogoInput}
+									onchange={async (e) => {
+										const file = (e.currentTarget as HTMLInputElement).files?.[0];
+										if (!file) return;
+										sourceLogoSrc = await new Promise<string>((res, rej) => {
+											const fr = new FileReader();
+											fr.onload = () => res(String(fr.result ?? ''));
+											fr.onerror = () => rej(fr.error);
+											fr.readAsDataURL(file);
+										});
+										(e.currentTarget as HTMLInputElement).value = '';
+									}}
+								/>
+								<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold border-[#ebebeb]" onclick={() => sourceLogoInput?.click()}>
+									{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
+								</Button>
+								{#if sourceLogoSrc}
+									<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => (sourceLogoSrc = '')}>Remove</Button>
+									<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
+										<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
+									</div>
+								{/if}
+							</div>
+							<div class="flex min-w-0 items-center gap-2 pt-1">
+								<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Width</Label>
+								<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
+								<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{sourceLogoWidth}px</span>
+							</div>
+						{/if}
+						<div class="flex min-w-0 items-center gap-2 pt-1">
+							<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Border</Label>
+							<div class="flex min-w-0 flex-1 items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
+								{#each ([{ id: 'none', label: 'Off' }, { id: 'rules', label: 'Lines' }, { id: 'box', label: 'Box' }] as const) as opt}
+									<Button
+										type="button"
+										variant={sourceBorderKind === opt.id ? 'secondary' : 'ghost'}
+										size="sm"
+										class="h-6 flex-1 rounded-md px-1.5 text-[10px] font-semibold"
+										onclick={() => (sourceBorderKind = opt.id)}
+									>{opt.label}</Button>
 								{/each}
 							</div>
-							{#if highlightStyleKind === 'solid'}
-								<div class="grid grid-cols-4 gap-1.5">
-									{#each HIGHLIGHT_SOLID_PRESETS as c}
+						</div>
+						{#if sourceBorderKind !== 'none'}
+							<div class="flex min-w-0 items-center gap-2">
+								<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Color</Label>
+								<div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+									{#each SOURCE_BORDER_SWATCHES as sw}
 										<button
 											type="button"
-											onclick={() => (highlightColor = c)}
-											class="h-7 rounded-lg border-2 transition-transform hover:scale-105
-												{highlightColor.toLowerCase() === c.toLowerCase()
-													? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
-													: 'border-transparent'}"
-											style="background: {c};"
-											aria-label="Default highlight {c}"
-											aria-pressed={highlightColor.toLowerCase() === c.toLowerCase()}
+											title={sw.label}
+											aria-label={sw.label}
+											onclick={() => (sourceBorderColor = sw.hex)}
+											class="h-6 w-6 shrink-0 rounded-full border-2 transition-transform hover:scale-110
+												{sourceBorderColor === sw.hex ? 'border-[#111] scale-110' : 'border-black/10'}"
+											style="background: {sw.hex
+												? sw.hex
+												: 'conic-gradient(from 180deg, #F5A623, #FFFFFF, #0A0A0A, #08EBFF, #F5A623)'};"
 										></button>
 									{/each}
-								</div>
-								<label class="flex items-center gap-2 pt-0.5">
-									<span class="text-[10px] text-[#aaa]">Custom</span>
 									<input
 										type="color"
-										value={highlightColor}
-										oninput={(e) => {
-											highlightColor = (e.currentTarget as HTMLInputElement).value;
-										}}
-										class="h-7 w-10 cursor-pointer rounded border border-[#ebebeb] bg-white p-0.5"
+										value={sourceBorderColor || canvasSourceStyle.color || highlightColor || '#F5A623'}
+										title="Custom border color"
+										aria-label="Custom border color"
+										oninput={(e) => (sourceBorderColor = (e.currentTarget as HTMLInputElement).value)}
+										class="h-6 w-6 shrink-0 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
 									/>
-								</label>
-							{:else if highlightStyleKind === 'gradient'}
-								<div class="grid grid-cols-2 gap-1.5">
-									{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to]}
-										<button
-											type="button"
-											onclick={() => {
-												highlightGradientFrom = from;
-												highlightGradientTo = to;
-												highlightColor = from;
-											}}
-											class="h-8 rounded-lg border-2 transition-transform hover:scale-[1.02]
-												{highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
-												highlightGradientTo.toLowerCase() === to.toLowerCase()
-													? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
-													: 'border-transparent'}"
-											style="background: linear-gradient(90deg, {from}, {to});"
-											aria-label="Gradient {from} to {to}"
-											aria-pressed={highlightGradientFrom.toLowerCase() === from.toLowerCase() &&
-												highlightGradientTo.toLowerCase() === to.toLowerCase()}
-										></button>
-									{/each}
 								</div>
-							{:else}
-								<div class="grid grid-cols-1 gap-1.5">
-									{#each AVAILABLE_PATTERNS as pat}
-										<button
-											type="button"
-											onclick={() => (highlightPattern = pat.name)}
-											class="relative h-11 overflow-hidden rounded-lg border-2 transition-all
-												{highlightPattern === pat.name
-													? 'border-[#1a1a1a] ring-1 ring-[#1a1a1a]/40'
-													: 'border-[#ebebeb] hover:border-[#ccc]'}"
-											title={pat.label}
-											aria-pressed={highlightPattern === pat.name}
-										>
-											<img src={pat.url} alt="" class="absolute inset-0 h-full w-full object-cover" />
-											<span
-												class="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wider"
-												style="
-													background-image: url('{pat.url}');
-													background-size: cover;
-													background-position: center;
-													-webkit-background-clip: text;
-													-webkit-text-fill-color: transparent;
-													background-clip: text;
-													filter: contrast(1.35) brightness(1.15);
-												"
-											>{pat.label.toUpperCase()}</span>
-										</button>
-									{/each}
-								</div>
-							{/if}
-							<p class="text-[10px] leading-snug text-[#aaa]">
-								Applies to AI highlights and bare [[words]]. Toolbar picks still override per phrase.
-							</p>
+							</div>
+						{/if}
+					</div>
+
+					<div class="mt-3.5 space-y-3 border-t border-[#f2f2f2] pt-3.5">
+						<div>
+							<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Highlight</Label>
+							<p class="mt-0.5 mb-2 text-[10px] leading-snug text-[#999]">Word color or pattern for [[highlights]]. Same as Settings + text toolbar.</p>
+							<div class="flex flex-wrap items-center gap-1.5">
+								{#each HIGHLIGHT_SOLID_PRESETS as c (c)}
+									<button
+										type="button"
+										title={c}
+										aria-label="Highlight {c}"
+										onclick={() => persistBrandHighlight(c)}
+										class="h-6 w-6 shrink-0 rounded-full border-2 transition-transform hover:scale-110
+											{highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase() ? 'border-[#111] scale-110' : 'border-black/10'}"
+										style="background: {c};"
+									></button>
+								{/each}
+								<input
+									type="color"
+									value={highlightColor}
+									title="Custom highlight color"
+									aria-label="Custom highlight color"
+									oninput={(e) => persistBrandHighlight((e.currentTarget as HTMLInputElement).value)}
+									class="h-6 w-6 shrink-0 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+								/>
+							</div>
+							<div class="mt-2 flex flex-wrap items-center gap-1.5">
+								{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to] (`${from}-${to}`)}
+									<button
+										type="button"
+										title="{from} → {to}"
+										aria-label="Highlight gradient {from} to {to}"
+										onclick={() => persistBrandHighlightGradient(from, to)}
+										class="h-6 w-10 shrink-0 rounded-full border-2 transition-transform hover:scale-110
+											{highlightStyleKind === 'gradient' &&
+											highlightGradientFrom.toUpperCase() === from.toUpperCase() &&
+											highlightGradientTo.toUpperCase() === to.toUpperCase()
+												? 'border-[#111] scale-110'
+												: 'border-black/10'}"
+										style="background: linear-gradient(90deg, {from}, {to});"
+									></button>
+								{/each}
+							</div>
+							<div class="mt-2 flex flex-wrap items-center gap-1.5">
+								{#each AVAILABLE_PATTERNS as pat (pat.name)}
+									<button
+										type="button"
+										title={pat.label}
+										aria-label="Highlight pattern {pat.label}"
+										onclick={() => persistBrandHighlightPattern(pat.name)}
+										class="h-6 w-6 shrink-0 overflow-hidden rounded-full border-2 transition-transform hover:scale-110
+											{highlightStyleKind === 'pattern' && highlightPattern === pat.name ? 'border-[#111] scale-110' : 'border-black/10'}"
+										style="background-image: url('{pat.url}'); background-size: cover; background-position: center;"
+									></button>
+								{/each}
+							</div>
 						</div>
-					{/if}
+						<div>
+							<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Text background</Label>
+							<p class="mt-0.5 mb-2 text-[10px] leading-snug text-[#999]">Chip behind the source label. Same as Settings.</p>
+							<div class="flex flex-wrap items-center gap-1.5">
+								{#each TEXT_BG_SWATCHES as c (c || 'none')}
+									<button
+										type="button"
+										title={c || 'None'}
+										aria-label={c ? `Background ${c}` : 'No text background'}
+										onclick={() => persistBrandTextBg(c)}
+										class="h-6 w-6 shrink-0 rounded-full border-2 transition-transform hover:scale-110
+											{(brandTextBgColor || '') === c ? 'border-[#111] scale-110' : 'border-black/10'}"
+										style="background: {c
+											? c
+											: 'linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), #f4f4f5'};"
+									></button>
+								{/each}
+								<input
+									type="color"
+									value={brandTextBgColor || '#FFEB3B'}
+									title="Custom text background"
+									aria-label="Custom text background"
+									oninput={(e) => persistBrandTextBg((e.currentTarget as HTMLInputElement).value)}
+									class="h-6 w-6 shrink-0 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+								/>
+							</div>
+						</div>
+					</div>
+
+					<p class="mt-3 text-[10px] leading-snug text-[#aaa]">
+						Also saved in Settings → Branding.
+					</p>
 				</PopoverContent>
 			</Popover>
 			</div>
@@ -9701,6 +11234,21 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				class:is-measured={studioSizeTransitions}
 				class:is-ready={studioRevealReady}
 			>
+				{#if isTemplateDevToolsEnabled()}
+					<div class="absolute left-2 top-2 z-[80]">
+						<TemplateDevOverride
+							templateId={previewTemplate}
+							templateLabel={templateDockTabs.find((t) => t.id === previewTemplate)?.label ?? previewTemplate}
+							onPin={pinCurrentTemplateDesign}
+							onApply={() => applyTemplateDevOverride(previewTemplate, { slides: 'all' })}
+							onSaveTemplate={() =>
+								saveStudioTemplateNamed(
+									`Template · ${templateDockTabs.find((t) => t.id === previewTemplate)?.label ?? 'Studio'}`,
+								)
+							}
+						/>
+					</div>
+				{/if}
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div
 					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
@@ -9724,9 +11272,15 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						? skipLatestWorkspaceDraftRestore || forcedBlankFromQuery || forcedTemplateFromQuery
 							? 'Preparing template'
 							: 'Restoring your last edit'
-						: backgroundMediaLoading
-							? 'Loading video'
-							: ''}
+						: studioGenerating || fetchingNews
+							? newsContentMode === 'news'
+								? 'Fetching news'
+								: 'Generating'
+							: (cuttingOut[paintSlide] ?? false)
+								? (cutoutMessage || 'Cutting out subject')
+								: backgroundMediaLoading
+									? 'Loading video'
+									: ''}
 				/>
 			</div>
 		{/if}
@@ -9806,10 +11360,12 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					bind:circleY
 					bind:circleSize
 					bind:circleBorderColor
+					bind:circleShadow
 					bind:circle2X
 					bind:circle2Y
 					bind:circle2Size
 					bind:circle2BorderColor
+					bind:circle2Shadow
 					bind:bgOffsetX
 					bind:bgOffsetY
 					bind:bgZoom
@@ -9818,6 +11374,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					bind:textPanelOffsetY
 					bind:shadowHeight
 					bind:shadowStrength
+					onTextStackLayout={fitNewsShadowFromStack}
 					backgroundImage={canvasBackgroundImage}
 					backgroundVideo={canvasBackgroundVideo}
 					solidBackgroundColor={newsSolidBgBySlide[paintSlide] ?? ''}
@@ -9854,6 +11411,8 @@ showSubjectCutout={canvasShowCutout}
 					source={source}
 					sourceLogoSrc={sourceLogoSrc}
 					sourceLabelMode={sourceLabelMode}
+					sourceBorderKind={sourceBorderKind}
+					sourceBorderColor={sourceBorderColor}
 					sourceLogoWidth={sourceLogoWidth}
 					onSourceLogoChange={(src) => {
 						if (!canvasInteractive) return;
@@ -9941,6 +11500,7 @@ showSubjectCutout={canvasShowCutout}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -9995,6 +11555,7 @@ showSubjectCutout={canvasShowCutout}
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10081,6 +11642,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10095,8 +11657,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					canvasW={CANVAS_W}
 					canvasH={CANVAS_H}
 					text={textCarouselTextBySlide[paintSlide] ?? ''}
-					name={textCarouselNameBySlide[paintSlide] ?? 'Captains of industry'}
-					handle={textCarouselHandleBySlide[paintSlide] ?? '@captainsofindustryy'}
+					name={textCarouselNameBySlide[paintSlide] ?? brandDisplayName}
+					handle={textCarouselHandleBySlide[paintSlide] ?? brandHandle}
 					avatar={textCarouselAvatarImageBySlide[paintSlide] ?? ''}
 					avatarInnerBg={textCarouselAvatarInnerBgBySlide[paintSlide] ?? ''}
 					avatarLabel={textCarouselAvatarLabelBySlide[paintSlide] ?? ''}
@@ -10137,6 +11699,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10148,14 +11711,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				<WhitePostTemplate
 					bind:exportRef
 					layout={previewTemplate === 'whiteMedia' ? 'media' : 'thread'}
-					name={textCarouselNameBySlide[paintSlide] ??
-						(previewTemplate === 'whiteMedia'
-							? WHITE_MEDIA_DEFAULTS.name
-							: WHITE_THREAD_DEFAULTS.name)}
-					handle={textCarouselHandleBySlide[paintSlide] ??
-						(previewTemplate === 'whiteMedia'
-							? WHITE_MEDIA_DEFAULTS.handle
-							: WHITE_THREAD_DEFAULTS.handle)}
+					name={textCarouselNameBySlide[paintSlide] ?? brandDisplayName}
+					handle={textCarouselHandleBySlide[paintSlide] ?? brandHandle}
 					avatar={textCarouselAvatarImageBySlide[paintSlide] ??
 						(previewTemplate === 'whiteMedia'
 							? WHITE_MEDIA_DEFAULTS.avatarUrl
@@ -10224,6 +11781,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10295,6 +11853,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10391,6 +11950,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10428,14 +11988,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								  previewTemplate === 'videoFeature'
 								? ''
 								: VIDEO_STORY_DEFAULTS.watermark)}
-					profileName={textCarouselNameBySlide[paintSlide] ??
-						(previewTemplate === 'videoPost'
-							? VIDEO_POST_DEFAULTS.name
-							: VIDEO_CREATOR_DEFAULTS.name)}
-					profileHandle={textCarouselHandleBySlide[paintSlide] ??
-						(previewTemplate === 'videoPost'
-							? VIDEO_POST_DEFAULTS.handle
-							: VIDEO_CREATOR_DEFAULTS.handle)}
+					profileName={textCarouselNameBySlide[paintSlide] ?? brandDisplayName}
+					profileHandle={textCarouselHandleBySlide[paintSlide] ?? brandHandle}
 					profileAvatar={textCarouselAvatarImageBySlide[paintSlide] ??
 						(previewTemplate === 'videoPost' ? VIDEO_POST_DEFAULTS.avatarUrl : '')}
 					videoSrc={canvasBackgroundVideo}
@@ -10584,6 +12138,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10662,6 +12217,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10675,8 +12231,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				<BlackTextCarouselTemplate
 					bind:exportRef
 					backgroundImage={canvasBackgroundImage.trim() ? canvasBackgroundImage : BLACK_TEXT_BG_DEFAULT}
-					name={BLACK_TEXT_CAROUSEL_DEFAULTS.name}
-					handle={BLACK_TEXT_CAROUSEL_DEFAULTS.handle}
+					name={textCarouselNameBySlide[paintSlide] ?? brandDisplayName}
+					handle={textCarouselHandleBySlide[paintSlide] ?? brandHandle}
 					headline={blackTextHeadlineBySlide[paintSlide] ?? BLACK_TEXT_CAROUSEL_DEFAULTS.headline}
 					body={blackTextBodyBySlide[paintSlide] ?? BLACK_TEXT_CAROUSEL_DEFAULTS.body}
 					headlineColor={BLACK_TEXT_CAROUSEL_DEFAULTS.headlineColor}
@@ -10725,6 +12281,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10798,6 +12355,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					interactive={canvasInteractive}
 					highlightColor={highlightColor}
 					textOverlays={canvasTextOverlays}
+					snapToCanvasCenter={true}
 					activeTextKind={selectedText}
 					activeTextOverlayId={selectedTextOverlayId}
 					onRangeSelect={onTextOverlayRangeSelect}
@@ -10959,6 +12517,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					/>
 				</div>
 			{/if}
+			{@const filmstripGenerateBusy =
+				studioGenerating || fetchingNews || generatingVariants}
 			{@const filmstripLoading =
 				studioBooting || filmstripInitialPassPending || filmstripBulkCapturing}
 			{@const orderIds = filmstripIds.length ? filmstripIds : slideIds}
@@ -10984,7 +12544,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					img: (bgImagesByTemplate[t] ?? [])[i] ?? '',
 					vid: (bgVideosByTemplate[t] ?? [])[i] ?? '',
 					music: slideMusic[i] ?? null,
-					loading: !!((generatingImagesByTemplate[t] ?? [])[i]),
+					loading:
+						!!((generatingImagesByTemplate[t] ?? [])[i]) ||
+						!!(cuttingOut[i] ?? false),
 					hasBlankContent,
 				};
 			})}
@@ -11017,6 +12579,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					{@const showThumbSkeleton =
 						!studioRevealReady ||
 						filmstripLoading ||
+						filmstripGenerateBusy ||
 						item.loading ||
 						(!isPlaceholder && !item.vid && !rasterThumb && filmstripPreviewInFlight)}
 					{@const sortable = useSortable({
@@ -11113,6 +12676,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										{/if}
 									</div>
 								{/if}
+								<div
+									class="pointer-events-none absolute inset-x-0 top-0 h-7 bg-gradient-to-b from-black/45 to-transparent"
+									aria-hidden="true"
+								></div>
 						</button>
 
 							{#if !filmstripLoading && slides.length > 1}
@@ -11127,9 +12694,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									}}
 									title="Delete slide"
 									aria-label={`Delete slide ${i + 1}`}
-									class="filmstrip-corner-btn filmstrip-delete-btn absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center border border-white/15 bg-black/80 text-white/80 hover:bg-red-500 hover:border-red-400 hover:text-white transition-all z-20 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+									class="filmstrip-corner-btn filmstrip-delete-btn absolute top-1 right-1 z-20 flex h-5 w-5 items-center justify-center rounded-full"
+									style="background:#ffffff;color:#111111;border:1px solid rgba(0,0,0,0.16);box-shadow:0 1px 4px rgba(0,0,0,0.28);"
 								>
-									<Trash2 size={10} />
+									<Trash2 size={10} strokeWidth={2.4} />
 								</button>
 							{/if}
 
@@ -11140,12 +12708,12 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									onclick={(e) => { e.stopPropagation(); musicPickerForSlide = musicPickerForSlide === item.slideIndex ? null : item.slideIndex; }}
 									title={hasMusic ? `Change music: ${item.music?.name}` : 'Add music — publishes as video'}
 									aria-label={`Choose music for slide ${i + 1}`}
-									class="filmstrip-corner-btn filmstrip-music-btn absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center border transition-all z-20
-										{hasMusic
-											? 'bg-orange-500/90 border-orange-400 text-white shadow-lg shadow-orange-500/30'
-											: 'bg-black/80 border-white/10 text-white/40 hover:text-orange-400 hover:border-orange-400/50 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}"
+									class="filmstrip-corner-btn filmstrip-music-btn absolute top-1 left-1 z-20 flex h-5 w-5 items-center justify-center rounded-full {hasMusic ? 'is-on' : ''}"
+									style={hasMusic
+										? ''
+										: 'background:#ffffff;color:#111111;border:1px solid rgba(0,0,0,0.16);box-shadow:0 1px 4px rgba(0,0,0,0.28);'}
 								>
-									<Flame size={10} fill={hasMusic ? 'currentColor' : 'none'} />
+									<Flame size={10} strokeWidth={2.4} fill={hasMusic ? 'currentColor' : 'none'} />
 								</button>
 							{/if}
 
@@ -11201,8 +12769,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									</div>
 								</div>
 							{/if}
-						<span class="filmstrip-label text-[9px] font-mono flex items-center justify-center gap-1 {!editingBrandCta && activeSlide === item.slideIndex ? 'text-violet-400' : 'text-white/20'}">
-							{#if !studioRevealReady || filmstripLoading}
+						<span class="filmstrip-label flex items-center justify-center gap-1 font-mono text-[9px] {!editingBrandCta && activeSlide === item.slideIndex ? 'is-active' : ''}">
+							{#if !studioRevealReady || filmstripLoading || filmstripGenerateBusy}
 								<span class="filmstrip-label-skel" aria-hidden="true"></span>
 							{:else}
 								{i === 0 ? 'Hook' : `Slide ${i + 1}`}
@@ -11231,7 +12799,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								: 'border-dashed border-white/12'}"
 						style="background: var(--app-surface-3);"
 					>
-						{#if filmstripLoading}
+						{#if filmstripLoading || filmstripGenerateBusy}
 							<div class="filmstrip-skel absolute inset-0" aria-hidden="true"></div>
 						{:else if brandCta.image}
 							<img src={brandCta.image} alt="" class="w-full h-full object-cover opacity-90" />
@@ -11244,8 +12812,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							<span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-violet-400"></span>
 						{/if}
 					</div>
-					<span class="filmstrip-label text-[9px] font-mono flex items-center justify-center {editingBrandCta ? 'text-violet-400' : 'text-white/20'}">
-						{#if filmstripLoading}
+					<span class="filmstrip-label flex items-center justify-center font-mono text-[9px] {editingBrandCta ? 'is-active' : ''}">
+						{#if filmstripLoading || filmstripGenerateBusy}
 							<span class="filmstrip-label-skel" aria-hidden="true"></span>
 						{:else}
 							Follow
@@ -11654,45 +13222,45 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		<!-- ── Prompt bar ── below the filmstrip ───────────────────── -->
 		<div class="studio-prompt-chrome relative z-[40] shrink-0 overflow-visible px-4 pt-1.5 pb-3">
 			<div class="mx-auto w-full max-w-2xl overflow-visible">
-				<div class="prompt-bar rounded-[20px] bg-[#f5f5f5] shadow-[0_4px_24px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)]">
+				<div class="prompt-bar">
 
 				<!-- Search input row -->
-				<div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
-					<Search size={14} class="shrink-0 text-[#b0b0b0]" />
+				<div class="prompt-bar-input">
+					<Search size={15} class="shrink-0 text-[#b0b0b0]" />
 					{#if newsContentMode === 'news'}
 						<input
 							bind:value={search}
 							placeholder="Search keyword (optional)…"
 							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+							class="prompt-bar-field"
 						/>
 					{:else if newsContentMode === 'fact'}
 						<input
 							bind:value={factTopicPrompt}
 							placeholder="Specific angle or context (optional)…"
 							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+							class="prompt-bar-field"
 						/>
 					{:else if newsContentMode === 'quote'}
 						<input
 							bind:value={quoteTopicPrompt}
 							placeholder="Topic for the quote (e.g. discipline, leadership)…"
 							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+							class="prompt-bar-field"
 						/>
 					{:else if newsContentMode === 'steps'}
 						<input
 							bind:value={stepsTopicPrompt}
 							placeholder="e.g. 5 steps to get a better gut…"
 							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+							class="prompt-bar-field"
 						/>
 					{:else}
 						<input
 							bind:value={storyTopicPrompt}
 							placeholder="Story direction or angle (optional)…"
 							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
-							class="flex-1 min-w-0 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none ring-0 border-none font-body"
+							class="prompt-bar-field"
 						/>
 					{/if}
 					{#if newsError}
@@ -11703,17 +13271,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					{/if}
 				</div>
 
-				<!-- Divider -->
-				<div class="mx-4 h-px bg-[#e8e8e8]"></div>
+				<div class="prompt-bar-divider"></div>
 
 				<!-- Controls row: Type + Topic + Settings + Submit -->
-				<div class="flex items-center gap-2 px-3 pt-2.5 pb-3">
+				<div class="prompt-bar-tools">
 
 					<!-- ── Type selector ──────────────────────────────── -->
 					<Popover>
-						<PopoverTrigger
-							class="flex items-center gap-1.5 rounded-full border border-[#e2e2e2] bg-white px-3 py-[7px] text-[11.5px] font-semibold font-body text-[#111] transition-all duration-150 hover:border-[#c8c8c8] select-none shrink-0"
-						>
+						<PopoverTrigger class="prompt-chip">
 							{#if newsContentMode === 'news'}
 								<Newspaper size={11} class="shrink-0" />
 								News
@@ -11767,9 +13332,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 					<!-- ── Topic selector ─────────────────────────────── -->
 					<Popover>
-						<PopoverTrigger
-							class="flex items-center gap-1.5 rounded-full border border-[#e2e2e2] bg-white px-3 py-[7px] text-[11.5px] font-semibold font-body text-[#111] transition-all duration-150 hover:border-[#c8c8c8] select-none shrink-0"
-						>
+						<PopoverTrigger class="prompt-chip">
 							{#if newsContentMode === 'news'}
 								{categories.find((c) => c.id === category)?.label ?? 'Topic'}
 							{:else if newsContentMode === 'story'}
@@ -11879,15 +13442,18 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					<!-- Image source — all News studio modes (News / fact / story / quote / steps) -->
 					<Popover>
 						<PopoverTrigger
-							class="flex items-center gap-1.5 rounded-full border border-[#e2e2e2] bg-white px-3 py-[7px] text-[11.5px] font-semibold font-body text-[#111] transition-all duration-150 hover:border-[#c8c8c8] select-none shrink-0 max-w-[11.5rem]"
-							title="How to fill slide backgrounds"
+							class="prompt-chip max-w-[11.5rem]"
+							title="Where slide photos come from"
 						>
-							{#if newsImageSourceMode === 'pull'}
+							{#if newsImageSourceMode === 'assets'}
+								<Wallpaper size={11} class="shrink-0" />
+								<span class="truncate">Stock photos</span>
+							{:else if newsImageSourceMode === 'pull'}
 								<Image size={11} class="shrink-0" />
-								<span class="truncate">Pull news image</span>
+								<span class="truncate">Article photo</span>
 							{:else}
 								<Sparkles size={11} class="shrink-0" />
-								<span class="truncate">AI Generate</span>
+								<span class="truncate">AI images</span>
 							{/if}
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
@@ -11899,7 +13465,24 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							portalProps={{ to: 'body' }}
 							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 						>
-							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Slide images</p>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Photo source</p>
+							<button
+								type="button"
+								onclick={() => (newsImageSourceMode = 'assets')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsImageSourceMode === 'assets'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Wallpaper size={13} class="mt-0.5 shrink-0" />
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Stock photos</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">Free photos that match your topic</span>
+								</span>
+								{#if newsImageSourceMode === 'assets'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
 							<button
 								type="button"
 								onclick={() => (newsImageSourceMode = 'pull')}
@@ -11910,8 +13493,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							>
 								<Image size={13} class="mt-0.5 shrink-0" />
 								<span class="min-w-0">
-									<span class="block text-[12.5px] font-semibold">Pull first image from news</span>
-									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">First slide uses the article photo</span>
+									<span class="block text-[12.5px] font-semibold">Article photo</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">Use the story’s photo on the first slide</span>
 								</span>
 								{#if newsImageSourceMode === 'pull'}
 									<span class="ml-auto shrink-0 text-[#111]">✓</span>
@@ -11927,8 +13510,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							>
 								<Sparkles size={13} class="mt-0.5 shrink-0" />
 								<span class="min-w-0">
-									<span class="block text-[12.5px] font-semibold">AI Generate</span>
-									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">Generate a new image for every slide</span>
+									<span class="block text-[12.5px] font-semibold">AI images</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">Create a unique image for every slide</span>
 								</span>
 								{#if newsImageSourceMode === 'ai'}
 									<span class="ml-auto shrink-0 text-[#111]">✓</span>
@@ -11937,26 +13520,74 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						</PopoverContent>
 					</Popover>
 
-					<!-- Image generation toggle -->
-					<button
-						type="button"
-						onclick={() => (newsGenerateImages = !newsGenerateImages)}
-						class="flex items-center gap-1.5 rounded-full border px-3 py-[7px] text-[11.5px] font-semibold font-body transition-all duration-150 select-none shrink-0
-							{newsGenerateImages
-								? 'border-[#7bf1a8] bg-[#7bf1a8] text-[#080808] hover:bg-[#dcf23a]'
-								: 'border-[#e2e2e2] bg-white text-[#666] hover:border-[#c8c8c8]'}"
-						title={newsGenerateImages ? 'Image generation ON' : 'Image generation OFF - text only'}
-					>
-						{#if newsGenerateImages}
-							<Image size={11} class="shrink-0" />
-							<span>Images ON</span>
-						{:else}
+					<Popover>
+						<PopoverTrigger class="prompt-chip" title="How long each slide’s overlay copy should be">
 							<Type size={11} class="shrink-0" />
-							<span>Text only</span>
-						{/if}
-					</button>
+							<span class="truncate">{newsCopyLength === 'short' ? 'Short' : newsCopyLength === 'standard' ? 'Standard' : 'Default'}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Word count</p>
+							<button
+								type="button"
+								onclick={() => (newsCopyLength = 'default')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsCopyLength === 'default'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Default</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">This field’s placeholder — {studioMaxWords} words</span>
+								</span>
+								{#if newsCopyLength === 'default'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (newsCopyLength = 'standard')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsCopyLength === 'standard'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Standard</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">Up to 28 words</span>
+								</span>
+								{#if newsCopyLength === 'standard'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (newsCopyLength = 'short')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsCopyLength === 'short'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Short</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">Up to 12 words — punchier hooks</span>
+								</span>
+								{#if newsCopyLength === 'short'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+						</PopoverContent>
+					</Popover>
 
-					<!-- Settings popover -->
+					<!-- Settings popover (non-news backgrounds) -->
+					{#if activeTemplate !== 'news'}
 					<Popover>
 						<PopoverTrigger
 							class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#e2e2e2] bg-white text-[#999] transition-all duration-150 hover:border-[#c8c8c8] hover:text-[#444]"
@@ -11973,92 +13604,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							class="z-[400] max-h-[min(70vh,520px)] w-80 gap-0 overflow-y-auto rounded-[20px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 						>
 							<div class="p-4 flex flex-col gap-4">
-								{#if activeTemplate === 'news'}
-									<!-- Source label -->
-									<div class="space-y-2.5">
-										<div class="flex items-center justify-between gap-2">
-											<Label class="text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Source Label</Label>
-											<div class="flex items-center gap-0.5 rounded-lg border border-[#ebebeb] bg-[#f5f5f5] p-0.5">
-												<Button type="button" variant={sourceLabelMode === 'text' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => (sourceLabelMode = 'text')}>Text</Button>
-												<Button type="button" variant={sourceLabelMode === 'logo' ? 'secondary' : 'ghost'} size="sm" class="h-6 rounded-md px-2.5 text-[10px] font-semibold" onclick={() => {
-													sourceLabelMode = 'logo';
-													if (selectedText === 'source') closeToolbar();
-												}}>Logo</Button>
-											</div>
-										</div>
-										{#if sourceLabelMode === 'text'}
-											<Input bind:value={source} placeholder="Markets" class="rounded-xl py-2.5 text-sm font-body border-[#ebebeb] bg-[#fafafa]" />
-											<div class="flex flex-col gap-2 pt-0.5">
-												<div class="flex min-w-0 items-center gap-2">
-													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Font</Label>
-													<select
-														class="min-w-0 flex-1 rounded-lg border border-[#ebebeb] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#333] outline-none focus:border-[#ccc]"
-														value={canvasSourceStyle.fontFamily ?? ''}
-														onchange={(e) => {
-															const family = (e.currentTarget as HTMLSelectElement).value;
-															if (family) void loadGoogleFont(family, canvasSourceStyle.fontWeight ?? 700);
-															patchNewsSourceStyle({ fontFamily: family });
-														}}
-													>
-														<option value="">Default (italic)</option>
-														{#each GOOGLE_FONTS as f (f.family)}
-															<option value={f.family}>{f.family}</option>
-														{/each}
-													</select>
-												</div>
-												<div class="flex min-w-0 items-center gap-2">
-													<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Size</Label>
-													<Slider
-														type="single"
-														value={canvasSourceStyle.fontSize ?? 34}
-														min={18}
-														max={72}
-														step={1}
-														onValueChange={(v) => {
-															const n = Array.isArray(v) ? v[0] : v;
-															if (typeof n === 'number' && Number.isFinite(n)) {
-																patchNewsSourceStyle({ fontSize: n });
-															}
-														}}
-														class="min-w-0 flex-1"
-													/>
-													<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{canvasSourceStyle.fontSize ?? 34}px</span>
-												</div>
-											</div>
-										{:else}
-											<div class="flex items-center gap-2">
-												<input type="file" accept="image/*" class="sr-only" tabindex={-1} aria-hidden="true" bind:this={sourceLogoInput}
-													onchange={async (e) => {
-														const file = (e.currentTarget as HTMLInputElement).files?.[0];
-														if (!file) return;
-														sourceLogoSrc = await new Promise<string>((res, rej) => {
-															const fr = new FileReader();
-															fr.onload = () => res(String(fr.result ?? ''));
-															fr.onerror = () => rej(fr.error);
-															fr.readAsDataURL(file);
-														});
-														(e.currentTarget as HTMLInputElement).value = '';
-													}}
-												/>
-												<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold border-[#ebebeb]" onclick={() => sourceLogoInput?.click()}>
-													{sourceLogoSrc ? 'Replace logo' : 'Add logo'}
-												</Button>
-												{#if sourceLogoSrc}
-													<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => (sourceLogoSrc = '')}>Remove</Button>
-													<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
-														<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
-													</div>
-												{/if}
-											</div>
-											<div class="flex min-w-0 items-center gap-2 pt-1">
-												<Label class="w-12 shrink-0 text-[9px] text-[#b0b0b0]">Width</Label>
-												<Slider type="single" bind:value={sourceLogoWidth} min={80} max={400} step={4} class="min-w-0 flex-1" />
-												<span class="w-10 shrink-0 text-right text-[9px] text-[#b0b0b0]">{sourceLogoWidth}px</span>
-											</div>
-										{/if}
-									</div>
-								{/if}
-
 								<!-- Background (non-news) -->
 								{#if activeTemplate !== 'news'}
 									<div class="pt-3.5 border-t border-[#f2f2f2] flex flex-col gap-2">
@@ -12124,6 +13669,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							</div>
 						</PopoverContent>
 					</Popover>
+					{/if}
 
 					<div class="flex-1"></div>
 
@@ -12137,7 +13683,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								? 'Fetching…'
 								: 'Generating…'
 							: 'Load & Fill'}
-						class="prompt-bar-submit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-[#ffffff] transition-all duration-150 hover:bg-[#333] hover:shadow-[0_4px_14px_rgba(0,0,0,0.25)] active:scale-[0.93] disabled:opacity-40 disabled:cursor-not-allowed"
+						class="prompt-bar-submit"
 					>
 						{#if fetchingNews}
 							<Loader size={15} class="animate-spin" />
@@ -12147,14 +13693,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					</button>
 				</div>
 							</div>
-				{#if articleUrl}
+				<!-- {#if articleUrl}
 					<a
 						href={articleUrl}
 						target="_blank"
 						rel="noopener noreferrer"
 						class="mt-2 block text-center text-[11px] font-body text-[#c0c0c0] transition-colors hover:text-violet-400"
 					>View source article ↗</a>
-				{/if}
+				{/if} -->
 			</div>
 			<!-- /Prompt bar (below filmstrip) -->
 		</div>
@@ -12164,6 +13710,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	<div class="studio-right-rail flex min-h-0 shrink-0 flex-col" class:is-collapsed={assetsCollapsed}>
 		<StudioAssetsSidebar
 			{userId}
+			seedQuery={assetsSidebarSeedQuery}
 			bind:collapsed={assetsCollapsed}
 			onUseAsBackground={(ref) => void applyAssetAsBackground(ref)}
 			onUseAsBottomBackground={
@@ -12182,7 +13729,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		{...({
 			slideLabels: slides.map((_, i) => `Slide ${i + 1}`),
 			inline: false,
-			rightOffsetPx: assetsCollapsed ? 20 : 288,
+			rightOffsetPx: 16,
 			bottomOffsetPx: 20,
 			zIndex: 200,
 			posting: exportingAll,
@@ -12191,8 +13738,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			onSaveDraft: () => void confirmAndSaveDraft(),
 			onExportZip: () => void exportPng(),
 			onBurnMusicClick: () => void navigateToBurnMusicPage(),
-			onSaveTemplate: (name: string) => saveStudioTemplateNamed(name),
+			onSaveTemplate: (name: string, opts?: { overwriteId?: string }) =>
+				saveStudioTemplateNamed(name, opts),
+			onListSavedTemplates: () => listSavedStudioTemplates(),
 			defaultTemplateName: `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`,
+			builtinTemplateLabel: TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'News',
 			onPost: async () => {
 				const n = await exportAllSlidesToDraft();
 				if (!n) {
@@ -12210,82 +13760,120 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 </div>
 
 {#if circleAIModalFor !== null}
-	<!-- Circle AI prompt modal — Krea-style floating bar -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 z-[100] flex items-end justify-center pb-8"
+		class="fixed inset-0 z-[100] flex items-center justify-center p-4"
 		onclick={closeCircleAIModal}
+		role="presentation"
 	>
+		<div class="absolute inset-0 bg-black/50"></div>
 		<div
-			class="absolute inset-0 backdrop-blur-[2px]"
-			style="background: color-mix(in oklab, var(--app-text) {uiTheme === 'light' ? '18%' : '40%'}, transparent);"
-		></div>
-		<div
-			class="relative w-[580px] max-w-[94vw] rounded-[24px] border border-[#e8e8e8] bg-white p-0 overflow-hidden"
-			style="box-shadow: 0 24px 64px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="circle-ai-title"
+			class="relative w-full max-w-lg rounded-lg border border-border bg-background p-6 shadow-lg"
 			onclick={(e) => e.stopPropagation()}
 		>
-			<!-- Input area -->
-			<div class="px-4 pt-4 pb-3">
-				<div class="flex items-start gap-3">
-					<Sparkles size={15} class="mt-0.5 shrink-0 text-[#c0c0c0]" />
-					<input
-						id="circle-ai-prompt-input"
-						bind:value={circleAIPrompt}
-						placeholder="Describe an image and click generate…"
-						class="flex-1 min-w-0 bg-transparent text-[13px] font-body text-[#1a1a1a] placeholder:text-[#b8b8b8] outline-none"
-						onkeydown={(e) => { if (e.key === 'Enter') submitCircleAIModal(); if (e.key === 'Escape') closeCircleAIModal(); }}
-						autofocus
-					/>
-					<button
-						type="button"
-						onclick={closeCircleAIModal}
-						class="w-7 h-7 rounded-full border border-[#e8e8e8] bg-[#f5f5f5] text-[#aaa] flex items-center justify-center transition-colors hover:bg-[#ebebeb] hover:text-[#555] shrink-0"
-						aria-label="Close"
-					>
-						<X size={12} />
-					</button>
-				</div>
-				<p class="text-[10.5px] font-body mt-2.5 ml-6 text-[#c0c0c0] leading-relaxed">
-					Describe a subject &amp; vibe — keep it short, no text in image.
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				class="absolute top-3 right-3 text-muted-foreground"
+				onclick={closeCircleAIModal}
+				aria-label="Close"
+			>
+				<X size={16} />
+			</Button>
+			<div class="flex flex-col gap-1.5 pr-8">
+				<h2 id="circle-ai-title" class="text-lg leading-none font-semibold tracking-tight">
+					Circle AI
+				</h2>
+				<p class="text-muted-foreground text-sm">
+					Describe a subject and vibe. Keep it short — no text in the image.
 				</p>
 			</div>
-
-			<!-- Divider -->
-			<div class="mx-4 h-px bg-[#f0f0f0]"></div>
-
-			<!-- Bottom action bar -->
-			<div class="flex items-center gap-1.5 px-3 py-2.5">
-				<!-- Decorative info pill -->
-				<div class="flex items-center gap-1.5 rounded-full border border-[#e8e8e8] bg-[#fafafa] px-3 py-[6px] text-[11px] font-medium text-[#888]">
-					<Sparkles size={10} class="text-violet-400" />
-					Circle AI
-				</div>
-
-				<div class="flex-1"></div>
-
-				<!-- Cancel -->
-				<button
-					type="button"
-					onclick={closeCircleAIModal}
-					class="flex items-center gap-1.5 rounded-full border border-[#e8e8e8] bg-white px-3.5 py-[7px] text-[11.5px] font-medium text-[#888] transition-all duration-150 hover:border-[#d0d0d0] hover:text-[#444] hover:bg-[#fafafa]"
-				>
-					Cancel
-				</button>
-
-				<!-- Generate -->
-				<button
-					type="button"
+			<Input
+				id="circle-ai-prompt-input"
+				class="mt-4"
+				bind:value={circleAIPrompt}
+				placeholder="Describe an image and click generate…"
+				onkeydown={(e) => {
+					if (e.key === 'Enter') submitCircleAIModal();
+					if (e.key === 'Escape') closeCircleAIModal();
+				}}
+				autofocus
+			/>
+			<div class="mt-6 flex justify-end gap-2">
+				<Button variant="outline" onclick={closeCircleAIModal}>Cancel</Button>
+				<Button
 					onclick={submitCircleAIModal}
 					disabled={circleAIGenerating || !circleAIPrompt.trim()}
-					class="flex items-center gap-1.5 rounded-full bg-[#c8f050] px-4 py-[7px] text-[12px] font-semibold font-body text-[#1a1a1a] transition-all duration-150 hover:bg-[#d4f565] hover:shadow-[0_4px_16px_rgba(160,220,30,0.35)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{#if circleAIGenerating}
-						<Loader size={11} class="animate-spin" /> Generating…
+						<Loader size={14} class="animate-spin" /> Generating…
 					{:else}
-						Generate
+						<Sparkles size={14} /> Generate
 					{/if}
-				</button>
+				</Button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if bgAIModalOpen}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+		onclick={closeBgAIModal}
+		role="presentation"
+	>
+		<div class="absolute inset-0 bg-black/50"></div>
+		<div
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="bg-ai-title"
+			class="relative w-full max-w-lg rounded-lg border border-border bg-background p-6 shadow-lg"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				class="absolute top-3 right-3 text-muted-foreground"
+				onclick={closeBgAIModal}
+				aria-label="Close"
+			>
+				<X size={16} />
+			</Button>
+			<div class="flex flex-col gap-1.5 pr-8">
+				<h2 id="bg-ai-title" class="text-lg leading-none font-semibold tracking-tight">
+					AI background
+				</h2>
+				<p class="text-muted-foreground text-sm">
+					Describe the scene, or leave empty to use the recommended prompt from this slide.
+				</p>
+			</div>
+			<Input
+				id="bg-ai-prompt-input"
+				class="mt-4"
+				bind:value={bgAIPrompt}
+				placeholder={bgAIRecommended || 'Describe a background and click generate…'}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') void submitBgAIModal();
+					if (e.key === 'Escape') closeBgAIModal();
+				}}
+				autofocus
+			/>
+			<div class="mt-6 flex justify-end gap-2">
+				<Button variant="outline" onclick={closeBgAIModal}>Cancel</Button>
+				<Button
+					onclick={() => void submitBgAIModal()}
+					disabled={bgAIGenerating || !(bgAIPrompt.trim() || bgAIRecommended)}
+				>
+					{#if bgAIGenerating}
+						<Loader size={14} class="animate-spin" /> Generating…
+					{:else}
+						<Sparkles size={14} /> Generate
+					{/if}
+				</Button>
 			</div>
 		</div>
 	</div>
@@ -12297,7 +13885,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	showCutout={previewTemplate === 'news' &&
 		!!String(canvasBackgroundImage ?? '').trim() &&
 		!String(canvasBackgroundVideo ?? '').trim()}
-	onAi={() => void generateBackground(paintSlide, undefined, previewTemplate)}
+	onAi={openBgAIModal}
 	aiDisabled={!!(generatingImagesByTemplate[previewTemplate] ?? [])[paintSlide]}
 	onCutOut={() => void cutOutSubject(paintSlide)}
 	onReplace={() => newsBgToolbarMediaInput?.click()}
@@ -12531,13 +14119,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		? null
 		: toolbarAnchor}
 	style={toolbarFloatingStyle}
-	autoFontSize={toolbarAutoFontSize ?? (selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined)}
+	autoFontSize={toolbarPaintedFontSize ?? toolbarAutoFontSize ?? (selectedText === 'source' ? 34 : selectedText === 'textOverlay' ? 42 : undefined)}
 	deleteOnly={selectedText === 'articleImage' ||
 		selectedText === 'articleLogo' ||
 		selectedText === 'videoStoryMedia'}
 	supportsHighlights={studioMarkupFieldActive()}
 	hasRangeSelection={hasRangeSelection}
 	textColorMixed={toolbarTextColorMixed}
+	activeHighlight={toolbarActiveHighlight}
 	onChange={onFloatingToolbarChange}
 	onHighlight={studioMarkupFieldActive() ? onHighlight : undefined}
 	onClose={closeToolbar}
@@ -12663,13 +14252,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		border-color: var(--sl-border) !important;
 	}
 
-	/* — Prompt bar submit button: force icon to always be white — */
-	:global(.prompt-bar-submit svg),
-	:global(.prompt-bar-submit svg *) {
-		color: #ffffff !important;
-		stroke: #ffffff !important;
-	}
-
 	/* — Prompt bar: kill ALL focus rings/outlines on the bare inputs — */
 	:global(.prompt-bar input),
 	:global(.prompt-bar input:focus),
@@ -12679,6 +14261,114 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		border: none !important;
 		background-color: transparent !important;
 		accent-color: transparent;
+	}
+
+	:global(.prompt-bar) {
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.9);
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+		backdrop-filter: blur(14px);
+		-webkit-backdrop-filter: blur(14px);
+	}
+
+	:global(.prompt-bar-input) {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 14px 16px 10px;
+	}
+
+	:global(.prompt-bar-field) {
+		flex: 1;
+		min-width: 0;
+		background: transparent;
+		border: none;
+		outline: none;
+		font-size: 14px;
+		line-height: 1.35;
+		color: #1a1a1a;
+		font-family: inherit;
+	}
+
+	:global(.prompt-bar-field::placeholder) {
+		color: #b4b4b4;
+	}
+
+	:global(.prompt-bar-divider) {
+		height: 1px;
+		margin: 0 14px;
+		background: rgba(10, 10, 10, 0.06);
+	}
+
+	:global(.prompt-bar-tools) {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 10px 10px;
+		flex-wrap: wrap;
+	}
+
+	:global(.prompt-chip) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 32px;
+		padding: 0 12px;
+		border: none;
+		border-radius: 10px;
+		background: rgba(10, 10, 10, 0.04);
+		color: rgba(10, 10, 10, 0.72);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		white-space: nowrap;
+		cursor: pointer;
+		user-select: none;
+		flex-shrink: 0;
+		transition: background-color 140ms ease, color 140ms ease;
+	}
+
+	:global(.prompt-chip:hover) {
+		background: rgba(10, 10, 10, 0.07);
+		color: #111;
+	}
+
+	:global(.prompt-bar-submit) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		margin-left: auto;
+		border: none;
+		border-radius: 11px;
+		background: #7bf1a8;
+		color: #080808;
+		cursor: pointer;
+		flex-shrink: 0;
+		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
+		transition: background-color 140ms ease, transform 120ms ease;
+	}
+
+	:global(.prompt-bar-submit:hover:not(:disabled)) {
+		background: #8ff5b6;
+	}
+
+	:global(.prompt-bar-submit:active:not(:disabled)) {
+		transform: scale(0.94);
+	}
+
+	:global(.prompt-bar-submit:disabled) {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	:global(.prompt-bar-submit svg),
+	:global(.prompt-bar-submit svg *) {
+		color: #080808 !important;
+		stroke: #080808 !important;
 	}
 
 	/* — Headings / chips that use header label styling — */
@@ -12774,6 +14464,35 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	}
 	.filmstrip-corner-btn {
 		pointer-events: auto;
+		background: #ffffff !important;
+		color: #111111 !important;
+		border: 1px solid rgba(0, 0, 0, 0.16) !important;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+	}
+	.filmstrip-corner-btn :global(svg) {
+		color: inherit !important;
+		stroke: currentColor !important;
+	}
+	.filmstrip-delete-btn:hover {
+		background: #ef4444 !important;
+		border-color: #ef4444 !important;
+		color: #ffffff !important;
+	}
+	.filmstrip-music-btn:hover:not(.is-on) {
+		color: #ea580c !important;
+		border-color: rgba(234, 88, 12, 0.45) !important;
+	}
+	.filmstrip-music-btn.is-on {
+		background: #f97316 !important;
+		border-color: #fb923c !important;
+		color: #ffffff !important;
+		box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
+	}
+	.filmstrip-label {
+		color: rgba(10, 10, 10, 0.48);
+	}
+	.filmstrip-label.is-active {
+		color: #6d28d9;
 	}
 	.filmstrip-thumb {
 		width: 4rem;

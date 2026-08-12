@@ -3,8 +3,8 @@
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import { parseHighlightMarkup as parseHighlightToSegments, segmentText } from '$lib/highlight';
 	import type { TextOverlay } from '$lib/types';
-	import { patternStyleForUrl } from '$lib/components/textOverlayPattern';
-	import { textShadowStyleAttr } from '$lib/textStyleCss';
+	import { gradientTextFillCss, patternStyleForUrl, wrapClippedFillHtml } from '$lib/components/textOverlayPattern';
+	import { textBgCss, textShadowStyleAttr } from '$lib/textStyleCss';
 	import {
 		CANVAS_TEXT_BOX_TRIM,
 		CANVAS_TEXT_FOCUS_RING,
@@ -494,6 +494,7 @@
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
 							{textShadowStyleAttr(css)}
+							{textBgCss(css)}
 							width: 100%;
 						"
 						onclick={(e) => e.stopPropagation()}
@@ -508,6 +509,7 @@
 								defaultColor={highlightColor}
 								fontFamily={css.fontFamily}
 								fontSize={css.fontSize ?? 42}
+								liveLineHeight={css.lineHeight}
 								lineHeight="inherit"
 								ariaLabel="Text overlay editor"
 								onSelectionChange={(has, r) => {
@@ -544,6 +546,7 @@
 									line-height: {css.lineHeight ?? 1.15};
 									letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
 									{textShadowStyleAttr(css)}
+							{textBgCss(css)}
 									{CANVAS_TEXT_BOX_TRIM}
 									padding: 0;
 									margin: 0;
@@ -603,6 +606,7 @@
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
 							{textShadowStyleAttr(css)}
+							{textBgCss(css)}
 							width: 100%;
 							overflow: hidden;
 							user-select: none;
@@ -612,12 +616,12 @@
 						{#if parseHighlightMarkup}
 							{@html segmentText(parseHighlightToSegments(t.text, highlightColor)).map((seg) => {
 								if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+								const esc = seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 								if (seg.patternImage) {
-									const s = patternStyleForUrl(seg.patternImage).replace(/\n/g,' ');
-									return `<span style="${s}">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+									return wrapClippedFillHtml(patternStyleForUrl(seg.patternImage).replace(/\n/g,' '), esc);
 								}
 								if (seg.gradientFrom && seg.gradientTo) {
-									return `<span style="background: linear-gradient(90deg, ${seg.gradientFrom}, ${seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+									return wrapClippedFillHtml(gradientTextFillCss(seg.gradientFrom, seg.gradientTo), esc);
 								}
 								return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
 							}).join('')}

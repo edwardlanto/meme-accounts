@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import MarketingNav from '$lib/components/MarketingNav.svelte';
+	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
 
 	let mounted = $state(false);
-	let scrollY = $state(0);
 	let counted = $state(false);
 
 	/** Phone marquee — product screen shots scrolling through the hero. */
@@ -121,7 +122,7 @@
 		},
 		{
 			q: 'What templates can I use?',
-			a: 'Use viral hooks, carousels, news-style frames, quote slides, and more. Templates are built for meme page formats that already perform on Instagram.',
+			a: 'Use viral hooks, Instagram carousels, feed grids, LinkedIn decks, news-style frames, quote slides, tweet graphics, and more. Templates are built for meme page formats that already perform on Instagram.',
 		},
 	];
 
@@ -174,9 +175,6 @@
 
 	onMount(() => {
 		mounted = true;
-		const onScroll = () => { scrollY = window.scrollY; };
-		window.addEventListener('scroll', onScroll, { passive: true });
-
 		const io = new IntersectionObserver((entries) => {
 			entries.forEach((e) => {
 				if (e.isIntersecting) {
@@ -227,7 +225,6 @@
 		if (statsBar) statIo.observe(statsBar);
 
 		return () => {
-			window.removeEventListener('scroll', onScroll);
 			io.disconnect();
 			statIo.disconnect();
 		};
@@ -261,26 +258,7 @@
 		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
 	</a>
 
-	<!-- NAV -->
-	<nav class="nav" class:scrolled={scrollY > 24}>
-		<a href="/" class="brand">
-			<img
-				src="/logo/meme-accounts-logo.webp"
-				alt="Meme Accounts"
-				class="brand-logo"
-				width="180"
-				height="28"
-			/>
-		</a>
-		<div class="nav-actions">
-			<a href="/pricing" class="btn btn-ghost">Pricing</a>
-			<a href="/fake-tweet-maker" class="btn btn-ghost">Tweet Maker</a>
-			<a href="/instagram-carousel-maker" class="btn btn-ghost">Instagram Carousel</a>
-			<a href="/instagram-grid-maker" class="btn btn-ghost">Instagram Grid</a>
-			<a href="/linkedin-carousel-maker" class="btn btn-ghost">LinkedIn Carousel</a>
-			<a href="/?auth=signup" class="btn btn-dark">Get Meme Accounts</a>
-		</div>
-	</nav>
+	<MarketingNav />
 
 	<!-- HERO -->
 	<section class="hero">
@@ -332,11 +310,9 @@
 									<div class="phone-notch"></div>
 									<div class="phone-screen">
 										<img src={p.src} alt="" draggable="false" />
-										<div class="phone-overlay">
-											<div class="phone-pill">{p.tag}</div>
-										</div>
 									</div>
 									<div class="phone-bar"></div>
+									<div class="phone-pill">{p.tag}</div>
 								</div>
 							</div>
 						{/each}
@@ -364,7 +340,13 @@
 			<div class="section-head reveal">
 				<h2 class="featured-h">Featured templates</h2>
 				<p class="section-sub">
-					Ready-made layouts for meme carousels, viral hooks, news frames, and slide stacks.
+					Ready-made layouts for
+					<a href="/instagram-carousel-maker">Instagram carousels</a>,
+					viral hooks, news frames, and slide stacks. Also try the
+					<a href="/instagram-grid-maker">grid maker</a>,
+					<a href="/linkedin-carousel-maker">LinkedIn carousel</a>,
+					and
+					<a href="/fake-tweet-maker">tweet maker</a>.
 				</p>
 			</div>
 			<div class="featured-grid">
@@ -413,7 +395,14 @@
 						</div>
 					</div>
 					<h3 class="how-step-title">Pick your template</h3>
-					<p class="how-step-desc">Choose a meme-ready layout — carousels, hooks, news frames, and more.</p>
+					<p class="how-step-desc">
+						Choose a meme-ready layout —
+						<a href="/instagram-carousel-maker">Instagram carousels</a>,
+						<a href="/instagram-grid-maker">feed grids</a>,
+						<a href="/linkedin-carousel-maker">LinkedIn decks</a>,
+						hooks, news frames, or a
+						<a href="/fake-tweet-maker">tweet graphic</a>.
+					</p>
 				</div>
 
 				<!-- Step 2: customize in studio -->
@@ -522,7 +511,19 @@
 				{#each faqs as item, i}
 					<details class="faq-item reveal" style="--d:{i * 0.04}s">
 						<summary class="faq-q">{item.q}</summary>
-						<p class="faq-a">{item.a}</p>
+						{#if item.q === 'What templates can I use?'}
+							<p class="faq-a">
+								Use viral hooks,
+								<a href="/instagram-carousel-maker">Instagram carousels</a>,
+								<a href="/instagram-grid-maker">feed grids</a>,
+								<a href="/linkedin-carousel-maker">LinkedIn decks</a>,
+								news-style frames, quote slides,
+								<a href="/fake-tweet-maker">tweet graphics</a>,
+								and more. Templates are built for meme page formats that already perform on Instagram.
+							</p>
+						{:else}
+							<p class="faq-a">{item.a}</p>
+						{/if}
 					</details>
 				{/each}
 			</div>
@@ -541,54 +542,7 @@
 		</div>
 	</section>
 
-	<!-- FOOTER -->
-	<footer class="footer">
-		<div class="container footer-grid">
-			<div class="footer-brand">
-				<a href="/" class="brand">
-					<img
-						src="/logo/meme-accounts-logo.webp"
-						alt="Meme Accounts"
-						class="brand-logo"
-						width="180"
-						height="28"
-					/>
-				</a>
-				<p class="footer-tag">Create. Test. Grow. Built for meme pages.</p>
-			</div>
-
-			<div class="footer-col">
-				<p class="footer-h">Product</p>
-				<a href="/instagram-carousel-maker">Instagram Carousel</a>
-				<a href="/instagram-grid-maker">Instagram Grid</a>
-				<a href="/linkedin-carousel-maker">LinkedIn Carousel</a>
-				<a href="/fake-tweet-maker">Tweet Maker</a>
-				<a href="/pricing">Pricing</a>
-			</div>
-
-			<div class="footer-col">
-				<p class="footer-h">Company</p>
-				<a href="/about">About</a>
-				<a href="/careers">Careers</a>
-				<a href="/contact">Contact</a>
-				<a href="#faq">FAQs</a>
-			</div>
-
-			<div class="footer-col">
-				<p class="footer-h">Legal</p>
-				<a href="/privacy">Privacy</a>
-				<a href="/terms">Terms</a>
-				<a href="/refund-policy">Refund Policy</a>
-			</div>
-		</div>
-
-		<div class="container footer-bottom">
-			<p>© 2026 Meme Accounts. All rights reserved.</p>
-			<p class="footer-fine">
-				Meme Accounts is a template studio for meme page creators. Brand names belong to their respective owners.
-			</p>
-		</div>
-	</footer>
+	<MarketingFooter />
 </div>
 
 <style>
@@ -628,7 +582,13 @@
 		line-height: 1.55;
 		color: var(--ap-text-2);
 		margin: 10px 0 0;
-		max-width: 560px;
+		max-width: 640px;
+	}
+	.section-sub a {
+		color: var(--ap-text);
+		font-weight: 600;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 
 	/* ─── reveal animation ────────────────────────────────── */
@@ -674,48 +634,6 @@
 		letter-spacing: 0.02em;
 	}
 	.announce svg { flex-shrink: 0; opacity: 0.7; }
-
-	/* ─── nav ─────────────────────────────────────────────── */
-	.nav {
-		position: sticky;
-		top: 0; left: 0; right: 0;
-		z-index: 50;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 20px 32px;
-		transition: background 0.35s ease, backdrop-filter 0.35s ease,
-		            border-color 0.35s ease, padding 0.35s ease;
-		border-bottom: 1px solid transparent;
-	}
-	.nav.scrolled {
-		background: rgba(255, 255, 255, 0.82);
-		backdrop-filter: saturate(180%) blur(18px);
-		-webkit-backdrop-filter: saturate(180%) blur(18px);
-		border-bottom-color: var(--ap-line);
-		padding: 14px 32px;
-	}
-
-	.brand {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
-	}
-	.brand-logo {
-		display: block;
-		height: 28px;
-		width: auto;
-		max-width: min(200px, 52vw);
-		object-fit: contain;
-	}
-
-	.nav-actions {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
 
 	/* ─── buttons ─────────────────────────────────────────── */
 	.btn {
@@ -1014,20 +932,20 @@
 		--phone-duration: 42s;
 		position: relative;
 		margin-top: 64px;
-		padding: 36px 0 28px;
+		padding: 28px 0 48px;
 		overflow: hidden;
 		mask-image: linear-gradient(
 			90deg,
 			transparent 0%,
-			#000 6%,
-			#000 94%,
+			#000 10%,
+			#000 90%,
 			transparent 100%
 		);
 		-webkit-mask-image: linear-gradient(
 			90deg,
 			transparent 0%,
-			#000 6%,
-			#000 94%,
+			#000 10%,
+			#000 90%,
 			transparent 100%
 		);
 	}
@@ -1075,13 +993,8 @@
 		flex: 0 0 auto;
 		transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 	}
-	.phone:nth-child(5n + 1) { transform: translateY(8px); }
-	.phone:nth-child(5n + 2) { transform: translateY(-7px); }
-	.phone:nth-child(5n + 3) { transform: translateY(11px); }
-	.phone:nth-child(5n + 4) { transform: translateY(-5px); }
-	.phone:nth-child(5n + 5) { transform: translateY(6px); }
 	.phone:hover {
-		transform: translateY(-12px) scale(1.025);
+		transform: translateY(-14px) scale(1.02);
 		z-index: 2;
 	}
 
@@ -1113,18 +1026,19 @@
 	.phone-frame {
 		position: relative;
 		z-index: 1;
-		width: 220px;
-		height: 460px;
-		background: #0f0f10;
-		border-radius: 38px;
+		width: 280px;
+		aspect-ratio: 9 / 16;
+		height: auto;
+		/* background: #0f0f10; */
+		border-radius: 42px;
 		padding: 10px;
-		box-shadow:
+		/* box-shadow:
 			0 1px 0 rgba(255, 255, 255, 0.16) inset,
 			0 0 0 1px rgba(0, 0, 0, 0.22),
 			0 28px 56px -22px rgba(15, 15, 16, 0.4),
 			0 14px 28px -14px rgba(15, 15, 16, 0.28),
 			0 0 36px -6px color-mix(in oklab, var(--tint) 42%, transparent),
-			0 18px 48px -18px color-mix(in oklab, var(--tint) 28%, transparent);
+			0 18px 48px -18px color-mix(in oklab, var(--tint) 28%, transparent); */
 		transition: box-shadow 0.45s ease;
 	}
 	.phone:hover .phone-frame {
@@ -1138,55 +1052,56 @@
 	}
 	.phone-notch {
 		position: absolute;
-		top: 18px; left: 50%;
-		width: 70px; height: 18px;
+		top: 18px;
+		left: 50%;
+		width: 88px;
+		height: 22px;
 		background: #0f0f10;
-		border-radius: 12px;
+		border-radius: 14px;
 		transform: translateX(-50%);
-		z-index: 2;
+		z-index: 3;
 	}
 	.phone-screen {
 		position: relative;
 		width: 100%;
 		height: 100%;
-		border-radius: 30px;
+		border-radius: 32px;
 		overflow: hidden;
-		background: color-mix(in oklab, var(--tint) 35%, #1a1a1c);
+		background: #111;
 	}
 	.phone-screen img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+		object-position: center top;
 		display: block;
-	}
-	.phone-overlay {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		flex-direction: column;
-		justify-content: flex-end;
-		padding: 18px;
-		background: linear-gradient(180deg, transparent 52%, rgba(0, 0, 0, 0.38) 100%);
-		pointer-events: none;
-	}
-	.phone-pill {
-		align-self: flex-start;
-		padding: 6px 12px;
-		background: rgba(255, 255, 255, 0.92);
-		color: #111;
-		border-radius: 999px;
-		font-weight: 700;
-		font-size: 11px;
-		letter-spacing: 0.02em;
-		backdrop-filter: blur(8px);
 	}
 	.phone-bar {
 		position: absolute;
-		bottom: 6px; left: 50%;
-		width: 110px; height: 4px;
-		background: rgba(255, 255, 255, 0.55);
+		bottom: 10px;
+		left: 50%;
+		width: 108px;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.5);
 		border-radius: 2px;
 		transform: translateX(-50%);
+		z-index: 3;
+	}
+	.phone-pill {
+		position: absolute;
+		left: 50%;
+		bottom: -14px;
+		transform: translateX(-50%);
+		padding: 5px 11px;
+		background: rgba(255, 255, 255, 0.96);
+		color: #111;
+		border-radius: 999px;
+		font-weight: 700;
+		font-size: 10px;
+		letter-spacing: 0.02em;
+		box-shadow: 0 6px 16px rgba(15, 15, 16, 0.12);
+		white-space: nowrap;
+		z-index: 2;
 	}
 
 	/* ─── stats bar ───────────────────────────────────────── */
@@ -1455,6 +1370,13 @@
 		margin: 0;
 		max-width: 280px;
 	}
+	.how-step-desc a,
+	.faq-a a {
+		color: var(--ap-text);
+		font-weight: 600;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
 
 	/* ─── benefits ────────────────────────────────────────── */
 	.benefits {
@@ -1671,62 +1593,6 @@
 	}
 	.cta-row > .btn { position: relative; }
 
-	/* ─── footer ──────────────────────────────────────────── */
-	.footer {
-		background: var(--ap-bg);
-		padding: 64px 0 40px;
-		border-top: 1px solid var(--ap-line);
-	}
-	.footer-grid {
-		display: grid;
-		grid-template-columns: 2fr 1fr 1fr 1fr;
-		gap: 40px;
-		padding-bottom: 48px;
-	}
-	.footer-brand .brand { margin-bottom: 14px; }
-	.footer-tag {
-		font-size: 14px;
-		color: var(--ap-text-2);
-		max-width: 280px;
-		line-height: 1.55;
-		margin: 0;
-	}
-	.footer-col { display: flex; flex-direction: column; gap: 10px; }
-	.footer-h {
-		font-size: 12px;
-		font-weight: 700;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--ap-text-3);
-		margin: 0 0 6px;
-	}
-	.footer-col a {
-		font-size: 14px;
-		color: var(--ap-text-2);
-		text-decoration: none;
-		transition: color 0.2s;
-	}
-	.footer-col a:hover { color: var(--ap-text); }
-
-	.footer-bottom {
-		padding-top: 24px;
-		border-top: 1px solid var(--ap-line);
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 16px;
-		flex-wrap: wrap;
-	}
-	.footer-bottom p {
-		font-size: 12px;
-		color: var(--ap-text-3);
-		margin: 0;
-	}
-	.footer-fine {
-		max-width: 520px;
-		text-align: right;
-	}
-
 	/* ─── responsive ──────────────────────────────────────── */
 	@media (max-width: 1000px) {
 		.preview-body { grid-template-columns: 1fr; }
@@ -1737,15 +1603,11 @@
 	}
 
 	@media (max-width: 880px) {
-		.nav { padding: 16px 20px; }
-		.nav.scrolled { padding: 12px 20px; }
-		.btn-ghost { display: none; }
-
 		.hero { padding-top: 90px; }
 		.preview-stage { margin-top: 40px; }
 		.preview-canvas { grid-template-columns: repeat(2, 1fr); }
 		.phone-stage { margin-top: 48px; }
-		.phone-frame { width: 180px; height: 380px; border-radius: 32px; }
+		.phone-frame { width: 200px; border-radius: 34px; }
 
 		.featured { padding: 80px 20px 20px; }
 		.featured-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
@@ -1763,10 +1625,6 @@
 		.faq-q { font-size: 16px; padding-right: 32px; }
 
 		.cta-row { flex-direction: column; text-align: center; padding: 32px 28px; }
-
-		.footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
-		.footer-bottom { flex-direction: column; }
-		.footer-fine { text-align: center; }
 	}
 
 	@media (prefers-reduced-motion: reduce) {

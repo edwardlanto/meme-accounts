@@ -29,7 +29,7 @@ function normalizeNewsCategories(raw: unknown): string {
 		.filter(Boolean)
 		.map((c) => (c === 'finance' ? 'business' : c))
 		.filter((c) => THENEWS_CATEGORIES.has(c));
-	return [...new Set(parts)].join(',') || 'business';
+	return [...new Set(parts)].join(',') || 'general';
 }
 
 /** Some sources tag every story with many categories; prefer tighter matches. */
@@ -82,8 +82,8 @@ async function openRouterComplete(
 			headers: {
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
-				'HTTP-Referer': 'https://carouselstudio.app',
-				'X-Title': 'Carousel Studio',
+				'HTTP-Referer': 'https://memeaccounts.com',
+				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
 				model: 'anthropic/claude-sonnet-4.5',
@@ -367,6 +367,7 @@ async function syntheticContent(
 	syntheticHint: string,
 	regenNonce = '',
 	stepCount = 5,
+	maxWords = 28,
 ) {
 	const theme = (storyCategory || 'health').trim() || 'health';
 	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
@@ -386,7 +387,7 @@ async function syntheticContent(
 
 Rules for "hook":
 - One punchy cover line that promises exactly ${stepsN} steps (or ways/tips) about the topic
-- Max 28 words, ALL CAPS
+- Max ${maxWords} words, ALL CAPS
 - No hashtags, no emojis
 - Prefer forms like "${stepsN} STEPS TO …" or "${stepsN} WAYS TO …"
 - Name the topic clearly
@@ -405,7 +406,7 @@ Rules for "context":
 
 Rules for "hook":
 - One original, memorable quote line about the topic (do NOT copy a famous person's exact words)
-- Max 28 words, ALL CAPS
+- Max ${maxWords} words, ALL CAPS
 - No quotation marks in the hook text, no hashtags, no emojis
 - Should feel wise, sharp, or emotionally true — not generic motivational poster filler
 
@@ -420,7 +421,7 @@ Rules for "context":
 {"hook":"...","context":"..."}
 
 Rules for "hook":
-- One punchy fact-style line, max 28 words
+- One punchy fact-style line, max ${maxWords} words
 - Write in ALL CAPS
 - No hashtags, no emojis
 - Should feel surprising but plausible (avoid obvious urban myths)
@@ -436,7 +437,7 @@ Rules for "context":
 Theme for the story: "${themeLabel}"${hasHint ? `\nTopic: "${hintSafe}" — the story MUST revolve around this specific subject. Name it explicitly in the hook and weave it through the context.` : ''}
 
 Rules for "hook":
-- Opening beat of a micro-story, max 28 words
+- Opening beat of a micro-story, max ${maxWords} words
 - ALL CAPS
 - No hashtags, no emojis
 - Drop the reader into a specific moment (who, where, what is going wrong or about to change)
@@ -518,7 +519,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = parsed.data;
 	const {
 		search,
-		categories = 'business,tech',
+		categories = 'general',
 		locale = 'us',
 		language = 'en',
 		limit = 3,
@@ -530,6 +531,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
 	const syntheticHint = String(body.syntheticHint ?? '').trim();
 	const stepCount = clampStepCount(body.stepCount);
+	const maxWords = Math.max(6, Math.min(40, Math.floor(Number(body.maxWords)) || 28));
 
 	if (mode === 'fact' || mode === 'story' || mode === 'quote' || mode === 'steps') {
 		if (!env.OPENROUTER_API_KEY) {
@@ -547,6 +549,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				syntheticHint,
 				regenNonce,
 				stepCount,
+				maxWords,
 			),
 			{ status: 200 },
 		);
@@ -625,13 +628,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 Rewrite this news headline into punchy Instagram overlay text.
 
 Rules:
-- Max 28 words total
+- Max ${maxWords} words total
 - ALL CAPS (the template will uppercase it, but write in caps anyway)
 - No hashtags, no emojis
 - Short, punchy sentences
 - NEVER use em dashes (—) or en dashes (–). Use commas, periods, or a plain hyphen (-) only.
 - MUST END WITH A COMPLETE THOUGHT — do not cut off mid-sentence
-- If the full story won't fit in 28 words, write a shorter complete hook instead
+- If the full story won't fit in ${maxWords} words, write a shorter complete hook instead
 - Start with the most shocking/interesting fact
 
 Headline & snippet: "${snippet}"

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -799,6 +799,54 @@ export async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T
 	} finally {
 		await rm(dir, { recursive: true, force: true }).catch(() => {});
 	}
+}
+
+/**
+ * Studio slide export: WebM (MediaRecorder) → H.264 MP4 for Instagram / TikTok.
+ * CRF 20 keeps type sharp; much smaller than the 6 Mbps capture bitrate.
+ */
+export async function transcodeStudioWebmToMp4(input: Uint8Array): Promise<Uint8Array> {
+	const tools = await checkVideoTools();
+	if (!tools.ffmpeg) {
+		throw new Error('ffmpeg is not installed. Install with: brew install ffmpeg (or set FFMPEG_PATH)');
+	}
+
+	return withTempDir(async (dir) => {
+		const inPath = join(dir, 'slide.webm');
+		const outPath = join(dir, 'slide.mp4');
+		await writeFile(inPath, input);
+
+		const common = [
+			'-nostdin',
+			'-y',
+			'-i',
+			inPath,
+			'-vf',
+			"scale=trunc(iw/2)*2:trunc(ih/2)*2",
+			'-c:v',
+			'libx264',
+			'-preset',
+			'fast',
+			'-crf',
+			'20',
+			'-pix_fmt',
+			'yuv420p',
+			'-movflags',
+			'+faststart',
+		];
+
+		try {
+			await runProcess(
+				tools.ffmpegPath,
+				[...common, '-c:a', 'aac', '-b:a', '128k', '-ac', '2', outPath],
+				{ timeoutMs: 180_000 },
+			);
+		} catch {
+			await runProcess(tools.ffmpegPath, [...common, '-an', outPath], { timeoutMs: 180_000 });
+		}
+
+		return readFile(outPath);
+	});
 }
 
 export function bytesToBase64(buf: Uint8Array): string {

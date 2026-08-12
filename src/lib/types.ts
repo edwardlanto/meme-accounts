@@ -43,6 +43,8 @@ export interface TextStyle {
 	underline?: boolean;
 	color?: string;          // hex
 	bgColor?: string;        // hex (behind text)
+	/** Extra inset around a text background / chip (template px). */
+	padding?: number;
 	align?: 'left' | 'center' | 'right';
 	letterSpacing?: number;  // em
 	lineHeight?: number;     // unitless multiplier

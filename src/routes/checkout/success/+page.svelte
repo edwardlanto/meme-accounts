@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>You're in — Carousel Studio</title>
+	<title>You're in — Meme Accounts</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 

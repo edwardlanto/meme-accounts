@@ -32,12 +32,12 @@
 	<title>Clip finder - Social Poster</title>
 </svelte:head>
 
-<div class="videos-page">
-	<header class="videos-hero">
-		<div class="hero-copy">
-			<h1>Long video → short clips</h1>
-			<p>
-				Paste a YouTube link or upload a file. AI finds the best moments, ranked by virality — then
+<div class="videos-page dash-page">
+	<header class="videos-hero page-hero">
+		<div class="hero-copy page-hero-text">
+			<h1 class="dash-page-title">Videos</h1>
+			<p class="dash-page-sub">
+				Paste a YouTube link or upload a file. AI finds the best moments, ranked by virality - then
 				edit captions, reframe, and export in Bulk.
 			</p>
 		</div>
@@ -59,30 +59,16 @@
 
 <style>
 	.videos-page {
-		max-width: 560px;
-		margin: 0 auto;
-		padding: 32px 24px 64px;
 		color: var(--app-text);
-		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 	}
 	.videos-hero {
 		margin-bottom: 1.25rem;
 	}
-	.videos-hero h1 {
-		margin: 0 0 0.45rem;
-		font-size: clamp(28px, 3.4vw, 36px);
-		font-weight: 800;
-		letter-spacing: -0.025em;
-		line-height: 1.05;
-	}
 	.videos-hero p {
-		margin: 0;
-		font-size: 14px;
-		line-height: 1.55;
 		color: var(--app-text-2);
-		max-width: 42rem;
 	}
 	.import-card {
+		max-width: 560px;
 		padding: 1.1rem;
 		border: 1px solid var(--app-border);
 		border-radius: 18px;

@@ -7,7 +7,7 @@ export const GENERATED_DEMO_POSTS = {
 	"news": {
 		headline: "SOFTBANK JUST PUT $40B INTO OPENAI - WALL STREET BARELY FLINCHED",
 		body: "The largest AI check ever written - and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.",
-		source: "Markets",
+		source: "YOUR NAME",
 		imageUrl: "/templates/demos/news.jpg",
 	},
 	"image-quote": {

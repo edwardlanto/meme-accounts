@@ -4,8 +4,25 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { PLAN_CATALOG } from '$lib/pricing-catalog';
 	import {
+		DEFAULT_BRAND_KIT,
+		brandProfile,
+		loadBrandKit,
+		hydrateBrandKit,
+		normalizeBrandHandle,
+		normalizeHighlightHex,
+		normalizeHighlightStyleKind,
+		normalizeTextBgHex,
+		saveBrandKit,
+	} from '$lib/studio/brand-kit';
+	import { AVAILABLE_PATTERNS, HIGHLIGHT_SOLID_PRESETS, HIGHLIGHT_GRADIENT_PRESETS, getPatternImage } from '$lib/highlight';
+	import { TEXT_BG_SWATCHES } from '$lib/textStyleCss';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import {
 		AlertTriangle, CheckCircle2, ExternalLink, KeyRound,
-		User, Link2, CreditCard, Settings, Shield, LogOut,
+		User, CreditCard, Shield, LogOut, Palette,
 		Globe, Copy, Check, ChevronRight, Mail, Lock,
 	} from 'lucide-svelte';
 
@@ -28,7 +45,7 @@
 	let bskyConnecting = $state(false);
 	let bskyError = $state<string | null>(null);
 
-	type SettingsTab = 'account' | 'billing' | 'integrations' | 'legal';
+	type SettingsTab = 'account' | 'branding' | 'billing' | 'integrations' | 'legal';
 	let activeTab = $state<SettingsTab>('account');
 
 	type BillingInfo = {
@@ -64,17 +81,107 @@
 	let resetSent = $state(false);
 	let resetBusy = $state(false);
 
+	let brandDisplayName = $state(DEFAULT_BRAND_KIT.displayName);
+	let brandHandle = $state(DEFAULT_BRAND_KIT.handle);
+	let brandProfileNote = $state('');
+	let highlightColor = $state(DEFAULT_BRAND_KIT.highlightColor);
+	let highlightStyleKind = $state(DEFAULT_BRAND_KIT.highlightStyleKind);
+	let highlightPattern = $state(DEFAULT_BRAND_KIT.highlightPattern);
+	let highlightNote = $state('');
+	const highlightPatternUrl = $derived(getPatternImage(highlightPattern) ?? '');
+	let textBgColor = $state(DEFAULT_BRAND_KIT.textBgColor);
+	let textBgNote = $state('');
+
+	function persistBrandProfile() {
+		if (!userId) return;
+		const kit = loadBrandKit(userId);
+		const next = {
+			...kit,
+			displayName: brandDisplayName.trim(),
+			handle: normalizeBrandHandle(brandHandle),
+			highlightColor,
+			highlightStyleKind,
+			highlightPattern,
+			textBgColor,
+			onboardingComplete: true,
+		};
+		brandDisplayName = next.displayName;
+		brandHandle = next.handle;
+		const ok = saveBrandKit(userId, next);
+		brandProfileNote = ok ? 'Saved - Studio templates will use this name and handle' : 'Could not save';
+		setTimeout(() => (brandProfileNote = ''), 2400);
+	}
+
+	function persistHighlightColor(nextRaw: string) {
+		const next = normalizeHighlightHex(nextRaw, highlightColor);
+		highlightColor = next;
+		highlightStyleKind = 'solid';
+		if (!userId) return;
+		const kit = loadBrandKit(userId);
+		const ok = saveBrandKit(userId, { ...kit, highlightColor: next, highlightStyleKind: 'solid' });
+		highlightNote = ok ? 'Saved - Studio uses this for new highlights' : 'Could not save';
+		setTimeout(() => (highlightNote = ''), 2400);
+	}
+
+	function persistHighlightPattern(name: string) {
+		const next = String(name ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+		if (!AVAILABLE_PATTERNS.some((p) => p.name === next)) return;
+		highlightPattern = next;
+		highlightStyleKind = 'pattern';
+		if (!userId) return;
+		const kit = loadBrandKit(userId);
+		const ok = saveBrandKit(userId, {
+			...kit,
+			highlightPattern: next,
+			highlightStyleKind: 'pattern',
+		});
+		highlightNote = ok ? 'Saved - Studio uses this pattern for new highlights' : 'Could not save';
+		setTimeout(() => (highlightNote = ''), 2400);
+	}
+
+	function persistHighlightGradient(from: string, to: string) {
+		const a = normalizeHighlightHex(from, highlightColor);
+		const b = normalizeHighlightHex(to, DEFAULT_BRAND_KIT.highlightGradientTo);
+		highlightColor = a;
+		highlightStyleKind = 'gradient';
+		if (!userId) return;
+		const kit = loadBrandKit(userId);
+		const ok = saveBrandKit(userId, {
+			...kit,
+			highlightColor: a,
+			highlightStyleKind: 'gradient',
+			highlightGradientFrom: a,
+			highlightGradientTo: b,
+		});
+		highlightNote = ok
+			? `Saved - Studio uses ${from} → ${to} for new highlights`
+			: 'Could not save';
+		setTimeout(() => (highlightNote = ''), 2400);
+	}
+
+	function persistTextBgColor(nextRaw: string) {
+		const next = normalizeTextBgHex(nextRaw);
+		textBgColor = next;
+		if (!userId) return;
+		const kit = loadBrandKit(userId);
+		const ok = saveBrandKit(userId, { ...kit, textBgColor: next });
+		textBgNote = ok ? 'Saved - Studio uses this behind brand text' : 'Could not save';
+		setTimeout(() => (textBgNote = ''), 2400);
+	}
+
 	const tabs = [
-		{ id: 'account' as const,      label: 'Account',      icon: User },
-		{ id: 'billing' as const,      label: 'Billing',       icon: CreditCard },
-		{ id: 'integrations' as const, label: 'Integrations', icon: Link2 },
-		{ id: 'legal' as const,        label: 'Legal',         icon: Shield },
+		{ id: 'account' as const, label: 'Account', icon: User },
+		{ id: 'branding' as const, label: 'Branding', icon: Palette },
+		{ id: 'billing' as const, label: 'Billing', icon: CreditCard },
+		// Integrations hidden for now — restore tab + `loadIntegrations` when shipping connect.
+		// { id: 'integrations' as const, label: 'Integrations', icon: Link2 },
+		{ id: 'legal' as const, label: 'Legal', icon: Shield },
 	];
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
 		const tab = params.get('tab');
-		if (tab === 'account' || tab === 'billing' || tab === 'integrations' || tab === 'legal') {
+		if (tab === 'account' || tab === 'branding' || tab === 'billing' || tab === 'legal') {
 			activeTab = tab;
 		}
 	});
@@ -112,8 +219,22 @@
 	}
 
 	$effect(() => {
-		if (!signedIn) return;
-		void loadIntegrations();
+		if (!signedIn || !userId) return;
+		let cancelled = false;
+		void (async () => {
+			const kit = await hydrateBrandKit(userId);
+			if (cancelled) return;
+			const p = brandProfile(kit);
+			brandDisplayName = p.name;
+			brandHandle = p.handle;
+			highlightColor = kit.highlightColor || DEFAULT_BRAND_KIT.highlightColor;
+			highlightStyleKind = normalizeHighlightStyleKind(kit.highlightStyleKind);
+			highlightPattern = kit.highlightPattern || DEFAULT_BRAND_KIT.highlightPattern;
+			textBgColor = kit.textBgColor ?? '';
+		})();
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	async function signIn() {
@@ -396,17 +517,15 @@
 	]);
 </script>
 
-<div class="page">
-	<!-- Page header -->
-	<div class="page-head">
-		<div class="page-icon">
-			<Settings size={20} />
+<div class="page dash-page">
+	<header class="page-head">
+		<div class="eyebrow">
+			<span class="eyebrow-dot"></span>
+			<span>Account</span>
 		</div>
-		<div>
-			<h1 class="page-title">Settings</h1>
-			<p class="page-sub">Account, billing, integrations, and legal</p>
-		</div>
-	</div>
+		<h1 class="page-title dash-page-title">Settings</h1>
+		<p class="page-sub dash-page-sub">Profile, branding, billing, and legal.</p>
+	</header>
 
 	{#if !signedIn}
 		<div class="settings-card login-card">
@@ -415,7 +534,7 @@
 				Manage your plan, connected accounts, and privacy preferences. Billing is handled securely through Stripe.
 			</p>
 
-			<button type="button" class="btn-google" onclick={signInWithGoogle}>
+			<Button type="button" variant="outline" class="h-11 w-full justify-center gap-2.5" onclick={signInWithGoogle}>
 				<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
 					<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
 					<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -423,7 +542,7 @@
 					<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
 				</svg>
 				Continue with Google
-			</button>
+			</Button>
 
 			<div class="login-divider"><span>or</span></div>
 
@@ -431,21 +550,21 @@
 				<p class="billing-error" role="alert">{loginError}</p>
 			{/if}
 			{#if resetSent}
-				<p class="login-success" role="status">Password reset link sent — check your inbox.</p>
+				<p class="login-success" role="status">Password reset link sent - check your inbox.</p>
 			{/if}
 
 			<form class="login-form" onsubmit={(e) => { e.preventDefault(); signIn(); }}>
 				<div class="form-field">
 					<label class="form-label" for="login-email">Email</label>
-					<input id="login-email" class="form-input" type="email" bind:value={loginEmail} required autocomplete="email" />
+					<Input id="login-email" type="email" bind:value={loginEmail} required autocomplete="email" />
 				</div>
 				<div class="form-field">
 					<label class="form-label" for="login-password">Password</label>
-					<input id="login-password" class="form-input" type="password" bind:value={loginPassword} required autocomplete="current-password" />
+					<Input id="login-password" type="password" bind:value={loginPassword} required autocomplete="current-password" />
 				</div>
-				<button type="submit" class="btn-upgrade" disabled={loginLoading}>
+				<Button type="submit" class="w-fit" disabled={loginLoading}>
 					{loginLoading ? 'Signing in…' : 'Sign in'}
-				</button>
+				</Button>
 			</form>
 
 			<div class="login-footer">
@@ -457,21 +576,17 @@
 		</div>
 	{/if}
 
-	<!-- Tab navigation -->
-	<div class="tab-nav">
-		{#each tabs as t}
-			{@const Icon = t.icon}
-			<button
-				type="button"
-				class="tab-btn {activeTab === t.id ? 'tab-btn--on' : ''}"
-				disabled={!signedIn && t.id !== 'legal'}
-				onclick={() => activeTab = t.id}
-			>
-				<Icon size={14} />
-				{t.label}
-			</button>
-		{/each}
-	</div>
+	<Tabs.Root bind:value={activeTab} class="gap-6">
+		<Tabs.List>
+			{#each tabs as t (t.id)}
+				{@const Icon = t.icon}
+				<Tabs.Trigger value={t.id} disabled={!signedIn && t.id !== 'legal'}>
+					<Icon data-icon="inline-start" />
+					{t.label}
+				</Tabs.Trigger>
+			{/each}
+		</Tabs.List>
+	</Tabs.Root>
 
 	<!-- ── ACCOUNT TAB ─────────────────────────────────────────── -->
 	{#if activeTab === 'account'}
@@ -495,17 +610,17 @@
 
 				<div class="form-grid">
 					<div class="form-field">
-						<label class="form-label">Display Name</label>
-						<input class="form-input" type="text" value={userName} placeholder="Your name" readonly />
+						<Label class="form-label" for="acct-name">Display name</Label>
+						<Input id="acct-name" type="text" value={userName} placeholder="Your name" readonly />
 					</div>
 					<div class="form-field">
-						<label class="form-label">Email Address</label>
-						<input class="form-input" type="email" value={userEmail} placeholder="you@example.com" readonly />
+						<Label class="form-label" for="acct-email">Email</Label>
+						<Input id="acct-email" type="email" value={userEmail} placeholder="you@example.com" readonly />
 					</div>
-					<div class="form-field">
-						<label class="form-label">User ID</label>
+					<div class="form-field form-field--wide">
+						<Label class="form-label" for="acct-id">User ID</Label>
 						<div class="input-copy-wrap">
-							<input class="form-input" type="text" value={userId} readonly />
+							<Input id="acct-id" type="text" value={userId} readonly class="pr-10" />
 							<button type="button" class="copy-btn" onclick={() => copyText(userId, 'userid')}>
 								{#if copied === 'userid'}<Check size={13}/>{:else}<Copy size={13}/>{/if}
 							</button>
@@ -515,19 +630,19 @@
 
 				<div class="card-note">
 					Profile email is managed through your sign-in provider. Contact
-					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
 					to change your email.
 				</div>
 
 				<div class="account-actions">
-					<button type="button" class="btn-outline-sm" disabled={resetBusy} onclick={sendPasswordReset}>
-						<Mail size={13} />
+					<Button type="button" variant="outline" size="sm" disabled={resetBusy} onclick={sendPasswordReset}>
+						<Mail />
 						{resetBusy ? 'Sending…' : 'Send password reset'}
-					</button>
-					<button type="button" class="btn-outline-sm" onclick={signOut}>
-						<LogOut size={13} />
+					</Button>
+					<Button type="button" variant="outline" size="sm" onclick={signOut}>
+						<LogOut />
 						Sign out
-					</button>
+					</Button>
 				</div>
 			</div>
 
@@ -560,9 +675,158 @@
 				<h2 class="card-title card-title--danger">Danger Zone</h2>
 				<p class="card-desc">
 					Permanently delete your account and all data. Email
-					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
 					with your account email to request deletion.
 				</p>
+			</div>
+		</div>
+		{/if}
+
+	<!-- ── BRANDING TAB ────────────────────────────────────────── -->
+	{:else if activeTab === 'branding'}
+		{#if !signedIn}
+			<p class="tab-desc">Sign in above to edit slide identity and highlight color.</p>
+		{:else}
+		<div class="tab-content">
+			<div class="settings-card">
+				<h2 class="card-title">Branding</h2>
+				<p class="card-desc">
+					Username sits on the News gold line. Handle shows on Text Carousel, Creator hook, and other profile headers.
+				</p>
+				<div class="form-grid">
+					<div class="form-field">
+						<Label class="form-label" for="brand-display-name">Username</Label>
+						<Input
+							id="brand-display-name"
+							type="text"
+							bind:value={brandDisplayName}
+							placeholder="MEME ACCOUNTS"
+							onchange={() => persistBrandProfile()}
+						/>
+					</div>
+					<div class="form-field">
+						<Label class="form-label" for="brand-handle">Handle</Label>
+						<Input
+							id="brand-handle"
+							type="text"
+							bind:value={brandHandle}
+							placeholder="@memeaccounts"
+							onchange={() => persistBrandProfile()}
+						/>
+					</div>
+				</div>
+				{#if brandProfileNote}
+					<div class="card-note">{brandProfileNote}</div>
+				{/if}
+			</div>
+
+			<div class="settings-card">
+				<h2 class="card-title">Highlight</h2>
+				<p class="card-desc">
+					Default paint for highlighted words in Studio - solid color or a pattern fill. Applies to new <span class="mono">[[word]]</span> marks.
+				</p>
+				<div class="hl-preview" style="--hl:{highlightColor}">
+					<span class="hl-preview-kicker">Preview</span>
+					<p class="hl-preview-line">
+						SOFTBANK JUST PUT
+						{#if highlightStyleKind === 'pattern' && highlightPatternUrl}
+							<em
+								class="hl-preview-pattern"
+								style="background-image: url('{highlightPatternUrl}');"
+							>$40B</em>
+						{:else}
+							<em>$40B</em>
+						{/if}
+						INTO OPENAI
+					</p>
+				</div>
+				<div class="hl-swatches" role="listbox" aria-label="Highlight color">
+					{#each HIGHLIGHT_SOLID_PRESETS as c (c)}
+						<button
+							type="button"
+							role="option"
+							aria-selected={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
+							class="hl-swatch"
+							class:hl-swatch--on={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
+							style="background: {c};"
+							title={c}
+							onclick={() => persistHighlightColor(c)}
+						></button>
+					{/each}
+					<label class="hl-custom">
+						<span class="sr-only">Custom highlight color</span>
+						<input
+							type="color"
+							value={highlightColor}
+							oninput={(e) => persistHighlightColor((e.currentTarget as HTMLInputElement).value)}
+						/>
+					</label>
+				</div>
+				<div class="hl-swatches" role="listbox" aria-label="Highlight gradient">
+					{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to] (`${from}-${to}`)}
+						<button
+							type="button"
+							role="option"
+							aria-selected={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
+							class="hl-swatch hl-swatch--grad"
+							class:hl-swatch--on={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
+							style="background: linear-gradient(90deg, {from}, {to});"
+							title="{from} → {to}"
+							onclick={() => persistHighlightGradient(from, to)}
+						></button>
+					{/each}
+				</div>
+				<div class="hl-swatches hl-swatches--patterns" role="listbox" aria-label="Highlight pattern">
+					{#each AVAILABLE_PATTERNS as pat (pat.name)}
+						<button
+							type="button"
+							role="option"
+							aria-selected={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
+							class="hl-swatch hl-swatch--pattern"
+							class:hl-swatch--on={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
+							style="background-image: url('{pat.url}'); background-size: cover; background-position: center;"
+							title={pat.label}
+							onclick={() => persistHighlightPattern(pat.name)}
+						></button>
+					{/each}
+				</div>
+				{#if highlightNote}
+					<div class="card-note">{highlightNote}</div>
+				{/if}
+			</div>
+
+			<div class="settings-card">
+				<h2 class="card-title">Text background</h2>
+				<p class="card-desc">
+					Chip behind the News source label and other brand text. Same control as Studio → Branding.
+				</p>
+				<div class="hl-swatches" role="listbox" aria-label="Text background">
+					{#each TEXT_BG_SWATCHES as c (c || 'none')}
+						<button
+							type="button"
+							role="option"
+							aria-selected={(textBgColor || '') === c}
+							class="hl-swatch"
+							class:hl-swatch--on={(textBgColor || '') === c}
+							style="background: {c
+								? c
+								: 'linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), #f4f4f5'};"
+							title={c || 'None'}
+							onclick={() => persistTextBgColor(c)}
+						></button>
+					{/each}
+					<label class="hl-custom">
+						<span class="sr-only">Custom text background</span>
+						<input
+							type="color"
+							value={textBgColor || '#FFEB3B'}
+							oninput={(e) => persistTextBgColor((e.currentTarget as HTMLInputElement).value)}
+						/>
+					</label>
+				</div>
+				{#if textBgNote}
+					<div class="card-note">{textBgNote}</div>
+				{/if}
 			</div>
 		</div>
 		{/if}
@@ -616,7 +880,7 @@
 											{#if copied === intg.id}<Check size={12}/>{:else}<Copy size={12}/>{/if}
 										</button>
 									</div>
-									<p class="env-hint">Restart the dev server after adding — this page updates automatically.</p>
+									<p class="env-hint">Restart the dev server after adding - this page updates automatically.</p>
 								</div>
 							{/if}
 
@@ -772,16 +1036,14 @@
 
 				<div class="billing-actions">
 					{#if billing?.hasCustomer}
-						<button type="button" class="btn-outline-sm" disabled={billingBusy} onclick={openPortal}>
+						<Button type="button" variant="outline" size="sm" disabled={billingBusy} onclick={openPortal}>
 							{billingBusy ? 'Opening…' : 'Manage subscription'}
-						</button>
-						<button type="button" class="btn-outline-sm" disabled={billingBusy} onclick={openPortal}>
+						</Button>
+						<Button type="button" variant="outline" size="sm" disabled={billingBusy} onclick={openPortal}>
 							Invoices & payment method
-						</button>
+						</Button>
 					{:else}
-						<a href="/pricing" class="btn-outline-sm" style="text-decoration:none;display:inline-flex;align-items:center;">
-							View all plans
-						</a>
+						<Button href="/pricing" variant="outline" size="sm">View all plans</Button>
 					{/if}
 				</div>
 			</div>
@@ -813,9 +1075,9 @@
 								{/each}
 							</ul>
 							{#if planId !== 'free' && billing?.plan !== planId}
-								<a href="/checkout?plan={planId}" class="btn-upgrade plan-compare-cta">
+								<Button href="/checkout?plan={planId}" class="plan-compare-cta w-full">
 									{planId === 'agency' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
-								</a>
+								</Button>
 							{:else if planId === 'free' && billing?.plan !== 'free'}
 								<p class="plan-compare-note">Downgrade via Stripe portal</p>
 							{/if}
@@ -831,25 +1093,21 @@
 					</h2>
 					<p class="card-desc">
 						{#if billing?.plan === 'pro'}
-							Unlimited accounts, team workspace, white-label export, and API access — ${PLAN_CATALOG.agency.monthly}/mo.
+							Unlimited accounts, team workspace, white-label export, and API access - ${PLAN_CATALOG.agency.monthly}/mo.
 						{:else}
-							Unlimited carousels, Claude AI, News-to-Post, and full export — ${PLAN_CATALOG.pro.monthly}/mo.
+							Unlimited carousels, Claude AI, News-to-Post, and full export - ${PLAN_CATALOG.pro.monthly}/mo.
 						{/if}
 					</p>
-					<a
-						href={`/checkout?plan=${billing?.plan === 'pro' ? 'agency' : 'pro'}`}
-						class="btn-upgrade"
-						style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;"
-					>
+					<Button href={`/checkout?plan=${billing?.plan === 'pro' ? 'agency' : 'pro'}`}>
 						{billing?.plan === 'pro' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
-					</a>
+					</Button>
 				</div>
 			{/if}
 
 			<div class="settings-card settings-card--info">
 				<h2 class="card-title">Billing compliance</h2>
 				<p class="card-desc">
-					Payments are processed by Stripe. We store your plan and subscription status — not full card numbers.
+					Payments are processed by Stripe. We store your plan and subscription status - not full card numbers.
 					See our <a href="/refund-policy" class="inline-link">Refund Policy</a> for cancellations and refunds.
 				</p>
 			</div>
@@ -898,7 +1156,7 @@
 				<p class="card-desc">
 					You may access, correct, or delete your personal data. To export your content or request account
 					deletion, email
-					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
 					from the address on your account.
 				</p>
 			</div>
@@ -907,7 +1165,7 @@
 				<h2 class="card-title">Contact</h2>
 				<p class="card-desc">
 					Billing questions, privacy requests, or compliance inquiries:
-					<a href="mailto:support@carouselstudio.app" class="inline-link">support@carouselstudio.app</a>
+					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
 				</p>
 			</div>
 		</div>
@@ -922,7 +1180,7 @@
 				<button type="button" class="modal-close" onclick={() => showBlueskyModal = false}>✕</button>
 			</div>
 			<p class="modal-sub">
-				Use a Bluesky <span class="mono">App Password</span>. Your password is never stored — only session tokens.
+				Use a Bluesky <span class="mono">App Password</span>. Your password is never stored - only session tokens.
 			</p>
 
 			<div class="modal-grid">
@@ -968,38 +1226,62 @@
 {/if}
 
 <style>
-	:root:not([data-theme="dark"]) {
-		--panel-bg: color-mix(in oklab, var(--app-text) 3%, transparent);
-		--panel-bg-2: color-mix(in oklab, var(--app-text) 4%, transparent);
-		--panel-border: var(--app-border);
-		--panel-border-hover: var(--app-border-hover);
-		--t-strong: var(--app-text);
-		--t: var(--app-text-2);
-		--t-muted: var(--app-text-3);
-	}
-	:root[data-theme="dark"] {
-		--panel-bg: rgba(255,255,255,0.02);
-		--panel-bg-2: rgba(255,255,255,0.05);
-		--panel-border: rgba(255,255,255,0.06);
-		--panel-border-hover: rgba(255,255,255,0.10);
-		--t-strong: rgba(255,255,255,0.92);
-		--t: rgba(255,255,255,0.55);
-		--t-muted: rgba(255,255,255,0.38);
+	.page {
+		--ap-text: #0f0f10;
+		--ap-text-2: #5b5b62;
+		--ap-text-3: #9a9aa1;
+		--ap-line: rgba(15, 15, 16, 0.08);
+		--ap-line-2: rgba(15, 15, 16, 0.14);
+		--ap-soft: #f6f7f9;
+		--ap-soft-2: #eef1f5;
+		--ap-bg: #ffffff;
+		--ap-accent: #7bf1a8;
+		--panel-bg: var(--ap-bg);
+		--panel-bg-2: var(--ap-soft);
+		--panel-border: var(--ap-line);
+		--t-strong: var(--ap-text);
+		--t: var(--ap-text-2);
+		--t-muted: var(--ap-text-3);
+
+		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		display: flex;
+		flex-direction: column;
+		gap: 22px;
+		letter-spacing: -0.01em;
+		-webkit-font-smoothing: antialiased;
+		color: var(--ap-text);
 	}
 
-	.page { color: var(--app-text); }
-	.page { padding: 2rem 2.5rem; max-width: 920px; display: flex; flex-direction: column; gap: 1.5rem; }
-
-	/* ── Header ────────────────────────────────────────────────── */
-	.page-head { display: flex; align-items: center; gap: 1rem; }
-	.page-icon {
-		width: 44px; height: 44px; border-radius: 12px;
-		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
-		display: flex; align-items: center; justify-content: center;
-		color: var(--t); flex-shrink: 0;
+	.page-head { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+	.eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 5px 12px 5px 10px;
+		border-radius: 999px;
+		background: var(--ap-soft);
+		border: 1px solid var(--ap-line);
+		color: var(--ap-text-2);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		margin-bottom: 16px;
 	}
-	.page-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; color: var(--t-strong); margin: 0 0 0.2rem; }
-	.page-sub   { font-size: 0.8125rem; color: var(--t-muted); margin: 0; }
+	.eyebrow-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--ap-accent);
+		box-shadow: 0 0 0 3px rgba(123, 241, 168, 0.22);
+	}
+	.page-title {
+		margin: 0 0 8px;
+		color: var(--ap-text);
+	}
+	.page-sub {
+		color: var(--ap-text-2);
+	}
 
 	/* ── Tab nav ───────────────────────────────────────────────── */
 	.tab-nav {
@@ -1023,41 +1305,147 @@
 
 	/* ── Settings card ─────────────────────────────────────────── */
 	.settings-card {
-		border-radius: 16px;
-		background: var(--panel-bg);
-		border: 1px solid var(--panel-border);
-		padding: 1.5rem;
-		display: flex; flex-direction: column; gap: 1.1rem;
+		border-radius: 22px;
+		background: var(--ap-bg);
+		border: 1px solid var(--ap-line);
+		padding: 22px 24px;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
 	}
-	.settings-card--danger { border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.03); }
-	.settings-card--info   { border-color: rgba(123,241,168,0.1); background: rgba(123,241,168,0.02); }
+	.settings-card--danger {
+		border-color: rgba(185, 28, 28, 0.16);
+		background: #fff8f7;
+	}
+	.settings-card--info {
+		background: var(--ap-soft);
+	}
 
-	.card-title { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1rem; font-weight: 700; color: var(--t-strong); margin: 0; }
-	.card-title--danger { color: #f87171; }
-	.card-desc  { font-size: 0.8125rem; line-height: 1.55; color: var(--t); margin: 0; }
-	.card-note  { font-size: 0.75rem; color: var(--t-muted); font-family: 'Satoshi', sans-serif; padding: 0.65rem 0.85rem; border-radius: 8px; background: var(--panel-bg); border: 1px solid var(--panel-border); }
+	.card-title {
+		font-family: 'Satoshi', sans-serif;
+		font-size: 17px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		color: var(--ap-text);
+		margin: 0;
+	}
+	.card-title--danger { color: #b42318; }
+	.card-desc  { font-size: 13.5px; line-height: 1.55; color: var(--ap-text-2); margin: 0; max-width: 62ch; }
+	.card-note  { font-size: 12.5px; color: var(--ap-text-2); padding: 10px 12px; border-radius: 12px; background: var(--ap-soft); border: 1px solid var(--ap-line); }
 
 	/* ── Profile ───────────────────────────────────────────────── */
 	.profile-row { display: flex; align-items: center; gap: 1rem; }
 	.profile-avatar {
-		width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
-		background: rgba(123,241,168,0.12); border: 2px solid rgba(123,241,168,0.25);
+		width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
+		background: var(--ap-soft-2); border: 1px solid var(--ap-line);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Satoshi', sans-serif; font-size: 18px; font-weight: 700; color: #7bf1a8;
+		font-family: 'Satoshi', sans-serif; font-size: 16px; font-weight: 800; color: var(--ap-text);
 	}
 	.profile-info { flex: 1; }
 	.profile-name  { font-size: 0.9375rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.2rem; }
 	.profile-email { font-size: 0.8125rem; color: var(--t-muted); margin: 0; font-family: 'Satoshi', sans-serif; }
 	.profile-plan-badge {
-		padding: 3px 10px; border-radius: 6px;
-		background: rgba(123,241,168,0.12); border: 1px solid rgba(123,241,168,0.2);
-		font-size: 0.7rem; font-family: 'Satoshi', sans-serif; font-weight: 700; color: #7bf1a8;
-		text-transform: uppercase; letter-spacing: 0.07em;
+		padding: 4px 10px; border-radius: 999px;
+		background: var(--ap-soft); border: 1px solid var(--ap-line);
+		font-size: 11px; font-weight: 700; color: var(--ap-text);
+		text-transform: uppercase; letter-spacing: 0.06em;
 	}
 
-	.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
-	.form-field { display: flex; flex-direction: column; gap: 0.4rem; }
-	.form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--t-muted); font-family: 'Satoshi', sans-serif; }
+	.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+	.form-field--wide { grid-column: 1 / -1; }
+	@media (max-width: 640px) {
+		.form-grid { grid-template-columns: 1fr; }
+		.form-field--wide { grid-column: auto; }
+	}
+	.form-field { display: flex; flex-direction: column; gap: 6px; }
+	.form-label {
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--ap-text-3);
+	}
+
+	.hl-preview {
+		border-radius: 16px;
+		background: #111214;
+		padding: 18px 20px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.hl-preview-kicker {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.38);
+	}
+	.hl-preview-line {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		line-height: 1.25;
+		color: #fff;
+		text-transform: uppercase;
+	}
+	.hl-preview-line em {
+		font-style: normal;
+		color: var(--hl);
+	}
+	.hl-preview-line em.hl-preview-pattern {
+		color: transparent;
+		background-size: cover;
+		background-position: center;
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+	}
+	.hl-swatches--patterns {
+		margin-top: 10px;
+	}
+	.hl-swatches {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	.hl-swatch {
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		border: 2px solid transparent;
+		box-shadow: inset 0 0 0 1px rgba(15, 15, 16, 0.12);
+		cursor: pointer;
+		padding: 0;
+		transition: transform 0.15s ease, box-shadow 0.15s ease;
+	}
+	.hl-swatch:hover { transform: scale(1.08); }
+	.hl-swatch--on {
+		box-shadow: 0 0 0 2px var(--ap-bg), 0 0 0 4px #111214;
+	}
+	.hl-swatch--grad {
+		width: 40px;
+	}
+	.hl-custom {
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		overflow: hidden;
+		border: 1px dashed var(--ap-line-2);
+		cursor: pointer;
+	}
+	.hl-custom input {
+		width: 140%;
+		height: 140%;
+		margin: -20%;
+		cursor: pointer;
+		border: 0;
+		padding: 0;
+		background: none;
+	}
+	.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
 	.form-input {
 		padding: 0.55rem 0.85rem; border-radius: 9px;
 		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
@@ -1244,8 +1632,8 @@
 	}
 	.btn-docs:hover { color: rgba(255,255,255,0.7); }
 
-	.inline-link { color: #7bf1a8; text-decoration: none; }
-	.inline-link:hover { text-decoration: underline; }
+	.inline-link { color: var(--ap-text); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--ap-line-2); }
+	.inline-link:hover { text-decoration-color: var(--ap-text); }
 
 	.btn-secondary-sm {
 		display: inline-flex; align-items: center; gap: 0.3rem;
@@ -1262,15 +1650,15 @@
 	}
 	.plan-info { display: flex; align-items: center; gap: 1rem; }
 	.plan-badge {
-		width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
-		background: rgba(123,241,168,0.12); border: 1px solid rgba(123,241,168,0.25);
+		width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
+		background: var(--ap-soft-2); border: 1px solid var(--ap-line);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Satoshi', sans-serif; font-size: 11px; font-weight: 700;
-		color: #7bf1a8; text-transform: uppercase; letter-spacing: 0.08em;
+		font-family: 'Satoshi', sans-serif; font-size: 11px; font-weight: 800;
+		color: var(--ap-text); text-transform: uppercase; letter-spacing: 0.08em;
 	}
-	.plan-name  { font-weight: 600; color: rgba(255,255,255,0.88); margin: 0 0 0.2rem; font-size: 0.9375rem; }
-	.plan-price { font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
-	.plan-price span { font-size: 0.875rem; color: rgba(255,255,255,0.4); font-family: 'Satoshi', sans-serif; }
+	.plan-name  { font-weight: 700; color: var(--ap-text); margin: 0 0 0.2rem; font-size: 0.9375rem; }
+	.plan-price { font-family: 'Satoshi', sans-serif; font-size: 1.5rem; font-weight: 800; color: var(--ap-text); margin: 0; letter-spacing: -0.03em; }
+	.plan-price span { font-size: 0.875rem; color: var(--ap-text-3); font-weight: 500; }
 	.plan-status {
 		margin: 0.35rem 0 0;
 		font-size: 0.75rem;
@@ -1288,32 +1676,27 @@
 	}
 
 	.plan-features { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-	.plan-feature  { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: rgba(255,255,255,0.6); }
-	:global(.feature-check) { color: #34d399; flex-shrink: 0; }
+	.plan-feature  { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: var(--ap-text-2); }
+	:global(.feature-check) { color: #059669; flex-shrink: 0; }
 
 	.billing-actions { display: flex; gap: 0.65rem; }
 	.btn-outline-sm {
-		padding: 0.5rem 1rem; border-radius: 9px;
-		border: 1px solid rgba(255,255,255,0.1);
-		background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.65);
-		font-size: 0.8125rem; font-weight: 500; cursor: pointer;
-		font-family: 'Satoshi', sans-serif; transition: all 0.15s;
+		padding: 0.5rem 1rem; border-radius: 10px;
+		border: 1px solid var(--ap-line);
+		background: var(--ap-bg); color: var(--ap-text);
+		font-size: 0.8125rem; font-weight: 600; cursor: pointer;
+		font-family: 'Satoshi', sans-serif; transition: background 0.15s, border-color 0.15s;
 	}
-	.btn-outline-sm:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+	.btn-outline-sm:hover { background: var(--ap-soft); border-color: var(--ap-line-2); }
 
-	.upgrade-price {
-		font-family: var(--font-display), var(--font-sans), system-ui, -apple-system, sans-serif; font-size: 2rem; font-weight: 900;
-		color: #fff; letter-spacing: -0.03em;
-	}
-	.upgrade-price span { font-size: 1rem; color: rgba(255,255,255,0.4); font-family: 'Satoshi', sans-serif; font-weight: 400; }
 	.btn-upgrade {
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.65rem 1.25rem; border-radius: 10px; border: none;
-		background: #7bf1a8; color: #0a0a0a;
+		background: #111214; color: #fff;
 		font-size: 0.875rem; font-weight: 600; cursor: pointer;
-		font-family: 'Satoshi', sans-serif; transition: all 0.15s; width: fit-content;
+		font-family: 'Satoshi', sans-serif; width: fit-content;
 	}
-	.btn-upgrade:hover { background: #a7f7c6; transform: translateY(-1px); }
+	.btn-upgrade:hover { background: #2a2b2e; }
 
 	/* ── Login gate ────────────────────────────────────────────── */
 	.login-card { max-width: 420px; }
@@ -1363,8 +1746,8 @@
 	.plan-renew { font-size: 0.75rem; color: var(--t-muted); }
 
 	.trial-banner {
-		padding: 0.85rem 1rem; border-radius: 10px;
-		background: rgba(123,241,168,0.06); border: 1px solid rgba(123,241,168,0.15);
+		padding: 0.85rem 1rem; border-radius: 12px;
+		background: var(--ap-soft); border: 1px solid var(--ap-line);
 	}
 	.trial-title { margin: 0 0 0.25rem; font-size: 0.8125rem; font-weight: 600; color: var(--t-strong); }
 	.trial-sub { margin: 0; font-size: 0.75rem; color: var(--t-muted); line-height: 1.5; }
@@ -1378,7 +1761,7 @@
 		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
 		display: flex; flex-direction: column; gap: 0.65rem;
 	}
-	.plan-compare-card--current { border-color: rgba(123,241,168,0.35); box-shadow: 0 0 0 1px rgba(123,241,168,0.12); }
+	.plan-compare-card--current { border-color: var(--ap-line-2); background: var(--ap-soft); }
 	.plan-compare-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 	.plan-compare-name { margin: 0; font-weight: 700; color: var(--t-strong); font-size: 0.9375rem; }
 	.plan-compare-price {

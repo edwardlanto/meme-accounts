@@ -1,32 +1,188 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { Trash2 } from 'lucide-svelte';
+	import { supabase } from '$lib/supabase';
+	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import StarterTemplateGrid from '$lib/components/templates/StarterTemplateGrid.svelte';
 
+	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
+	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
+
+	type SavedRow = { id: string; updated_at: string; state?: Record<string, unknown> };
+
 	let mounted = $state(false);
+	let userId = $state('');
+	let savedLoading = $state(true);
+	let savedTemplates = $state<SavedRow[]>([]);
+	let savedThumbs = $state<Record<string, string>>({});
+
+	function savedName(row: SavedRow): string {
+		return String(row.state?._templateName ?? '').trim() || 'Untitled template';
+	}
+
+	function savedPreview(row: SavedRow): string {
+		const signed = savedThumbs[row.id];
+		if (signed) return signed;
+		const s = row.state;
+		const draft = String(s?.draftPreviewUrl ?? '').trim();
+		if (draft.startsWith('http://') || draft.startsWith('https://')) return draft;
+		const tpl = String(s?.templatePreviewUrl ?? '').trim();
+		if (tpl.startsWith('http://') || tpl.startsWith('https://')) return tpl;
+		return '';
+	}
+
+	async function signPreviewKey(key: string): Promise<string> {
+		const k = String(key ?? '').trim();
+		if (!k) return '';
+		try {
+			const { url } = await r2SignRead({ key: k });
+			return String(url ?? '').trim();
+		} catch {
+			return '';
+		}
+	}
+
+	async function hydrateThumbs(uid: string, rows: SavedRow[]) {
+		const next: Record<string, string> = {};
+		await Promise.all(
+			rows.map(async (row) => {
+				const id = String(row.id ?? '').trim();
+				if (!id) return;
+				const s = row.state;
+				const key =
+					String(s?.draftPreviewKey ?? '').trim() ||
+					String(s?.draftPreviewPath ?? '').trim() ||
+					`${uid}/templates/${id}.png`;
+				const url = await signPreviewKey(key);
+				if (url) next[id] = url;
+			}),
+		);
+		savedThumbs = next;
+	}
+
+	async function deleteSaved(id: string) {
+		if (!confirm('Delete this saved template? This cannot be undone.')) return;
+		try {
+			const row = savedTemplates.find((x) => x.id === id);
+			const s = row?.state;
+			const key =
+				String(s?.draftPreviewKey ?? '').trim() ||
+				String(s?.draftPreviewPath ?? '').trim() ||
+				`${userId}/templates/${id}.png`;
+			if (key) await r2DeleteObject({ key });
+		} catch {
+			/* ignore */
+		}
+		const { error } = await (supabase as any)
+			.from('drafts')
+			.delete()
+			.eq('id', id)
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+		if (error) {
+			alert(error.message ?? 'Could not delete template');
+			return;
+		}
+		savedTemplates = savedTemplates.filter((x) => x.id !== id);
+		const next = { ...savedThumbs };
+		delete next[id];
+		savedThumbs = next;
+	}
+
 	onMount(() => {
 		mounted = true;
+		void (async () => {
+			const {
+				data: { user },
+			} = await supabase.auth.getUser();
+			if (!user) {
+				goto('/login?next=/dashboard/templates');
+				return;
+			}
+			userId = user.id;
+			const { data, error } = await (supabase as any)
+				.from('drafts')
+				.select('id,updated_at,state')
+				.eq('user_id', user.id)
+				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+				.order('updated_at', { ascending: false })
+				.limit(40);
+			if (error) {
+				savedLoading = false;
+				return;
+			}
+			savedTemplates = (data ?? []) as SavedRow[];
+			await hydrateThumbs(user.id, savedTemplates);
+			savedLoading = false;
+		})();
 	});
 </script>
 
-<div class="page-wrap" class:mounted>
+<div class="page-wrap dash-page" class:mounted>
 	<header class="page-hero">
 		<div class="page-hero-text">
-			<div class="page-eyebrow">
-				<span class="page-eyebrow-dot"></span>
-				<span>Library</span>
-			</div>
-			<h1 class="page-title">Templates</h1>
-			<p class="page-sub">Pick a layout to open in Studio. Your saved work lives under Carousels.</p>
+			<h1 class="page-title dash-page-title">Templates</h1>
+			<p class="page-sub dash-page-sub">Named layouts from Studio and starters that open straight into the editor.</p>
 		</div>
-		<a href="/dashboard/carousels" class="ma-btn ma-btn-primary">Your carousels →</a>
 	</header>
 
-	<section class="templates-section reveal" style="--d:0.05s">
+	<section class="templates-section reveal" style="--d:0.04s">
+		<div class="section-head">
+			<h2 class="section-title">Your templates</h2>
+			<p class="section-sub">
+				Named layouts from Studio → Save template. Open one to keep editing, or replace it from Studio.
+			</p>
+		</div>
+		{#if savedLoading}
+			<p class="saved-hint">Loading your templates…</p>
+		{:else if savedTemplates.length === 0}
+			<p class="saved-hint">
+				None yet. Design in Studio, then Save template - it will land here.
+			</p>
+		{:else}
+			<div class="saved-grid">
+				{#each savedTemplates as row, i (row.id)}
+					{@const preview = savedPreview(row)}
+					<div class="saved-card" style="--d:{0.06 + i * 0.03}s">
+						<a
+							class="saved-link"
+							href="/dashboard/studio?saved={row.id}"
+							aria-label="Open {savedName(row)}"
+						>
+							<div class="saved-preview">
+								{#if preview}
+									<img src={preview} alt="" referrerpolicy="no-referrer" loading="lazy" draggable="false" />
+								{:else}
+									<span class="saved-fallback">{savedName(row)}</span>
+								{/if}
+							</div>
+							<div class="saved-footer">
+								<p class="saved-name">{savedName(row)}</p>
+								<p class="saved-meta">Opens in Studio</p>
+							</div>
+						</a>
+						<button
+							type="button"
+							class="saved-del"
+							title="Delete template"
+							aria-label="Delete {savedName(row)}"
+							onclick={() => void deleteSaved(row.id)}
+						>
+							<Trash2 size={12} />
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</section>
+
+	<section class="templates-section reveal" style="--d:0.08s">
 		<div class="section-head">
 			<h2 class="section-title">Start from a template</h2>
 			<p class="section-sub">
-				Hand‑crafted layouts that open straight into Studio — {STARTER_TEMPLATES.length} templates.
+				Hand-crafted layouts that open straight into Studio - {STARTER_TEMPLATES.length} templates.
 			</p>
 		</div>
 		<StarterTemplateGrid templates={STARTER_TEMPLATES} />
@@ -60,9 +216,6 @@
 	}
 
 	.page-wrap {
-		padding: 32px 32px 64px;
-		max-width: 1560px;
-		margin: 0 auto;
 		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
 	}
 	.reveal {
@@ -112,19 +265,10 @@
 		box-shadow: 0 0 0 3px rgba(123, 241, 168, 0.22);
 	}
 	.page-title {
-		font-size: clamp(28px, 3.4vw, 42px);
-		font-weight: 800;
-		letter-spacing: -0.025em;
 		color: var(--t-strong);
-		margin: 0;
-		line-height: 1.05;
 	}
 	.page-sub {
-		font-size: 14px;
-		line-height: 1.55;
 		color: var(--t);
-		margin: 0;
-		max-width: 60ch;
 	}
 	.section-head {
 		margin-bottom: 16px;
@@ -143,6 +287,103 @@
 		margin: 0;
 	}
 	.templates-section {
-		margin-bottom: 32px;
+		margin-bottom: 40px;
+	}
+	.saved-hint {
+		margin: 0;
+		font-size: 13px;
+		color: var(--t);
+	}
+	.saved-grid {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 16px;
+	}
+	@media (max-width: 979px) {
+		.saved-grid {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+	@media (max-width: 719px) {
+		.saved-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	.saved-card {
+		position: relative;
+		border-radius: 16px;
+		border: 1px solid var(--panel-border);
+		background: var(--panel-bg);
+		box-shadow: var(--shadow-soft);
+		overflow: hidden;
+	}
+	.saved-link {
+		display: flex;
+		flex-direction: column;
+		text-decoration: none;
+		color: inherit;
+	}
+	.saved-preview {
+		aspect-ratio: 4 / 5;
+		background: #0a0a0c;
+		overflow: hidden;
+	}
+	.saved-preview img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+	.saved-fallback {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		padding: 16px;
+		text-align: center;
+		font-size: 13px;
+		font-weight: 700;
+		color: rgba(255, 255, 255, 0.72);
+	}
+	.saved-footer {
+		padding: 10px 12px 12px;
+		border-top: 1px solid var(--panel-border);
+	}
+	.saved-name {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		color: var(--t-strong);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.saved-meta {
+		margin: 2px 0 0;
+		font-size: 10px;
+		color: var(--t);
+	}
+	.saved-del {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		width: 28px;
+		height: 28px;
+		border: 0;
+		border-radius: 999px;
+		display: grid;
+		place-items: center;
+		background: rgba(0, 0, 0, 0.55);
+		color: #fff;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 0.15s ease;
+	}
+	.saved-card:hover .saved-del {
+		opacity: 1;
+	}
+	.saved-del:hover {
+		background: rgba(220, 38, 38, 0.85);
 	}
 </style>

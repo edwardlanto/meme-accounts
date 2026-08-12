@@ -2,8 +2,14 @@
 
 /** Maps pattern names → static image paths */
 const PATTERN_IMAGES: Record<string, string> = {
-	'light-blue':  '/text-patterns/light-blue.jpeg',
+	'light-blue': '/text-patterns/light-blue.jpeg',
 	'light-green': '/text-patterns/light-green.png',
+	amber: '/text-patterns/amber.jpeg',
+	coral: '/text-patterns/coral.jpeg',
+	violet: '/text-patterns/violet.jpeg',
+	orange: '/text-patterns/orange.jpeg',
+	champagne: '/text-patterns/champagne.jpeg',
+	magenta: '/text-patterns/magenta.jpeg',
 };
 
 export function getPatternImage(name: string): string | undefined {
@@ -15,6 +21,14 @@ export const AVAILABLE_PATTERNS = Object.entries(PATTERN_IMAGES).map(([name, url
 	label: name.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
 	url,
 }));
+
+export function normalizeHighlightPatternName(
+	raw: string,
+	fallback = AVAILABLE_PATTERNS[0]?.name ?? 'light-blue',
+): string {
+	const name = String(raw ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+	return getPatternImage(name) ? name : fallback;
+}
 
 /** Solid swatches shared by Studio settings + floating highlight toolbar. */
 export const HIGHLIGHT_SOLID_PRESETS = [
@@ -98,6 +112,9 @@ export interface ParsedText {
 export interface TextSegment {
 	text: string;
 	highlighted: boolean;
+	/** Plain-text offsets into the visible string (no `[[…]]`). */
+	start?: number;
+	end?: number;
 	color?: string;
 	gradientFrom?: string;
 	gradientTo?: string;
@@ -212,11 +229,18 @@ export function segmentText(parsed: ParsedText): TextSegment[] {
 
 	for (const range of sorted) {
 		if (cursor < range.start) {
-			segments.push({ text: parsed.plain.slice(cursor, range.start), highlighted: false });
+			segments.push({
+				text: parsed.plain.slice(cursor, range.start),
+				highlighted: false,
+				start: cursor,
+				end: range.start,
+			});
 		}
 		segments.push({
 			text: parsed.plain.slice(range.start, range.end),
 			highlighted: true,
+			start: range.start,
+			end: range.end,
 			color: range.color,
 			gradientFrom: range.gradientFrom,
 			gradientTo: range.gradientTo,
@@ -228,7 +252,12 @@ export function segmentText(parsed: ParsedText): TextSegment[] {
 	}
 
 	if (cursor < parsed.plain.length) {
-		segments.push({ text: parsed.plain.slice(cursor), highlighted: false });
+		segments.push({
+			text: parsed.plain.slice(cursor),
+			highlighted: false,
+			start: cursor,
+			end: parsed.plain.length,
+		});
 	}
 
 	return segments;
@@ -586,6 +615,140 @@ export function rangeForegroundSwatchColor(
 	const first = norms[0];
 	if (!norms.every((n) => n === first)) return undefined;
 	return samples[0];
+}
+
+/** What the floating toolbar should show as the selection’s actual fill (not brand default). */
+export type RangePaintInspection = {
+	styleKind: 'solid' | 'gradient' | 'pattern' | 'none';
+	/** Solid highlight / block ink for the swatch when styleKind is solid or none. */
+	color?: string;
+	pattern?: string;
+	gradientFrom?: string;
+	gradientTo?: string;
+	/** Uniform `[[marker(#hex)]]` background in the range, if any. */
+	markerBg?: string;
+};
+
+/**
+ * Inspect a plain-text selection for a single uniform paint (color / gradient / pattern / marker).
+ * Mixed paints → `styleKind: 'none'` with no extras (caller falls back to brand / block style).
+ */
+export function inspectPlainRangePaint(
+	raw: string,
+	plainStart: number,
+	plainEnd: number,
+	defaultHighlight: string | HighlightDefaults,
+	blockInk: string,
+): RangePaintInspection {
+	if (plainStart === plainEnd) return { styleKind: 'none' };
+	let a = plainStart;
+	let b = plainEnd;
+	if (a > b) [a, b] = [b, a];
+
+	const defaults = normalizeHighlightDefaults(defaultHighlight);
+	const parsed = parseHighlightMarkup(raw, defaults);
+	const segs = segmentText(parsed);
+
+	type Sample = {
+		kind: 'none' | 'solid' | 'gradient' | 'pattern';
+		color?: string;
+		pattern?: string;
+		gradientFrom?: string;
+		gradientTo?: string;
+		markerBg?: string;
+	};
+	const samples: Sample[] = [];
+	let pos = 0;
+
+	for (const seg of segs) {
+		const segEnd = pos + seg.text.length;
+		const lo = Math.max(a, pos);
+		const hi = Math.min(b, segEnd);
+		if (lo < hi) {
+			const markerBg = String(seg.markerBg ?? '').trim() || undefined;
+			if (seg.pattern || seg.patternImage) {
+				samples.push({
+					kind: 'pattern',
+					pattern: String(seg.pattern ?? '').toLowerCase() || undefined,
+					color: seg.color ?? defaults.color,
+					markerBg,
+				});
+			} else if (seg.gradientFrom && seg.gradientTo) {
+				samples.push({
+					kind: 'gradient',
+					gradientFrom: seg.gradientFrom,
+					gradientTo: seg.gradientTo,
+					color: seg.gradientFrom,
+					markerBg,
+				});
+			} else if (seg.highlighted) {
+				samples.push({
+					kind: 'solid',
+					color: seg.color ?? defaults.color,
+					markerBg,
+				});
+			} else {
+				samples.push({ kind: 'none', color: blockInk, markerBg });
+			}
+		}
+		pos = segEnd;
+	}
+
+	if (samples.length === 0) return { styleKind: 'none' };
+
+	const first = samples[0]!;
+	const sameKind = samples.every((s) => s.kind === first.kind);
+	if (!sameKind) return { styleKind: 'none' };
+
+	const markers = samples.map((s) => normalizePaintColorKey(s.markerBg ?? ''));
+	const uniformMarker =
+		markers.every((m) => m === markers[0]) && markers[0] ? samples[0]!.markerBg : undefined;
+
+	if (first.kind === 'pattern') {
+		const pat = String(first.pattern ?? '').toLowerCase();
+		if (!pat || !samples.every((s) => String(s.pattern ?? '').toLowerCase() === pat)) {
+			return { styleKind: 'none', markerBg: uniformMarker };
+		}
+		return { styleKind: 'pattern', pattern: pat, color: first.color, markerBg: uniformMarker };
+	}
+
+	if (first.kind === 'gradient') {
+		const from = normalizePaintColorKey(first.gradientFrom ?? '');
+		const to = normalizePaintColorKey(first.gradientTo ?? '');
+		if (
+			!from ||
+			!to ||
+			!samples.every(
+				(s) =>
+					normalizePaintColorKey(s.gradientFrom ?? '') === from &&
+					normalizePaintColorKey(s.gradientTo ?? '') === to,
+			)
+		) {
+			return { styleKind: 'none', markerBg: uniformMarker };
+		}
+		return {
+			styleKind: 'gradient',
+			gradientFrom: first.gradientFrom,
+			gradientTo: first.gradientTo,
+			color: first.gradientFrom,
+			markerBg: uniformMarker,
+		};
+	}
+
+	if (first.kind === 'solid') {
+		const c = normalizePaintColorKey(first.color ?? '');
+		if (!c || !samples.every((s) => normalizePaintColorKey(s.color ?? '') === c)) {
+			return { styleKind: 'none', markerBg: uniformMarker };
+		}
+		return { styleKind: 'solid', color: first.color, markerBg: uniformMarker };
+	}
+
+	// Unmarked body text
+	const c = normalizePaintColorKey(first.color ?? '');
+	if (!c || !samples.every((s) => normalizePaintColorKey(s.color ?? '') === c)) {
+		return { styleKind: 'none', markerBg: uniformMarker };
+	}
+	return { styleKind: 'none', color: first.color, markerBg: uniformMarker };
 }
 
 // ── DOM selection ↔ plain headline offsets (for floating toolbar) ───────

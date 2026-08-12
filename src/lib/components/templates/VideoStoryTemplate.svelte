@@ -4,7 +4,7 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import DraggableMediaFrame from '$lib/components/DraggableMediaFrame.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
-	import { appendTextShadowCss } from '$lib/textStyleCss';
+	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 	import { stripMarkup } from '$lib/highlight';
 	import {
 		FILM_STRIP_MAX_SIDE_PCT,
@@ -256,14 +256,10 @@
 		const muted = !!videoMuted;
 		const vol = Math.max(0, Math.min(1, Number(videoVolume)));
 		el.muted = muted;
+		el.loop = true;
+		el.playsInline = true;
 		el.volume = Number.isFinite(vol) ? vol : 0.8;
-		if (!muted) {
-			try {
-				void el.play();
-			} catch {
-				/* ignore */
-			}
-		}
+		void el.play().catch(() => {});
 	});
 
 	const HEADLINE_INK = '#f4f4f5';
@@ -302,6 +298,7 @@
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
 		if (s.align) bits.push(`text-align: ${s.align};`);
 		appendTextShadowCss(bits, s);
+		appendTextBgCss(bits, s);
 		return bits.join(' ');
 	}
 
@@ -425,6 +422,7 @@
 		{interactive}
 		{scale}
 		holdDragFromText={interactive}
+		immediateTextDrag={selectedText === 'videoStoryHeadline'}
 		onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 	>
 		{#snippet children()}
@@ -459,6 +457,7 @@
 					ariaLabel="Video headline"
 					fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
 					fontSize={headlineStyle.fontSize ?? (pill ? 36 : isHookLayout ? hookFontSize : 46)}
+					lineHeight={headlineStyle.lineHeight}
 					{showToolbar}
 					onTextChange={onHeadlineChange}
 					onTextSelect={onTextSelect}
@@ -702,6 +701,7 @@
 						{interactive}
 						{scale}
 						holdDragFromText={interactive}
+						immediateTextDrag={selectedText === 'videoStoryHeadline'}
 						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 					>
 						{#snippet children()}
@@ -854,6 +854,7 @@
 						dy={textOffsets.videoStoryHeadline?.y ?? 0}
 						{interactive}
 						{scale}
+						immediateTextDrag={selectedText === 'videoStoryHeadline'}
 						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 					>
 						{#snippet children()}
@@ -947,6 +948,7 @@
 						{interactive}
 						{scale}
 						holdDragFromText={interactive}
+						immediateTextDrag={selectedText === 'videoStoryHeadline'}
 						onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 					>
 						{#snippet children()}
@@ -1138,6 +1140,7 @@
 					{interactive}
 					{scale}
 					holdDragFromText={interactive}
+					immediateTextDrag={selectedText === 'videoStoryHeadline'}
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}
@@ -1374,6 +1377,7 @@
 					dy={textOffsets.videoStoryHeadline?.y ?? 0}
 					{interactive}
 					{scale}
+					immediateTextDrag={selectedText === 'videoStoryHeadline'}
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}

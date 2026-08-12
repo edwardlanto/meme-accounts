@@ -154,6 +154,8 @@ export type StockPick = {
 	alt?: string;
 	photographer?: string;
 	source?: 'unsplash' | 'pexels';
+	downloadLocation?: string;
+	duration?: number;
 };
 
 type PhotoCandidate = {
@@ -241,27 +243,7 @@ function pingUnsplashDownload(downloadLocation?: string) {
 	}).catch(() => {});
 }
 
-/** Fetch best stock image: Unsplash first, Pexels fallback. */
-export async function fetchStockImage(query: string): Promise<StockPick | null> {
-	const q = query.trim();
-	if (!q) return null;
-
-	const unsplash = await searchUnsplash(q);
-	let pick = bestPhoto(unsplash.photos);
-	let lastError = unsplash.error;
-
-	if (!pick) {
-		const pexels = await searchPexelsPhotos(q);
-		pick = bestPhoto(pexels.photos);
-		lastError = pexels.error || lastError;
-	}
-	if (!pick) {
-		if (lastError) throw new Error(lastError);
-		return null;
-	}
-
-	if (pick.source === 'unsplash') pingUnsplashDownload(pick.downloadLocation);
-
+function candidateToPick(pick: PhotoCandidate): StockPick {
 	const full = pick.regular;
 	const small = pick.small || pick.regular;
 	return {
@@ -271,22 +253,55 @@ export async function fetchStockImage(query: string): Promise<StockPick | null> 
 		alt: pick.alt || '',
 		photographer: pick.photographer || '',
 		source: pick.source,
+		downloadLocation: pick.downloadLocation,
 	};
 }
 
-/** Fetch first/best Pexels portrait video match for a query. */
-export async function fetchStockVideo(query: string): Promise<StockPick | null> {
+function photoKey(p: PhotoCandidate): string {
+	return p.regular.split('?')[0] || p.regular;
+}
+
+function appendUniquePhotos(out: StockPick[], photos: PhotoCandidate[], limit: number, seen: Set<string>) {
+	for (const p of [...photos].sort((a, b) => scorePhoto(b) - scorePhoto(a))) {
+		const key = photoKey(p);
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		const pick = candidateToPick(p);
+		if (pick.source === 'unsplash') pingUnsplashDownload(pick.downloadLocation);
+		out.push(pick);
+		if (out.length >= limit) break;
+	}
+}
+
+/** Pexels photos first, then Unsplash. No videos. */
+export async function fetchStockImagePool(query: string, limit = 24): Promise<StockPick[]> {
 	const q = query.trim();
-	if (!q) return null;
+	if (!q) return [];
+	const out: StockPick[] = [];
+	const seen = new Set<string>();
+	const pexels = await searchPexelsPhotos(q);
+	appendUniquePhotos(out, pexels.photos, limit, seen);
+	if (out.length >= limit) return out;
+	const unsplash = await searchUnsplash(q);
+	appendUniquePhotos(out, unsplash.photos, limit, seen);
+	return out;
+}
+
+/** Fetch best still: Pexels photos, then Unsplash. */
+export async function fetchStockImage(query: string): Promise<StockPick | null> {
+	const pool = await fetchStockImagePool(query, 1);
+	return pool[0] ?? null;
+}
+
+async function searchPexelsVideos(query: string, perPage = 15): Promise<StockPick[]> {
+	const q = query.trim();
+	if (!q) return [];
 	const res = await fetch(
-		`/api/pexels/videos?query=${encodeURIComponent(q)}&per_page=8&page=1`,
+		`/api/pexels/videos?query=${encodeURIComponent(q)}&per_page=${perPage}&page=1&orientation=portrait`,
 	);
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) {
-		throw new Error(String(data?.error || `Pexels video ${res.status}`));
-	}
+	if (!res.ok) return [];
 	const videos = Array.isArray(data.videos) ? data.videos : [];
-	// Prefer mid-length clips with a thumb
 	const ranked = [...videos].sort((a: any, b: any) => {
 		const ad = Math.abs(Number(a?.duration ?? 12) - 10);
 		const bd = Math.abs(Number(b?.duration ?? 12) - 10);
@@ -294,16 +309,48 @@ export async function fetchStockVideo(query: string): Promise<StockPick | null> 
 		const bth = b?.thumb ? 0 : 20;
 		return ad + ath - (bd + bth);
 	});
-	const v = ranked[0];
-	if (!v?.url) return null;
-	return {
-		url: String(v.url),
-		kind: 'video',
-		thumb: String(v.thumb || ''),
-		alt: String(v.alt || ''),
-		photographer: String(v.photographer || ''),
-		source: 'pexels',
-	};
+	const seen = new Set<string>();
+	const out: StockPick[] = [];
+	for (const v of ranked) {
+		const url = String(v?.url ?? '').trim();
+		if (!url || seen.has(url)) continue;
+		seen.add(url);
+		out.push({
+			url,
+			kind: 'video',
+			thumb: String(v?.thumb || ''),
+			alt: String(v?.alt || ''),
+			photographer: String(v?.photographer || ''),
+			source: 'pexels',
+			duration: Number(v?.duration ?? 0) || undefined,
+		});
+	}
+	return out;
+}
+
+/** Fetch first/best Pexels portrait video match for a query. */
+export async function fetchStockVideo(query: string): Promise<StockPick | null> {
+	const videos = await searchPexelsVideos(query, 8);
+	return videos[0] ?? null;
+}
+
+/**
+ * Waterfall pool: Pexels videos → Pexels photos → Unsplash.
+ * Used when Generate / Pull from assets fills slide backgrounds.
+ */
+export async function fetchStockMediaPool(query: string, limit = 24): Promise<StockPick[]> {
+	const q = query.trim();
+	if (!q) return [];
+	const videos = await searchPexelsVideos(q, Math.min(15, Math.max(8, limit)));
+	if (videos.length >= limit) return videos.slice(0, limit);
+	const out = [...videos];
+	const seen = new Set(out.map((p) => p.url.split('?')[0] || p.url));
+	const pexels = await searchPexelsPhotos(q);
+	appendUniquePhotos(out, pexels.photos, limit, seen);
+	if (out.length >= limit) return out;
+	const unsplash = await searchUnsplash(q);
+	appendUniquePhotos(out, unsplash.photos, limit, seen);
+	return out;
 }
 
 /**
@@ -317,9 +364,8 @@ export async function resolveStockForTemplate(
 ): Promise<StockPick | null> {
 	if (!templateUsesStockMedia(template)) return null;
 	const query = stockQueryFromSlide(headline, body, topicHint);
-	if (templateUsesStockVideo(template)) {
-		return (await fetchStockVideo(query)) ?? (await fetchStockImage(query));
-	}
+	const video = await fetchStockVideo(query);
+	if (video) return video;
 	return fetchStockImage(query);
 }
 

@@ -3,20 +3,20 @@
 </script>
 
 <svelte:head>
-	<title>Terms of Service — Carousel Studio</title>
-	<meta name="description" content="Terms of Service for Carousel Studio — acceptable use, subscriptions, trials, and third-party integrations." />
+	<title>Terms of Service — Meme Accounts</title>
+	<meta name="description" content="Terms of Service for Meme Accounts — acceptable use, subscriptions, trials, and third-party integrations." />
 </svelte:head>
 
-<LegalDoc title="Carousel Studio — Terms of Service" effectiveDate="August 5, 2026">
+<LegalDoc title="Meme Accounts — Terms of Service" effectiveDate="August 5, 2026">
 	<h2>1. Acceptance</h2>
 	<p>
-		By using Carousel Studio (&ldquo;the Service&rdquo;), you agree to these Terms. If you do not
+		By using Meme Accounts (&ldquo;the Service&rdquo;), you agree to these Terms. If you do not
 		agree, do not use the Service.
 	</p>
 
 	<h2>2. The Service</h2>
 	<p>
-		Carousel Studio helps you design social content (including tweet-style graphics, carousels,
+		Meme Accounts helps you design social content (including tweet-style graphics, carousels,
 		and videos), connect social accounts, and schedule or publish posts. Features vary by plan.
 	</p>
 
@@ -74,7 +74,7 @@
 
 	<h2>10. Limitation of liability</h2>
 	<p>
-		To the fullest extent permitted by law, Carousel Studio is not liable for indirect,
+		To the fullest extent permitted by law, Meme Accounts is not liable for indirect,
 		incidental, special, or consequential damages arising from use of the Service.
 	</p>
 
@@ -83,6 +83,6 @@
 
 	<h2>12. Contact</h2>
 	<p>
-		<a href="mailto:support@carouselstudio.app">support@carouselstudio.app</a>
+		<a href="mailto:support@memeaccounts.com">support@memeaccounts.com</a>
 	</p>
 </LegalDoc>

@@ -4,7 +4,7 @@ import HighlightedText from '$lib/components/HighlightedText.svelte';
 import { TWEET_DEFAULTS } from '$lib/studio/slide-content-defaults';
 import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
-import { appendTextShadowCss } from '$lib/textStyleCss';
+import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 import { Move } from 'lucide-svelte';
 
 interface TweetProps {
@@ -360,10 +360,7 @@ let {
 		if (s.underline) bits.push('text-decoration: underline;');
 		if (s.color) bits.push(`color: ${s.color};`);
 		if (s.bgColor) {
-			bits.push(`background: ${s.bgColor};`);
-			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
-			bits.push('padding: 0.08em 0.18em;');
-			bits.push('border-radius: 0.18em;');
+			appendTextBgCss(bits, s);
 		}
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
 		if (s.lineHeight != null) bits.push(`line-height: ${s.lineHeight};`);
@@ -444,6 +441,7 @@ let {
 	<!-- Inner export surface — letterboxed 1080×1350 design when w/h differ -->
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {W}px;
 			height: {H}px;
@@ -614,6 +612,7 @@ let {
 				{interactive}
 				scale={dragScale}
 				holdDragFromText={!!topEditable}
+				immediateTextDrag={selectedText === 'tweetTopText'}
 				holdMs={300}
 				onChange={(x, y) => onTextOffsetChange?.('tweetTopText', { x, y })}
 			>
@@ -967,6 +966,7 @@ let {
 				{interactive}
 				scale={dragScale}
 				holdDragFromText={!!bottomEditable}
+				immediateTextDrag={selectedText === 'tweetBottomText'}
 				holdMs={300}
 				onChange={(x, y) => onTextOffsetChange?.('tweetBottomText', { x, y })}
 			>

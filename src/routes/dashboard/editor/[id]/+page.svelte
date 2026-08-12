@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { supabase } from '$lib/supabase';
+	import { loadBrandKit, newsSourceFromBrand } from '$lib/studio/brand-kit';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -57,7 +58,8 @@
 	let fetchingNews = $state(false);
 	let newsError = $state('');
 	let overlayText = $state('FETCH A NEWS STORY TO GET STARTED');
-	let newsSource = $state('Markets');
+	let newsSource = $state('');
+	let brandNewsSource = '';
 	let articleTitle = $state('');
 	let articleUrl = $state('');
 	let bgImage = $state('');
@@ -86,6 +88,8 @@
 	onMount(async () => {
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
+		brandNewsSource = newsSourceFromBrand(loadBrandKit(user.id));
+		if (brandNewsSource) newsSource = brandNewsSource;
 
 		const { data } = await supabase.from('carousels').select('*').eq('id', carouselId).single();
 		if (!data) { goto('/dashboard/carousels'); return; }
@@ -146,7 +150,7 @@
 			const d = await r.json();
 			if (!r.ok) throw new Error(d.error ?? 'Failed');
 			overlayText = d.text ?? overlayText;
-			newsSource = sourceLabels[newsCategory] ?? d.source ?? 'News';
+			newsSource = brandNewsSource || sourceLabels[newsCategory] ?? d.source ?? 'News';
 			articleTitle = d.title ?? ''; articleUrl = d.url ?? '';
 			if (d.title) generateBg(d.title);
 		} catch (e: any) { newsError = e.message; }
@@ -484,7 +488,7 @@
 				<!-- Source label -->
 				<div>
 					<label class="text-[10px] font-mono text-white/30 uppercase tracking-wider block mb-1.5">Source Label</label>
-					<input bind:value={newsSource} placeholder="Markets"
+					<input bind:value={newsSource} placeholder={brandNewsSource || 'Your name'}
 						class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl py-2 px-3 text-sm font-body text-white placeholder-white/20 focus:outline-none focus:border-amber-500/50 transition-colors" />
 				</div>
 
@@ -537,12 +541,12 @@
 					</div>
 				</div>
 
-				{#if articleUrl}
+				<!-- {#if articleUrl}
 					<a href={articleUrl} target="_blank" rel="noopener noreferrer"
 						class="text-center text-[10px] font-body text-amber-400/60 hover:text-amber-400 transition-colors underline underline-offset-2">
 						View source article ↗
 					</a>
-				{/if}
+				{/if} -->
 			</div>
 		</div>
 

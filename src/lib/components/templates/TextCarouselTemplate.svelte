@@ -3,7 +3,7 @@
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
-	import { appendTextShadowCss } from '$lib/textStyleCss';
+	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import { autoTextCarouselFontPx } from '$lib/studio/text-carousel-body';
 	import { stripMarkup } from '$lib/highlight';
@@ -145,10 +145,7 @@
 		if (s.underline) bits.push('text-decoration: underline;');
 		if (s.color) bits.push(`color: ${s.color};`);
 		if (s.bgColor && !opts?.omitBlockBg) {
-			bits.push(`background: ${s.bgColor};`);
-			bits.push('box-decoration-break: clone; -webkit-box-decoration-break: clone;');
-			bits.push('padding: 0.08em 0.18em;');
-			bits.push('border-radius: 0.18em;');
+			appendTextBgCss(bits, s);
 		}
 		if (s.align) bits.push(`text-align: ${s.align};`);
 		if (s.letterSpacing != null) bits.push(`letter-spacing: ${s.letterSpacing}em;`);
@@ -194,6 +191,7 @@
 ">
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {W}px;
 			height: {H}px;
@@ -365,6 +363,7 @@
 				{interactive}
 				scale={dragScale}
 				holdDragFromText={interactive}
+				immediateTextDrag={selectedText === 'textCarouselBody'}
 				snapToCenter={interactive}
 				snapRoot={exportRef}
 				onChange={(x, y) => onTextOffsetChange?.('textCarouselBody', { x, y })}
@@ -379,6 +378,7 @@
 						ariaLabel="Carousel text"
 						fontFamily={mergedBodyStyle.fontFamily}
 						fontSize={mergedBodyStyle.fontSize}
+						lineHeight={mergedBodyStyle.lineHeight}
 						{showToolbar}
 						onTextChange={onTextChange}
 						onTextSelect={onTextSelect}
@@ -406,6 +406,8 @@
 				dy={textOffsets.textCarouselSwipe?.y ?? 0}
 				{interactive}
 				scale={dragScale}
+				snapToCenter={interactive}
+				snapRoot={exportRef}
 				onChange={(x, y) => onTextOffsetChange?.('textCarouselSwipe', { x, y })}
 			>
 				{#snippet children()}

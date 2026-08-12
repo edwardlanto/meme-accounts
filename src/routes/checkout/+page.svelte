@@ -31,7 +31,7 @@
 </script>
 
 <svelte:head>
-	<title>Secure checkout — Carousel Studio</title>
+	<title>Secure checkout — Meme Accounts</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
@@ -88,7 +88,7 @@
 			<h2>Continue to Stripe</h2>
 			<p class="pay-copy">
 				You’ll complete payment on Stripe’s PCI-certified page. Card details never pass through
-				Carousel Studio.
+				Meme Accounts.
 			</p>
 
 			<div class="account">

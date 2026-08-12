@@ -21,6 +21,7 @@
 	} from '$lib/highlight';
 	import { tick } from 'svelte';
 	import type { TypographySnapshot } from '$lib/types';
+	import { textShadowToDropFilter } from '$lib/textStyleCss';
 
 	interface Props {
 		value: string;
@@ -34,6 +35,8 @@
 		minHeight?: string;
 		/** CSS line-height for the editor (e.g. `inherit` to match parent canvas typography). */
 		lineHeight?: string;
+		/** Live toolbar line-height (unitless). Wins over the enter-edit snapshot. */
+		liveLineHeight?: number;
 		/** Font used for the editor content. */
 		fontFamily?: string;
 		fontSize?: number;
@@ -60,6 +63,7 @@
 		rows = 4,
 		minHeight,
 		lineHeight,
+		liveLineHeight,
 		fontFamily,
 		fontSize,
 		typographySnapshot = null,
@@ -72,6 +76,14 @@
 		onFocus,
 		onBlur,
 	}: Props = $props();
+
+	/** Toolbar LH / inherit-from-parent wins so line-height updates while editing. */
+	const resolvedLineHeight = $derived.by(() => {
+		if (liveLineHeight != null && Number.isFinite(liveLineHeight)) return String(liveLineHeight);
+		if (lineHeight === 'inherit') return 'inherit';
+		if (lineHeight) return lineHeight;
+		return typographySnapshot?.lineHeight ?? 'inherit';
+	});
 
 	let editorEl: HTMLDivElement | null = $state(null);
 	// Last markup emitted or applied to the DOM. Must NOT be `$state`: updating it from
@@ -135,7 +147,9 @@
 				if (parts[i]) {
 					const span = baseSpan.cloneNode(false) as HTMLSpanElement;
 					apply(span);
-					span.textContent = parts[i];
+					const fill = span.querySelector('[data-hl-fill]') as HTMLElement | null;
+					if (fill) fill.textContent = parts[i];
+					else span.textContent = parts[i];
 					editorEl!.appendChild(span);
 				}
 				if (i < parts.length - 1) editorEl!.appendChild(document.createElement('br'));
@@ -191,20 +205,27 @@
 			return;
 		}
 
-		if (s.pattern && s.patternImage) {
-			span.style.backgroundImage = `url("${s.patternImage}")`;
-			span.style.backgroundSize = 'cover';
-			span.style.backgroundPosition = 'center';
-			(span.style as any).webkitBackgroundClip = 'text';
-			(span.style as any).webkitTextFillColor = 'transparent';
-			span.style.backgroundClip = 'text';
-			span.style.color = 'transparent';
-		} else if (s.gradientFrom && s.gradientTo) {
-			span.style.backgroundImage = `linear-gradient(90deg, ${s.gradientFrom}, ${s.gradientTo})`;
-			(span.style as any).webkitBackgroundClip = 'text';
-			(span.style as any).webkitTextFillColor = 'transparent';
-			span.style.backgroundClip = 'text';
-			span.style.color = 'transparent';
+		if ((s.pattern && s.patternImage) || (s.gradientFrom && s.gradientTo)) {
+			span.style.display = 'inline';
+			span.style.textShadow = 'none';
+			span.style.filter = 'var(--text-drop-shadow, none)';
+			const fill = document.createElement('span');
+			fill.setAttribute('data-hl-fill', '1');
+			if (s.pattern && s.patternImage) {
+				fill.style.backgroundImage = `url("${s.patternImage}")`;
+				fill.style.backgroundSize = 'cover';
+				fill.style.backgroundPosition = 'center';
+			} else {
+				fill.style.backgroundImage = `linear-gradient(90deg, ${s.gradientFrom}, ${s.gradientTo})`;
+			}
+			(fill.style as CSSStyleDeclaration & { webkitBackgroundClip: string; webkitTextFillColor: string }).webkitBackgroundClip = 'text';
+			(fill.style as CSSStyleDeclaration & { webkitTextFillColor: string }).webkitTextFillColor = 'transparent';
+			fill.style.backgroundClip = 'text';
+			fill.style.color = 'transparent';
+			fill.style.textShadow = 'none';
+			fill.style.filter = 'none';
+			fill.style.display = 'inline';
+			span.appendChild(fill);
 		} else {
 			// Regular color highlight: show colored text (matches template rendering).
 			span.style.background = 'transparent';
@@ -397,6 +418,15 @@
 		onSelectionChange?.(next, r);
 	}
 
+	$effect(() => {
+		const onSel = () => {
+			if (!editorContainsFocus()) return;
+			refreshSelectionState();
+		};
+		document.addEventListener('selectionchange', onSel);
+		return () => document.removeEventListener('selectionchange', onSel);
+	});
+
 	export function applyHighlightToSelection(spec: HighlightSpec): boolean {
 		const r = getPlainSelectionRange();
 		if (!r) return false;
@@ -565,7 +595,7 @@
 				text-box-edge: cap alphabetic;
 				{typographySnapshot
 					? `
-						line-height: ${typographySnapshot.lineHeight};
+						line-height: ${resolvedLineHeight};
 						font-weight: ${typographySnapshot.fontWeight};
 						font-family: ${fontFamily
 							? fontFamily.includes("'") || fontFamily.includes(',')
@@ -581,10 +611,10 @@
 						${typographySnapshot.textTransform ? `text-transform: ${typographySnapshot.textTransform};` : ''}
 						${typographySnapshot.webkitTextStroke ? `-webkit-text-stroke: ${typographySnapshot.webkitTextStroke};` : ''}
 						${typographySnapshot.paintOrder ? `paint-order: ${typographySnapshot.paintOrder};` : ''}
-						${typographySnapshot.textShadow ? `text-shadow: ${typographySnapshot.textShadow};` : ''}
+						${typographySnapshot.textShadow ? `text-shadow: ${typographySnapshot.textShadow}; --text-drop-shadow: ${textShadowToDropFilter(typographySnapshot.textShadow)};` : ''}
 					`
 					: `
-						line-height: ${lineHeight ?? 'inherit'};
+						line-height: ${resolvedLineHeight};
 						${fontFamily ? `font-family: ${fontFamily};` : ''}
 						${fontSize != null && Number.isFinite(fontSize) ? `font-size: ${fontSize}px;` : ''}
 					`}
@@ -604,7 +634,7 @@
 								: typographySnapshot.fontFamily};
 							font-size: ${fontSize != null && Number.isFinite(fontSize) ? `${fontSize}px` : typographySnapshot.fontSize};
 							font-weight: ${typographySnapshot.fontWeight};
-							line-height: ${typographySnapshot.lineHeight};
+							line-height: ${resolvedLineHeight};
 							letter-spacing: ${typographySnapshot.letterSpacing};
 						`
 						: `

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark, Save } from 'lucide-svelte';
+	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark, Save, Plus } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
+	import { Button } from '$lib/components/ui/button';
 
 	interface $$Props {
 		slideLabels?: string[];
@@ -15,10 +16,14 @@
 		onExportZip?: () => void | Promise<void>;
 		exportingZip?: boolean;
 		onBurnMusicClick?: () => void | Promise<void>;
-		/** Save current layout as a named reusable template. */
-		onSaveTemplate?: (name: string) => void | Promise<void>;
+		/** Save current layout as a named reusable template (or replace an existing one). */
+		onSaveTemplate?: (name: string, opts?: { overwriteId?: string }) => void | Promise<void>;
+		/** Existing named templates for the replace list. */
+		onListSavedTemplates?: () => Promise<{ id: string; name: string; updatedAt: string }[]>;
 		/** Prefill for the save-template name field when the popover opens. */
 		defaultTemplateName?: string;
+		/** Built-in starter this canvas belongs to (e.g. News). Choosing it replaces that default. */
+		builtinTemplateLabel?: string;
 		/** Explicit workspace draft save (listed under Carousels → Studio drafts). */
 		onSaveDraft?: () => void | Promise<void>;
 		draftSaving?: boolean;
@@ -37,7 +42,9 @@
 		exportingZip = false,
 		onBurnMusicClick = undefined,
 		onSaveTemplate = undefined,
+		onListSavedTemplates = undefined,
 		defaultTemplateName = '',
+		builtinTemplateLabel = '',
 		onSaveDraft = undefined,
 		draftSaving = false,
 	} = ($props() as $$Props);
@@ -63,6 +70,21 @@
 	let saveTemplateName = $state('');
 	let saveTemplateSaving = $state(false);
 	let saveTemplateError = $state('');
+	let savedTemplates = $state<{ id: string; name: string; updatedAt: string }[]>([]);
+	let savedTemplatesLoading = $state(false);
+	let overwriteId = $state('');
+	const BUILTIN_DEFAULT_ID = '__builtin__';
+
+	const overwriteTarget = $derived(savedTemplates.find((t) => t.id === overwriteId) ?? null);
+	const overwritingBuiltin = $derived(overwriteId === BUILTIN_DEFAULT_ID);
+	const builtinLabel = $derived(builtinTemplateLabel.trim() || 'template');
+
+	function formatTemplateTime(iso: string): string {
+		if (!iso) return '';
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return '';
+		return d.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+	}
 	let selectedPlatforms = $state<string[]>([]);
 	let scheduleDate = $state('');
 	let scheduleTime = $state('');
@@ -100,23 +122,74 @@
 		showPostPanel = false;
 		showMusicPanel = false;
 		saveTemplateError = '';
-		if (showSavePanel && !saveTemplateName.trim()) {
-			saveTemplateName = defaultTemplateName.trim() || 'My carousel layout';
+		if (showSavePanel) {
+			if (!saveTemplateName.trim()) {
+				saveTemplateName = defaultTemplateName.trim() || 'My carousel layout';
+			}
+			overwriteId = '';
+			void refreshSavedTemplates();
 		}
 	}
 
 	function closeSavePanel() {
 		showSavePanel = false;
 		saveTemplateError = '';
+		overwriteId = '';
+	}
+
+	async function refreshSavedTemplates() {
+		if (!onListSavedTemplates) {
+			savedTemplates = [];
+			return;
+		}
+		savedTemplatesLoading = true;
+		try {
+			savedTemplates = await onListSavedTemplates();
+		} catch (e: unknown) {
+			savedTemplates = [];
+			saveTemplateError = e instanceof Error ? e.message : 'Could not load templates.';
+		} finally {
+			savedTemplatesLoading = false;
+		}
+	}
+
+	function chooseNewTemplate() {
+		overwriteId = '';
+		if (!saveTemplateName.trim()) {
+			saveTemplateName = defaultTemplateName.trim() || 'My carousel layout';
+		}
+	}
+
+	function chooseBuiltinDefault() {
+		overwriteId = BUILTIN_DEFAULT_ID;
+		if (!saveTemplateName.trim()) {
+			saveTemplateName = `${builtinLabel} default`;
+		}
+	}
+
+	function chooseOverwrite(row: { id: string; name: string }) {
+		overwriteId = row.id;
+		saveTemplateName = row.name;
 	}
 
 	async function confirmSaveTemplate() {
 		if (!onSaveTemplate || saveTemplateSaving) return;
 		const name = saveTemplateName.trim() || defaultTemplateName.trim() || 'My carousel layout';
+		if (overwritingBuiltin) {
+			const ok = confirm(
+				`Replace the built-in ${builtinLabel} template with this design? New ${builtinLabel} decks will use this look.`,
+			);
+			if (!ok) return;
+		} else if (overwriteId) {
+			const ok = confirm(
+				`Replace “${overwriteTarget?.name || name}” and use it as the ${builtinLabel} default? This cannot be undone.`,
+			);
+			if (!ok) return;
+		}
 		saveTemplateSaving = true;
 		saveTemplateError = '';
 		try {
-			await onSaveTemplate(name);
+			await onSaveTemplate(name, overwriteId ? { overwriteId } : undefined);
 			closeSavePanel();
 		} catch (e: unknown) {
 			saveTemplateError = e instanceof Error ? e.message : 'Save failed — try again.';
@@ -134,36 +207,37 @@
 {#if hasSlides}
 	<div
 		bind:this={rootEl}
-		class="floating-actions flex flex-row flex-nowrap items-end gap-2 {inline
-			? 'w-full justify-end'
-			: 'fixed left-auto'}"
+		class="floating-actions {inline
+			? 'flex w-full flex-row flex-nowrap items-end justify-end gap-2'
+			: 'fixed flex flex-col items-stretch gap-1.5'}"
 		style={inline
 			? ''
-			: `right:${rightOffsetPx}px;bottom:${bottomOffsetPx}px;z-index:${zIndex};`}
+			: `right:16px;bottom:${bottomOffsetPx}px;z-index:${zIndex};width:168px;`}
 	>
 		{#if typeof onSaveDraft === 'function'}
-			<button
-				type="button"
+			<Button
+				variant="outline"
+				size="sm"
 				onclick={() => void handleSaveDraftClick()}
-				class="fa-btn"
 				disabled={draftSaving}
+				class="w-full justify-start shadow-sm"
 				title="Save a workspace draft to Carousels"
 			>
 				{#if draftSaving}
-					<LoaderCircle size={13} class="animate-spin" />
+					<LoaderCircle class="animate-spin" />
 					Saving…
 				{:else}
-					<Save size={13} />
+					<Save />
 					Save draft
 				{/if}
-			</button>
+			</Button>
 		{/if}
 
 		<!-- Save template -->
 		{#if typeof onSaveTemplate === 'function'}
 			<div class="relative">
 				{#if showSavePanel}
-					<div class="panel absolute bottom-full mb-2 right-0 w-[300px] overflow-hidden z-10">
+					<div class="panel absolute bottom-0 right-full mr-2 w-[320px] overflow-hidden z-10">
 						<div class="panel-header">
 							<div class="flex items-center gap-2">
 								<Bookmark size={13} class="text-[#7c3aed]" />
@@ -175,7 +249,59 @@
 						</div>
 						<div class="p-4 flex flex-col gap-3">
 							<div>
-								<p class="panel-label">Template name</p>
+								<p class="panel-label">Your templates</p>
+								<div class="tpl-list" role="listbox" aria-label="Saved templates">
+									<button
+										type="button"
+										class="tpl-row"
+										class:tpl-row--on={!overwriteId}
+										disabled={saveTemplateSaving}
+										onclick={chooseNewTemplate}
+									>
+										<span class="tpl-ico"><Plus size={12} /></span>
+										<span class="tpl-copy">
+											<span class="tpl-name">New template</span>
+											<span class="tpl-meta">Keep existing ones</span>
+										</span>
+									</button>
+									<button
+										type="button"
+										class="tpl-row"
+										class:tpl-row--on={overwritingBuiltin}
+										disabled={saveTemplateSaving}
+										onclick={chooseBuiltinDefault}
+									>
+										<span class="tpl-copy">
+											<span class="tpl-name">{builtinLabel} default</span>
+											<span class="tpl-meta">Replace the built-in starter</span>
+										</span>
+									</button>
+									{#if savedTemplatesLoading}
+										<p class="tpl-empty">Loading…</p>
+									{:else if savedTemplates.length === 0}
+										<p class="tpl-empty">None yet — this will be your first.</p>
+									{:else}
+										{#each savedTemplates as row (row.id)}
+											<button
+												type="button"
+												class="tpl-row"
+												class:tpl-row--on={overwriteId === row.id}
+												disabled={saveTemplateSaving}
+												onclick={() => chooseOverwrite(row)}
+											>
+												<span class="tpl-copy">
+													<span class="tpl-name">{row.name}</span>
+													<span class="tpl-meta">{formatTemplateTime(row.updatedAt) || 'Saved'}</span>
+												</span>
+											</button>
+										{/each}
+									{/if}
+								</div>
+							</div>
+							<div>
+								<p class="panel-label">
+									{overwritingBuiltin ? 'Save as' : overwriteId ? 'Replace as' : 'Template name'}
+								</p>
 								<input
 									type="text"
 									bind:value={saveTemplateName}
@@ -200,92 +326,66 @@
 								{#if saveTemplateSaving}
 									<LoaderCircle size={13} class="animate-spin" />
 									Saving…
+								{:else if overwritingBuiltin}
+									<Bookmark size={13} />
+									Replace {builtinLabel} default
+								{:else if overwriteId}
+									<Bookmark size={13} />
+									Replace template
 								{:else}
 									<Bookmark size={13} />
-									Save &amp; open Carousels
+									Save new template
 								{/if}
 							</button>
 							<p class="text-[10px] leading-snug text-[rgba(10,10,10,0.38)]">
-								Named copy under Carousels. Use Save draft for a quick workspace restore.
+								{#if overwritingBuiltin}
+									Becomes the {builtinLabel} starter for your account. New {builtinLabel} decks use this design and copy.
+								{:else if overwriteId}
+									Overwrites that named template and sets it as your {builtinLabel} default.
+								{:else}
+									Creates a named copy under Carousels. Choose “{builtinLabel} default” to replace the built-in starter.
+								{/if}
 							</p>
 						</div>
 					</div>
 				{/if}
-				<button
-					type="button"
+				<Button
+					variant={showSavePanel ? 'default' : 'outline'}
+					size="sm"
 					onclick={openSavePanel}
-					class="fa-btn"
-					class:fa-btn--active={showSavePanel}
+					class="w-full justify-start shadow-sm"
+					aria-expanded={showSavePanel}
 					title="Save current layout as a reusable template"
 				>
-					<Bookmark size={13} />
+					<Bookmark />
 					Save template
-				</button>
+				</Button>
 			</div>
 		{/if}
 
 		<!-- EXPORT ZIP -->
 		{#if typeof onExportZip === 'function'}
-			<button
-				type="button"
+			<Button
+				variant="default"
+				size="sm"
 				onclick={() => void onExportZip?.()}
 				disabled={!!exportingZip || !!posting}
-				class="fa-btn"
+				class="w-full justify-start shadow-sm"
 				title="Export slides as ZIP — video slides as WebM (clip length), stills as PNG"
 			>
 				{#if exportingZip}
-					<LoaderCircle size={13} class="animate-spin" /> Export…
+					<LoaderCircle class="animate-spin" />
+					Export…
 				{:else}
-					<Download size={13} /> Export
+					<Download />
+					Export
 				{/if}
-			</button>
+			</Button>
 		{/if}
 	</div>
 {/if}
 
 <style>
-	/* ── Shared action button ── */
-	.fa-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 9px 14px;
-		border-radius: 14px;
-		font-size: 11.5px;
-		font-weight: 600;
-		font-family: inherit;
-		white-space: nowrap;
-		cursor: pointer;
-		border: 1px solid rgba(10, 10, 10, 0.08);
-		background: rgba(255, 255, 255, 0.82);
-		color: rgba(10, 10, 10, 0.70);
-		backdrop-filter: blur(14px);
-		-webkit-backdrop-filter: blur(14px);
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
-		transition: background 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
-	}
-
-	.fa-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.96);
-		color: rgba(10, 10, 10, 0.90);
-		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.11), 0 1px 3px rgba(0,0,0,0.06);
-	}
-
-	.fa-btn:active:not(:disabled) {
-		transform: scale(0.97);
-	}
-
-	.fa-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.fa-btn--active {
-		background: #7bf1a8 !important;
-		color: #0f0f10 !important;
-		border-color: #7bf1a8 !important;
-	}
-
 	/* ── Floating panel ── */
 	.panel {
 		border-radius: 18px;
@@ -370,6 +470,83 @@
 		background: rgba(10, 10, 10, 0.04);
 		border: 1px solid rgba(10, 10, 10, 0.08);
 		cursor: not-allowed;
+	}
+
+	.tpl-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		max-height: 168px;
+		overflow-y: auto;
+		padding: 2px;
+		margin: 0 -2px;
+	}
+
+	.tpl-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		text-align: left;
+		padding: 7px 8px;
+		border-radius: 10px;
+		border: 1px solid transparent;
+		background: rgba(10, 10, 10, 0.03);
+		cursor: pointer;
+		font-family: inherit;
+	}
+
+	.tpl-row:hover:not(:disabled) {
+		background: rgba(10, 10, 10, 0.06);
+	}
+
+	.tpl-row--on {
+		border-color: rgba(124, 58, 237, 0.35);
+		background: rgba(124, 58, 237, 0.08);
+	}
+
+	.tpl-row:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.tpl-ico {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border-radius: 7px;
+		background: rgba(10, 10, 10, 0.06);
+		color: rgba(10, 10, 10, 0.55);
+		flex-shrink: 0;
+	}
+
+	.tpl-copy {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.tpl-name {
+		font-size: 12px;
+		font-weight: 600;
+		color: rgba(10, 10, 10, 0.78);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.tpl-meta {
+		font-size: 10px;
+		color: rgba(10, 10, 10, 0.38);
+	}
+
+	.tpl-empty {
+		margin: 4px 2px 0;
+		font-size: 11px;
+		color: rgba(10, 10, 10, 0.4);
 	}
 
 	.panel-save-btn {

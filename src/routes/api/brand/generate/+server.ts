@@ -255,7 +255,7 @@ Output the **complete** HTML document now. First line must be \`<!DOCTYPE html>\
 				Authorization: `Bearer ${openRouterKey}`,
 				'Content-Type': 'application/json',
 				'HTTP-Referer': 'https://carousel-studio.app',
-				'X-Title': 'Carousel Studio',
+				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
 				model: 'anthropic/claude-3.7-sonnet',

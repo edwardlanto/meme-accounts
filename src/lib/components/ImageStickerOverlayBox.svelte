@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import ClassicLoader from '$lib/components/ClassicLoader.svelte';
 	import { Pencil, Trash2, Eraser, Minus, Plus, X } from 'lucide-svelte';
+	import { isVideoFile, isVideoMediaUrl, objectUrlForVideoFile, playMediaVideo } from '$lib/studio/media-url';
 
 	interface Props {
 		overlay: Overlay;
@@ -38,6 +39,8 @@
 		return resolveSrc?.(raw) || raw;
 	});
 
+	const displayIsVideo = $derived(isVideoMediaUrl(displaySrc));
+
 	let popoverOpen = $state(false);
 	let active = $state(false);
 	let overlayAction = $state<'drag' | 'resize' | null>(null);
@@ -47,6 +50,7 @@
 	let ovLastMy = 0;
 	let removingBg = $state(false);
 	let fileEl = $state<HTMLInputElement | null>(null);
+	let stickerVideoEl = $state<HTMLVideoElement | null>(null);
 	let colorEl = $state<HTMLInputElement | null>(null);
 	let imgBroken = $state(false);
 
@@ -55,6 +59,15 @@
 	$effect(() => {
 		displaySrc;
 		imgBroken = false;
+	});
+
+	$effect(() => {
+		if (!displayIsVideo) return;
+		const el = stickerVideoEl;
+		const src = displaySrc;
+		if (!el || !src) return;
+		el.muted = true;
+		playMediaVideo(el);
 	});
 
 	function apply(next: Overlay[]) {
@@ -158,7 +171,12 @@
 		const inp = e.target as HTMLInputElement;
 		const f = inp.files?.[0];
 		inp.value = '';
-		if (!f?.type.startsWith('image/')) return;
+		if (!f) return;
+		if (isVideoFile(f)) {
+			patch({ src: objectUrlForVideoFile(f) });
+			return;
+		}
+		if (!f.type.startsWith('image/')) return;
 		const reader = new FileReader();
 		reader.onload = () => patch({ src: reader.result as string });
 		reader.readAsDataURL(f);
@@ -234,7 +252,7 @@
 <input
 	bind:this={fileEl}
 	type="file"
-	accept="image/*"
+	accept="image/*,video/mp4,video/webm,video/quicktime,video/x-m4v"
 	class="hidden"
 	aria-hidden="true"
 	onchange={onStickerFile}
@@ -301,7 +319,30 @@
 				padding: {paddingPx}px;
 			"
 		>
-			{#if displaySrc && !imgBroken}
+			{#if displaySrc && !imgBroken && displayIsVideo}
+				<!-- svelte-ignore a11y_media_has_caption -->
+				<video
+					bind:this={stickerVideoEl}
+					src={displaySrc}
+					muted
+					loop
+					playsinline
+					autoplay
+					draggable="false"
+					style="
+						width: 100%; height: 100%;
+						object-fit: contain;
+						pointer-events: none;
+						display: block;
+					"
+					onloadeddata={(e) => {
+						imgBroken = false;
+						playMediaVideo(e.currentTarget as HTMLVideoElement);
+					}}
+					oncanplay={(e) => playMediaVideo(e.currentTarget as HTMLVideoElement)}
+					onerror={() => (imgBroken = true)}
+				></video>
+			{:else if displaySrc && !imgBroken}
 				<img
 					src={displaySrc}
 					alt=""

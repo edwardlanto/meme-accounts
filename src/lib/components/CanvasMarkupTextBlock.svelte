@@ -8,12 +8,13 @@
 	 */
 	import type { Snippet } from 'svelte';
 	import type { TextElementKind, TypographySnapshot } from '$lib/types';
-	import { plainRangeFromSelection } from '$lib/highlight';
+	import { plainRangeFromSelection, restorePlainSelection } from '$lib/highlight';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import {
 		CANVAS_TEXT_BOX_TRIM,
 		CANVAS_TEXT_FOCUS_RING,
 	} from '$lib/studio/canvas-text-chrome';
+	import { textShadowToDropFilter } from '$lib/textStyleCss';
 
 	interface Props {
 		value: string;
@@ -35,6 +36,8 @@
 		showToolbar?: boolean;
 		fontFamily?: string;
 		fontSize?: number;
+		/** Live unitless line-height from the toolbar (updates while editing). */
+		lineHeight?: number;
 		ariaLabel?: string;
 		onTextChange?: (v: string) => void;
 		onTextSelect?: (kind: TextElementKind, el: HTMLElement) => void;
@@ -55,6 +58,7 @@
 		showToolbar = false,
 		fontFamily,
 		fontSize,
+		lineHeight,
 		ariaLabel = 'Slide text',
 		onTextChange,
 		onTextSelect,
@@ -156,15 +160,17 @@
 			: '';
 		const sizeCss =
 			fallbackSize != null && Number.isFinite(fallbackSize) ? `font-size: ${fallbackSize}px;` : '';
+		const lhCss =
+			lineHeight != null && Number.isFinite(lineHeight) ? `line-height: ${lineHeight};` : '';
 		if (!snap) {
-			return [familyCss, sizeCss, CANVAS_TEXT_BOX_TRIM].filter(Boolean).join(' ');
+			return [familyCss, sizeCss, lhCss, CANVAS_TEXT_BOX_TRIM].filter(Boolean).join(' ');
 		}
 		return [
 			/* Live toolbar props win over the enter-edit snapshot (paragraph +/- while editing). */
 			familyCss || `font-family: ${snap.fontFamily};`,
 			sizeCss || `font-size: ${snap.fontSize};`,
 			`font-weight: ${snap.fontWeight};`,
-			`line-height: ${snap.lineHeight};`,
+			lhCss || `line-height: ${snap.lineHeight};`,
 			`letter-spacing: ${snap.letterSpacing};`,
 			`font-style: ${snap.fontStyle};`,
 			`text-decoration: ${snap.textDecoration};`,
@@ -172,7 +178,9 @@
 			snap.textTransform ? `text-transform: ${snap.textTransform};` : '',
 			snap.webkitTextStroke ? `-webkit-text-stroke: ${snap.webkitTextStroke};` : '',
 			snap.paintOrder ? `paint-order: ${snap.paintOrder};` : '',
-			snap.textShadow ? `text-shadow: ${snap.textShadow};` : '',
+			snap.textShadow
+				? `text-shadow: ${snap.textShadow}; --text-drop-shadow: ${textShadowToDropFilter(snap.textShadow)};`
+				: '',
 			CANVAS_TEXT_BOX_TRIM,
 		]
 			.filter(Boolean)
@@ -185,8 +193,20 @@
 		return plainRangeFromSelection(root);
 	}
 
-	function onDisplayMouseUp() {
+	function phraseRangeFromTarget(target: EventTarget | null): { start: number; end: number } | null {
+		const node =
+			target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+		const el = node?.closest('[data-hl-plain-start]') ?? null;
+		if (!el) return null;
+		const start = Number(el.getAttribute('data-hl-plain-start'));
+		const end = Number(el.getAttribute('data-hl-plain-end'));
+		if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+		return { start, end };
+	}
+
+	function onDisplayMouseUp(e: MouseEvent) {
 		if (!interactive || !onTextSelect || editing) return;
+		const phraseHint = phraseRangeFromTarget(e.target);
 		setTimeout(() => {
 			const sel = window.getSelection();
 			const hasRange =
@@ -201,10 +221,23 @@
 				onTextSelect?.(toolbarKind, wrapRectAsAnchor(rect));
 				const r = getPlainSelectionRange();
 				onHeadlineRangeSelect?.(r?.start ?? -1, r?.end ?? -1);
-			} else {
-				if (displayRoot) onTextSelect?.(toolbarKind, displayRoot);
-				onHeadlineRangeSelect?.(-1, -1);
+				return;
 			}
+
+			if (phraseHint && displayRoot) {
+				restorePlainSelection(displayRoot, phraseHint.start, phraseHint.end);
+				const live = window.getSelection();
+				const rect =
+					live && live.rangeCount > 0
+						? live.getRangeAt(0).getBoundingClientRect()
+						: displayRoot.getBoundingClientRect();
+				onTextSelect?.(toolbarKind, wrapRectAsAnchor(rect));
+				onHeadlineRangeSelect?.(phraseHint.start, phraseHint.end);
+				return;
+			}
+
+			if (displayRoot) onTextSelect?.(toolbarKind, displayRoot);
+			onHeadlineRangeSelect?.(-1, -1);
 		}, 0);
 	}
 
@@ -331,10 +364,12 @@
 					: ''}
 				{selected && !editing ? CANVAS_TEXT_FOCUS_RING : ''}
 				{canEdit && !editing
-					? 'cursor: text; user-select: text !important; -webkit-user-select: text !important; touch-action: pan-x pan-y;'
+					? `cursor: ${selected ? 'grab' : 'text'}; user-select: text !important; -webkit-user-select: text !important; touch-action: none;`
 					: ''}
 			"
-			title={canEdit && !editing ? 'Double-click to edit text' : undefined}
+			title={canEdit && !editing
+				? 'Drag to move · Double-click to edit · Shift+drag to highlight'
+				: undefined}
 		>
 			{#if fontSize != null && Number.isFinite(fontSize)}
 				<div
@@ -384,8 +419,9 @@
 						{uppercase}
 						{fontFamily}
 						{fontSize}
-						typographySnapshot={editTypography}
+						liveLineHeight={lineHeight}
 						lineHeight="inherit"
+						typographySnapshot={editTypography}
 						{showToolbar}
 						{ariaLabel}
 						{minHeight}

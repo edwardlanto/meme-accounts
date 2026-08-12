@@ -12,6 +12,12 @@
 	 *   [[marker(#hex): WORD]]  → solid background behind phrase
 	 */
 	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
+	import { TEXT_BG_CHIP_BOX_CSS } from '$lib/textStyleCss';
+	import {
+		CLIPPED_TEXT_SHADOW_WRAP_CSS,
+		gradientTextFillCss,
+		patternStyleForUrl,
+	} from '$lib/components/textOverlayPattern';
 
 	interface Props {
 		text: string;
@@ -50,86 +56,66 @@
 	const segments = $derived(
 		parseHighlights
 			? segmentText(parseHighlightMarkup(text, defaultColor))
-			: [{ text, highlighted: false as const }],
+			: [{ text, highlighted: false as const, start: 0, end: text.length }],
 	);
 
 	function patternStyle(img: string | undefined): string {
 		if (!img) return '';
-		return `background-image: url('${img}');` +
-			`background-size: cover; background-position: center;` +
-			`-webkit-background-clip: text; -webkit-text-fill-color: transparent;` +
-			`background-clip: text; display: inline;` +
-			`font-weight: inherit; font-style: inherit; text-decoration: inherit;`;
+		return (
+			`${patternStyleForUrl(img)}` +
+			`font-weight: inherit; font-style: inherit; text-decoration: inherit;` +
+			`pointer-events: none;`
+		);
 	}
 
 	function markerStyle(bg: string): string {
 		return (
 			`background: ${bg};` +
-			`box-decoration-break: clone; -webkit-box-decoration-break: clone;` +
-			`padding: 0.08em 0.16em; border-radius: 0.14em;` +
+			`${TEXT_BG_CHIP_BOX_CSS}` +
 			`color: inherit; font-weight: inherit; font-style: inherit; text-decoration: inherit;`
 		);
 	}
+
 </script>
+
+{#snippet painted()}
+	{#each segments as seg}
+		{#if seg.highlighted}
+			<span
+				data-hl-plain-start={seg.start ?? ''}
+				data-hl-plain-end={seg.end ?? ''}
+				style="cursor: text; pointer-events: auto; {seg.patternImage || (seg.gradientFrom && seg.gradientTo)
+					? CLIPPED_TEXT_SHADOW_WRAP_CSS
+					: 'display: inline;'}"
+			>
+				{#if seg.markerBg}
+					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
+				{:else if seg.patternImage}
+					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
+				{:else if seg.gradientFrom && seg.gradientTo}
+					<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)} font-weight: inherit; font-style: inherit; text-decoration: inherit; pointer-events: none;">{seg.text}</span>
+				{:else if emphasisBold}
+					<span style={boldSpanStyle}>{seg.text}</span>
+				{:else}
+					<span style="color: {seg.color}; font-weight: 700; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
+				{/if}
+			</span>
+		{:else}
+			{seg.text}
+		{/if}
+	{/each}
+{/snippet}
 
 {#if as === 'div'}
 	<div {style} class={klass} data-canvas-typography-root data-canvas-paint-root>
-		{#each segments as seg}
-			{#if seg.highlighted}
-				{#if seg.markerBg}
-					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
-				{:else if seg.patternImage}
-					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
-				{:else if seg.gradientFrom && seg.gradientTo}
-					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
-				{:else if emphasisBold}
-					<span style={boldSpanStyle}>{seg.text}</span>
-				{:else}
-					<span style="color: {seg.color}; font-weight: 700; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
-				{/if}
-			{:else}
-				{seg.text}
-			{/if}
-		{/each}
+		{@render painted()}
 	</div>
 {:else if as === 'p'}
 	<p {style} class={klass} data-canvas-typography-root data-canvas-paint-root>
-		{#each segments as seg}
-			{#if seg.highlighted}
-				{#if seg.markerBg}
-					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
-				{:else if seg.patternImage}
-					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
-				{:else if seg.gradientFrom && seg.gradientTo}
-					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
-				{:else if emphasisBold}
-					<span style={boldSpanStyle}>{seg.text}</span>
-				{:else}
-					<span style="color: {seg.color}; font-weight: 700; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
-				{/if}
-			{:else}
-				{seg.text}
-			{/if}
-		{/each}
+		{@render painted()}
 	</p>
 {:else}
 	<span {style} class={klass} data-canvas-typography-root data-canvas-paint-root>
-		{#each segments as seg}
-			{#if seg.highlighted}
-				{#if seg.markerBg}
-					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
-				{:else if seg.patternImage}
-					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
-				{:else if seg.gradientFrom && seg.gradientTo}
-					<span style="background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: inherit; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
-				{:else if emphasisBold}
-					<span style={boldSpanStyle}>{seg.text}</span>
-				{:else}
-					<span style="color: {seg.color}; font-weight: 700; font-style: inherit; text-decoration: inherit;">{seg.text}</span>
-				{/if}
-			{:else}
-				{seg.text}
-			{/if}
-		{/each}
+		{@render painted()}
 	</span>
 {/if}

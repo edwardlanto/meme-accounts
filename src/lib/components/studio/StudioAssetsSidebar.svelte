@@ -2,6 +2,9 @@
 	import { prepareImageForUpload } from '$lib/client/image-upload-prep';
 	import { Film, ImagePlus, Loader, Pencil, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
 	import SkeletonGrid from '$lib/components/SkeletonGrid.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import * as Tabs from '$lib/components/ui/tabs';
 
 	type StudioAsset = {
 		id: string;
@@ -43,6 +46,7 @@
 	let {
 		userId = '',
 		collapsed = $bindable(false),
+		seedQuery = '',
 		onUseAsBackground,
 		onUseAsBottomBackground,
 		onAddAsSticker,
@@ -51,6 +55,8 @@
 	}: {
 		userId?: string;
 		collapsed?: boolean;
+		/** When Generate runs, fill Unsplash + Pexels search with this query and run both. */
+		seedQuery?: string;
 		onUseAsBackground?: (r2Ref: string) => void | Promise<void>;
 		onUseAsBottomBackground?: (r2Ref: string) => void | Promise<void>;
 		onAddAsSticker?: (r2Ref: string) => void | Promise<void>;
@@ -102,6 +108,43 @@
 	let pexelsPage = $state(1);
 	let pexelsHasMore = $state(true);
 	let pexelsTotalPages = $state(1);
+	let lastSeededQuery = '';
+	let pexelsSearchSeq = 0;
+	let lastPexelsQueryForKind: { photos: string; videos: string } = { photos: '', videos: '' };
+
+	function looksLikeVideoUrl(url: string): boolean {
+		const u = String(url ?? '').trim().toLowerCase();
+		if (!u) return false;
+		if (u.startsWith('data:video/') || u.startsWith('blob:')) {
+			return u.startsWith('data:video/') || /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u);
+		}
+		return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u);
+	}
+
+	function assetLooksLikeVideo(asset: StudioAsset): boolean {
+		return looksLikeVideoUrl(asset.name) || looksLikeVideoUrl(asset.r2_key) || looksLikeVideoUrl(asset.thumbUrl ?? '');
+	}
+
+	$effect(() => {
+		const q = String(seedQuery ?? '').trim();
+		if (!q || q === lastSeededQuery) return;
+		lastSeededQuery = q;
+		unsplashQuery = q;
+		pexelsQuery = q;
+		pexelsKind = 'videos';
+		if (tab === 'library') tab = 'pexels';
+		void searchUnsplash();
+		void searchPexels(null, 'videos');
+	});
+
+	$effect(() => {
+		if (tab !== 'pexels') return;
+		const kind = pexelsKind;
+		const q = pexelsQuery.trim();
+		if (!q) return;
+		if (lastPexelsQueryForKind[kind] === q) return;
+		void searchPexels(null, kind);
+	});
 
 	const filtered = $derived.by(() => {
 		const q = query.trim().toLowerCase();
@@ -323,7 +366,10 @@
 		window.open(photo.regular, '_blank', 'noopener,noreferrer');
 	}
 
-	async function searchPexels(pageToFetch: number | null = null) {
+	async function searchPexels(
+		pageToFetch: number | null = null,
+		kind: 'photos' | 'videos' = pexelsKind,
+	) {
 		const q = pexelsQuery.trim();
 		if (!q) {
 			pexelsError = 'Enter a search term';
@@ -332,12 +378,14 @@
 
 		const isNewSearch = pageToFetch === null;
 		const targetPage = pageToFetch ?? 1;
-		const searchingVideos = pexelsKind === 'videos';
+		const searchingVideos = kind === 'videos';
+
+		const seq = ++pexelsSearchSeq;
 
 		if (isNewSearch) {
 			pexelsPage = 1;
-			pexelsPhotos = [];
-			pexelsVideos = [];
+			if (searchingVideos) pexelsVideos = [];
+			else pexelsPhotos = [];
 		}
 
 		pexelsLoading = true;
@@ -350,7 +398,9 @@
 				: `/api/pexels/search?query=${encodeURIComponent(q)}&per_page=15&page=${targetPage}`;
 			const res = await fetch(endpoint);
 			const data = await res.json().catch(() => ({}));
+			if (seq !== pexelsSearchSeq) return;
 			if (!res.ok) throw new Error(data?.error ?? `Search failed (${res.status})`);
+			lastPexelsQueryForKind[kind] = q;
 
 			if (searchingVideos) {
 				const newVideos = (Array.isArray(data.videos) ? data.videos : [])
@@ -401,14 +451,16 @@
 				}
 			}
 		} catch (e: unknown) {
+			if (seq !== pexelsSearchSeq) return;
 			console.error('[Pexels] Search error:', e);
 			if (isNewSearch) {
-				pexelsPhotos = [];
-				pexelsVideos = [];
+				if (searchingVideos) pexelsVideos = [];
+				else pexelsPhotos = [];
+				lastPexelsQueryForKind[kind] = '';
 			}
 			pexelsError = e instanceof Error ? e.message : 'Pexels search failed';
 		} finally {
-			pexelsLoading = false;
+			if (seq === pexelsSearchSeq) pexelsLoading = false;
 		}
 	}
 
@@ -418,16 +470,17 @@
 	}
 
 	function switchPexelsKind(kind: 'photos' | 'videos') {
-		if (pexelsKind === kind) return;
 		pexelsKind = kind;
-		pexelsPhotos = [];
-		pexelsVideos = [];
-		pexelsSearched = false;
 		pexelsError = '';
-		pexelsPage = 1;
-		pexelsHasMore = true;
-		pexelsTotalPages = 1;
-		if (pexelsQuery.trim()) void searchPexels();
+		const q = pexelsQuery.trim();
+		const stale = lastPexelsQueryForKind[kind] !== q;
+		const empty = kind === 'videos' ? pexelsVideos.length === 0 : pexelsPhotos.length === 0;
+		if (q && (empty || stale)) {
+			pexelsPage = 1;
+			pexelsHasMore = true;
+			pexelsTotalPages = 1;
+			void searchPexels(null, kind);
+		}
 	}
 
 	async function applyPexels(photo: PexelsPhoto) {
@@ -481,166 +534,152 @@
 
 {#if collapsed}
 	<aside class="assets-sidebar assets-sidebar--collapsed" aria-label="Image assets">
-		<button
+		<Button
 			type="button"
-			class="assets-collapse-btn"
+			variant="ghost"
+			size="icon-sm"
 			onclick={() => (collapsed = false)}
 			title="Show assets"
 			aria-label="Show assets"
 			aria-expanded="false"
 		>
-			<ImagePlus size={15} />
-		</button>
+			<ImagePlus />
+		</Button>
 		<span class="assets-rail-label">Assets</span>
 	</aside>
 {:else}
 <aside class="assets-sidebar" aria-label="Image assets">
 	<header class="assets-header">
-		<div class="assets-title-row">
-			<span class="assets-title">Assets</span>
-			<button
+		<div class="flex items-center justify-between gap-2">
+			<h2 class="text-foreground text-sm font-semibold tracking-tight">Assets</h2>
+			<Button
 				type="button"
-				class="assets-collapse-btn"
+				variant="ghost"
+				size="icon-sm"
 				onclick={() => (collapsed = true)}
 				title="Hide assets"
 				aria-label="Hide assets"
 				aria-expanded="true"
 			>
-				<X size={14} />
-			</button>
-			{#if tab === 'library'}
-				<button
-					type="button"
-					class="assets-upload-btn"
-					onclick={() => fileInput?.click()}
-					disabled={!userId || uploading}
-					title="Upload image"
-				>
-					{#if uploading}
-						<Loader size={14} class="animate-spin" />
-					{:else}
-						<Upload size={14} />
-					{/if}
-					<span>Upload</span>
-				</button>
-			{/if}
+				<X />
+			</Button>
 		</div>
 
-		<div class="assets-tabs" role="tablist">
-			<button
-				type="button"
-				role="tab"
-				class="assets-tab"
-				class:assets-tab--on={tab === 'library'}
-				aria-selected={tab === 'library'}
-				onclick={() => (tab = 'library')}
-			>
-				Library
-			</button>
-			<button
-				type="button"
-				role="tab"
-				class="assets-tab"
-				class:assets-tab--on={tab === 'unsplash'}
-				aria-selected={tab === 'unsplash'}
-				onclick={() => (tab = 'unsplash')}
-			>
-				Unsplash
-			</button>
-			<button
-				type="button"
-				role="tab"
-				class="assets-tab"
-				class:assets-tab--on={tab === 'pexels'}
-				aria-selected={tab === 'pexels'}
-				onclick={() => (tab = 'pexels')}
-			>
-				Pexels
-			</button>
-		</div>
+		<Tabs.Root bind:value={tab} class="gap-3">
+			<Tabs.List class="grid h-9 w-full grid-cols-3">
+				<Tabs.Trigger value="library" class="text-xs">Library</Tabs.Trigger>
+				<Tabs.Trigger value="unsplash" class="text-xs">Unsplash</Tabs.Trigger>
+				<Tabs.Trigger value="pexels" class="text-xs">Pexels</Tabs.Trigger>
+			</Tabs.List>
+		</Tabs.Root>
 
 		{#if tab === 'library'}
-			<div class="assets-search">
-				<Search size={13} class="assets-search-icon" />
-				<input
+			<div class="relative">
+				<Search
+					class="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2"
+				/>
+				<Input
 					type="search"
 					bind:value={query}
 					placeholder="Search library…"
-					class="assets-search-input"
+					class="h-9 ps-8 pe-8"
+					aria-label="Search library"
 				/>
 				{#if query}
-					<button type="button" class="assets-clear" onclick={() => (query = '')} aria-label="Clear search">
-						<X size={12} />
-					</button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						class="absolute end-1.5 top-1/2 -translate-y-1/2"
+						onclick={() => (query = '')}
+						aria-label="Clear search"
+					>
+						<X />
+					</Button>
 				{/if}
 			</div>
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				class="w-full"
+				onclick={() => fileInput?.click()}
+				disabled={!userId || uploading}
+			>
+				{#if uploading}
+					<Loader class="animate-spin" />
+				{:else}
+					<Upload />
+				{/if}
+				Upload
+			</Button>
 		{:else if tab === 'unsplash'}
 			<form
-				class="assets-search assets-search--unsplash"
+				class="flex gap-2"
 				onsubmit={(e) => {
 					e.preventDefault();
 					void searchUnsplash();
 				}}
 			>
-				<Search size={13} class="assets-search-icon" />
-				<input
-					type="search"
-					bind:value={unsplashQuery}
-					placeholder="Search Unsplash…"
-					class="assets-search-input"
-				/>
-				<button type="submit" class="assets-search-go" disabled={unsplashLoading}>
+				<div class="relative min-w-0 flex-1">
+					<Search
+						class="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2"
+					/>
+					<Input
+						type="search"
+						bind:value={unsplashQuery}
+						placeholder="Search Unsplash…"
+						class="h-9 ps-8"
+						aria-label="Search Unsplash"
+					/>
+				</div>
+				<Button type="submit" size="sm" class="shrink-0" disabled={unsplashLoading}>
 					{#if unsplashLoading}
-						<Loader size={12} class="animate-spin" />
+						<Loader class="animate-spin" />
 					{:else}
-						Go
+						Search
 					{/if}
-				</button>
+				</Button>
 			</form>
 		{:else if tab === 'pexels'}
-			<div class="pexels-kind" role="tablist" aria-label="Pexels media type">
-				<button
-					type="button"
-					role="tab"
-					class="pexels-kind-btn"
-					class:pexels-kind-btn--on={pexelsKind === 'photos'}
-					aria-selected={pexelsKind === 'photos'}
-					onclick={() => switchPexelsKind('photos')}
-				>
-					Photos
-				</button>
-				<button
-					type="button"
-					role="tab"
-					class="pexels-kind-btn"
-					class:pexels-kind-btn--on={pexelsKind === 'videos'}
-					aria-selected={pexelsKind === 'videos'}
-					onclick={() => switchPexelsKind('videos')}
-				>
-					Videos
-				</button>
-			</div>
+			<Tabs.Root
+				bind:value={pexelsKind}
+				class="gap-2"
+				onValueChange={(v) => {
+					if (v === 'photos' || v === 'videos') switchPexelsKind(v);
+				}}
+			>
+				<Tabs.List class="grid h-8 w-full grid-cols-2" aria-label="Pexels media type">
+					<Tabs.Trigger value="photos" class="text-xs">Photos</Tabs.Trigger>
+					<Tabs.Trigger value="videos" class="text-xs">Videos</Tabs.Trigger>
+				</Tabs.List>
+			</Tabs.Root>
 			<form
-				class="assets-search assets-search--pexels"
+				class="flex gap-2"
 				onsubmit={(e) => {
 					e.preventDefault();
 					void searchPexels();
 				}}
 			>
-				<Search size={13} class="assets-search-icon" />
-				<input
-					type="search"
-					bind:value={pexelsQuery}
-					placeholder={pexelsKind === 'videos' ? 'Search Pexels videos…' : 'Search Pexels photos…'}
-					class="assets-search-input"
-				/>
-				<button type="submit" class="assets-search-go" disabled={pexelsLoading}>
+				<div class="relative min-w-0 flex-1">
+					<Search
+						class="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2"
+					/>
+					<Input
+						type="search"
+						bind:value={pexelsQuery}
+						placeholder={pexelsKind === 'videos' ? 'Search Pexels videos…' : 'Search Pexels photos…'}
+						class="h-9 ps-8"
+						aria-label={pexelsKind === 'videos' ? 'Search Pexels videos' : 'Search Pexels photos'}
+					/>
+				</div>
+				<Button type="submit" size="sm" class="shrink-0" disabled={pexelsLoading}>
 					{#if pexelsLoading}
-						<Loader size={12} class="animate-spin" />
+						<Loader class="animate-spin" />
 					{:else}
-						Go
+						Search
 					{/if}
-				</button>
+				</Button>
 			</form>
 		{/if}
 	</header>
@@ -677,7 +716,7 @@
 						<ImagePlus size={20} />
 					</div>
 					<p>{query ? 'No matches' : 'Drop images here'}</p>
-					<span>{query ? 'Try another search' : 'or click Upload — saved to your library'}</span>
+					<span>{query ? 'Try another search' : 'or use Upload above — saved to your library'}</span>
 				</button>
 			{:else}
 				<ul class="assets-list">
@@ -689,7 +728,20 @@
 								title="Use as background"
 								onclick={() => void onUseAsBackground?.(r2Ref(asset))}
 							>
-								{#if asset.thumbUrl}
+								{#if asset.thumbUrl && assetLooksLikeVideo(asset)}
+									<!-- svelte-ignore a11y_media_has_caption -->
+									<video
+										src={asset.thumbUrl}
+										muted
+										loop
+										playsinline
+										autoplay
+										preload="metadata"
+										onloadeddata={(e) => {
+											void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
+										}}
+									></video>
+								{:else if asset.thumbUrl}
 									<img src={asset.thumbUrl} alt="" />
 								{:else}
 									<div class="asset-thumb-fallback"><ImagePlus size={16} /></div>
@@ -897,7 +949,21 @@
 									disabled={pexelsApplyingId === video.id || !onUsePexelsVideo}
 									onclick={() => void applyPexelsVideo(video)}
 								>
-									{#if video.thumb}
+									{#if video.url}
+										<!-- svelte-ignore a11y_media_has_caption -->
+										<video
+											src={video.url}
+											poster={video.thumb || undefined}
+											muted
+											loop
+											playsinline
+											autoplay
+											preload="metadata"
+											onloadeddata={(e) => {
+												void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
+											}}
+										></video>
+									{:else if video.thumb}
 										<img src={video.thumb} alt={video.alt} loading="lazy" />
 									{:else}
 										<div class="pexels-video-fallback"><Film size={18} /></div>
@@ -1047,134 +1113,15 @@
 		user-select: none;
 	}
 
-	.assets-collapse-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		flex-shrink: 0;
-		border: 1px solid color-mix(in oklab, var(--app-border, #e8e8e8) 100%, transparent);
-		border-radius: 8px;
-		background: transparent;
-		color: var(--app-text-2, #555);
-		cursor: pointer;
-		transition: background 140ms ease, color 140ms ease;
-	}
-	.assets-collapse-btn:hover {
-		background: color-mix(in oklab, var(--app-text, #000) 6%, transparent);
-		color: var(--app-text, #111);
-	}
-
 	.assets-header {
-		padding: 14px 14px 10px;
-		border-bottom: 1px solid color-mix(in oklab, var(--app-border, #ebebeb) 100%, transparent);
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 12px 12px 12px;
+		border-bottom: 1px solid var(--border);
 		flex-shrink: 0;
 	}
 
-	.assets-title-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		margin-bottom: 10px;
-	}
-
-	.assets-title {
-		font-size: 13px;
-		font-weight: 650;
-		letter-spacing: -0.01em;
-		color: var(--app-text, #1a1a1a);
-	}
-
-	.assets-tabs {
-		display: grid;
-		grid-template-columns: 1fr 1fr 1fr;
-		gap: 4px;
-		padding: 3px;
-		margin-bottom: 10px;
-		border-radius: 10px;
-		background: #f0f0f0;
-	}
-	.assets-tab {
-		height: 28px;
-		border: none;
-		border-radius: 8px;
-		background: transparent;
-		font-size: 11.5px;
-		font-weight: 650;
-		color: #777;
-		cursor: pointer;
-	}
-	.assets-tab--on {
-		background: #fff;
-		color: #111;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-	}
-
-	.assets-upload-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		height: 28px;
-		padding: 0 10px;
-		border-radius: 999px;
-		border: 1px solid color-mix(in oklab, var(--app-border, #e2e2e2) 100%, transparent);
-		background: var(--app-surface, #fff);
-		color: var(--app-text, #111);
-		font-size: 11.5px;
-		font-weight: 600;
-		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s, transform 0.12s;
-	}
-	.assets-upload-btn:hover:not(:disabled) {
-		border-color: #c8c8c8;
-		background: #fafafa;
-	}
-	.assets-upload-btn:active:not(:disabled) {
-		transform: scale(0.97);
-	}
-	.assets-upload-btn:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-
-	.assets-search {
-		position: relative;
-		display: flex;
-		align-items: center;
-	}
-	.assets-search--unsplash {
-		padding-right: 0;
-	}
-	.assets-search--pexels {
-		padding-right: 0;
-	}
-	.pexels-kind {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 4px;
-		padding: 3px;
-		margin-bottom: 8px;
-		border-radius: 10px;
-		background: #f0f0f0;
-	}
-	.pexels-kind-btn {
-		height: 26px;
-		border: none;
-		border-radius: 8px;
-		background: transparent;
-		color: #777;
-		font-size: 11px;
-		font-weight: 650;
-		cursor: pointer;
-		transition: background 120ms ease, color 120ms ease;
-	}
-	.pexels-kind-btn--on {
-		background: #fff;
-		color: #111;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-	}
 	.pexels-video-card .unsplash-card-action {
 		position: relative;
 	}
@@ -1202,64 +1149,6 @@
 		background: #1a1a1a;
 		color: rgba(255, 255, 255, 0.45);
 	}
-	.assets-search-icon {
-		position: absolute;
-		left: 10px;
-		color: #b0b0b0;
-		pointer-events: none;
-	}
-	.assets-search-input {
-		width: 100%;
-		height: 32px;
-		padding: 0 28px 0 30px;
-		border-radius: 10px;
-		border: 1px solid #ebebeb;
-		background: #f7f7f7;
-		font-size: 12px;
-		color: var(--app-text, #1a1a1a);
-		outline: none;
-	}
-	.assets-search--unsplash .assets-search-input {
-		padding-right: 52px;
-	}
-	.assets-search--pexels .assets-search-input {
-		padding-right: 52px;
-	}
-	.assets-search-input:focus {
-		border-color: #d0d0d0;
-		background: #fff;
-	}
-	.assets-search-go {
-		position: absolute;
-		right: 4px;
-		height: 24px;
-		padding: 0 10px;
-		border: none;
-		border-radius: 8px;
-		background: #1a1a1a;
-		color: #fff;
-		font-size: 11px;
-		font-weight: 650;
-		cursor: pointer;
-	}
-	.assets-search-go:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.assets-clear {
-		position: absolute;
-		right: 8px;
-		width: 18px;
-		height: 18px;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: #aaa;
-		display: grid;
-		place-items: center;
-		cursor: pointer;
-	}
-
 	.assets-drop {
 		flex: 1;
 		min-height: 0;
@@ -1366,7 +1255,8 @@
 		box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent, #7bf1a8) 70%, transparent);
 		transform: scale(1.02);
 	}
-	.asset-thumb img {
+	.asset-thumb img,
+	.asset-thumb video {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
@@ -1501,7 +1391,8 @@
 		background: transparent;
 		cursor: pointer;
 	}
-	.unsplash-card-action img {
+	.unsplash-card-action img,
+	.unsplash-card-action video {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;

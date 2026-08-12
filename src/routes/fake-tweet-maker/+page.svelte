@@ -5,6 +5,8 @@
 	import {
 		ArrowRight, Bird, Check, Download, Lock, Loader, Sparkles,
 	} from 'lucide-svelte';
+	import MarketingNav from '$lib/components/MarketingNav.svelte';
+	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
 
 	let { data } = $props();
 
@@ -36,7 +38,7 @@
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'WebApplication',
-		name: 'Carousel Studio Fake Tweet Maker',
+		name: 'Meme Accounts Fake Tweet Maker',
 		applicationCategory: 'DesignApplication',
 		operatingSystem: 'Web',
 		description:
@@ -94,7 +96,7 @@
 </script>
 
 <svelte:head>
-	<title>Fake Tweet Maker — Free Twitter / X Post Generator | Carousel Studio</title>
+	<title>Fake Tweet Maker — Free Twitter / X Post Generator | Meme Accounts</title>
 	<meta
 		name="description"
 		content="Make fake tweets for Instagram carousels and memes. Free tweet maker with realistic Twitter/X layout — sign in for 1 trial export, then upgrade for unlimited."
@@ -103,8 +105,8 @@
 		name="keywords"
 		content="fake tweet maker, tweet maker, twitter post generator, fake twitter screenshot, x post maker, tweet template"
 	/>
-	<link rel="canonical" href="https://carouselstudio.app/fake-tweet-maker" />
-	<meta property="og:title" content="Fake Tweet Maker — Carousel Studio" />
+	<link rel="canonical" href="https://memeaccounts.com/fake-tweet-maker" />
+	<meta property="og:title" content="Fake Tweet Maker — Meme Accounts" />
 	<meta
 		property="og:description"
 		content="Design realistic fake tweets for social content. Free trial export, then upgrade for unlimited."
@@ -118,32 +120,7 @@
 		<div class="blob"></div>
 	</div>
 
-	<nav class="nav">
-		<a href="/" class="logo">
-			<img
-				src="/logo/meme-accounts-logo.webp"
-				alt="Meme Accounts"
-				class="logo-img"
-				width="180"
-				height="28"
-			/>
-		</a>
-		<div class="nav-links">
-			<a href="/pricing">Pricing</a>
-			<a href="/fake-tweet-maker" aria-current="page">Tweet Maker</a>
-			<a href="/instagram-carousel-maker">Instagram</a>
-			<a href="/instagram-grid-maker">Grid</a>
-			<a href="/linkedin-carousel-maker">LinkedIn</a>
-		</div>
-		<div class="nav-actions">
-			{#if signedIn}
-				<a href="/dashboard" class="nav-ghost">Dashboard</a>
-			{:else}
-				<a href="/?auth=login&next=/fake-tweet-maker" class="nav-ghost">Sign in</a>
-				<a href="/?auth=signup&next=/fake-tweet-maker" class="btn-nav">Start free</a>
-			{/if}
-		</div>
-	</nav>
+	<MarketingNav ctaHref={signedIn ? '/dashboard' : '/?auth=signup&next=/fake-tweet-maker'} />
 
 	<header class="hero container">
 		<span class="eyebrow"><Bird size={12} /> Tweet Maker</span>
@@ -151,8 +128,13 @@
 			Fake tweet maker for <span class="accent">Twitter &amp; X</span> graphics
 		</h1>
 		<p class="lead">
-			Build realistic tweet screenshots for Instagram carousels, meme pages, and commentary posts.
-			This page is public — sign in to edit and export. Free accounts get <strong>one trial export</strong>,
+			Build realistic tweet screenshots for
+			<a href="/instagram-carousel-maker">Instagram carousels</a>,
+			meme pages, and commentary posts. Drop a tweet on slide one, then finish the deck in the
+			<a href="/instagram-carousel-maker">carousel maker</a>
+			or tile it on an
+			<a href="/instagram-grid-maker">Instagram grid</a>.
+			This page is public - sign in to edit and export. Free accounts get <strong>one trial export</strong>,
 			then upgrade for unlimited.
 		</p>
 	</header>
@@ -264,7 +246,7 @@
 		<div class="faq">
 			<h2>Fake tweet maker FAQ</h2>
 			{#each [
-				['Is this a real Twitter account?', 'No — Carousel Studio generates static graphics only. Nothing is posted to X unless you publish separately.'],
+				['Is this a real Twitter account?', 'No - Meme Accounts generates static graphics only. Nothing is posted to X unless you publish separately.'],
 				['Can I use these for commercial content?', 'Yes, subject to our Terms and the platform rules where you publish. Do not impersonate real people deceptively.'],
 				['How does the free trial work?', 'After signing in, you can export one tweet graphic. Upgrade to Pro for unlimited exports and full studio access.'],
 				['Does this work for X (Twitter) threads?', 'Yes — use Tweet Studio in the dashboard for multi-slide tweet carousels.'],
@@ -280,7 +262,7 @@
 	<section class="cta">
 		<div class="container cta-inner">
 			<h2>Need unlimited tweet graphics?</h2>
-			<p>Pro unlocks unlimited exports, bulk generation, and the full Carousel Studio.</p>
+			<p>Pro unlocks unlimited exports, bulk generation, and the full Meme Accounts studio.</p>
 			<a href="/pricing" class="cta-btn">
 				See pricing
 				<ArrowRight size={18} />
@@ -288,12 +270,7 @@
 		</div>
 	</section>
 
-	<footer class="footer container">
-		<a href="/privacy">Privacy</a>
-		<a href="/terms">Terms</a>
-		<a href="/refund-policy">Refunds</a>
-		<span>© Carousel Studio</span>
-	</footer>
+	<MarketingFooter />
 </div>
 
 <style>
@@ -332,68 +309,6 @@
 		padding: 0 clamp(20px, 4vw, 48px);
 	}
 
-	.nav {
-		position: sticky;
-		top: 0;
-		z-index: 50;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		padding: 14px clamp(20px, 4vw, 48px);
-		background: color-mix(in oklch, var(--paper) 85%, transparent);
-		backdrop-filter: blur(18px);
-		border-bottom: 1px solid rgba(10, 5, 5, 0.07);
-	}
-	.logo {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
-	}
-	.logo-img {
-		display: block;
-		height: 28px;
-		width: auto;
-		max-width: min(200px, 52vw);
-		object-fit: contain;
-	}
-	.nav-links {
-		display: flex;
-		gap: 24px;
-	}
-	.nav-links a {
-		font-size: 14px;
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-	.nav-links a:hover,
-	.nav-links a[aria-current='page'] {
-		color: var(--ink);
-	}
-	.nav-actions {
-		display: flex;
-		gap: 12px;
-		align-items: center;
-	}
-	.nav-ghost {
-		font-size: 14px;
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-	.btn-nav {
-		padding: 9px 18px;
-		border-radius: 999px;
-		background: #080808;
-		color: #fff;
-		font-size: 13px;
-		font-weight: 700;
-		text-decoration: none;
-	}
-
 	.hero {
 		padding: 56px 0 32px;
 	}
@@ -427,6 +342,12 @@
 		line-height: 1.55;
 		color: rgba(10, 5, 5, 0.62);
 		max-width: 58ch;
+	}
+	.lead a {
+		color: var(--ink);
+		font-weight: 700;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 
 	.maker {
@@ -677,27 +598,7 @@
 		text-decoration: none;
 	}
 
-	.footer {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 20px;
-		padding: 32px 0 48px;
-		font-size: 13px;
-		color: rgba(10, 5, 5, 0.45);
-	}
-	.footer a {
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-	.footer a:hover {
-		color: var(--ink);
-	}
-
 	@media (max-width: 900px) {
-		.nav-links {
-			display: none;
-		}
 		.maker {
 			grid-template-columns: 1fr;
 		}

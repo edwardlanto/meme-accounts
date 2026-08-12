@@ -127,19 +127,19 @@
 	const slideCountPresets = [3, 5, 7, 8, 10] as const;
 </script>
 
-<div class="mx-auto max-w-6xl p-6 sm:p-8 pb-12">
+<div class="dash-page">
 	<div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
 		<div class="min-w-0 max-w-xl">
 			<p class="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--app-text-3)]">
 				Brand generator
 			</p>
-			<h1 class="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--app-text)] sm:text-[1.65rem]">
+			<h1 class="dash-page-title mt-2 text-[color:var(--app-text)]">
 				Carousel from your visual style
 			</h1>
 			<p
-				class="mt-3 text-sm leading-relaxed text-[color:var(--app-text-2)] border-l-2 border-[color:var(--app-focus)] pl-4"
+				class="dash-page-sub mt-3 text-[color:var(--app-text-2)] border-l-2 border-[color:var(--app-focus)] pl-4"
 			>
-				Upload a reference image, describe the topic, and generate a matched set of slides—same palette,
+				Upload a reference image, describe the topic, and generate a matched set of slides - same palette,
 				type rhythm, and composition across the deck.
 			</p>
 		</div>
@@ -242,7 +242,7 @@
 					id="topic"
 					bind:value={topic}
 					rows={3}
-					placeholder="e.g. Five signals the market is topping — and what to watch next"
+					placeholder="e.g. Five signals the market is topping - and what to watch next"
 					class="mt-2 w-full resize-none rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-bg)] px-3 py-2.5 text-sm text-[color:var(--app-text)] placeholder:text-[color:var(--app-text-3)] focus:border-[color:var(--app-focus)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_oklab,var(--app-focus)_35%,transparent)]"
 				></textarea>
 			</div>
@@ -309,7 +309,7 @@
 						<div class="min-w-0">
 							<p class="truncate text-sm font-semibold text-[color:var(--app-text)]">{statusLabel}</p>
 							<p class="mt-0.5 text-xs text-[color:var(--app-text-3)]">
-								Typical range ~15–60s depending on slide count and API load.
+								Typical range ~15-60s depending on slide count and API load.
 							</p>
 						</div>
 					</div>
@@ -394,7 +394,7 @@
 						</div>
 						<p class="text-sm font-medium text-[color:var(--app-text)]">Ready when you are</p>
 						<p class="mt-2 text-xs leading-relaxed text-[color:var(--app-text-3)]">
-							Fill in reference, topic, and brand—then generate. Cards appear here in swipe order; drag to reorder.
+							Fill in reference, topic, and brand - then generate. Cards appear here in swipe order; drag to reorder.
 						</p>
 					</div>
 				</div>

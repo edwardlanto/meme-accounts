@@ -3,13 +3,19 @@
 	import { supabase } from '$lib/supabase';
 	import { goto } from '$app/navigation';
 	import {
-		LayoutDashboard, ImagePlus, Settings,
-		// Search, FlaskConical, BarChart3, CalendarDays, Plug,
+		LayoutDashboard,
+		ImagePlus,
+		Settings,
 		Rows3,
 		Video,
 		LayoutTemplate,
 	} from 'lucide-svelte';
-	import TwoLevelSidebar from '$lib/components/TwoLevelSidebar.svelte';
+	import AppSidebar from '$lib/components/app-sidebar.svelte';
+	import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
+	import { Separator } from '$lib/components/ui/separator/index.js';
+	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import { cn } from '$lib/utils.js';
+	import BrandOnboarding from '$lib/components/BrandOnboarding.svelte';
 
 	let { children, data } = $props();
 
@@ -17,30 +23,41 @@
 		{
 			label: 'Create',
 			items: [
-				{ href: '/dashboard',              label: 'Overview',     icon: LayoutDashboard },
-				{ href: '/dashboard/templates',    label: 'Templates',    icon: LayoutTemplate },
-				{ href: '/dashboard/carousels',    label: 'Carousels',    icon: ImagePlus },
-				{ href: '/dashboard/bulk',         label: 'Bulk',         icon: Rows3 },
-				{ href: '/dashboard/videos',       label: 'Videos',       icon: Video },
-			]
+				{ href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+				/** Gallery of starters — must stay `/dashboard/templates` (not Studio). */
+				{ href: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate },
+				{ href: '/dashboard/carousels', label: 'Carousels', icon: ImagePlus },
+				{ href: '/dashboard/bulk', label: 'Bulk', icon: Rows3 },
+				{ href: '/dashboard/videos', label: 'Videos', icon: Video },
+			],
 		},
 		{
 			label: 'Account',
 			items: [
-				{ href: '/dashboard/settings',      label: 'Settings',      icon: Settings },
-				// { href: '/dashboard/integrations',  label: 'Integrations',  icon: Plug },
-			]
+				{ href: '/dashboard/settings', label: 'Settings', icon: Settings },
+			],
 		},
-		// {
-		// 	label: 'Grow',
-		// 	items: [
-		// 		{ href: '/dashboard/discover',     label: 'Discover',     icon: Search },
-		// 		{ href: '/dashboard/analytics',    label: 'Analytics',    icon: BarChart3 },
-		// 		{ href: '/dashboard/post-scheduler', label: 'Scheduler',  icon: CalendarDays },
-		// 		{ href: '/dashboard/post-tests',   label: 'Post Tests',   icon: FlaskConical },
-		// 	]
-		// },
 	];
+
+	const crumbLabels: Record<string, string> = {
+		dashboard: 'Dashboard',
+		templates: 'Templates',
+		studio: 'Studio',
+		carousels: 'Carousels',
+		bulk: 'Bulk',
+		videos: 'Videos',
+		settings: 'Settings',
+		editor: 'Editor',
+		new: 'New',
+		slideshows: 'Slideshows',
+		analytics: 'Analytics',
+		discover: 'Discover',
+		integrations: 'Integrations',
+		branding: 'Branding',
+		composer: 'Composer',
+		grid: 'Grid',
+		video: 'Video',
+	};
 
 	async function signOut() {
 		if (!data.user) {
@@ -52,68 +69,80 @@
 	}
 
 	const signedIn = $derived(!!data.user);
-
-	let currentPath = $derived($page.url.pathname);
-	let sidebarRailOnly = $derived(
-		currentPath.startsWith('/dashboard/editor/')
+	const currentPath = $derived($page.url.pathname);
+	const sidebarRailOnly = $derived(currentPath.startsWith('/dashboard/editor/'));
+	const toolPage = $derived(
+		currentPath.startsWith('/dashboard/studio') ||
+			currentPath.startsWith('/dashboard/editor/')
 	);
 
+	const crumbs = $derived.by(() => {
+		const parts = currentPath.replace(/\/+$/, '').split('/').filter(Boolean);
+		return parts.map((seg, i) => ({
+			href: '/' + parts.slice(0, i + 1).join('/'),
+			label: crumbLabels[seg] ?? decodeURIComponent(seg),
+		}));
+	});
+
+	let sidebarOpen = $state(true);
+
+	$effect(() => {
+		if (sidebarRailOnly) sidebarOpen = false;
+	});
+
 	type ThemeMode = 'light' | 'dark';
-	let theme = $state<ThemeMode>('light');
-	function applyTheme(next: ThemeMode) {
-		// Product is light-only — ignore dark requests and clear any stale preference.
-		theme = 'light';
+	function applyTheme(_next: ThemeMode) {
 		document.documentElement.dataset.theme = 'light';
-		try { localStorage.setItem('theme', 'light'); } catch { /* ignore */ }
-		void next;
+		try {
+			localStorage.setItem('theme', 'light');
+		} catch {
+			/* ignore */
+		}
 	}
 	if (typeof window !== 'undefined') {
 		applyTheme('light');
 	}
 </script>
 
-<div class="shell">
-	<!-- Sidebar -->
-	<div class="sidebar-shell">
-		<TwoLevelSidebar
-			navGroups={navGroups}
-			currentPath={currentPath}
-			theme={theme}
-			railOnly={sidebarRailOnly}
-			signedIn={signedIn}
-			onThemeToggle={() => applyTheme(theme === 'dark' ? 'light' : 'dark')}
-			onSignOut={signOut}
-		/>
-	</div>
-
-	<!-- Main -->
-	<main class="main-area">
-		{@render children()}
-	</main>
-</div>
-
-<style>
-	:global(body) {
-		background: var(--app-bg);
-		color: var(--app-text);
-		font-family: var(--font-sans);
-		margin: 0;
-	}
-
-	.shell {
-		display: flex;
-		height: 100vh;
-		background: var(--app-surface);
-		overflow: hidden;
-	}
-
-	.sidebar-shell { padding: 0; flex-shrink: 0; }
-
-	/* ── Main ────────────────────────────────────────────────────── */
-	.main-area {
-		flex: 1; overflow-y: auto;
-		scrollbar-width: thin;
-		scrollbar-color: var(--app-scroll-thumb) transparent;
-		background: var(--app-surface);
-	}
-</style>
+<Sidebar.Provider bind:open={sidebarOpen} class="h-svh overflow-hidden">
+	<AppSidebar
+		navGroups={navGroups}
+		currentPath={currentPath}
+		signedIn={signedIn}
+		onSignOut={signOut}
+		collapsible={sidebarRailOnly ? 'icon' : 'offcanvas'}
+	/>
+	<Sidebar.Inset class="min-h-0 overflow-hidden">
+		<header
+			class={cn(
+				'flex h-16 shrink-0 items-center gap-2 border-b px-4',
+				toolPage && 'md:hidden'
+			)}
+		>
+			<Sidebar.Trigger class="-ms-1" />
+			<Separator orientation="vertical" class="me-2 h-4" />
+			<Breadcrumb.Root>
+				<Breadcrumb.List>
+					{#each crumbs as crumb, i (crumb.href)}
+						{#if i > 0}
+							<Breadcrumb.Separator class="hidden md:block" />
+						{/if}
+						<Breadcrumb.Item class={i < crumbs.length - 1 ? 'hidden md:block' : ''}>
+							{#if i === crumbs.length - 1}
+								<Breadcrumb.Page>{crumb.label}</Breadcrumb.Page>
+							{:else}
+								<Breadcrumb.Link href={crumb.href}>{crumb.label}</Breadcrumb.Link>
+							{/if}
+						</Breadcrumb.Item>
+					{/each}
+				</Breadcrumb.List>
+			</Breadcrumb.Root>
+		</header>
+		<div class={cn('min-h-0 flex-1', toolPage ? 'overflow-hidden' : 'overflow-y-auto')}>
+			{@render children()}
+		</div>
+	</Sidebar.Inset>
+</Sidebar.Provider>
+{#if signedIn && data.user?.id}
+	<BrandOnboarding userId={data.user.id} />
+{/if}

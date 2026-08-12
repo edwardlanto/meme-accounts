@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import MarketingNav from '$lib/components/MarketingNav.svelte';
+	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
 
 	let {
 		title,
@@ -11,6 +13,8 @@
 		children: Snippet;
 	} = $props();
 </script>
+
+<MarketingNav />
 
 <main class="wrap">
 	<article class="doc">
@@ -28,9 +32,11 @@
 	</article>
 </main>
 
+<MarketingFooter />
+
 <style>
 	.wrap {
-		min-height: 100vh;
+		min-height: auto;
 		background: #f7f4ef;
 		color: #0a0505;
 		font-family: 'Satoshi', system-ui, sans-serif;

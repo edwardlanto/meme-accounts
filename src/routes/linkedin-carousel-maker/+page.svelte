@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { ArrowRight, Check, Layers, Sparkles, Ratio, Briefcase } from 'lucide-svelte';
+	import MarketingNav from '$lib/components/MarketingNav.svelte';
+	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
 
 	let { data } = $props();
 	const signedIn = $derived(Boolean(data.user));
@@ -13,7 +15,7 @@
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'WebApplication',
-		name: 'Carousel Studio — LinkedIn Carousel Maker',
+		name: 'Meme Accounts — LinkedIn Carousel Maker',
 		applicationCategory: 'DesignApplication',
 		operatingSystem: 'Web',
 		description:
@@ -23,22 +25,22 @@
 </script>
 
 <svelte:head>
-	<title>LinkedIn Carousel Maker — Free Multi-Slide Post Generator | Carousel Studio</title>
+	<title>LinkedIn Carousel Maker — Free Multi-Slide Post Generator | Meme Accounts</title>
 	<meta
 		name="description"
 		content="Make LinkedIn carousels fast. Hook → slides → CTA decks, news-to-post, Square & Feed formats, AI backgrounds. Sign in for a free trial export."
 	/>
 	<meta
 		name="keywords"
-		content="linkedin carousel maker, linkedin carousel generator, linkedin document post, multi slide linkedin post, carousel studio"
+		content="linkedin carousel maker, linkedin carousel generator, linkedin document post, multi slide linkedin post, meme accounts"
 	/>
-	<link rel="canonical" href="https://carouselstudio.app/linkedin-carousel-maker" />
-	<meta property="og:title" content="LinkedIn Carousel Maker — Carousel Studio" />
+	<link rel="canonical" href="https://memeaccounts.com/linkedin-carousel-maker" />
+	<meta property="og:title" content="LinkedIn Carousel Maker — Meme Accounts" />
 	<meta
 		property="og:description"
 		content="Design multi-slide LinkedIn carousels with news, templates, and AI. Free trial — then unlimited on Pro."
 	/>
-	<meta property="og:image" content="https://carouselstudio.app/images/seo/carousel-maker-studio.png" />
+	<meta property="og:image" content="https://memeaccounts.com/images/seo/carousel-maker-studio.png" />
 	<meta property="og:type" content="website" />
 	{@html `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`}
 </svelte:head>
@@ -46,32 +48,7 @@
 <div class="page">
 	<div class="atmosphere" aria-hidden="true"><div class="blob"></div></div>
 
-	<nav class="nav">
-		<a href="/" class="logo">
-			<img
-				src="/logo/meme-accounts-logo.webp"
-				alt="Meme Accounts"
-				class="logo-img"
-				width="180"
-				height="28"
-			/>
-		</a>
-		<div class="nav-links">
-			<a href="/pricing">Pricing</a>
-			<a href="/fake-tweet-maker">Tweet Maker</a>
-			<a href="/instagram-carousel-maker">Instagram</a>
-			<a href="/instagram-grid-maker">Grid</a>
-			<a href="/linkedin-carousel-maker" aria-current="page">LinkedIn</a>
-		</div>
-		<div class="nav-actions">
-			{#if signedIn}
-				<a href="/dashboard" class="nav-ghost">Dashboard</a>
-			{:else}
-				<a href="/?auth=login&next=/linkedin-carousel-maker" class="nav-ghost">Sign in</a>
-				<a href={studioHref} class="btn-nav">Start free</a>
-			{/if}
-		</div>
-	</nav>
+	<MarketingNav ctaHref={studioHref} />
 
 	<header class="hero container">
 		<span class="eyebrow"><Briefcase size={12} /> LinkedIn Carousel Maker</span>
@@ -80,8 +57,11 @@
 		</h1>
 		<p class="lead">
 			Build Hook → slides → CTA decks that perform on LinkedIn. Pull news, swap templates, pick
-			Square or Feed sizes — then export PNGs for document carousels. Public page; sign in to use
-			the studio (1 free trial export).
+			Square or Feed sizes - then export PNGs for document carousels. Same studio as
+			<a href="/instagram-carousel-maker">Instagram carousels</a>
+			and the
+			<a href="/fake-tweet-maker">tweet maker</a>.
+			Public page; sign in to use the studio (1 free trial export).
 		</p>
 		<div class="cta-row">
 			<a href={studioHref} class="cta-primary">
@@ -96,7 +76,7 @@
 		<figure class="shot-frame">
 			<img
 				src="/images/seo/carousel-maker-studio.png"
-				alt="Carousel Studio editor with News template and multi-slide filmstrip for LinkedIn carousels"
+				alt="Meme Accounts editor with News template and multi-slide filmstrip for LinkedIn carousels"
 				width="1200"
 				height="720"
 				loading="eager"
@@ -173,14 +153,7 @@
 		</div>
 	</section>
 
-	<footer class="footer container">
-		<a href="/privacy">Privacy</a>
-		<a href="/terms">Terms</a>
-		<a href="/refund-policy">Refunds</a>
-		<a href="/instagram-carousel-maker">Instagram Carousel</a>
-		<a href="/fake-tweet-maker">Tweet Maker</a>
-		<span>© Carousel Studio</span>
-	</footer>
+	<MarketingFooter />
 </div>
 
 <style>
@@ -219,68 +192,6 @@
 		padding: 0 clamp(20px, 4vw, 48px);
 	}
 
-	.nav {
-		position: sticky;
-		top: 0;
-		z-index: 50;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		padding: 14px clamp(20px, 4vw, 48px);
-		background: color-mix(in oklch, var(--paper) 85%, transparent);
-		backdrop-filter: blur(18px);
-		border-bottom: 1px solid rgba(10, 5, 5, 0.07);
-	}
-	.logo {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
-	}
-	.logo-img {
-		display: block;
-		height: 28px;
-		width: auto;
-		max-width: min(200px, 52vw);
-		object-fit: contain;
-	}
-	.nav-links {
-		display: flex;
-		gap: 22px;
-	}
-	.nav-links a {
-		font-size: 14px;
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-	.nav-links a[aria-current='page'],
-	.nav-links a:hover {
-		color: var(--ink);
-	}
-	.nav-actions {
-		display: flex;
-		gap: 12px;
-		align-items: center;
-	}
-	.nav-ghost {
-		font-size: 14px;
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-	.btn-nav {
-		padding: 9px 18px;
-		border-radius: 999px;
-		background: #080808;
-		color: #fff;
-		font-size: 13px;
-		font-weight: 700;
-		text-decoration: none;
-	}
-
 	.hero {
 		padding: 56px 0 28px;
 	}
@@ -314,6 +225,12 @@
 		line-height: 1.55;
 		color: rgba(10, 5, 5, 0.62);
 		max-width: 54ch;
+	}
+	.lead a {
+		color: var(--ink);
+		font-weight: 700;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 	.cta-row {
 		display: flex;
@@ -499,24 +416,7 @@
 		color: rgba(255, 255, 255, 0.55);
 	}
 
-	.footer {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 20px;
-		padding: 32px 0 48px;
-		font-size: 13px;
-		color: rgba(10, 5, 5, 0.45);
-	}
-	.footer a {
-		color: rgba(10, 5, 5, 0.55);
-		text-decoration: none;
-		font-weight: 600;
-	}
-
 	@media (max-width: 900px) {
-		.nav-links {
-			display: none;
-		}
 		.feat-grid,
 		.strip {
 			grid-template-columns: 1fr;

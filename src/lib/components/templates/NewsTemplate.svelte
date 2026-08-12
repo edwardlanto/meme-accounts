@@ -12,6 +12,13 @@
 		CANVAS_TEXT_BOX_TRIM,
 		CANVAS_TEXT_FOCUS_RING,
 	} from '$lib/studio/canvas-text-chrome';
+	import { appendTextBgCss, appendTextShadowCss, textPaddingCss, textShadowStyleAttr, TEXT_BG_CHIP_BOX_CSS } from '$lib/textStyleCss';
+	import {
+		CLIPPED_TEXT_SHADOW_WRAP_CSS,
+		gradientTextFillCss,
+		patternStyleForUrl,
+		wrapClippedFillHtml,
+	} from '$lib/components/textOverlayPattern';
 	import {
 		inkRingStyle,
 		measureTightTextBox,
@@ -19,6 +26,19 @@
 	} from '$lib/studio/canvas-text-ink';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { Button } from '$lib/components/ui/button';
+	import CircleShadowPopover from '$lib/components/CircleShadowPopover.svelte';
+	import CircleColorPopover from '$lib/components/CircleColorPopover.svelte';
+	import {
+		DEFAULT_CIRCLE_SHADOW,
+		circleShadowCss,
+		type CircleShadow,
+	} from '$lib/studio/circle-shadow';
+	import {
+		isVideoFile,
+		isVideoMediaUrl,
+		objectUrlForVideoFile,
+		playMediaVideo,
+	} from '$lib/studio/media-url';
 	import {
 		Maximize2,
 		Minimize2,
@@ -71,6 +91,8 @@
 		circleBorderColor?: string;
 		/** Circle border thickness in px (bindable). */
 		circleBorderWidth?: number;
+		/** Drop shadow on the primary circle badge. */
+		circleShadow?: CircleShadow;
 		/** Optional second circle badge (for a second photo/logo). */
 		showCircle2?: boolean;
 		circle2Image?: string;
@@ -85,6 +107,8 @@
 		circle2BorderColor?: string;
 		/** Circle2 border thickness in px (bindable). */
 		circle2BorderWidth?: number;
+		/** Drop shadow on the second circle badge. */
+		circle2Shadow?: CircleShadow;
 		circle2X?: number;
 		circle2Y?: number;
 		circle2Size?: number;
@@ -96,6 +120,10 @@
 		sourceLogoSrc?: string;
 		/** Whether to render the source as text or logo. */
 		sourceLabelMode?: 'text' | 'logo';
+		/** Hairlines, boxed outline, or no chrome around the source label. */
+		sourceBorderKind?: 'none' | 'rules' | 'box';
+		/** Hex for rules / box. Empty = follow source text / highlight color. */
+		sourceBorderColor?: string;
 		/** Max width in px for the source logo (aspect ratio preserved). Default 260. */
 		sourceLogoWidth?: number;
 		/** Replace / clear the News source logo image. */
@@ -125,7 +153,7 @@
 		/** In `contain` mode: scale % (50–400). 100 = largest fit without crop; >100 zooms in / extends past frame. */
 		bgContainMagnify?: number;
 		textPanelOffsetY?: number; // bottom text panel offset (bindable, px)
-		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 75. */
+		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 92. */
 		shadowHeight?: number;
 		/** Opacity of the bottom shadow (0–1). Default 1. */
 		shadowStrength?: number;
@@ -173,6 +201,8 @@
 		headlineSelectionRestoreRange?: { start: number; end: number } | null;
 		/** Double-click empty canvas / background to open BG tools (replace, solid, AI). */
 		onBackgroundDblClick?: (detail: { clientX: number; clientY: number }) => void;
+		/** Text stack size vs canvas — parent can match the bottom shadow to the copy. */
+		onTextStackLayout?: (info: { topPct: number; heightPct: number }) => void;
 	}
 
 	let {
@@ -196,7 +226,8 @@
 		circleImagePanX = $bindable(50),
 		circleImagePanY = $bindable(50),
 		circleBorderColor = $bindable('#FFFFFF'),
-		circleBorderWidth = $bindable(8),
+		circleBorderWidth = $bindable(0),
+		circleShadow = $bindable<CircleShadow>({ ...DEFAULT_CIRCLE_SHADOW }),
 		showCircle2 = false,
 		circle2Image = '',
 		allowCircle2 = true,
@@ -204,12 +235,15 @@
 		circle2ImagePanX = $bindable(50),
 		circle2ImagePanY = $bindable(50),
 		circle2BorderColor = $bindable('#FFFFFF'),
-		circle2BorderWidth = $bindable(8),
+		circle2BorderWidth = $bindable(0),
+		circle2Shadow = $bindable<CircleShadow>({ ...DEFAULT_CIRCLE_SHADOW }),
 		text,
 		subtext = '',
-		source = 'Markets',
+		source = '',
 		sourceLogoSrc = '',
 		sourceLabelMode = 'text',
+		sourceBorderKind = 'none',
+		sourceBorderColor = '',
 		sourceLogoWidth = 260,
 		onSourceLogoChange,
 		onSourceLogoWidthChange,
@@ -231,7 +265,7 @@
 		bgFitMode = $bindable<'cover' | 'contain'>('cover'),
 		bgContainMagnify = $bindable(100),
 		textPanelOffsetY = $bindable(0),
-		shadowHeight = $bindable(75),
+		shadowHeight = $bindable(92),
 		shadowStrength = $bindable(1),
 		gridImage = '',
 		gridTile = 80,
@@ -264,6 +298,7 @@
 		headlineSelectionRestoreNonce = 0,
 		headlineSelectionRestoreRange = null,
 		onBackgroundDblClick,
+		onTextStackLayout,
 	}: Props = $props();
 
 	const isLight = $derived(templateTheme === 'light');
@@ -275,6 +310,7 @@
 	function onBgVideoMeta(e: Event) {
 		const el = e.currentTarget as HTMLVideoElement;
 		bgVideoEl = el;
+		rememberBgMediaSize(el.videoWidth, el.videoHeight);
 		const d = Number(el.duration || 0);
 		if (Number.isFinite(d) && d > 0 && Math.abs(d - lastDuration) > 0.001) {
 			lastDuration = d;
@@ -304,16 +340,19 @@
 
 	$effect(() => {
 		const el = bgVideoEl;
-		if (!el) return;
+		const src = backgroundVideo;
+		if (!el || !src) return;
 		const muted = !!videoMuted;
 		const vol = Math.max(0, Math.min(1, Number(videoVolume)));
 		el.muted = muted;
+		el.loop = true;
+		el.playsInline = true;
 		el.volume = Number.isFinite(vol) ? vol : 0.8;
-		// If user unmutes, attempt to resume playback (requires user gesture; safe to ignore errors).
-		if (!muted) {
-			try { void el.play(); } catch { /* ignore */ }
-		}
+		playMediaVideo(el);
 	});
+
+	const circleSrcIsVideo = $derived(isVideoMediaUrl(String(circleImage ?? '')));
+	const circle2SrcIsVideo = $derived(isVideoMediaUrl(String(circle2Image ?? '')));
 
 	// ── Text overlays ─────────────────────────────────────────────────────
 	let activeTextOverlayId = $state<string | null>(null);
@@ -426,7 +465,8 @@
 		const lh = s.lineHeight != null ? s.lineHeight : 0.82;
 		lines.push(`line-height: ${lh};`);
 		lines.push(CANVAS_TEXT_BOX_TRIM);
-		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
+		appendTextShadowCss(lines, s);
+		appendTextBgCss(lines, s);
 		return lines.join(' ');
 	});
 
@@ -457,7 +497,8 @@
 		lines.push(`line-height: ${s.lineHeight ?? 1.4};`);
 		lines.push(`opacity: ${s.color ? 1 : 0.86};`);
 		lines.push(CANVAS_TEXT_BOX_TRIM);
-		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
+		appendTextShadowCss(lines, s);
+		appendTextBgCss(lines, s);
 		return lines.join(' ');
 	});
 
@@ -471,15 +512,14 @@
 		lines.push(`font-style: ${s.italic === false ? 'normal' : (s.italic ?? true) ? 'italic' : 'normal'};`);
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? highlightColor};`);
+		lines.push(`text-align: ${s.align ?? 'right'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
-		if (s.textShadow) lines.push(`text-shadow: ${s.textShadow};`);
+		appendTextShadowCss(lines, s);
+		appendTextBgCss(lines, s);
 		return lines.join(' ');
 	});
 
 	let headlineEl = $state<HTMLElement | null>(null);
-	/** Full headline + paragraph stack height — keeps source parked above both by default. */
-	let textStackEl = $state<HTMLElement | null>(null);
-	let textStackH = $state(220);
 	let sourceEl = $state<HTMLElement | null>(null);
 	let lastHeadlineRestoreNonce = $state(-1);
 
@@ -487,20 +527,11 @@
 		(sourceLabelMode === 'logo' && !!sourceLogoSrc) || (sourceLabelMode === 'text' && !!source),
 	);
 
-	$effect(() => {
-		const el = textStackEl;
-		if (!el || typeof ResizeObserver === 'undefined') {
-			textStackH = 220;
-			return;
-		}
-		const measure = () => {
-			textStackH = Math.max(80, el.offsetHeight || 220);
-		};
-		measure();
-		const ro = new ResizeObserver(measure);
-		ro.observe(el);
-		return () => ro.disconnect();
-	});
+	const sourceRuleColor = $derived(
+		String(sourceBorderColor ?? '').trim() || sourceStyle.color || highlightColor,
+	);
+	const sourceShowRules = $derived(sourceLabelMode === 'text' && sourceBorderKind === 'rules');
+	const sourceShowBox = $derived(sourceBorderKind === 'box');
 
 	/** After parent applies highlight markup, re-show the blue selection so editing feels continuous. */
 	$effect(() => {
@@ -515,6 +546,25 @@
 		});
 	});
 
+	/** Live range while the user is still dragging a word selection — enables the highlighter before mouseup. */
+	$effect(() => {
+		if (!interactive) return;
+		const onSel = () => {
+			if (editing || editingSubtext) return;
+			const sel = window.getSelection();
+			if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+			if (headlineEl?.contains(sel.anchorNode)) {
+				const r = plainRangeFromSelection(headlineEl);
+				if (r) onHeadlineRangeSelect?.(r.start, r.end);
+			} else if (subtextEl?.contains(sel.anchorNode)) {
+				const r = plainRangeFromSelection(subtextEl);
+				if (r) onHeadlineRangeSelect?.(r.start, r.end);
+			}
+		};
+		document.addEventListener('selectionchange', onSel);
+		return () => document.removeEventListener('selectionchange', onSel);
+	});
+
 	function selectHeadline(e: MouseEvent) {
 		if (!interactive) return;
 		// If the user was dragging the panel, don't treat this as a "select text element" click.
@@ -523,12 +573,15 @@
 		if (headlineEl) onTextSelect?.('headline', headlineEl);
 	}
 
-	function selectSource(e: MouseEvent) {
+	function selectSource(e: Event) {
 		if (!interactive) return;
-		// If the user was dragging the panel, don't treat this as a "select text element" click.
-		if (textMoved) return;
-		e.stopPropagation();
-		if (sourceEl) onTextSelect?.('source', sourceEl);
+		// Don't stop pointerdown — DraggableBlock needs it to drag / snap.
+		if (e.type !== 'pointerdown') e.stopPropagation();
+		const el =
+			sourceEl ??
+			(e.currentTarget instanceof HTMLElement ? e.currentTarget : null) ??
+			(e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[data-news-block="source"]') : null);
+		if (el) onTextSelect?.('source', el);
 	}
 
 	let sourceLogoFileEl = $state<HTMLInputElement | null>(null);
@@ -626,6 +679,47 @@
 
 	const W = $derived(Math.max(320, Number(w) || 1080));
 	const H = $derived(Math.max(320, Number(h) || 1350));
+
+	let textStackEl = $state<HTMLDivElement | null>(null);
+	let lastReportedStackKey = '';
+
+	function reportTextStackLayout() {
+		const canvas = exportRef;
+		const stack = textStackEl;
+		if (!canvas || !stack || !onTextStackLayout) return;
+		const c = canvas.getBoundingClientRect();
+		const s = stack.getBoundingClientRect();
+		if (c.height < 8) return;
+		const topPct = ((s.top - c.top) / c.height) * 100;
+		const heightPct = (s.height / c.height) * 100;
+		if (!Number.isFinite(topPct) || !Number.isFinite(heightPct)) return;
+		const key = `${topPct.toFixed(1)}:${heightPct.toFixed(1)}`;
+		if (key === lastReportedStackKey) return;
+		lastReportedStackKey = key;
+		onTextStackLayout({ topPct, heightPct });
+	}
+
+	$effect(() => {
+		void text;
+		void subtext;
+		void source;
+		void sourceLogoSrc;
+		void sourceLabelMode;
+		void showSource;
+		void W;
+		void H;
+		void scale;
+		const stack = textStackEl;
+		if (!stack || typeof ResizeObserver === 'undefined') {
+			queueMicrotask(reportTextStackLayout);
+			return;
+		}
+		const ro = new ResizeObserver(() => reportTextStackLayout());
+		ro.observe(stack);
+		if (exportRef) ro.observe(exportRef);
+		queueMicrotask(reportTextStackLayout);
+		return () => ro.disconnect();
+	});
 
 	// Contain-mode pan: bgOffsetX/Y are reused as the focal point (50 = center).
 	// Convert to canvas-pixel translate so dragging is 1:1 with the cursor.
@@ -789,23 +883,52 @@
 		subtextDraft = (e.currentTarget as HTMLElement).innerText ?? '';
 	}
 
-	function onSubtextMouseUp() {
+	function phraseRangeFromTarget(target: EventTarget | null): { start: number; end: number } | null {
+		const node =
+			target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+		const el = node?.closest('[data-hl-plain-start]') ?? null;
+		if (!el) return null;
+		const start = Number(el.getAttribute('data-hl-plain-start'));
+		const end = Number(el.getAttribute('data-hl-plain-end'));
+		if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+		return { start, end };
+	}
+
+	function reportFieldRange(
+		kind: 'headline' | 'newsSubtext',
+		root: HTMLElement,
+		phrase: { start: number; end: number } | null,
+	) {
+		const sel = window.getSelection();
+		const hasRange =
+			sel && sel.rangeCount > 0 && !sel.isCollapsed && root.contains(sel.anchorNode);
+		if (hasRange) {
+			const range = sel.getRangeAt(0);
+			onTextSelect?.(kind, wrapRectAsAnchor(range.getBoundingClientRect()));
+			const r = plainRangeFromSelection(root);
+			onHeadlineRangeSelect?.(r?.start ?? -1, r?.end ?? -1);
+			return;
+		}
+		if (phrase) {
+			restorePlainSelection(root, phrase.start, phrase.end);
+			const live = window.getSelection();
+			const rect =
+				live && live.rangeCount > 0
+					? live.getRangeAt(0).getBoundingClientRect()
+					: root.getBoundingClientRect();
+			onTextSelect?.(kind, wrapRectAsAnchor(rect));
+			onHeadlineRangeSelect?.(phrase.start, phrase.end);
+			return;
+		}
+		onTextSelect?.(kind, root);
+		onHeadlineRangeSelect?.(-1, -1);
+	}
+
+	function onSubtextMouseUp(e: MouseEvent) {
 		if (!interactive || editingSubtext || !subtextEl) return;
+		const phrase = phraseRangeFromTarget(e.target);
 		setTimeout(() => {
-			const sel = window.getSelection();
-			const hasRange =
-				sel &&
-				sel.rangeCount > 0 &&
-				!sel.isCollapsed &&
-				subtextEl?.contains(sel.anchorNode);
-			if (hasRange && subtextEl) {
-				onTextSelect?.('newsSubtext', subtextEl);
-				const r = plainRangeFromSelection(subtextEl);
-				onHeadlineRangeSelect?.(r?.start ?? -1, r?.end ?? -1);
-			} else if (subtextEl) {
-				onTextSelect?.('newsSubtext', subtextEl);
-				onHeadlineRangeSelect?.(-1, -1);
-			}
+			if (subtextEl) reportFieldRange('newsSubtext', subtextEl, phrase);
 			refreshSubtextInk();
 		}, 0);
 	}
@@ -935,6 +1058,11 @@
 		textDragging = false;
 		textPointerId = 0;
 		textCaptureEl = null;
+		// Keep textMoved through this gesture's click, then clear so later
+		// source / headline taps are not stuck ignored after a panel pan.
+		requestAnimationFrame(() => {
+			textMoved = false;
+		});
 		// No-op when click ends without drag — selection is handled by the
 		// individual headline / source elements' own click handlers.
 	}
@@ -949,39 +1077,12 @@
 	 * (offsets into the visible text, ignoring our [[...]] markup). Returns null
 	 * if selection is empty or outside the headline.
 	 */
-	function getPlainSelectionRange(): { start: number; end: number } | null {
-		const root = headlineEl;
-		if (!root) return null;
-		return plainRangeFromSelection(root);
-	}
-
-	function onHeadlineMouseUp() {
+	function onHeadlineMouseUp(e: MouseEvent) {
 		if (!interactive) return;
+		const phrase = phraseRangeFromTarget(e.target);
 		// Defer so the browser finalises the selection first.
 		setTimeout(() => {
-			const sel = window.getSelection();
-			const hasRange =
-				sel && sel.rangeCount > 0 && !sel.isCollapsed && headlineEl?.contains(sel.anchorNode);
-
-			if (hasRange && headlineEl) {
-				// The user highlighted a range. Anchor the toolbar to the
-				// SELECTION rect (not the whole headline) so it doesn't cover
-				// the selected text and the toolbar doesn't appear to "jump"
-				// as the user refines their selection.
-				const range = sel!.getRangeAt(0);
-				const rect = range.getBoundingClientRect();
-				// Wrap the DOMRect in a synthetic anchor element-like target.
-				// We reuse onTextSelect but swap the anchor strategy: pass the
-				// headline element as the anchor target (so later scroll tracking
-				// works) but prime the toolbar position from the selection rect.
-				onTextSelect?.('headline', wrapRectAsAnchor(rect));
-				const r = getPlainSelectionRange();
-				onHeadlineRangeSelect?.(r?.start ?? -1, r?.end ?? -1);
-			} else {
-				// No selection — treat as a plain element click for font styling.
-				if (headlineEl) onTextSelect?.('headline', headlineEl);
-				onHeadlineRangeSelect?.(-1, -1);
-			}
+			if (headlineEl) reportFieldRange('headline', headlineEl, phrase);
 			refreshHeadlineInk();
 		}, 0);
 	}
@@ -1003,13 +1104,14 @@
 	let resizingCircle = $state(false);
 	/** Drives circle chrome + shadcn popover; bits-ui trigger uses openOnHover. */
 	let circleToolbarPopoverOpen = $state(false);
+	let circleShadowPanelOpen = $state(false);
+	let circleColorPanelOpen = $state(false);
 	let lastMx = 0;
 	let lastMy = 0;
 	let circleStartSize = 0;
 	let circleResizeStartMx = 0;
 	let circleResizeStartMy = 0;
 	let circleFileEl = $state<HTMLInputElement | null>(null);
-	let circleBorderPickerEl = $state<HTMLInputElement | null>(null);
 	let circleRemovingBg = $state(false);
 	let circle2RemovingBg = $state(false);
 
@@ -1039,12 +1141,6 @@
 		circleFileEl?.click();
 	}
 
-	function openCircleBorderPicker(e: MouseEvent) {
-		if (!interactive) return;
-		e.stopPropagation();
-		circleBorderPickerEl?.click();
-	}
-
 	function removeCircle(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
@@ -1060,6 +1156,10 @@
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		(e.target as HTMLInputElement).value = '';
+		if (isVideoFile(file)) {
+			onCircleImageChange?.(objectUrlForVideoFile(file));
+			return;
+		}
 		const reader = new FileReader();
 		reader.onload = () => {
 			const src = reader.result as string;
@@ -1194,24 +1294,19 @@
 	let dragging2 = $state(false);
 	let resizingCircle2 = $state(false);
 	let circle2ToolbarPopoverOpen = $state(false);
+	let circle2ShadowPanelOpen = $state(false);
+	let circle2ColorPanelOpen = $state(false);
 	let lastMx2 = 0;
 	let lastMy2 = 0;
 	let circle2StartSize = 0;
 	let circle2ResizeStartMx = 0;
 	let circle2ResizeStartMy = 0;
 	let circle2FileEl = $state<HTMLInputElement | null>(null);
-	let circle2BorderPickerEl = $state<HTMLInputElement | null>(null);
 
 	function openCircle2Picker(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
 		circle2FileEl?.click();
-	}
-
-	function openCircle2BorderPicker(e: MouseEvent) {
-		if (!interactive) return;
-		e.stopPropagation();
-		circle2BorderPickerEl?.click();
 	}
 
 	function removeCircle2(e: MouseEvent) {
@@ -1225,6 +1320,10 @@
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		(e.target as HTMLInputElement).value = '';
+		if (isVideoFile(file)) {
+			onCircle2ImageChange?.(objectUrlForVideoFile(file));
+			return;
+		}
 		const reader = new FileReader();
 		reader.onload = () => {
 			const src = reader.result as string;
@@ -1356,6 +1455,28 @@
 	let bgImgNaturalW = $state(0);
 	let bgImgNaturalH = $state(0);
 
+	function rememberBgMediaSize(w: number, h: number) {
+		if (!(w > 0 && h > 0)) return;
+		bgImgNaturalW = w;
+		bgImgNaturalH = h;
+	}
+
+	/** Painted cover size after object-fit + zoom pad — used for 1:1 pan. */
+	function coverPaintSize(cw: number, ch: number, iw: number, ih: number, scale: number) {
+		const s = Math.max(1, scale);
+		if (!(iw > 0 && ih > 0)) {
+			return { rw: cw * s, rh: ch * s };
+		}
+		const cr = cw / ch;
+		const ir = iw / ih;
+		if (ir > cr) {
+			const rh = ch * s;
+			return { rw: rh * ir, rh };
+		}
+		const rw = cw * s;
+		return { rw, rh: rw / ir };
+	}
+
 	/** Natural-fit scale: scale that makes the image touch both edges of the canvas in contain mode. */
 	const bgImgFitScale = $derived(
 		!bgImgNaturalW || !bgImgNaturalH
@@ -1427,15 +1548,13 @@
 	let bgPanStartX = 0;
 	let bgPanStartY = 0;
 	const BG_SLOP_PX = 6;
-	/** Pointer drag sensitivity — 1 = 1:1 screen-pixel panning (natural feel). */
-	const BG_PAN_DRAG_SENS = 1;
 	/** Allow pan “past” the frame edges (object-position / translate headroom). */
 	const BG_OFFSET_MIN = -55;
 	const BG_OFFSET_MAX = 155;
 	/** Alt+drag anywhere on the canvas (capture) to pan — avoids the z-index-2 dead zone under text/circle. */
 	let bgAltPanActive = $state(false);
 
-	const bgPanCursor = $derived(bgDragging || bgAltPanActive ? 'grabbing' : 'default');
+	const bgPanCursor = $derived(bgDragging || bgAltPanActive ? 'grabbing' : 'grab');
 
 	function clampBgOffset(v: number) {
 		return Math.max(BG_OFFSET_MIN, Math.min(BG_OFFSET_MAX, v));
@@ -1443,21 +1562,42 @@
 
 	function applyBgPanPixels(dx: number, dy: number) {
 		if (bgFitMode === 'contain') {
-			// Contain mode: translate is (bgOffset - 50)/100 * W|H canvas px.
-			// For 1:1 natural drag: d(bgOffset) = dx / W * 100 (image follows cursor exactly).
-			// Allow panning up to 50% of canvas past center in each direction.
 			const rangeX = 50 + Math.max(0, (bgContainMagnifyPct - 100) * 0.8);
 			const rangeY = 50 + Math.max(0, (bgContainMagnifyPct - 100) * 0.8);
-			bgOffsetX = Math.max(50 - rangeX, Math.min(50 + rangeX, bgOffsetX + dx / W * 100));
-			bgOffsetY = Math.max(50 - rangeY, Math.min(50 + rangeY, bgOffsetY + dy / H * 100));
+			bgOffsetX = Math.max(50 - rangeX, Math.min(50 + rangeX, bgOffsetX + (dx / W) * 100));
+			bgOffsetY = Math.max(50 - rangeY, Math.min(50 + rangeY, bgOffsetY + (dy / H) * 100));
 			return;
 		}
-		// Cover/shrunk mode: oversized layer panned inside the clipped frame.
-		const panRoom = Math.max(16, Number(bgPanRangePct) || 0);
-		const xPerPx = (100 / Math.max(1, W)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
-		const yPerPx = (100 / Math.max(1, H)) * (100 / panRoom) * BG_PAN_DRAG_SENS;
-		bgOffsetX = clampBgOffset(bgOffsetX - dx * xPerPx);
-		bgOffsetY = clampBgOffset(bgOffsetY - dy * yPerPx);
+		if (bgIsShrunk) {
+			const gap = Math.max(1, 100 - bgZoomPct);
+			bgOffsetX = clampBgOffset(bgOffsetX + (dx * 10000) / (gap * W));
+			bgOffsetY = clampBgOffset(bgOffsetY + (dy * 10000) / (gap * H));
+			return;
+		}
+		// Cover: object-position % maps across the overflow. Keep grab 1:1.
+		const { rw, rh } = coverPaintSize(W, H, bgImgNaturalW, bgImgNaturalH, bgCoverScale);
+		const overflowX = Math.max(8, rw - W);
+		const overflowY = Math.max(8, rh - H);
+		bgOffsetX = clampBgOffset(bgOffsetX - (dx * 100) / overflowX);
+		bgOffsetY = clampBgOffset(bgOffsetY - (dy * 100) / overflowY);
+	}
+
+	let bgPanRaf = 0;
+	let bgPanPendX = 0;
+	let bgPanPendY = 0;
+
+	function queueBgPan(dx: number, dy: number) {
+		bgPanPendX += dx;
+		bgPanPendY += dy;
+		if (bgPanRaf) return;
+		bgPanRaf = requestAnimationFrame(() => {
+			bgPanRaf = 0;
+			const x = bgPanPendX;
+			const y = bgPanPendY;
+			bgPanPendX = 0;
+			bgPanPendY = 0;
+			if (x || y) applyBgPanPixels(x, y);
+		});
 	}
 
 	function removeBgAltPanListeners() {
@@ -1473,7 +1613,7 @@
 		const dy = (e.clientY - bgLastMy) / scale;
 		bgLastMx = e.clientX;
 		bgLastMy = e.clientY;
-		applyBgPanPixels(dx, dy);
+		queueBgPan(dx, dy);
 	}
 
 	function onBgAltPanUp() {
@@ -1512,6 +1652,7 @@
 	}
 
 	onDestroy(() => {
+		if (bgPanRaf) cancelAnimationFrame(bgPanRaf);
 		removeBgAltPanListeners();
 	});
 
@@ -1527,6 +1668,7 @@
 
 	function bgPointerDown(e: PointerEvent) {
 		if (!interactive || e.button !== 0 || e.altKey) return;
+		e.preventDefault();
 		bgPanPressed = true;
 		bgPanStartX = e.clientX;
 		bgPanStartY = e.clientY;
@@ -1545,15 +1687,12 @@
 		if (!bgDragging) {
 			if (dist2 <= BG_SLOP_PX * BG_SLOP_PX) return;
 			bgDragging = true;
-			bgLastMx = e.clientX;
-			bgLastMy = e.clientY;
-			return;
 		}
 		const dx = (e.clientX - bgLastMx) / scale;
 		const dy = (e.clientY - bgLastMy) / scale;
 		bgLastMx = e.clientX;
 		bgLastMy = e.clientY;
-		applyBgPanPixels(dx, dy);
+		queueBgPan(dx, dy);
 	}
 
 	function bgPointerUp(e: PointerEvent) {
@@ -1596,19 +1735,7 @@
 
 	// ── Pattern rendering helpers ──────────────────────────────────────────
 	function patternStyle(patternImage: string | undefined): string {
-		if (!patternImage) return '';
-		return `
-			background-image: url('${patternImage}');
-			background-size: cover;
-			background-position: center;
-			-webkit-background-clip: text;
-			-webkit-text-fill-color: transparent;
-			background-clip: text;
-			mix-blend-mode: screen;
-			filter: contrast(1.25) saturate(1.15);
-			opacity: 0.98;
-			display: inline;
-		`;
+		return patternStyleForUrl(patternImage);
 	}
 </script>
 
@@ -1628,6 +1755,8 @@
 	<!-- Inner at W×H — scaled via CSS transform -->
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
+		data-news-canvas
 		onpointerdowncapture={bgAltPointerDownCapture}
 		style="
 			width: {W}px;
@@ -1663,10 +1792,14 @@
 					>
 						<!-- svelte-ignore a11y_media_has_caption -->
 						<video
+							bind:this={bgVideoEl}
+							data-studio-bg-video="1"
 							src={backgroundVideo}
 							autoplay loop playsinline
 							muted={videoMuted}
 							onloadedmetadata={onBgVideoMeta}
+							onloadeddata={() => playMediaVideo(bgVideoEl)}
+							oncanplay={() => playMediaVideo(bgVideoEl)}
 							ontimeupdate={onBgVideoTimeUpdate}
 							style="
 								max-width: 100%;
@@ -1683,10 +1816,14 @@
 				{:else if bgIsShrunk}
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
+						bind:this={bgVideoEl}
+						data-studio-bg-video="1"
 						src={backgroundVideo}
 						autoplay loop playsinline
 						muted={videoMuted}
 						onloadedmetadata={onBgVideoMeta}
+						onloadeddata={() => playMediaVideo(bgVideoEl)}
+						oncanplay={() => playMediaVideo(bgVideoEl)}
 						ontimeupdate={onBgVideoTimeUpdate}
 						style="
 							position: absolute;
@@ -1698,10 +1835,14 @@
 				{:else}
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
+						bind:this={bgVideoEl}
+						data-studio-bg-video="1"
 						src={backgroundVideo}
 						autoplay loop playsinline
 						muted={videoMuted}
 						onloadedmetadata={onBgVideoMeta}
+						onloadeddata={() => playMediaVideo(bgVideoEl)}
+						oncanplay={() => playMediaVideo(bgVideoEl)}
 						ontimeupdate={onBgVideoTimeUpdate}
 						style="
 							position: absolute;
@@ -1711,7 +1852,8 @@
 							object-fit: cover;
 							object-position: {bgOffsetX}% {bgOffsetY}%;
 							transform: translate3d(0,0,0) scale({bgCoverScale});
-							transform-origin: {bgOffsetX}% {bgOffsetY}%;
+							transform-origin: 50% 50%;
+							will-change: object-position;
 						"
 					></video>
 				{/if}
@@ -1763,6 +1905,10 @@
 					<img
 						src={backgroundImage}
 						alt=""
+						onload={(e) => {
+							const el = e.currentTarget as HTMLImageElement;
+							rememberBgMediaSize(el.naturalWidth, el.naturalHeight);
+						}}
 						style="
 							position: absolute;
 							inset: 0;
@@ -1771,7 +1917,8 @@
 							object-fit: cover;
 							object-position: {bgOffsetX}% {bgOffsetY}%;
 							transform: translate3d(0,0,0) scale({bgCoverScale});
-							transform-origin: {bgOffsetX}% {bgOffsetY}%;
+							transform-origin: 50% 50%;
+							will-change: object-position;
 						"
 					/>
 				{/if}
@@ -1923,6 +2070,7 @@
 							showToolbar={false}
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
+							liveLineHeight={css.lineHeight}
 							lineHeight="inherit"
 							ariaLabel="Text overlay editor"
 							onChange={(v) => onTextOverlaysChange?.(textOverlays.map(o => o.id === t.id ? { ...o, text: v } : o))}
@@ -1947,7 +2095,7 @@
 							text-align: {css.align ?? 'left'};
 							line-height: {css.lineHeight ?? 1.15};
 							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
-							{css.textShadow ? `text-shadow: ${css.textShadow};` : ''}
+							{textShadowStyleAttr(css)}
 							{CANVAS_TEXT_BOX_TRIM}
 							overflow: hidden;
 							user-select: none;
@@ -1955,12 +2103,12 @@
 					>
 						{@html segmentText(parseHighlightMarkup(t.text, highlightParseDefaults)).map((seg) => {
 							if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+							const esc = seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 							if (seg.patternImage) {
-								const s = patternStyle(seg.patternImage).replace(/\n/g,' ');
-								return `<span style="${s}">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+								return wrapClippedFillHtml(patternStyle(seg.patternImage).replace(/\n/g,' '), esc);
 							}
 							if (seg.gradientFrom && seg.gradientTo) {
-								return `<span style="background: linear-gradient(90deg, ${seg.gradientFrom}, ${seg.gradientTo}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+								return wrapClippedFillHtml(gradientTextFillCss(seg.gradientFrom, seg.gradientTo), esc);
 							}
 							return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
 						}).join('')}
@@ -1974,16 +2122,9 @@
 			<input
 				bind:this={circleFileEl}
 				type="file"
-				accept="image/*"
+				accept="image/*,video/mp4,video/webm,video/quicktime,video/x-m4v"
 				style="display:none"
 				onchange={onCircleFile}
-			/>
-			<input
-				bind:this={circleBorderPickerEl}
-				type="color"
-				value={circleBorderColor}
-				style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px"
-				oninput={(e) => (circleBorderColor = (e.target as HTMLInputElement).value)}
 			/>
 			{#snippet newsCirclePopoverTrigger({ props }: { props: Record<string, unknown> })}
 			<div
@@ -2000,7 +2141,7 @@
 					overflow: visible;
 					/* Above gradient; floats over text while dragging/editing. */
 					z-index: {dragging || circleToolbarPopoverOpen ? 85 : 45};
-					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+					box-shadow: {circleShadowCss(circleShadow)};
 					cursor: {interactive ? (dragging ? 'grabbing' : 'grab') : 'default'};
 					touch-action: none;
 				"
@@ -2028,22 +2169,48 @@
 						title="Alt+wheel or ± to zoom · Alt+drag to pan · use corner or ⊕/⊖ to resize circle"
 						role="presentation"
 					>
-						<img
-							src={circleImage}
-							alt=""
-							style="
-								position:absolute;
-								left:{Number(circleImagePanX) || 50}%;
-								top:{Number(circleImagePanY) || 50}%;
-								width:100%;
-								height:100%;
-								object-fit:cover;
-								transform:translate(-50%,-50%) scale({Number(circleImageZoom) || 1});
-								will-change: transform;
-								pointer-events: none;
-								user-select:none;
-							"
-						/>
+						{#if circleSrcIsVideo}
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video
+								src={circleImage}
+								muted
+								loop
+								autoplay
+								playsinline
+								draggable="false"
+								style="
+									position:absolute;
+									left:{Number(circleImagePanX) || 50}%;
+									top:{Number(circleImagePanY) || 50}%;
+									width:100%;
+									height:100%;
+									object-fit:cover;
+									transform:translate(-50%,-50%) scale({Number(circleImageZoom) || 1});
+									will-change: transform;
+									pointer-events: none;
+									user-select:none;
+								"
+								onloadeddata={(e) => playMediaVideo(e.currentTarget)}
+								oncanplay={(e) => playMediaVideo(e.currentTarget)}
+							></video>
+						{:else}
+							<img
+								src={circleImage}
+								alt=""
+								style="
+									position:absolute;
+									left:{Number(circleImagePanX) || 50}%;
+									top:{Number(circleImagePanY) || 50}%;
+									width:100%;
+									height:100%;
+									object-fit:cover;
+									transform:translate(-50%,-50%) scale({Number(circleImageZoom) || 1});
+									will-change: transform;
+									pointer-events: none;
+									user-select:none;
+								"
+							/>
+						{/if}
 						{#if circleRemovingBg}
 							<div
 								style="
@@ -2108,7 +2275,16 @@
 			{/if}
 			</div>
 			{/snippet}
-			<Popover bind:open={circleToolbarPopoverOpen}>
+			<Popover
+				bind:open={circleToolbarPopoverOpen}
+				onOpenChange={(o) => {
+					if (!o && (circleShadowPanelOpen || circleColorPanelOpen)) {
+						circleToolbarPopoverOpen = true;
+						return;
+					}
+					circleToolbarPopoverOpen = o;
+				}}
+			>
 				<PopoverTrigger
 					openOnHover={!!interactive}
 					openDelay={0}
@@ -2142,13 +2318,26 @@
 							<span class="ml-1 hidden sm:inline">Remove BG</span>
 						</Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2" role="group" aria-label="Border thickness in pixels" title="Border thickness">
-							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circleBorderWidth = Math.max(0, Math.round((circleBorderWidth ?? 8) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
-							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circleBorderWidth ?? 8)}</span>
-							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circleBorderWidth = Math.min(40, Math.round((circleBorderWidth ?? 8) + 1)))} title="Thicker border" aria-label="Thicker border"><Plus size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circleBorderWidth = Math.max(0, Math.round((circleBorderWidth ?? 0) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circleBorderWidth ?? 0)}</span>
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circleBorderWidth = Math.min(40, Math.round((circleBorderWidth ?? 0) + 1)))} title="Thicker border" aria-label="Thicker border"><Plus size={16} class="text-foreground" strokeWidth={2} /></Button>
 						</div>
-						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCircleBorderPicker} title="Change border color" aria-label="Change border color">
-							<span class="border-foreground/25 ring-foreground/15 box-border block h-[22px] w-[22px] rounded-md border-2 shadow-sm ring-1" style="background:{circleBorderColor}"></span>
-						</Button>
+						<CircleColorPopover
+							bind:color={circleBorderColor}
+							onInteract={() => (circleToolbarPopoverOpen = true)}
+							onOpenChange={(o) => {
+								circleColorPanelOpen = o;
+								if (o) circleToolbarPopoverOpen = true;
+							}}
+						/>
+						<CircleShadowPopover
+							bind:shadow={circleShadow}
+							onInteract={() => (circleToolbarPopoverOpen = true)}
+							onOpenChange={(o) => {
+								circleShadowPanelOpen = o;
+								if (o) circleToolbarPopoverOpen = true;
+							}}
+						/>
 						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
 						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={() => { circleImageZoom = 1; circleImagePanX = 50; circleImagePanY = 50; }} title="Reset image zoom/pan" aria-label="Reset image zoom/pan"><RotateCcw size={18} class="text-foreground" strokeWidth={2} /></Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Circle size">
@@ -2169,16 +2358,9 @@
 			<input
 				bind:this={circle2FileEl}
 				type="file"
-				accept="image/*"
+				accept="image/*,video/mp4,video/webm,video/quicktime,video/x-m4v"
 				style="display:none"
 				onchange={onCircle2File}
-			/>
-			<input
-				bind:this={circle2BorderPickerEl}
-				type="color"
-				value={circle2BorderColor}
-				style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px"
-				oninput={(e) => (circle2BorderColor = (e.target as HTMLInputElement).value)}
 			/>
 			{#snippet newsCircle2PopoverTrigger({ props }: { props: Record<string, unknown> })}
 			<div
@@ -2194,7 +2376,7 @@
 					border: {circle2BorderWidth}px solid {circle2BorderColor};
 					overflow: visible;
 					z-index: {dragging2 || circle2ToolbarPopoverOpen ? 84 : 44};
-					box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+					box-shadow: {circleShadowCss(circle2Shadow)};
 					cursor: {interactive ? (dragging2 ? 'grabbing' : 'grab') : 'default'};
 					touch-action: none;
 				"
@@ -2222,22 +2404,48 @@
 						title="Alt+wheel or ± to zoom · Alt+drag to pan · use corner or ⊕/⊖ to resize circle"
 						role="presentation"
 					>
-						<img
-							src={circle2Image}
-							alt=""
-							style="
-								position:absolute;
-								left:{Number(circle2ImagePanX) || 50}%;
-								top:{Number(circle2ImagePanY) || 50}%;
-								width:100%;
-								height:100%;
-								object-fit:cover;
-								transform:translate(-50%,-50%) scale({Number(circle2ImageZoom) || 1});
-								will-change: transform;
-								pointer-events: none;
-								user-select:none;
-							"
-						/>
+						{#if circle2SrcIsVideo}
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video
+								src={circle2Image}
+								muted
+								loop
+								autoplay
+								playsinline
+								draggable="false"
+								style="
+									position:absolute;
+									left:{Number(circle2ImagePanX) || 50}%;
+									top:{Number(circle2ImagePanY) || 50}%;
+									width:100%;
+									height:100%;
+									object-fit:cover;
+									transform:translate(-50%,-50%) scale({Number(circle2ImageZoom) || 1});
+									will-change: transform;
+									pointer-events: none;
+									user-select:none;
+								"
+								onloadeddata={(e) => playMediaVideo(e.currentTarget)}
+								oncanplay={(e) => playMediaVideo(e.currentTarget)}
+							></video>
+						{:else}
+							<img
+								src={circle2Image}
+								alt=""
+								style="
+									position:absolute;
+									left:{Number(circle2ImagePanX) || 50}%;
+									top:{Number(circle2ImagePanY) || 50}%;
+									width:100%;
+									height:100%;
+									object-fit:cover;
+									transform:translate(-50%,-50%) scale({Number(circle2ImageZoom) || 1});
+									will-change: transform;
+									pointer-events: none;
+									user-select:none;
+								"
+							/>
+						{/if}
 						{#if circle2RemovingBg}
 							<div
 								style="
@@ -2301,7 +2509,16 @@
 			{/if}
 			</div>
 			{/snippet}
-			<Popover bind:open={circle2ToolbarPopoverOpen}>
+			<Popover
+				bind:open={circle2ToolbarPopoverOpen}
+				onOpenChange={(o) => {
+					if (!o && (circle2ShadowPanelOpen || circle2ColorPanelOpen)) {
+						circle2ToolbarPopoverOpen = true;
+						return;
+					}
+					circle2ToolbarPopoverOpen = o;
+				}}
+			>
 				<PopoverTrigger
 					openOnHover={!!interactive}
 					openDelay={0}
@@ -2335,13 +2552,26 @@
 							<span class="ml-1 hidden sm:inline">Remove BG</span>
 						</Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2" role="group" aria-label="Border thickness in pixels" title="Border thickness">
-							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circle2BorderWidth = Math.max(0, Math.round((circle2BorderWidth ?? 8) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
-							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circle2BorderWidth ?? 8)}</span>
-							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circle2BorderWidth = Math.min(40, Math.round((circle2BorderWidth ?? 8) + 1)))} title="Thicker border" aria-label="Thicker border"><Plus size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circle2BorderWidth = Math.max(0, Math.round((circle2BorderWidth ?? 0) - 1)))} title="Thinner border" aria-label="Thinner border"><Minus size={16} class="text-foreground" strokeWidth={2} /></Button>
+							<span class="min-w-[1.5rem] text-center text-xs font-bold tabular-nums text-foreground">{Math.round(circle2BorderWidth ?? 0)}</span>
+							<Button variant="ghost" size="icon" class="h-8 w-8 shrink-0 rounded-full" type="button" onclick={() => (circle2BorderWidth = Math.min(40, Math.round((circle2BorderWidth ?? 0) + 1)))} title="Thicker border" aria-label="Thicker border"><Plus size={16} class="text-foreground" strokeWidth={2} /></Button>
 						</div>
-						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={openCircle2BorderPicker} title="Change border color" aria-label="Change border color">
-							<span class="border-foreground/25 ring-foreground/15 box-border block h-[22px] w-[22px] rounded-md border-2 shadow-sm ring-1" style="background:{circle2BorderColor}"></span>
-						</Button>
+						<CircleColorPopover
+							bind:color={circle2BorderColor}
+							onInteract={() => (circle2ToolbarPopoverOpen = true)}
+							onOpenChange={(o) => {
+								circle2ColorPanelOpen = o;
+								if (o) circle2ToolbarPopoverOpen = true;
+							}}
+						/>
+						<CircleShadowPopover
+							bind:shadow={circle2Shadow}
+							onInteract={() => (circle2ToolbarPopoverOpen = true)}
+							onOpenChange={(o) => {
+								circle2ShadowPanelOpen = o;
+								if (o) circle2ToolbarPopoverOpen = true;
+							}}
+						/>
 						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle2} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
 						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={() => { circle2ImageZoom = 1; circle2ImagePanX = 50; circle2ImagePanY = 50; }} title="Reset image zoom/pan" aria-label="Reset image zoom/pan"><RotateCcw size={18} class="text-foreground" strokeWidth={2} /></Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Circle size">
@@ -2416,37 +2646,15 @@
 							object-fit: cover;
 							object-position: {bgOffsetX}% {bgOffsetY}%;
 							transform: translate3d(0,0,0) scale({bgCoverScale});
-							transform-origin: {bgOffsetX}% {bgOffsetY}%;
+							transform-origin: 50% 50%;
+							will-change: object-position;
 						"
 					/>
 				{/if}
 			</div>
 		{/if}
 
-		<!-- Source / markets — separate layer above the headline stack (never clipped by it). -->
-		{#if showSource}
-			<div
-				style="
-					position: absolute;
-					inset: 0;
-					z-index: 90;
-					overflow: visible;
-					display: flex;
-					flex-direction: column;
-					justify-content: flex-end;
-					transform: translateY({textPanelOffsetY}px);
-					pointer-events: none;
-				"
-			>
-				<div
-					style="
-						width: 100%;
-						padding: 48px 64px {72 + textStackH + 22}px;
-						box-sizing: border-box;
-						pointer-events: none;
-					"
-				>
-					<div style="pointer-events: auto; width: 100%; overflow: visible;">
+		{#snippet newsSourceBlock()}
 						<DraggableBlock
 							dx={textOffsets.source?.x ?? 0}
 							dy={textOffsets.source?.y ?? 0}
@@ -2455,6 +2663,8 @@
 							holdDragFromText={interactive}
 							immediateTextDrag={selectedText === 'source'}
 							holdMs={220}
+							snapToCenter={interactive}
+							snapRoot={exportRef}
 							onChange={(x, y) => onTextOffsetChange?.('source', { x, y })}
 						>
 							{#snippet children()}
@@ -2468,20 +2678,27 @@
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									data-news-block="source"
+									data-text-selectable="source"
 									class="news-source-block"
 									style="
 										position: relative;
 										display: flex; align-items: center;
 										gap: {sourceLabelMode === 'logo' ? '0' : '18px'};
 										overflow: visible;
-										{sourceLabelMode === 'logo' ? 'width: fit-content; max-width: 100%;' : 'width: 100%;'}
+										padding: 10px 0;
+										box-sizing: content-box;
+										{sourceLabelMode === 'logo' || sourceBorderKind !== 'rules' ? 'width: fit-content; max-width: 100%;' : 'width: 100%;'}
 										{interactive ? 'cursor: grab;' : ''}
 										{selectedText === 'source' && sourceLabelMode === 'text' ? CANVAS_TEXT_FOCUS_RING : ''}
 									"
 									onmouseenter={() => (hoveringSource = true)}
 									onmouseleave={() => (hoveringSource = false)}
+									onpointerdown={(e) => {
+										if (!interactive) return;
+										selectSource(e);
+									}}
 									onclick={(e) => {
-										if (!interactive || textMoved) return;
+										if (!interactive) return;
 										selectSource(e);
 									}}
 								>
@@ -2494,13 +2711,16 @@
 											pointer-events: none;
 										"></div>
 									{/if}
-									{#if sourceLabelMode === 'text'}
-										<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+									{#if sourceShowRules}
+										<div style="flex: 1; height: 2px; background: {sourceRuleColor}; opacity: 0.9;"></div>
 									{/if}
 									<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 									<span
 										bind:this={sourceEl}
-										data-text-selectable={sourceLabelMode === 'text' ? 'source' : undefined}
+										data-text-selectable="source"
+										data-canvas-typography-root
+										data-design-font-px={String(sourceStyle.fontSize ?? 34)}
+										onpointerdown={selectSource}
 										onclick={selectSource}
 										ondblclick={onSourceLogoDblClick}
 										onkeydown={(e) => { if (e.key === 'Enter') selectSource(e as any); }}
@@ -2511,6 +2731,9 @@
 											{sourceCss}
 											white-space: nowrap;
 											overflow: visible;
+											{sourceShowBox
+												? `box-sizing: border-box; ${textPaddingCss(sourceStyle)}; border: 2px solid ${sourceRuleColor}; border-radius: 999px;`
+												: ''}
 											{interactive && sourceLabelMode === 'text' ? 'cursor: pointer; user-select: text !important; -webkit-user-select: text !important;' : ''}
 											{interactive && sourceLabelMode === 'logo' ? 'cursor: grab; user-select: none;' : ''}
 										"
@@ -2537,7 +2760,6 @@
 														{interactive && hoveringSource && selectedText !== 'source' && !sourceLogoToolbarOpen ? 'outline: 2px dashed rgba(255,255,255,0.35); outline-offset: 2px;' : ''}
 													"
 													onclick={(e) => {
-														if (textMoved) return;
 														selectSource(e);
 														triggerProps.onclick?.(e);
 													}}
@@ -2663,25 +2885,21 @@
 											{source}
 										{/if}
 									</span>
-									{#if sourceLabelMode === 'text'}
-										<div style="flex: 1; height: 2px; background: {sourceStyle.color ?? highlightColor}; opacity: 0.9;"></div>
+									{#if sourceShowRules}
+										<div style="flex: 1; height: 2px; background: {sourceRuleColor}; opacity: 0.9;"></div>
 									{/if}
 								</div>
 							{/snippet}
 						</DraggableBlock>
-					</div>
-				</div>
-			</div>
-		{/if}
+		{/snippet}
 
-		<!-- ── Text area (headline + paragraph) ───────────────────────────── -->
-		<!-- Headline stack only — source lives in the layer above. -->
+		<!-- ── Text area (source + headline + paragraph) ─────────────────── -->
 		<div
 			style="
 				position: absolute;
 				inset: 0;
 				z-index: 40;
-				overflow: {interactive ? 'visible' : 'hidden'};
+				overflow: visible;
 				display: flex;
 				flex-direction: column;
 				justify-content: flex-end;
@@ -2696,7 +2914,7 @@
 					max-height: 100%;
 					min-height: 0;
 					flex: 0 1 auto;
-					overflow: {interactive ? 'visible' : 'hidden'};
+					overflow: visible;
 					padding: 48px 64px 72px;
 					box-sizing: border-box;
 					pointer-events: auto;
@@ -2709,7 +2927,21 @@
 				role={interactive ? 'group' : undefined}
 				aria-label={interactive ? 'News text area' : undefined}
 			>
-			<div bind:this={textStackEl}>
+			<div
+				bind:this={textStackEl}
+				data-news-text-stack
+				style="
+					display: flex;
+					flex-direction: column;
+					align-items: stretch;
+					gap: 12px;
+				"
+			>
+			{#if showSource}
+				<div style="position: relative; z-index: 90; width: 100%; display: flex; justify-content: flex-end; align-items: center;">
+					{@render newsSourceBlock()}
+				</div>
+			{/if}
 			<!-- Headline -->
 			<div
 				style="
@@ -2723,8 +2955,10 @@
 				{interactive}
 				{scale}
 				holdDragFromText={interactive}
-				immediateTextDrag={selectedText === 'headline' && !editing}
+				immediateTextDrag={selectedText === 'headline'}
 				holdMs={220}
+				snapToCenter={interactive}
+				snapRoot={exportRef}
 				onChange={(x, y) => onTextOffsetChange?.('headline', { x, y })}
 			>
 				{#snippet children()}
@@ -2766,8 +3000,11 @@
 				<p
 					bind:this={headlineEl}
 					data-text-selectable="headline"
+					data-canvas-typography-root
+					data-design-font-px={String(headlineStyle.fontSize ?? fontSize)}
 					aria-hidden={interactive && editing ? true : undefined}
 					ondblclick={onHeadlineDblClick}
+					onmouseup={onHeadlineMouseUp}
 					onpointerup={onHeadlineMouseUp}
 					style="
 						margin: 0;
@@ -2786,29 +3023,30 @@
 				>
 					{#each segments as seg}
 						{#if seg.highlighted}
+							<span
+								data-hl-plain-start={seg.start ?? ''}
+								data-hl-plain-end={seg.end ?? ''}
+								style="cursor: text; pointer-events: auto; {seg.patternImage || (seg.gradientFrom && seg.gradientTo)
+									? CLIPPED_TEXT_SHADOW_WRAP_CSS
+									: 'display: inline;'}"
+							>
 							{#if seg.patternImage}
-								<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
+								<span style="{patternStyle(seg.patternImage)}; pointer-events: none;">{seg.text}</span>
 							{:else if seg.gradientFrom && seg.gradientTo}
-								<span style="
-									background: linear-gradient(90deg, {seg.gradientFrom}, {seg.gradientTo});
-									-webkit-background-clip: text;
-									-webkit-text-fill-color: transparent;
-									background-clip: text;
-								">{seg.text}</span>
+								<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)}; pointer-events: none;">{seg.text}</span>
 							{:else if seg.markerBg}
 								<span
 									style="
 										background: {seg.markerBg};
 										color: {textColor};
-										padding: 0.08em 0.16em;
-										border-radius: 0.14em;
-										box-decoration-break: clone;
-										-webkit-box-decoration-break: clone;
+										{TEXT_BG_CHIP_BOX_CSS}
+										{textPaddingCss(headlineStyle)}
 									"
 								>{seg.text}</span>
 							{:else}
 								<span style="color: {seg.color};">{seg.text}</span>
 							{/if}
+							</span>
 						{:else}
 							{seg.text}
 						{/if}
@@ -2843,6 +3081,7 @@
 							showToolbar={false}
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
+							liveLineHeight={headlineStyle.lineHeight}
 							lineHeight="inherit"
 							onChange={pushHeadlineChange}
 							onBlur={finishHeadlineEdit}
@@ -2878,8 +3117,10 @@
 				{interactive}
 				{scale}
 				holdDragFromText={interactive}
-				immediateTextDrag={selectedText === 'newsSubtext' && !editingSubtext}
+				immediateTextDrag={selectedText === 'newsSubtext'}
 				holdMs={220}
+				snapToCenter={interactive}
+				snapRoot={exportRef}
 				onChange={(x, y) => onTextOffsetChange?.('newsSubtext', { x, y })}
 			>
 				{#snippet children()}
@@ -2908,7 +3149,7 @@
 							pointer-events: {interactive && editingSubtext ? 'none' : 'auto'};
 							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
 						"
-					>{#each subtextSegments as seg}{#if seg.highlighted}{#if seg.markerBg}<span style="background:{seg.markerBg};color:{textColor};padding:0.08em 0.16em;border-radius:0.14em;box-decoration-break:clone;-webkit-box-decoration-break:clone;">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">{seg.text}</span>{:else}<span style="color:{seg.color};">{seg.text}</span>{/if}{:else}{seg.text}{/if}{/each}</p>
+					>{#each subtextSegments as seg}{#if seg.highlighted}<span data-hl-plain-start={seg.start ?? ''} data-hl-plain-end={seg.end ?? ''} style="cursor:text;pointer-events:auto;display:inline;">{#if seg.markerBg}<span style="background:{seg.markerBg};color:{textColor};{TEXT_BG_CHIP_BOX_CSS}{textPaddingCss(subtextStyle)}">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;pointer-events:none;">{seg.text}</span>{:else}<span style="color:{seg.color};">{seg.text}</span>{/if}</span>{:else}{seg.text}{/if}{/each}</p>
 					{#if editingSubtext && interactive}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div

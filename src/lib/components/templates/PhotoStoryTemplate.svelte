@@ -4,6 +4,7 @@
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { loadGoogleFont } from '$lib/fonts';
+	import { textBgCss, textShadowStyleAttr } from '$lib/textStyleCss';
 	import {
 		PHOTO_CAPTION_DEFAULTS,
 		PHOTO_TOPIC_DEFAULTS,
@@ -102,6 +103,7 @@
 >
 	<div
 		bind:this={exportRef}
+		data-studio-canvas-root
 		style="
 			width: {w}px;
 			height: {h}px;
@@ -171,6 +173,7 @@
 						dy={textOffsets.blackTextHeadline?.y ?? 0}
 						{interactive}
 						{scale}
+						immediateTextDrag={selectedText === 'blackTextHeadline'}
 						onChange={(x, y) => onTextOffsetChange?.('blackTextHeadline', { x, y })}
 					>
 						{#snippet children()}
@@ -185,6 +188,7 @@
 								ariaLabel="Topic headline"
 								fontFamily={topicHeadlineFamily}
 								fontSize={topicHeadlineSize}
+								lineHeight={headlineStyle.lineHeight}
 								{showToolbar}
 								onTextChange={onHeadlineChange}
 								onTextSelect={onTextSelect}
@@ -208,6 +212,8 @@
 												color: {headlineStyle.color ?? headlineColor};
 												font-weight: {headlineStyle.fontWeight ?? 400};
 												font-size: {topicHeadlineSize}px;
+												{textShadowStyleAttr(headlineStyle)}
+												{textBgCss(headlineStyle)}
 											"
 										/>
 									</div>
@@ -238,6 +244,7 @@
 					dy={textOffsets.blackTextBody?.y ?? 0}
 					{interactive}
 					{scale}
+					immediateTextDrag={selectedText === 'blackTextBody'}
 					onChange={(x, y) => onTextOffsetChange?.('blackTextBody', { x, y })}
 				>
 					{#snippet children()}
@@ -252,6 +259,7 @@
 							ariaLabel="Topic body"
 							fontFamily={topicBodyFamily}
 							fontSize={topicBodySize}
+							lineHeight={bodyStyle.lineHeight}
 							{showToolbar}
 							onTextChange={onBodyChange}
 							onTextSelect={onTextSelect}
@@ -274,6 +282,8 @@
 											color: {bodyStyle.color ?? '#ffffff'};
 											font-weight: {bodyStyle.fontWeight ?? 400};
 											font-size: {topicBodySize}px;
+											{textShadowStyleAttr(bodyStyle)}
+											{textBgCss(bodyStyle)}
 										"
 									/>
 								</div>
@@ -329,6 +339,7 @@
 					dy={textOffsets.blackTextHeadline?.y ?? 0}
 					{interactive}
 					{scale}
+					immediateTextDrag={selectedText === 'blackTextHeadline'}
 					onChange={(x, y) => onTextOffsetChange?.('blackTextHeadline', { x, y })}
 				>
 					{#snippet children()}
@@ -343,6 +354,7 @@
 							ariaLabel="Caption lead"
 							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
 							fontSize={captionTextSize}
+							lineHeight={headlineStyle.lineHeight}
 							{showToolbar}
 							onTextChange={onHeadlineChange}
 							onTextSelect={onTextSelect}
@@ -358,12 +370,13 @@
 											margin: 0;
 											white-space: pre-wrap;
 											word-break: break-word;
-											line-height: 1.35;
+											line-height: {headlineStyle.lineHeight ?? 1.35};
 											letter-spacing: -0.02em;
 											color: #ffffff;
 											font-weight: {headlineStyle.fontWeight ?? 500};
 											font-size: {captionTextSize}px;
-											text-shadow: 0 2px 16px rgba(0,0,0,0.45);
+											text-shadow: {headlineStyle.textShadow ?? '0 2px 16px rgba(0,0,0,0.45)'};
+											{textBgCss(headlineStyle)}
 										"
 									/>
 								</div>
@@ -377,6 +390,7 @@
 					dy={textOffsets.blackTextBody?.y ?? 0}
 					{interactive}
 					{scale}
+					immediateTextDrag={selectedText === 'blackTextBody'}
 					onChange={(x, y) => onTextOffsetChange?.('blackTextBody', { x, y })}
 				>
 					{#snippet children()}
@@ -391,6 +405,7 @@
 							ariaLabel="Caption body"
 							fontFamily={bodyStyle.fontFamily ?? 'Satoshi'}
 							fontSize={captionTextSize}
+							lineHeight={bodyStyle.lineHeight}
 							{showToolbar}
 							onTextChange={onBodyChange}
 							onTextSelect={onTextSelect}
@@ -406,12 +421,13 @@
 											margin: 0;
 											white-space: pre-wrap;
 											word-break: break-word;
-											line-height: 1.35;
+											line-height: {bodyStyle.lineHeight ?? 1.35};
 											letter-spacing: -0.02em;
 											color: #ffffff;
 											font-weight: {bodyStyle.fontWeight ?? 500};
 											font-size: {captionTextSize}px;
-											text-shadow: 0 2px 16px rgba(0,0,0,0.45);
+											text-shadow: {bodyStyle.textShadow ?? '0 2px 16px rgba(0,0,0,0.45)'};
+											{textBgCss(bodyStyle)}
 										"
 									/>
 								</div>

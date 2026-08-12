@@ -6,9 +6,15 @@ import { stripEmDashes } from '$lib/strip-em-dashes';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'anthropic/claude-sonnet-4.5';
-const MAX_WORDS = 28;
+const DEFAULT_MAX_WORDS = 28;
 
-function truncate(text: string, max = MAX_WORDS): string {
+function clampMaxWords(raw: unknown): number {
+	const n = Math.floor(Number(raw));
+	if (!Number.isFinite(n)) return DEFAULT_MAX_WORDS;
+	return Math.max(6, Math.min(40, n));
+}
+
+function truncate(text: string, max = DEFAULT_MAX_WORDS): string {
 	const words = text.trim().split(/\s+/).filter(Boolean);
 	return words.length <= max ? text.trim() : words.slice(0, max).join(' ');
 }
@@ -39,6 +45,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		contentMode: contentModeRaw,
 		stepCount: stepCountRaw,
 		includeReplies: includeRepliesRaw,
+		maxWords: maxWordsRaw,
 	} = body;
 
 	if (!text.trim()) return json({ error: 'Missing article text' }, { status: 400 });
@@ -53,6 +60,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			: 'news';
 	const stepCount = clampStepCount(stepCountRaw, slideCount);
 	const includeReplies = includeRepliesRaw === true;
+	const MAX_WORDS = clampMaxWords(maxWordsRaw);
 
 	if (!env.OPENROUTER_API_KEY) {
 		const variants = getMockVariants(slideCount, title, contentMode, stepCount).map(stripEmDashes);
@@ -165,7 +173,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
 				'HTTP-Referer': 'https://carousel-studio.app',
-				'X-Title': 'Carousel Studio',
+				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
 				model: MODEL,
@@ -209,12 +217,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		try {
 			const parsed = JSON.parse(content);
 			if (Array.isArray(parsed)) {
-				variants = parsed.map((x: unknown) => truncate(String(x ?? '').trim())).filter(Boolean);
+				variants = parsed.map((x: unknown) => truncate(String(x ?? '').trim(), MAX_WORDS)).filter(Boolean);
 			} else if (parsed && typeof parsed === 'object') {
 				const v = (parsed as { variants?: unknown }).variants;
 				const r = (parsed as { replies?: unknown }).replies;
 				if (Array.isArray(v)) {
-					variants = v.map((x: unknown) => truncate(String(x ?? '').trim())).filter(Boolean);
+					variants = v.map((x: unknown) => truncate(String(x ?? '').trim(), MAX_WORDS)).filter(Boolean);
 				}
 				if (Array.isArray(r)) {
 					replies = r
@@ -226,7 +234,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			}
 		} catch {
 			// Fallback: treat whole response as slide 1
-			variants = [truncate(content)];
+			variants = [truncate(content, MAX_WORDS)];
 		}
 
 		// Ensure we have exactly slideCount items
@@ -242,7 +250,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 		// ── Optional second pass: add [[highlights]] to each slide ───────────
 		if (autoHighlight && variants.length > 0) {
-			const highlighted = await addHighlights(variants, title, contentMode);
+			const highlighted = await addHighlights(variants, title, contentMode, MAX_WORDS);
 			variants = highlighted;
 		}
 		variants = variants.map((v) => stripEmDashes(v));
@@ -258,13 +266,14 @@ async function addHighlights(
 	slides: string[],
 	title: string,
 	contentMode: VariantContentMode,
+	maxWords = DEFAULT_MAX_WORDS,
 ): Promise<string[]> {
 		const system =
 			`You add emphasis markers to Instagram slide overlay text. Output ONLY a JSON array of strings — one per slide — with emphasis added. ` +
 			`Rules: wrap 1–3 short phrases per slide in [[double brackets]], e.g. [[key idea]] or [[33%]]. ` +
 			`Use ONLY plain [[phrase]] markers — never grad(, marker(, pattern(, or #hex: inside brackets. ` +
 			`Those spans render in the accent color. Preserve wording and line breaks. ` +
-			`Keep word count ≤ ${MAX_WORDS} per slide. No hashtags, emojis, or other markdown. No nested brackets.` +
+			`Keep word count ≤ ${maxWords} per slide. No hashtags, emojis, or other markdown. No nested brackets.` +
 			(contentMode === 'story'
 				? ` For story carousels, highlight turning-point words (revelations, stakes, choices) more than scenery.`
 				: contentMode === 'quote'
@@ -290,7 +299,7 @@ async function addHighlights(
 				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 				'Content-Type': 'application/json',
 				'HTTP-Referer': 'https://carousel-studio.app',
-				'X-Title': 'Carousel Studio',
+				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
 				model: MODEL,
