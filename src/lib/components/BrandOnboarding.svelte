@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
-	 * First-run identity sheet — username becomes the News source label
-	 * and the profile name on Text Carousel / Creator hook.
+	 * First-run identity sheet — username + handle for Text Carousel /
+	 * Creator hook (News branding uses logo, not a text byline).
 	 */
 	import { onMount } from 'svelte';
 	import {
@@ -46,7 +46,7 @@
 	function submit() {
 		const displayName = name.trim();
 		if (displayName.length < 2) {
-			error = 'Add a username — it shows on the News gold line.';
+			error = 'Add a username — it shows on Text Carousel and Creator slides.';
 			return;
 		}
 		error = '';
@@ -68,11 +68,11 @@
 	<div class="ob-root" role="dialog" aria-modal="true" aria-labelledby="ob-title">
 		<div class="ob-veil"></div>
 		<div class="ob-sheet">
-			<p class="ob-kicker">First, your byline</p>
+			<p class="ob-kicker">First, your identity</p>
 			<h2 id="ob-title" class="ob-title">Who should appear on every slide?</h2>
 			<p class="ob-lede">
-				Username sits on the News gold rule. Handle shows under your name on Text Carousel and
-				Creator hooks. You can change both later in Branding or Settings.
+				Username and handle show on Text Carousel and Creator hooks. Add your logo in Branding
+				for News slides. You can change these later in Branding or Settings.
 			</p>
 
 			<div class="ob-preview" aria-hidden="true">

@@ -9,6 +9,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 		return {
 			billing: null,
 			trial: null,
+			profile: null,
 		};
 	}
 
@@ -16,7 +17,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 	const { data, error } = await supabase
 		.from('users')
 		.select(
-			'plan, credits, plan_status, stripe_customer_id, stripe_subscription_id, current_period_end'
+			'plan, credits, plan_status, stripe_customer_id, stripe_subscription_id, current_period_end, full_name, marketing_emails'
 		)
 		.eq('id', user.id)
 		.maybeSingle();
@@ -25,6 +26,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 		return {
 			billing: null,
 			trial: null,
+			profile: null,
 			billingError: error.message,
 		};
 	}
@@ -50,6 +52,15 @@ export const load: PageServerLoad = async ({ parent }) => {
 			...trial,
 			limit: TRIAL_EXPORT_LIMIT,
 			remaining: trial.isPaid ? null : trial.remaining,
+		},
+		profile: {
+			fullName:
+				(typeof data?.full_name === 'string' && data.full_name.trim()) ||
+				(typeof user.user_metadata?.full_name === 'string'
+					? String(user.user_metadata.full_name)
+					: '') ||
+				'',
+			marketingEmails: data?.marketing_emails === true,
 		},
 	};
 };

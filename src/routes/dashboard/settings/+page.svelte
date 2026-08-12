@@ -11,11 +11,9 @@
 		normalizeBrandHandle,
 		normalizeHighlightHex,
 		normalizeHighlightStyleKind,
-		normalizeTextBgHex,
 		saveBrandKit,
 	} from '$lib/studio/brand-kit';
 	import { AVAILABLE_PATTERNS, HIGHLIGHT_SOLID_PRESETS, HIGHLIGHT_GRADIENT_PRESETS, getPatternImage } from '$lib/highlight';
-	import { TEXT_BG_SWATCHES } from '$lib/textStyleCss';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -68,7 +66,9 @@
 	const userId = $derived(data.user?.id ?? '');
 	const userEmail = $derived(data.user?.email ?? '');
 	const userName = $derived(
-		(data.user?.user_metadata?.full_name as string | undefined) ?? '',
+		(data.profile?.fullName as string | undefined)?.trim() ||
+			(data.user?.user_metadata?.full_name as string | undefined) ||
+			'',
 	);
 
 	let billingBusy = $state(false);
@@ -81,6 +81,24 @@
 	let loginError = $state('');
 	let resetSent = $state(false);
 	let resetBusy = $state(false);
+	let accountMsg = $state('');
+	let accountErr = $state('');
+
+	let displayNameDraft = $state('');
+	let profileBusy = $state(false);
+
+	let marketingEmails = $state(false);
+	let marketingBusy = $state(false);
+
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let passwordBusy = $state(false);
+	let passwordRecoveryMode = $state(false);
+
+	let deleteConfirm = $state('');
+	let deleteBusy = $state(false);
+	let deleteErr = $state('');
+	let showDeleteConfirm = $state(false);
 
 	let brandDisplayName = $state(DEFAULT_BRAND_KIT.displayName);
 	let brandHandle = $state(DEFAULT_BRAND_KIT.handle);
@@ -91,8 +109,6 @@
 	let highlightPattern = $state(DEFAULT_BRAND_KIT.highlightPattern);
 	let highlightNote = $state('');
 	const highlightPatternUrl = $derived(getPatternImage(highlightPattern) ?? '');
-	let textBgColor = $state(DEFAULT_BRAND_KIT.textBgColor);
-	let textBgNote = $state('');
 
 	function persistBrandProfile() {
 		if (!userId) return;
@@ -105,7 +121,6 @@
 			highlightColor,
 			highlightStyleKind,
 			highlightPattern,
-			textBgColor,
 			onboardingComplete: true,
 		};
 		brandDisplayName = next.displayName;
@@ -185,16 +200,6 @@
 		setTimeout(() => (highlightNote = ''), 2400);
 	}
 
-	function persistTextBgColor(nextRaw: string) {
-		const next = normalizeTextBgHex(nextRaw);
-		textBgColor = next;
-		if (!userId) return;
-		const kit = loadBrandKit(userId);
-		const ok = saveBrandKit(userId, { ...kit, textBgColor: next });
-		textBgNote = ok ? 'Saved - Studio uses this behind brand text' : 'Could not save';
-		setTimeout(() => (textBgNote = ''), 2400);
-	}
-
 	const tabs = [
 		{ id: 'account' as const, label: 'Account', icon: User },
 		{ id: 'branding' as const, label: 'Branding', icon: Palette },
@@ -210,6 +215,26 @@
 		if (tab === 'account' || tab === 'branding' || tab === 'billing' || tab === 'legal') {
 			activeTab = tab;
 		}
+		if (params.get('pw') === '1' || params.get('reset') === '1') {
+			passwordRecoveryMode = true;
+			activeTab = 'account';
+		}
+
+		displayNameDraft = userName;
+		marketingEmails = data.profile?.marketingEmails === true;
+
+		const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+			if (event === 'PASSWORD_RECOVERY') {
+				passwordRecoveryMode = true;
+				activeTab = 'account';
+			}
+		});
+		return () => authSub.subscription.unsubscribe();
+	});
+
+	$effect(() => {
+		displayNameDraft = userName;
+		marketingEmails = data.profile?.marketingEmails === true;
 	});
 
 	async function loadIntegrations() {
@@ -257,7 +282,6 @@
 			highlightColor = kit.highlightColor || DEFAULT_BRAND_KIT.highlightColor;
 			highlightStyleKind = normalizeHighlightStyleKind(kit.highlightStyleKind);
 			highlightPattern = kit.highlightPattern || DEFAULT_BRAND_KIT.highlightPattern;
-			textBgColor = kit.textBgColor ?? '';
 		})();
 		return () => {
 			cancelled = true;
@@ -290,22 +314,132 @@
 	}
 
 	async function sendPasswordReset() {
-		const email = loginEmail.trim() || userEmail;
+		const email = (signedIn ? userEmail : loginEmail).trim();
 		if (!email) {
-			loginError = 'Enter your email above to receive a reset link.';
+			if (signedIn) accountErr = 'No email on this account.';
+			else loginError = 'Enter your email above to receive a reset link.';
 			return;
 		}
 		resetBusy = true;
 		loginError = '';
+		accountErr = '';
+		accountMsg = '';
 		const { error } = await supabase.auth.resetPasswordForEmail(email, {
-			redirectTo: `${location.origin}/auth/callback?next=/dashboard/settings`,
+			redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent('/dashboard/settings?pw=1')}`,
 		});
 		resetBusy = false;
 		if (error) {
-			loginError = error.message;
+			if (signedIn) accountErr = error.message;
+			else loginError = error.message;
 			return;
 		}
 		resetSent = true;
+		if (signedIn) accountMsg = 'Password reset link sent — check your inbox.';
+	}
+
+	async function saveNewPassword() {
+		accountErr = '';
+		accountMsg = '';
+		const next = newPassword.trim();
+		if (next.length < 8) {
+			accountErr = 'Password must be at least 8 characters.';
+			return;
+		}
+		if (next !== confirmPassword) {
+			accountErr = 'Passwords do not match.';
+			return;
+		}
+		passwordBusy = true;
+		const { error } = await supabase.auth.updateUser({ password: next });
+		passwordBusy = false;
+		if (error) {
+			accountErr = error.message;
+			return;
+		}
+		newPassword = '';
+		confirmPassword = '';
+		passwordRecoveryMode = false;
+		accountMsg = 'Password updated.';
+		const url = new URL(location.href);
+		url.searchParams.delete('pw');
+		url.searchParams.delete('reset');
+		history.replaceState({}, '', url.pathname + url.search + url.hash);
+	}
+
+	async function saveDisplayName() {
+		if (!userId) return;
+		profileBusy = true;
+		accountErr = '';
+		accountMsg = '';
+		const name = displayNameDraft.trim();
+		const { error: authErr } = await supabase.auth.updateUser({
+			data: { full_name: name },
+		});
+		if (authErr) {
+			profileBusy = false;
+			accountErr = authErr.message;
+			return;
+		}
+		const { error: dbErr } = await supabase
+			.from('users')
+			.update({ full_name: name || null, updated_at: new Date().toISOString() })
+			.eq('id', userId);
+		profileBusy = false;
+		if (dbErr) {
+			accountErr = dbErr.message;
+			return;
+		}
+		accountMsg = 'Display name saved.';
+		await invalidateAll();
+	}
+
+	async function saveMarketingEmails(on: boolean) {
+		if (!userId) return;
+		marketingEmails = on;
+		marketingBusy = true;
+		accountErr = '';
+		const { error: dbErr } = await supabase
+			.from('users')
+			.update({ marketing_emails: on, updated_at: new Date().toISOString() })
+			.eq('id', userId);
+		if (!dbErr) {
+			await supabase.auth.updateUser({
+				data: { marketing_emails: on },
+			});
+		}
+		marketingBusy = false;
+		if (dbErr) {
+			marketingEmails = !on;
+			accountErr = dbErr.message;
+			return;
+		}
+		accountMsg = on ? 'Marketing emails enabled.' : 'Marketing emails disabled.';
+		await invalidateAll();
+	}
+
+	async function deleteAccount() {
+		deleteErr = '';
+		deleteBusy = true;
+		try {
+			const res = await fetch('/api/account/delete', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ confirm: deleteConfirm.trim() }),
+			});
+			const out = await res.json().catch(() => ({}));
+			if (!res.ok || !out?.ok) {
+				deleteErr = out?.error ?? 'Could not delete account';
+				deleteBusy = false;
+				return;
+			}
+			await supabase.auth.signOut();
+			await invalidateAll();
+			goto('/?auth=login&deleted=1');
+		} catch {
+			deleteErr = 'Network error';
+			deleteBusy = false;
+		}
 	}
 
 	async function signOut() {
@@ -551,7 +685,6 @@
 			<span>Account</span>
 		</div>
 		<h1 class="page-title dash-page-title">Settings</h1>
-		<p class="page-sub dash-page-sub">Profile, branding, billing, and legal.</p>
 	</header>
 
 	{#if !signedIn}
@@ -621,15 +754,22 @@
 			<p class="tab-desc">Sign in above to view your account details.</p>
 		{:else}
 		<div class="tab-content">
+			{#if accountMsg}
+				<p class="login-success" role="status">{accountMsg}</p>
+			{/if}
+			{#if accountErr}
+				<p class="billing-error" role="alert">{accountErr}</p>
+			{/if}
+
 			<div class="settings-card">
 				<h2 class="card-title">Your Account</h2>
 
 				<div class="profile-row">
 					<div class="profile-avatar">
-						{(userName || userEmail || 'U')[0].toUpperCase()}
+						{(displayNameDraft || userName || userEmail || 'U')[0].toUpperCase()}
 					</div>
 					<div class="profile-info">
-						<p class="profile-name">{userName || 'Unnamed User'}</p>
+						<p class="profile-name">{displayNameDraft || userName || 'Unnamed User'}</p>
 						<p class="profile-email">{userEmail}</p>
 					</div>
 					<div class="profile-plan-badge">{billing?.planName ?? 'Free'}</div>
@@ -638,7 +778,7 @@
 				<div class="form-grid">
 					<div class="form-field">
 						<Label class="form-label" for="acct-name">Display name</Label>
-						<Input id="acct-name" type="text" value={userName} placeholder="Your name" readonly />
+						<Input id="acct-name" type="text" bind:value={displayNameDraft} placeholder="Your name" autocomplete="name" />
 					</div>
 					<div class="form-field">
 						<Label class="form-label" for="acct-email">Email</Label>
@@ -655,27 +795,81 @@
 					</div>
 				</div>
 
-				<div class="card-note">
-					Profile email is managed through your sign-in provider. Contact
-					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
-					to change your email.
-				</div>
-
 				<div class="account-actions">
-					<Button type="button" variant="outline" size="sm" disabled={resetBusy} onclick={sendPasswordReset}>
-						<Mail />
-						{resetBusy ? 'Sending…' : 'Send password reset'}
+					<Button type="button" size="sm" disabled={profileBusy} onclick={saveDisplayName}>
+						{profileBusy ? 'Saving…' : 'Save name'}
 					</Button>
 					<Button type="button" variant="outline" size="sm" onclick={signOut}>
 						<LogOut />
 						Sign out
 					</Button>
 				</div>
+
+				<div class="card-note">
+					Email is managed by your sign-in provider. Contact
+					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
+					to change it.
+				</div>
 			</div>
 
 			<div class="settings-card">
-				<h2 class="card-title">Session</h2>
+				<h2 class="card-title">{passwordRecoveryMode ? 'Set a new password' : 'Password'}</h2>
+				{#if passwordRecoveryMode}
+					<p class="card-desc">Choose a new password for {userEmail || 'your account'}.</p>
+				{:else}
+					<p class="card-desc">Update your password here, or email yourself a reset link.</p>
+				{/if}
+				<div class="form-grid">
+					<div class="form-field">
+						<Label class="form-label" for="new-password">New password</Label>
+						<Input
+							id="new-password"
+							type="password"
+							bind:value={newPassword}
+							placeholder="At least 8 characters"
+							autocomplete="new-password"
+						/>
+					</div>
+					<div class="form-field">
+						<Label class="form-label" for="confirm-password">Confirm password</Label>
+						<Input
+							id="confirm-password"
+							type="password"
+							bind:value={confirmPassword}
+							placeholder="Repeat password"
+							autocomplete="new-password"
+						/>
+					</div>
+				</div>
+				<div class="account-actions">
+					<Button type="button" size="sm" disabled={passwordBusy} onclick={saveNewPassword}>
+						{passwordBusy ? 'Saving…' : passwordRecoveryMode ? 'Save new password' : 'Update password'}
+					</Button>
+					{#if !passwordRecoveryMode}
+						<Button type="button" variant="outline" size="sm" disabled={resetBusy} onclick={sendPasswordReset}>
+							<Mail />
+							{resetBusy ? 'Sending…' : resetSent ? 'Reset link sent' : 'Email reset link'}
+						</Button>
+					{/if}
+				</div>
+			</div>
+
+			<div class="settings-card">
+				<h2 class="card-title">Email preferences</h2>
 				<div class="pref-list">
+					<div class="pref-row">
+						<div>
+							<p class="pref-label">Marketing emails</p>
+							<p class="pref-sub">Product updates and tips — not required for your account</p>
+						</div>
+						<Switch
+							id="settings-marketing"
+							size="sm"
+							checked={marketingEmails}
+							disabled={marketingBusy}
+							onCheckedChange={(v) => void saveMarketingEmails(!!v)}
+						/>
+					</div>
 					<div class="pref-row">
 						<div>
 							<p class="pref-label">Current plan</p>
@@ -701,10 +895,54 @@
 			<div class="settings-card settings-card--danger">
 				<h2 class="card-title card-title--danger">Danger Zone</h2>
 				<p class="card-desc">
-					Permanently delete your account and all data. Email
-					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
-					with your account email to request deletion.
+					Permanently delete your account, drafts, and connected data. Active Stripe subscriptions are canceled when possible. This cannot be undone.
 				</p>
+				{#if !showDeleteConfirm}
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="border-red-300 text-red-700 hover:bg-red-50"
+						onclick={() => { showDeleteConfirm = true; deleteErr = ''; }}
+					>
+						<AlertTriangle />
+						Delete account
+					</Button>
+				{:else}
+					<div class="form-field">
+						<Label class="form-label" for="delete-confirm">Type {userEmail} to confirm</Label>
+						<Input
+							id="delete-confirm"
+							type="email"
+							bind:value={deleteConfirm}
+							placeholder={userEmail}
+							autocomplete="off"
+						/>
+					</div>
+					{#if deleteErr}
+						<p class="billing-error" role="alert">{deleteErr}</p>
+					{/if}
+					<div class="account-actions">
+						<Button
+							type="button"
+							size="sm"
+							class="bg-red-600 text-white hover:bg-red-700"
+							disabled={deleteBusy}
+							onclick={deleteAccount}
+						>
+							{deleteBusy ? 'Deleting…' : 'Permanently delete'}
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={deleteBusy}
+							onclick={() => { showDeleteConfirm = false; deleteConfirm = ''; deleteErr = ''; }}
+						>
+							Cancel
+						</Button>
+					</div>
+				{/if}
 			</div>
 		</div>
 		{/if}
@@ -717,7 +955,7 @@
 		<div class="tab-content">
 			<div class="settings-card">
 				<h2 class="card-title">Identity</h2>
-				<p class="card-desc">Shown on News, Text Carousel, and Creator templates.</p>
+				<p class="card-desc">Shown on Text Carousel and Creator templates. Add a logo in Studio Branding for News.</p>
 				<div class="form-grid">
 					<div class="form-field">
 						<Label class="form-label" for="brand-display-name">Username</Label>
@@ -831,38 +1069,6 @@
 				{/if}
 				{#if highlightNote}
 					<div class="card-note">{highlightNote}</div>
-				{/if}
-			</div>
-
-			<div class="settings-card">
-				<h2 class="card-title">Text background</h2>
-				<p class="card-desc">Chip behind the News source label.</p>
-				<div class="hl-swatches" role="listbox" aria-label="Text background">
-					{#each TEXT_BG_SWATCHES as c (c || 'none')}
-						<button
-							type="button"
-							role="option"
-							aria-selected={(textBgColor || '') === c}
-							class="hl-swatch"
-							class:hl-swatch--on={(textBgColor || '') === c}
-							style="background: {c
-								? c
-								: 'linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), #f4f4f5'};"
-							title={c || 'None'}
-							onclick={() => persistTextBgColor(c)}
-						></button>
-					{/each}
-					<label class="hl-custom">
-						<span class="sr-only">Custom text background</span>
-						<input
-							type="color"
-							value={textBgColor || '#FFEB3B'}
-							oninput={(e) => persistTextBgColor((e.currentTarget as HTMLInputElement).value)}
-						/>
-					</label>
-				</div>
-				{#if textBgNote}
-					<div class="card-note">{textBgNote}</div>
 				{/if}
 			</div>
 		</div>
@@ -1191,8 +1397,8 @@
 			<div class="settings-card">
 				<h2 class="card-title">Your data rights</h2>
 				<p class="card-desc">
-					You may access, correct, or delete your personal data. To export your content or request account
-					deletion, email
+					You may access or correct your profile in Account settings. To permanently delete your account and data, use
+					<strong> Danger Zone</strong> on the Account tab, or email
 					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
 					from the address on your account.
 				</p>
@@ -1735,12 +1941,12 @@
 		text-transform: capitalize;
 	}
 	.billing-error {
-		margin: 0 0 0.75rem;
+		margin: 0;
 		padding: 0.65rem 0.85rem;
 		border-radius: 9px;
-		background: rgba(255,80,60,0.12);
-		border: 1px solid rgba(255,80,60,0.28);
-		color: #ffb4a8;
+		background: rgba(185, 28, 28, 0.08);
+		border: 1px solid rgba(185, 28, 28, 0.22);
+		color: #b42318;
 		font-size: 0.8125rem;
 	}
 
@@ -1798,7 +2004,7 @@
 	.login-success {
 		margin: 0; padding: 0.65rem 0.85rem; border-radius: 9px;
 		background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2);
-		color: #34d399; font-size: 0.8125rem;
+		color: #047857; font-size: 0.8125rem;
 	}
 	.account-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; }
 

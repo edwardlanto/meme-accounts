@@ -2,7 +2,7 @@
 	export type DockItem = {
 		icon: any;
 		label: string;
-		onClick?: () => void;
+		onClick?: (e?: MouseEvent) => void;
 		disabled?: boolean;
 	};
 
@@ -28,7 +28,7 @@
 				aria-label={item.label}
 				title={item.label}
 				disabled={!!item.disabled}
-				onclick={() => item.onClick?.()}
+				onclick={(e) => item.onClick?.(e)}
 			>
 				<item.icon size={17} strokeWidth={1.8} />
 				<span class="dock-tip" aria-hidden="true">{item.label}</span>
@@ -59,7 +59,6 @@
 		border-radius: 16px;
 		background: rgba(255, 255, 255, 0.82);
 		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
 		backdrop-filter: blur(14px);
 		-webkit-backdrop-filter: blur(14px);
 	}

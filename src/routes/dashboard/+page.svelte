@@ -236,9 +236,6 @@
 				<span>Studio</span>
 			</div>
 			<h1 class="hero-title dash-page-title">Create your next post</h1>
-			<p class="hero-sub dash-page-sub">
-				Pick a template, build a carousel, or pull clips from a video - then ship from Studio.
-			</p>
 			<div class="hero-actions">
 				<a href="/dashboard/templates" class="ma-btn ma-btn-primary">
 					Browse templates

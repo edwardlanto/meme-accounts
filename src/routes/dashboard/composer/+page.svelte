@@ -393,7 +393,6 @@ function defaultImageQuote(): ImageQuoteData {
 		<Layers size={13} class="text-white/40" />
 		<div>
 			<h1 class="font-display font-bold text-sm text-white leading-none">Composer</h1>
-			<p class="font-body text-[10px] text-white/30 mt-0.5">Mix any template per slide</p>
 		</div>
 	</div>
 

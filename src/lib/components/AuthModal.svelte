@@ -116,7 +116,7 @@
 		loading = true;
 		error = '';
 		const { error: err } = await supabase.auth.resetPasswordForEmail(e, {
-			redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(modal.next || '/dashboard')}`,
+			redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent('/dashboard/settings?pw=1')}`,
 		});
 		loading = false;
 		if (err) {

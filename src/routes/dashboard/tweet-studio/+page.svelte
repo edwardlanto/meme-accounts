@@ -213,7 +213,6 @@
 				<Bird size={13} class="text-sky-400" />
 				<h1 class="font-display font-bold text-base text-white">Tweet Studio</h1>
 			</div>
-			<p class="font-body text-xs text-white/40 mt-0.5">Turn viral tweets into Instagram slides</p>
 		</div>
 
 		<!-- ── Slide strip ─────────────────────────────────────────────────── -->

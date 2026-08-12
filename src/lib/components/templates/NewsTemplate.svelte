@@ -33,6 +33,7 @@
 		circleShadowCss,
 		type CircleShadow,
 	} from '$lib/studio/circle-shadow';
+	import { buildBottomShadowGradient, normalizeBottomShadowCurve, type BottomShadowCurve } from '$lib/studio/bottom-shadow';
 	import {
 		isVideoFile,
 		isVideoMediaUrl,
@@ -51,6 +52,7 @@
 		ZoomOut,
 		RotateCcw,
 		Eraser,
+		X,
 	} from 'lucide-svelte';
 
 	interface Props {
@@ -130,6 +132,8 @@
 		onSourceLogoChange?: (src: string) => void;
 		/** Fired when the user resizes the source logo from the canvas tools. */
 		onSourceLogoWidthChange?: (width: number) => void;
+		/** Patch News source chip style (logo BG / padding / radius, or text chip). */
+		onSourceStyleChange?: (patch: Partial<TextStyle>) => void;
 		highlightColor?: string;
 		/** Default look for bare `[[phrase]]` (solid / gradient / pattern). Falls back to `highlightColor`. */
 		highlightDefaults?: HighlightDefaults;
@@ -157,6 +161,8 @@
 		shadowHeight?: number;
 		/** Opacity of the bottom shadow (0–1). Default 1. */
 		shadowStrength?: number;
+		/** Fade curve — `natural` is the smoothest editorial look. */
+		shadowCurve?: BottomShadowCurve;
 		/** Optional repeating grid texture overlay (tiled). */
 		gridImage?: string;
 		gridTile?: number; // px
@@ -241,12 +247,13 @@
 		subtext = '',
 		source = '',
 		sourceLogoSrc = '',
-		sourceLabelMode = 'text',
+		sourceLabelMode = 'logo',
 		sourceBorderKind = 'none',
 		sourceBorderColor = '',
 		sourceLogoWidth = 260,
 		onSourceLogoChange,
 		onSourceLogoWidthChange,
+		onSourceStyleChange,
 		highlightColor = '#F5A623',
 		highlightDefaults,
 		textColor = templateTheme === 'light' ? '#0a0a0a' : '#FFFFFF',
@@ -267,6 +274,7 @@
 		textPanelOffsetY = $bindable(0),
 		shadowHeight = $bindable(92),
 		shadowStrength = $bindable(1),
+		shadowCurve = $bindable<BottomShadowCurve>('news'),
 		gridImage = '',
 		gridTile = 80,
 		gridOpacity = 0.25,
@@ -525,9 +533,58 @@
 		lines.push(`text-align: ${s.align ?? 'right'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
 		appendTextShadowCss(lines, s);
-		appendTextBgCss(lines, s);
+		/* Logo mode paints BG / pad / radius on the image chip — not this text span. */
+		if (sourceLabelMode !== 'logo') appendTextBgCss(lines, s);
 		return lines.join(' ');
 	});
+
+	const LOGO_PAD_DEFAULT = 6;
+	const LOGO_PAD_MAX = 64;
+	const LOGO_RADIUS_DEFAULT = 10;
+	const LOGO_RADIUS_MAX = 80;
+
+	const sourceLogoPad = $derived.by(() => {
+		const raw = Number(sourceStyle?.padding);
+		if (Number.isFinite(raw)) return Math.max(0, Math.min(LOGO_PAD_MAX, Math.round(raw)));
+		const bg = String(sourceStyle?.bgColor ?? '').trim();
+		return bg && bg !== 'transparent' && bg !== 'none' ? LOGO_PAD_DEFAULT : 0;
+	});
+	const sourceLogoRadius = $derived.by(() => {
+		const raw = Number(sourceStyle?.borderRadius);
+		if (Number.isFinite(raw)) return Math.max(0, Math.min(LOGO_RADIUS_MAX, Math.round(raw)));
+		return LOGO_RADIUS_DEFAULT;
+	});
+	const sourceLogoBg = $derived.by(() => {
+		const raw = String(sourceStyle?.bgColor ?? '').trim();
+		if (!raw || raw === 'transparent' || raw === 'none') return '';
+		return raw;
+	});
+	const sourceLogoChromeCss = $derived(
+		[
+			'position: relative;',
+			'display: inline-flex;',
+			'align-items: center;',
+			'justify-content: center;',
+			'box-sizing: border-box;',
+			`padding: ${sourceLogoPad}px;`,
+			`border-radius: ${sourceLogoRadius}px;`,
+			sourceLogoBg
+				? `background-color: ${sourceLogoBg}; background-image: none;`
+				: 'background: transparent;',
+		].join(' '),
+	);
+
+	function bumpSourceLogoPad(delta: number) {
+		const next = Math.max(0, Math.min(LOGO_PAD_MAX, sourceLogoPad + delta));
+		onSourceStyleChange?.({ padding: next });
+	}
+	function bumpSourceLogoRadius(delta: number) {
+		const next = Math.max(0, Math.min(LOGO_RADIUS_MAX, sourceLogoRadius + delta));
+		onSourceStyleChange?.({ borderRadius: next });
+	}
+	function setSourceLogoBg(hex: string | undefined) {
+		onSourceStyleChange?.({ bgColor: hex });
+	}
 
 	let headlineEl = $state<HTMLElement | null>(null);
 	let sourceEl = $state<HTMLElement | null>(null);
@@ -595,6 +652,7 @@
 	}
 
 	let sourceLogoFileEl = $state<HTMLInputElement | null>(null);
+	let sourceLogoColorEl = $state<HTMLInputElement | null>(null);
 	let sourceLogoToolbarOpen = $state(false);
 	let sourceLogoRemovingBg = $state(false);
 
@@ -672,20 +730,10 @@
 		Math.max(50, Math.min(400, Number(bgContainMagnify) || 100)),
 	);
 
-	// Bottom shadow gradient — height/strength controllable.
-	const shadowGradient = $derived.by(() => {
-		const sh = Math.max(0, Math.min(100, shadowHeight));
-		const str = Math.max(0, Math.min(1, shadowStrength));
-		const clear = Math.max(0, 100 - sh);
-		const a = (mult: number) => `rgba(0,0,0,${(mult * str).toFixed(3)})`;
-		return `linear-gradient(to bottom,
-			rgba(0,0,0,0) ${clear}%,
-			${a(0.15)} ${(clear + sh * 0.27).toFixed(2)}%,
-			${a(0.65)} ${(clear + sh * 0.5).toFixed(2)}%,
-			${a(0.88)} ${(clear + sh * 0.67).toFixed(2)}%,
-			${a(0.97)} ${(clear + sh * 0.84).toFixed(2)}%,
-			${a(1)} 100%)`;
-	});
+	// Bottom shadow gradient — height/strength/curve controllable.
+	const shadowGradient = $derived(
+		buildBottomShadowGradient(shadowHeight, shadowStrength, normalizeBottomShadowCurve(shadowCurve)),
+	);
 
 	const W = $derived(Math.max(320, Number(w) || 1080));
 	const H = $derived(Math.max(320, Number(h) || 1350));
@@ -1736,11 +1784,16 @@
 		} catch {
 			/* ignore */
 		}
-		// Click without drag → toggle selection for image OR video (any fit mode).
-		if (!bgDragging && bgPanPressed && (backgroundImage || backgroundVideo)) {
-			bgSelected = !bgSelected;
-		} else if (!bgDragging && bgPanPressed) {
-			bgSelected = false;
+		// Click without drag → select media (if any) and open BG tools.
+		if (!bgDragging && bgPanPressed) {
+			if (backgroundImage || backgroundVideo) {
+				bgSelected = true;
+			} else {
+				bgSelected = false;
+			}
+			if (onBackgroundDblClick) {
+				onBackgroundDblClick({ clientX: e.clientX, clientY: e.clientY });
+			}
 		}
 		bgPanPressed = false;
 		bgDragging = false;
@@ -1761,8 +1814,11 @@
 		bgDragging = false;
 	}
 
-	function bgLayerDblClick(e: MouseEvent) {
+	function bgLayerClick(e: MouseEvent) {
 		if (!interactive || !onBackgroundDblClick) return;
+		// When a photo/video is present, pointer-up already opens BG tools (and
+		// distinguishes click vs pan). This handles empty / solid backgrounds.
+		if (hasBg) return;
 		e.stopPropagation();
 		e.preventDefault();
 		onBackgroundDblClick({ clientX: e.clientX, clientY: e.clientY });
@@ -1971,7 +2027,7 @@
 			{/if}
 		{/if}
 
-		<!-- Background pan + double-click for BG tools (above bg, below text/circle) -->
+		<!-- Background pan + click for BG tools (above bg, below text/circle) -->
 		{#if interactive && (hasBg || onBackgroundDblClick)}
 			<div
 				style="
@@ -1980,20 +2036,19 @@
 					touch-action: none;
 				"
 				title={hasBg
-					? 'Click to select · Drag corners to resize · Drag to pan · Double-click for BG tools · Alt+scroll to zoom'
-					: 'Double-click for BG tools'}
+					? 'Click for BG tools · Drag corners to resize · Drag to pan · Alt+scroll to zoom'
+					: 'Click for BG tools'}
 				onpointerdown={hasBg ? bgPointerDown : undefined}
 				onpointermove={hasBg ? bgPointerMove : undefined}
 				onpointerup={hasBg ? bgPointerUp : undefined}
 				onpointercancel={hasBg ? bgPointerCancel : undefined}
 				onlostpointercapture={hasBg ? bgLostPointerCapture : undefined}
-				ondblclick={bgLayerDblClick}
+				onclick={bgLayerClick}
 				role="presentation"
 			></div>
 		{/if}
 
-		<!-- Gradient overlay — below the circle badge (z≈45) and subject cutout
-		     (z≈50) so the editorial overlap stays visible; above stickers/bg. -->
+		<!-- Gradient overlay — below text (z≈60) so copy always overlaps the letterbox/shadow. -->
 		<div style="position: absolute; inset: 0; z-index: 36; pointer-events: none;
 			background: {shadowGradient};"></div>
 
@@ -2373,7 +2428,6 @@
 								if (o) circleToolbarPopoverOpen = true;
 							}}
 						/>
-						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
 						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={() => { circleImageZoom = 1; circleImagePanX = 50; circleImagePanY = 50; }} title="Reset image zoom/pan" aria-label="Reset image zoom/pan"><RotateCcw size={18} class="text-foreground" strokeWidth={2} /></Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Circle size">
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleDiameter(36)} disabled={Number(circleSize) >= 720} title="Expand circle" aria-label="Expand circle"><Maximize2 size={16} class="text-foreground" strokeWidth={2} /></Button>
@@ -2383,6 +2437,7 @@
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleImageZoom(0.12)} disabled={(Number(circleImageZoom) || 1) >= 4.99} title="Zoom photo in (up to 5×)" aria-label="Zoom photo in"><ZoomIn size={16} class="text-foreground" strokeWidth={2} /></Button>
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleImageZoom(-0.12)} disabled={(Number(circleImageZoom) || 1) <= 1.01} title="Zoom photo out" aria-label="Zoom photo out"><ZoomOut size={16} class="text-foreground" strokeWidth={2} /></Button>
 						</div>
+						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
 					</PopoverContent>
 				{/if}
 			</Popover>
@@ -2607,7 +2662,6 @@
 								if (o) circle2ToolbarPopoverOpen = true;
 							}}
 						/>
-						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle2} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
 						<Button variant="ghost" size="icon" class="h-11 w-11 shrink-0 rounded-full" onclick={() => { circle2ImageZoom = 1; circle2ImagePanX = 50; circle2ImagePanY = 50; }} title="Reset image zoom/pan" aria-label="Reset image zoom/pan"><RotateCcw size={18} class="text-foreground" strokeWidth={2} /></Button>
 						<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1" role="group" aria-label="Circle size">
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2Diameter(36)} disabled={Number(circle2Size) >= 720} title="Expand circle" aria-label="Expand circle"><Maximize2 size={16} class="text-foreground" strokeWidth={2} /></Button>
@@ -2617,6 +2671,7 @@
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2ImageZoom(0.12)} disabled={(Number(circle2ImageZoom) || 1) >= 4.99} title="Zoom photo in (up to 5×)" aria-label="Zoom photo in"><ZoomIn size={16} class="text-foreground" strokeWidth={2} /></Button>
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2ImageZoom(-0.12)} disabled={(Number(circle2ImageZoom) || 1) <= 1.01} title="Zoom photo out" aria-label="Zoom photo out"><ZoomOut size={16} class="text-foreground" strokeWidth={2} /></Button>
 						</div>
+						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle2} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
 					</PopoverContent>
 				{/if}
 			</Popover>
@@ -2632,8 +2687,8 @@
 			<!-- Cutout must pan + zoom identically to the background (it was
 			     derived from the same pixels). Mirror the zoom/pan math above. -->
 			<!-- Above circle badge (z≈45) so the subject overlaps the ring;
-			     below source/headline (z≈90). -->
-			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 50; pointer-events: none;">
+			     below the text stack (z≈60) so headlines always overlap letterbox/shadow. -->
+			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 48; pointer-events: none;">
 				{#if bgFitMode === 'contain'}
 					<div
 						style="
@@ -2710,6 +2765,18 @@
 									style="display:none"
 									onchange={onSourceLogoFile}
 								/>
+								<input
+									bind:this={sourceLogoColorEl}
+									type="color"
+									value={sourceLogoBg || '#C8F050'}
+									style="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;"
+									aria-hidden="true"
+									tabindex={-1}
+									oninput={(e) => {
+										const v = (e.currentTarget as HTMLInputElement).value;
+										if (v) setSourceLogoBg(v);
+									}}
+								/>
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									data-news-block="source"
@@ -2763,7 +2830,7 @@
 										tabindex={interactive ? 0 : undefined}
 										title={interactive && sourceLabelMode === 'logo' ? 'Drag to move · Double-click to replace logo' : undefined}
 										style="
-											{sourceCss}
+											{sourceLabelMode === 'logo' ? 'display: inline-flex; align-items: center;' : sourceCss}
 											white-space: nowrap;
 											overflow: visible;
 											{sourceShowBox
@@ -2784,13 +2851,7 @@
 												<div
 													{...triggerProps}
 													style="
-														position: relative;
-														display: inline-flex;
-														align-items: center;
-														justify-content: center;
-														padding: 6px;
-														border-radius: 10px;
-														box-sizing: border-box;
+														{sourceLogoChromeCss}
 														{logoSelected ? 'box-shadow: 0 0 0 2px rgba(139,92,246,0.65);' : ''}
 														{interactive && hoveringSource && selectedText !== 'source' && !sourceLogoToolbarOpen ? 'outline: 2px dashed rgba(255,255,255,0.35); outline-offset: 2px;' : ''}
 													"
@@ -2819,7 +2880,7 @@
 														<div
 															style="
 																position: absolute; inset: 0;
-																border-radius: 10px;
+																border-radius: {sourceLogoRadius}px;
 																background: rgba(0,0,0,0.45);
 																display: flex; align-items: center; justify-content: center;
 															"
@@ -2876,6 +2937,101 @@
 														>
 															<Plus size={20} strokeWidth={2} />
 														</Button>
+														<div
+															class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2"
+															role="group"
+															aria-label="Corner radius"
+															title="Corner radius"
+														>
+															<Button
+																variant="ghost"
+																size="icon"
+																class="h-8 w-8 shrink-0 rounded-full"
+																type="button"
+																disabled={sourceLogoRadius <= 0}
+																onclick={() => bumpSourceLogoRadius(-4)}
+																title="Less rounded"
+																aria-label="Decrease corner radius"
+															>
+																<Minus size={16} strokeWidth={2} />
+															</Button>
+															<span class="min-w-[1.75rem] text-center text-xs font-bold tabular-nums">{sourceLogoRadius}</span>
+															<Button
+																variant="ghost"
+																size="icon"
+																class="h-8 w-8 shrink-0 rounded-full"
+																type="button"
+																disabled={sourceLogoRadius >= LOGO_RADIUS_MAX}
+																onclick={() => bumpSourceLogoRadius(4)}
+																title="More rounded"
+																aria-label="Increase corner radius"
+															>
+																<Plus size={16} strokeWidth={2} />
+															</Button>
+														</div>
+														<div class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-0.5 rounded-full px-1">
+															<Button
+																variant="ghost"
+																size="icon"
+																class="h-11 w-11 shrink-0 rounded-full"
+																type="button"
+																onclick={() => sourceLogoColorEl?.click()}
+																title="Background color"
+																aria-label="Background color"
+															>
+																<span
+																	class="border-foreground/25 ring-foreground/15 box-border block h-[22px] w-[22px] rounded-md border-2 shadow-sm ring-1"
+																	style="background: {sourceLogoBg
+																		? sourceLogoBg
+																		: 'linear-gradient(135deg, transparent 0 42%, rgba(255,59,92,0.95) 42% 52%, transparent 52% 100%), linear-gradient(135deg, rgba(0,0,0,0.10), rgba(0,0,0,0.02))'};"
+																></span>
+															</Button>
+															{#if sourceLogoBg}
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	class="h-8 w-8 shrink-0 rounded-full"
+																	type="button"
+																	onclick={() => setSourceLogoBg(undefined)}
+																	title="Clear background"
+																	aria-label="Clear background"
+																>
+																	<X size={14} strokeWidth={2} />
+																</Button>
+															{/if}
+														</div>
+														<div
+															class="bg-muted/40 flex h-11 shrink-0 flex-row items-center gap-1 rounded-full px-2"
+															role="group"
+															aria-label="Background padding"
+															title="Background padding"
+														>
+															<Button
+																variant="ghost"
+																size="icon"
+																class="h-8 w-8 shrink-0 rounded-full"
+																type="button"
+																disabled={sourceLogoPad <= 0}
+																onclick={() => bumpSourceLogoPad(-2)}
+																title="Less padding"
+																aria-label="Decrease padding"
+															>
+																<Minus size={16} strokeWidth={2} />
+															</Button>
+															<span class="min-w-[1.75rem] text-center text-xs font-bold tabular-nums">{sourceLogoPad}</span>
+															<Button
+																variant="ghost"
+																size="icon"
+																class="h-8 w-8 shrink-0 rounded-full"
+																type="button"
+																disabled={sourceLogoPad >= LOGO_PAD_MAX}
+																onclick={() => bumpSourceLogoPad(2)}
+																title="More padding"
+																aria-label="Increase padding"
+															>
+																<Plus size={16} strokeWidth={2} />
+															</Button>
+														</div>
 														<Button
 															variant="ghost"
 															size="icon"
@@ -2900,21 +3056,23 @@
 													</PopoverContent>
 												</Popover>
 											{:else}
-												<img
-													src={logoSrc}
-													alt=""
-													draggable="false"
-													style="
-														display: block;
-														max-width: {Math.max(40, sourceLogoWidth)}px;
-														max-height: 52px;
-														width: auto;
-														height: auto;
-														object-fit: contain;
-														pointer-events: none;
-														filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18)){templateTheme === 'dark' ? ' brightness(0) invert(1)' : ''};
-													"
-												/>
+												<div style={sourceLogoChromeCss}>
+													<img
+														src={logoSrc}
+														alt=""
+														draggable="false"
+														style="
+															display: block;
+															max-width: {Math.max(40, sourceLogoWidth)}px;
+															max-height: 52px;
+															width: auto;
+															height: auto;
+															object-fit: contain;
+															pointer-events: none;
+															filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18)){templateTheme === 'dark' ? ' brightness(0) invert(1)' : ''};
+														"
+													/>
+												</div>
 											{/if}
 										{:else if sourceLabelMode === 'text' && source}
 											{source}
@@ -2929,11 +3087,12 @@
 		{/snippet}
 
 		<!-- ── Text area (source + headline + paragraph) ─────────────────── -->
+		<!-- z above shadow/letterbox/cutout so copy always overlaps the black bands. -->
 		<div
 			style="
 				position: absolute;
 				inset: 0;
-				z-index: 40;
+				z-index: 60;
 				overflow: visible;
 				display: flex;
 				flex-direction: column;

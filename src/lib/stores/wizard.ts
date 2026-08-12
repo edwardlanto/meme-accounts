@@ -16,7 +16,7 @@ const initial: WizardState = {
 	images: [],
 	slides: [],
 	topic: '',
-	style: 'dark',
+	style: 'bold',
 	brandColor: '#7bf1a8',
 	brandName: 'Your Brand',
 };

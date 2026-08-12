@@ -384,7 +384,6 @@
 				Back to Studio
 			</button>
 			<h1 class="font-display text-lg font-semibold tracking-tight md:text-xl">Burn music</h1>
-			<span class="text-xs font-mono burn-muted">Per-slide audio · clip length · export</span>
 		</div>
 
 		{#if loading}

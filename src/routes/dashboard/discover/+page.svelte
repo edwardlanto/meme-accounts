@@ -120,7 +120,6 @@
 			</div>
 			<div>
 				<h1 class="page-title dash-page-title">Discover</h1>
-				<p class="page-sub dash-page-sub">Track competitors · Scrape viral posts · Generate AI hooks</p>
 			</div>
 		</div>
 		<button onclick={() => showAddForm = !showAddForm} class="add-btn">

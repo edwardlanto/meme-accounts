@@ -208,7 +208,7 @@ export const mediaToDataUrlSchema = z.object({
 	url: z.string().url().max(2048),
 });
 
-const STYLE_OPTIONS = ['dark', 'bold', 'editorial', 'minimal'] as const;
+const STYLE_OPTIONS = ['bold', 'editorial', 'minimal'] as const;
 
 export const generateSlidesBodySchema = z.object({
 	topic: z.string().min(1).max(MAX_SLIDES_TOPIC_LEN),
@@ -219,7 +219,7 @@ export const generateSlidesBodySchema = z.object({
 		.transform((s) =>
 			s && STYLE_OPTIONS.includes(s as (typeof STYLE_OPTIONS)[number])
 				? (s as (typeof STYLE_OPTIONS)[number])
-				: 'dark'
+				: 'bold'
 		),
 	slideCount: z.preprocess(
 		(val) => (val === undefined || val === null ? 8 : Number(val)),
@@ -273,7 +273,7 @@ export const schedulerCancelBodySchema = z.object({
 	postId: uuidSchema,
 });
 
-const CONTENT_MODES = ['news', 'fact', 'story', 'quote', 'steps'] as const;
+const CONTENT_MODES = ['general', 'news', 'fact', 'story', 'quote', 'steps'] as const;
 
 export const vertexBodySchema = z.object({
 	prompt: z.string().min(1).max(4_000),
@@ -339,10 +339,23 @@ export const newsBodySchema = z.object({
 		z.number().finite().int().min(3).max(8),
 	),
 	studioRegenAt: z.number().finite().optional(),
+	/** Prior hooks/titles for this query — model must not repeat them. */
+	avoidHooks: z.array(z.string().max(200)).max(12).optional(),
 	maxWords: z.preprocess(
 		(val) => (val === undefined || val === null ? undefined : Number(val)),
 		z.number().finite().int().min(6).max(40).optional(),
 	),
+	audience: z.string().max(2000).optional().transform((s) => (s ?? '').trim()),
+	emotion: z
+		.string()
+		.max(40)
+		.optional()
+		.transform((s) => (s ?? '').trim().toLowerCase()),
+	style: z
+		.string()
+		.max(40)
+		.optional()
+		.transform((s) => (s ?? '').trim().toLowerCase()),
 });
 
 export const newsVariantsBodySchema = z.object({
@@ -364,6 +377,17 @@ export const newsVariantsBodySchema = z.object({
 		(val) => (val === undefined || val === null ? undefined : Number(val)),
 		z.number().finite().int().min(6).max(40).optional(),
 	),
+	audience: z.string().max(2000).optional().transform((s) => (s ?? '').trim()),
+	emotion: z
+		.string()
+		.max(40)
+		.optional()
+		.transform((s) => (s ?? '').trim().toLowerCase()),
+	style: z
+		.string()
+		.max(40)
+		.optional()
+		.transform((s) => (s ?? '').trim().toLowerCase()),
 });
 
 export const newsTextCarouselBodySchema = z.object({

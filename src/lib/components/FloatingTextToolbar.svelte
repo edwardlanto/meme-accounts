@@ -120,19 +120,15 @@
 
 	const colorChipStyle = $derived.by(() => {
 		if (textColorMixed) return '';
-		if (hlPatternOn) {
-			const pat = AVAILABLE_PATTERNS.find(
-				(p) => p.name === String(activeHighlight?.pattern ?? '').toLowerCase(),
-			);
-			if (pat?.url) {
-				return `background-image: url('${pat.url}'); background-size: cover; background-position: center;`;
-			}
-		}
-		if (hlGradientOn && activeHighlight?.gradientFrom && activeHighlight?.gradientTo) {
-			return `background: linear-gradient(135deg, ${activeHighlight.gradientFrom}, ${activeHighlight.gradientTo});`;
-		}
-		return `background: ${style.color ?? activeHighlight?.color ?? '#FFFFFF'};`;
+		/* Follow block/selection ink only — never brand highlight pattern/gradient. */
+		const ink = String(style.color ?? '').trim() || '#FFFFFF';
+		return `background: ${ink};`;
 	});
+
+	function isTextColorSelected(c: string): boolean {
+		if (textColorMixed) return false;
+		return sameHex(style.color, c);
+	}
 
 	let fontPickerOpen = $state(false);
 	let fontSearch = $state('');
@@ -690,7 +686,7 @@
 							type="button"
 							onclick={() => pickTextColor(c)}
 							class="h-7 w-7 rounded-lg border-2 transition-transform hover:scale-110
-								{!textColorMixed && !hlPatternOn && !hlGradientOn && (style.color === c || isSolidSelected(c)) ? 'border-black/40' : 'border-black/10'}"
+								{isTextColorSelected(c) ? 'border-black/40' : 'border-black/10'}"
 							style="background: {c};"
 							aria-label="Set color {c}"
 						></button>
@@ -699,7 +695,7 @@
 				<p class="mb-2 font-mono text-[9px] uppercase tracking-widest ftb-muted">Custom</p>
 				<input
 					type="color"
-					value={style.color ?? activeHighlight?.color ?? '#FFFFFF'}
+					value={String(style.color ?? '').trim() || '#FFFFFF'}
 					oninput={onTextColorCustomInput}
 					class="mb-3 h-8 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent"
 				/>

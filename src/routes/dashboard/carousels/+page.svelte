@@ -31,6 +31,7 @@
 		Rows3,
 		Video,
 	} from 'lucide-svelte';
+	import { consumeFlashToast } from '$lib/ui/flash-toast';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
@@ -101,6 +102,19 @@
 	let brokenDraftThumbIds = $state<Record<string, true>>({});
 	let brokenSavedThumbIds = $state<Record<string, true>>({});
 	let brokenClipThumbKeys = $state<Record<string, true>>({});
+	let flashToast = $state('');
+	let flashToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showFlashToast(message: string) {
+		const msg = String(message ?? '').trim();
+		if (!msg) return;
+		flashToast = msg;
+		if (flashToastTimer) clearTimeout(flashToastTimer);
+		flashToastTimer = setTimeout(() => {
+			flashToast = '';
+			flashToastTimer = null;
+		}, 3600);
+	}
 
 	/** Bulk stacks that are not YouTube-clip projects (those get their own section). */
 	const topicBulkWorkspaces = $derived(
@@ -780,6 +794,8 @@
 
 	onMount(async () => {
 		mounted = true;
+		const flash = consumeFlashToast();
+		if (flash) showFlashToast(flash);
 		const {
 			data: { user },
 		} = await supabase.auth.getUser();
@@ -1148,10 +1164,12 @@
 </script>
 
 <div class="page-wrap dash-page" class:mounted>
+	{#if flashToast}
+		<div class="page-toast" role="status" aria-live="polite">{flashToast}</div>
+	{/if}
 	<header class="page-hero">
 		<div class="page-hero-text">
 			<h1 class="page-title dash-page-title">Carousels</h1>
-			<p class="page-sub dash-page-sub">Bulk generations, YouTube clips, Studio drafts, and named saves - open one to keep editing.</p>
 		</div>
 		<div class="hero-actions">
 			<a href="/dashboard/templates" class="ma-btn ma-btn-ghost">Browse templates</a>
@@ -1655,6 +1673,36 @@
 </div>
 
 <style>
+	.page-toast {
+		position: fixed;
+		left: 50%;
+		bottom: 28px;
+		transform: translateX(-50%);
+		z-index: 9999;
+		max-width: min(420px, calc(100vw - 32px));
+		padding: 12px 18px;
+		border-radius: 14px;
+		background: rgba(15, 15, 16, 0.94);
+		color: #fff;
+		font-size: 13px;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+		pointer-events: none;
+		animation: page-toast-in 180ms ease-out;
+	}
+
+	@keyframes page-toast-in {
+		from {
+			opacity: 0;
+			transform: translateX(-50%) translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(-50%) translateY(0);
+		}
+	}
+
 	:root:not([data-theme='dark']) {
 		--ap-text: #0f0f10;
 		--ap-text-2: #5b5b62;

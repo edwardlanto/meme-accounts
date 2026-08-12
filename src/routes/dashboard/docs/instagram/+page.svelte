@@ -10,7 +10,6 @@
 			</div>
 			<h1 class="font-display font-bold text-2xl text-white">Instagram publishing docs</h1>
 		</div>
-		<p class="font-body text-sm text-white/40">Everything customers need to connect Instagram.</p>
 	</div>
 
 	<div class="grid grid-cols-1 gap-6">

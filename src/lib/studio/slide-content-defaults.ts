@@ -13,7 +13,7 @@ export const NEWS_DEFAULT_SUBTEXT =
 /** Last-resort News source if the user has no username yet. Prefer brand `displayName`. */
 export const NEWS_DEFAULT_SOURCE = 'YOUR NAME';
 
-/** Optional News source logo asset (user can switch source label to logo mode). */
+/** Optional News source logo asset. */
 export const NEWS_DEFAULT_SOURCE_LOGO = '/logo/meme-accounts-logo.webp';
 
 /** Default News badge / canvas geometry (matches initial studio state). */
@@ -32,22 +32,16 @@ export const NEWS_DEFAULT_LAYOUT = {
 	textPanelOffsetY: 0,
 	shadowHeight: 92,
 	shadowStrength: 1,
+	/** Match classic News punch (same stops as the pre-curve vignette). */
+	shadowCurve: 'news' as const,
 };
 
-/** Presets for the studio dock “Shadow” menu (bottom canvas fade). */
-export const BOTTOM_SHADOW_PRESETS: {
-	id: string;
-	label: string;
-	height: number;
-	strength: number;
-}[] = [
-	{ id: 'none', label: 'None', height: 0, strength: 0 },
-	{ id: 'soft', label: 'Soft', height: 36, strength: 0.55 },
-	{ id: 'natural', label: 'Natural', height: 52, strength: 0.82 },
-	{ id: 'news', label: 'News', height: 92, strength: 1 },
-	{ id: 'deep', label: 'Deep', height: 78, strength: 1 },
-	{ id: 'full', label: 'Full', height: 100, strength: 1 },
-];
+export {
+	BOTTOM_SHADOW_CURVES,
+	BOTTOM_SHADOW_PRESETS,
+	type BottomShadowCurve,
+	type BottomShadowPreset,
+} from './bottom-shadow';
 
 export const NEWS_DEMO_IMAGE = D.news.imageUrl;
 /** Default News canvas media — looping demo clip (preferred over {@link NEWS_DEMO_IMAGE}). */

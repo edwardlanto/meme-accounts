@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords } from '$lib/studio/fit-copy';
+import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
 /** Prefer /all when searching — category + keyword work more reliably than top-only. */
@@ -62,8 +63,8 @@ function pickNewsArticle(articles: any[], pick: string, wantedCsv: string) {
 	return from[0] ?? articles[0];
 }
 
-type ContentMode = 'news' | 'fact' | 'story' | 'quote' | 'steps';
-type SyntheticMode = 'fact' | 'story' | 'quote' | 'steps';
+type ContentMode = 'general' | 'news' | 'fact' | 'story' | 'quote' | 'steps';
+type SyntheticMode = 'general' | 'fact' | 'story' | 'quote' | 'steps';
 
 function clampStepCount(raw: unknown): number {
 	const n = Math.floor(Number(raw));
@@ -171,8 +172,45 @@ function demoSynthetic(
 	storyCategory: string,
 	syntheticHint: string,
 	stepCount = 5,
+	regenNonce = '',
 ) {
 	const cat = (storyCategory || 'health').toLowerCase();
+	const salt = Math.abs(
+		Number(String(regenNonce).replace(/\D/g, '').slice(-6)) ||
+			Math.floor(Math.random() * 900000) + 100000,
+	);
+	if (mode === 'general') {
+		const h = syntheticHint.trim() || 'a carousel about something surprising';
+		const words = wordsFromHint(h, 4);
+		const hooks = [
+			`HERE IS WHAT YOU NEED TO KNOW ABOUT [[${words.slice(0, 2).join(' ')}]]`,
+			`EVERYONE GETS [[${words[0]}]] WRONG — START WITH [[${words[1]}]]`,
+			`THE QUIET TRUTH ABOUT [[${words.slice(0, 2).join(' ')}]]`,
+			`STOP SCROLLING IF YOU CARE ABOUT [[${words[0]}]]`,
+			`[[${words[0]}]] CHANGES FASTER THAN YOU THINK`,
+		];
+		const hook = hooks[salt % hooks.length]!;
+		const angles = [
+			`Slide 1 hooks with the core idea. Later slides unpack concrete details, a surprising angle, and a clear takeaway.`,
+			`Open with a mistake people make, then show what actually works and why it sticks.`,
+			`Start in a specific moment, then zoom out to the pattern and one practical next step.`,
+			`Lead with a number, then explain the mechanism and the myth that hides it.`,
+		];
+		return {
+			text: hook,
+			imageUrl: null,
+			title: titleFromHook(hook),
+			description:
+				`You asked for: ${h.slice(0, 200)}. ` +
+				angles[salt % angles.length] +
+				` Variation ${salt % 97}.`,
+			source: 'General',
+			url: null,
+			uuid: `demo-general-${salt % 97}`,
+			categories: [],
+			demo: true,
+		};
+	}
 	if (mode === 'steps') {
 		const h = syntheticHint.trim() || 'a better gut';
 		const topic = h.replace(/^\d+\s*(?:steps?|ways|tips|habits|rules|things)\s*(?:to|for)?\s*/i, '').trim() || h;
@@ -369,6 +407,8 @@ async function syntheticContent(
 	regenNonce = '',
 	stepCount = 5,
 	maxWords = 28,
+	tone: { audience?: string; emotion?: string; style?: string } = {},
+	avoidHooks: string[] = [],
 ) {
 	const theme = (storyCategory || 'health').trim() || 'health';
 	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
@@ -376,13 +416,65 @@ async function syntheticContent(
 	const hasHint = hintSafe.length > 0;
 	const stepsN = clampStepCount(stepCount);
 
+	const avoidClean = avoidHooks
+		.map((h) => String(h ?? '').replace(/\[\[|\]\]/g, '').replace(/"/g, "'").trim())
+		.filter(Boolean)
+		.slice(0, 12);
+
+	const ANGLE_HINTS = [
+		'Lead with a surprising statistic or concrete number.',
+		'Lead with a common mistake people make.',
+		'Lead with a vivid before/after beat.',
+		'Lead with a myth people still believe.',
+		'Lead with a day-in-the-life scene.',
+		'Lead with a contrarian take that still feels true.',
+		'Lead with one sharp practical move the reader can try today.',
+		'Lead with an emotional personal stake (fear, pride, or relief).',
+		'Lead with a weird-but-true detail most people overlook.',
+		'Lead with a question the reader cannot ignore.',
+	];
+	const angleHint = ANGLE_HINTS[Math.floor(Math.random() * ANGLE_HINTS.length)]!;
+
+	const avoidBlock =
+		avoidClean.length > 0
+			? `\n\nCRITICAL — prior runs for this same request already used these hooks/angles (do NOT reuse wording, structure, or the same core claim):\n${avoidClean
+					.map((h, i) => `${i + 1}. "${h}"`)
+					.join('\n')}\nPick a genuinely different angle. ${angleHint}\n`
+			: `\n\nFreshness: ${angleHint} Do not default to the most generic take on this topic.\n`;
+
 	const regenBlock =
-		typeof regenNonce === 'string' && regenNonce.trim().length > 0
-			? `\n\nStudio repeat-load: vary the hook and context substantially vs prior outputs (session ${regenNonce.replace(/"/g, "'").slice(0, 32)}).\n`
-			: '';
+		(typeof regenNonce === 'string' && regenNonce.trim().length > 0
+			? `\n\nStudio repeat-load (session ${regenNonce.replace(/"/g, "'").slice(0, 32)}):
+- Write a NEW hook — do not reuse prior wording.
+- Rewrite context with a DIFFERENT opening sentence and different concrete details than any prior run on this topic.
+- The first sentence of context is shown under the headline; it must feel fresh on every regenerate.\n`
+			: '') + avoidBlock;
 
 	const userPrompt =
-		mode === 'steps'
+		mode === 'general'
+			? `You turn a natural-language request into Instagram carousel overlay copy. Output ONLY valid JSON (no markdown fences) with this shape:
+{"hook":"...","context":"..."}
+
+The user speaks casually — e.g. "Make me a carousel of beds", "carousel about why founders quit", "3 tips for better sleep".
+Interpret their intent and produce carousel-ready copy that delivers exactly what they asked for.
+
+Rules for "hook":
+- Slide 1 overlay: the strongest opening line for their request
+- Max ${maxWords} words, ALL CAPS
+- No hashtags, no emojis
+- Must clearly match what they asked for (topic, format, tone)
+
+Rules for "context":
+- 6–12 full sentences in normal sentence case
+- This is the bible for later slides: concrete details, angles, examples, and beats a carousel writer can use
+- Match the shape they implied (tips → numbered ideas; product/topic → facets; story → beats; list → distinct items)
+- Do not paste the hook verbatim
+- Prefer specific nouns, numbers, and images over vague advice
+- Sentence 1 is the on-canvas paragraph under the headline — make it a sharp, self-contained lede (not a throat-clearing intro)
+
+${hasHint ? `User request (MUST follow this closely):\n"""${hintSafe}"""` : `No request given — invent a vivid, useful carousel topic.`}${regenBlock}`
+
+			: mode === 'steps'
 			? `You write a numbered STEPS / listicle bible for an Instagram carousel. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
@@ -452,10 +544,33 @@ Rules for "context":
 - No "three tips", "here is why", or generic motivational slogans unless tied to a specific plot beat
 - Do not paste the hook verbatim as the first sentence${regenBlock}`;
 
+	const toneSuffix = generationTonePromptSuffix(tone);
+	const userPromptWithTone = userPrompt + toneSuffix;
+
+	const baseTemp =
+		mode === 'general'
+			? 0.92
+			: mode === 'story'
+				? 0.94
+				: mode === 'quote'
+					? 0.92
+					: mode === 'steps'
+						? 0.9
+						: 0.9;
+	const temperature = Math.min(1, baseTemp + (avoidClean.length ? 0.05 : 0));
+
 	const jsonRaw = await openRouterComplete(
-		[{ role: 'user', content: userPrompt }],
-		mode === 'story' ? 0.92 : mode === 'quote' ? 0.9 : mode === 'steps' ? 0.86 : 0.88,
-		mode === 'story' ? 720 : mode === 'steps' ? 700 : mode === 'quote' ? 560 : 500,
+		[{ role: 'user', content: userPromptWithTone }],
+		temperature,
+		mode === 'general'
+			? 700
+			: mode === 'story'
+				? 720
+				: mode === 'steps'
+					? 700
+					: mode === 'quote'
+						? 560
+						: 500,
 	);
 	let overlayText = '';
 	let description = '';
@@ -465,7 +580,11 @@ Rules for "context":
 		overlayText = parsed.hook;
 		description = parsed.context;
 	} else if (mode === 'steps') {
-		const demo = demoSynthetic('steps', storyCategory, syntheticHint, stepsN);
+		const demo = demoSynthetic('steps', storyCategory, syntheticHint, stepsN, regenNonce);
+		overlayText = demo.text;
+		description = demo.description;
+	} else if (mode === 'general') {
+		const demo = demoSynthetic('general', storyCategory, syntheticHint, stepsN, regenNonce);
 		overlayText = demo.text;
 		description = demo.description;
 	} else {
@@ -495,7 +614,9 @@ Rules for "context":
 		title: stripEmDashes(title),
 		description: stripEmDashes(description),
 		source:
-			mode === 'quote'
+			mode === 'general'
+				? 'General'
+				: mode === 'quote'
 				? 'Quotes'
 				: mode === 'fact'
 					? 'Did you know'
@@ -533,15 +654,35 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const syntheticHint = String(body.syntheticHint ?? '').trim();
 	const stepCount = clampStepCount(body.stepCount);
 	const maxWords = Math.max(6, Math.min(40, Math.floor(Number(body.maxWords)) || 28));
+	const tone = {
+		audience: body.audience,
+		emotion: body.emotion,
+		style: body.style,
+	};
 
-	if (mode === 'fact' || mode === 'story' || mode === 'quote' || mode === 'steps') {
+	if (mode === 'general' || mode === 'fact' || mode === 'story' || mode === 'quote' || mode === 'steps') {
+		if (mode === 'general' && !syntheticHint) {
+			return json(
+				{ error: 'Describe what you want — e.g. “Make me a carousel of beds”.' },
+				{ status: 400 },
+			);
+		}
 		if (!env.OPENROUTER_API_KEY) {
-			return json(demoSynthetic(mode, storyCategory, syntheticHint, stepCount), { status: 200 });
+			const regenNonce =
+				typeof body.studioRegenAt === 'number' && Number.isFinite(body.studioRegenAt)
+					? String(Math.floor(body.studioRegenAt))
+					: '';
+			return json(demoSynthetic(mode, storyCategory, syntheticHint, stepCount, regenNonce), {
+				status: 200,
+			});
 		}
 		const regenNonce =
 			typeof body.studioRegenAt === 'number' && Number.isFinite(body.studioRegenAt)
 				? String(Math.floor(body.studioRegenAt))
 				: '';
+		const avoidHooks = Array.isArray(body.avoidHooks)
+			? body.avoidHooks.map((h) => String(h ?? '').trim()).filter(Boolean).slice(0, 12)
+			: [];
 		return json(
 			await syntheticContent(
 				mode,
@@ -551,6 +692,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				regenNonce,
 				stepCount,
 				maxWords,
+				tone,
+				avoidHooks,
 			),
 			{ status: 200 },
 		);
@@ -640,6 +783,7 @@ Rules:
 - Start with the most shocking/interesting fact
 
 Headline & snippet: "${snippet}"
+${generationTonePromptSuffix(tone)}
 
 Return ONLY the rewritten text. No quotes, no explanation.`;
 
@@ -657,29 +801,34 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 		const supportPrompt = `You write the SHORT supporting paragraph under an Instagram news meme headline.
 
 Rules:
-- 1 or 2 complete sentences only (never 3+)
-- Max ${Math.max(12, Math.min(45, maxWords <= 16 ? maxWords + 4 : maxWords <= 28 ? 28 : 45))} words total
+- ${maxWords <= 16 ? 'Exactly 1 complete sentence only' : '1 or 2 complete sentences only (never 3+)'}
+- Max ${Math.max(10, Math.min(32, maxWords <= 16 ? Math.max(12, maxWords + 2) : maxWords <= 28 ? 24 : 32))} words total
 - Sentence case (not ALL CAPS)
 - Must end on a finished sentence with . ! or ?
 - NEVER use ellipsis (…) or cut a word short
 - NEVER use em dashes (—) or en dashes (–)
 - No hashtags, no emojis, no quotes around the whole blurb
 - Faithful to the source; do not invent facts
+- Prefer one concrete fact or implication — no essay
 
 Headline: "${stripEmDashes(article.title ?? '')}"
 Source blurb: "${stripEmDashes(String(article.description ?? '').slice(0, 500))}"
+${generationTonePromptSuffix(tone)}
 
 Return ONLY the supporting paragraph.`;
 
 		const support = await openRouterComplete(
 			[{ role: 'user', content: supportPrompt }],
 			0.55,
-			maxWords <= 16 ? 80 : 120,
+			maxWords <= 16 ? 60 : 100,
 		);
 		if (support) supportingCopy = stripEmDashes(support.replace(/\u2026/g, '').trim());
 		// Keep supporting copy in the same ballpark as the word-count chip.
 		{
-			const supportCap = Math.max(12, Math.min(45, maxWords <= 16 ? maxWords + 4 : maxWords <= 28 ? 28 : 45));
+			const supportCap = Math.max(
+				10,
+				Math.min(32, maxWords <= 16 ? Math.max(12, maxWords + 2) : maxWords <= 28 ? 24 : 32),
+			);
 			supportingCopy = clampToCompleteWords(supportingCopy, supportCap);
 		}
 	}

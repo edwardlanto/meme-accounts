@@ -177,10 +177,6 @@
 		<header class="page-head">
 			<p class="eyebrow">Integrations</p>
 			<h1 class="page-title dash-page-title">Connect your accounts</h1>
-			<p class="page-sub">
-				Link your business profiles to publish and schedule from Carousel Studio.
-				<a href="https://docs.zernio.com/sdks" target="_blank" rel="noopener noreferrer" class="doc-link">Zernio API</a>
-			</p>
 		</header>
 
 		{#if banner}

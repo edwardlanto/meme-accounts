@@ -194,6 +194,14 @@ export const BULK_AUDIENCES = [
 
 export type BulkAudienceId = (typeof BULK_AUDIENCES)[number]['id'];
 
+export const BULK_STYLES = [
+	{ id: 'bold', label: 'Bold' },
+	{ id: 'editorial', label: 'Editorial' },
+	{ id: 'minimal', label: 'Minimal' },
+] as const;
+
+export type BulkStyleId = (typeof BULK_STYLES)[number]['id'];
+
 /** Turn the picked audience (or free text) into a prompt-ready phrase. */
 export function audiencePromptText(id: string, custom: string): string {
 	if (id === 'custom') return custom.trim();

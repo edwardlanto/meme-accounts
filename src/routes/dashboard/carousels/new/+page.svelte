@@ -28,13 +28,12 @@
 	let uploadEl: HTMLInputElement;
 
 	// ── Step 3: Style ─────────────────────────────────────────────────────
-	let style = $state<'dark' | 'bold' | 'editorial' | 'minimal'>('dark');
+	let style = $state<'bold' | 'editorial' | 'minimal'>('bold');
 	let slideCount = $state(8);
 	let brandColor = $state('#7bf1a8');
 	let brandName = $state('Your Brand');
 
 	const styles = [
-		{ id: 'dark',     label: 'Dark Editorial', desc: 'Dramatic. Minimal. Every word counts.' },
 		{ id: 'bold',     label: 'Bold & Punchy',  desc: 'High energy. Short hits. Emoji-forward.' },
 		{ id: 'editorial',label: 'Magazine',       desc: 'Elegant rhythm. Reads like great writing.' },
 		{ id: 'minimal',  label: 'Clean Pro',      desc: 'Structured. Business-ready. Clear.' },
@@ -236,7 +235,6 @@
 			<div class="step-content">
 				<p class="step-eyebrow">01 / TOPIC</p>
 				<h1 class="step-headline">What's your carousel about?</h1>
-				<p class="step-sub">Give AI enough to work with — the more specific, the better the output.</p>
 
 				<div class="field-group">
 					<label class="field-label">Topic or hook <span class="required">*</span></label>
@@ -266,7 +264,6 @@
 			<div class="step-content">
 				<p class="step-eyebrow">02 / PHOTOS</p>
 				<h1 class="step-headline">Add your photos.</h1>
-				<p class="step-sub">AI will weave them into the slides — cover shots, lifestyle images, product photos. Up to 10.</p>
 
 				<!-- Drop zone -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -319,7 +316,6 @@
 			<div class="step-content">
 				<p class="step-eyebrow">03 / STYLE</p>
 				<h1 class="step-headline">Choose your look.</h1>
-				<p class="step-sub">AI adapts its writing and layout choices to match your aesthetic.</p>
 
 				<!-- Style grid -->
 				<div class="style-grid">
@@ -362,7 +358,6 @@
 							<Sparkles size={32} />
 						</div>
 						<h2 class="gen-title">Generating your carousel…</h2>
-						<p class="gen-sub">Claude is crafting {slideCount} slides for "{topic}"</p>
 						<div class="gen-dots">
 							<span></span><span></span><span></span>
 						</div>

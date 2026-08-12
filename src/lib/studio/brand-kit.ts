@@ -43,16 +43,16 @@ export type BrandKitSettings = {
 	highlightGradientTo: string;
 	/** Default chip / block fill behind brand text. Empty = none. */
 	textBgColor: string;
-	/** On-slide display name (News source label, Text Carousel, Creator hook, …). */
+	/** On-slide display name (Text Carousel, Creator hook, …). */
 	displayName: string;
 	/** On-slide handle, with or without `@`. */
 	handle: string;
-	/** News source label: text byline vs logo image. */
+	/** News branding uses logo only; kept for older saved kits. */
 	sourceLabelMode: 'text' | 'logo';
 	sourceLogoWidth: number;
 	sourceBorderKind: 'none' | 'rules' | 'box';
 	sourceBorderColor: string;
-	/** Last drag position for the News source label (template px). */
+	/** Last drag position for the News logo (template px). */
 	sourceOffsetX: number;
 	sourceOffsetY: number;
 	/** True after the user finishes the identity onboarding sheet. */
@@ -85,7 +85,7 @@ export const DEFAULT_BRAND_KIT: BrandKitSettings = {
 	textBgColor: '',
 	displayName: '',
 	handle: '',
-	sourceLabelMode: 'text',
+	sourceLabelMode: 'logo',
 	sourceLogoWidth: 260,
 	sourceBorderKind: 'none',
 	sourceBorderColor: '',
@@ -150,7 +150,9 @@ function normalizeKit(parsed: Partial<BrandKitSettings> | null | undefined, ctaF
 		textBgColor: normalizeTextBgHex(String(parsed?.textBgColor ?? DEFAULT_BRAND_KIT.textBgColor)),
 		displayName: String(parsed?.displayName ?? DEFAULT_BRAND_KIT.displayName),
 		handle: normalizeBrandHandle(String(parsed?.handle ?? DEFAULT_BRAND_KIT.handle)),
-		sourceLabelMode: parsed?.sourceLabelMode === 'logo' ? 'logo' : 'text',
+		sourceLabelMode: parsed?.sourceLabelMode === 'text' && !String(parsed?.logoUrl ?? '').trim()
+			? 'text'
+			: 'logo',
 		sourceLogoWidth: (() => {
 			const w = Number(parsed?.sourceLogoWidth);
 			return Number.isFinite(w) ? Math.round(Math.max(80, Math.min(400, w))) : DEFAULT_BRAND_KIT.sourceLogoWidth;

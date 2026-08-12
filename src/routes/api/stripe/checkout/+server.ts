@@ -85,28 +85,48 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 	}
 
-	const session = await stripe.checkout.sessions.create({
-		mode: 'subscription',
-		customer: customerId,
-		client_reference_id: user.id,
-		line_items: [{ price: priceId, quantity: 1 }],
-		success_url: appUrl(`/checkout/success?session_id={CHECKOUT_SESSION_ID}`),
-		cancel_url: appUrl(`/checkout?plan=${plan}&interval=${interval}&canceled=1`),
-		allow_promotion_codes: true,
-		billing_address_collection: 'auto',
-		customer_update: { address: 'auto', name: 'auto' },
-		metadata: {
-			supabase_user_id: user.id,
-			plan,
-			interval,
-		},
-		subscription_data: {
+	if (!/^price_/.test(priceId)) {
+		return json(
+			{
+				ok: false,
+				error:
+					`Invalid Stripe price id for ${plan}/${interval}. Use a Price ID from the Dashboard (starts with price_), not a dollar amount.`,
+			},
+			{ status: 503 }
+		);
+	}
+
+	let session;
+	try {
+		session = await stripe.checkout.sessions.create({
+			mode: 'subscription',
+			customer: customerId,
+			client_reference_id: user.id,
+			line_items: [{ price: priceId, quantity: 1 }],
+			success_url: appUrl(`/checkout/success?session_id={CHECKOUT_SESSION_ID}`),
+			cancel_url: appUrl(`/checkout?plan=${plan}&interval=${interval}&canceled=1`),
+			allow_promotion_codes: true,
+			billing_address_collection: 'auto',
+			customer_update: { address: 'auto', name: 'auto' },
 			metadata: {
 				supabase_user_id: user.id,
 				plan,
+				interval,
 			},
-		},
-	});
+			subscription_data: {
+				metadata: {
+					supabase_user_id: user.id,
+					plan,
+				},
+			},
+		});
+	} catch (e: any) {
+		console.error('[stripe checkout]', e?.message ?? e);
+		return json(
+			{ ok: false, error: e?.message ?? 'Failed to create checkout session' },
+			{ status: 502 }
+		);
+	}
 
 	if (!session.url) {
 		return json({ ok: false, error: 'Failed to create checkout session' }, { status: 500 });

@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { newsVariantsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords } from '$lib/studio/fit-copy';
+import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'anthropic/claude-sonnet-4.5';
@@ -19,7 +20,7 @@ function truncate(text: string, max = DEFAULT_MAX_WORDS): string {
 	return clampToCompleteWords(stripEmDashes(String(text ?? '').trim()), max);
 }
 
-type VariantContentMode = 'news' | 'fact' | 'story' | 'quote' | 'steps';
+type VariantContentMode = 'general' | 'news' | 'fact' | 'story' | 'quote' | 'steps';
 
 function clampStepCount(raw: unknown, slideCount: number): number {
 	const n = Math.floor(Number(raw));
@@ -46,12 +47,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		stepCount: stepCountRaw,
 		includeReplies: includeRepliesRaw,
 		maxWords: maxWordsRaw,
+		audience: audienceRaw,
+		emotion: emotionRaw,
+		style: styleRaw,
 	} = body;
 
 	if (!text.trim()) return json({ error: 'Missing article text' }, { status: 400 });
 
 	const slideCount = Math.max(1, Math.min(10, Math.floor(Number(count))));
 	const contentMode: VariantContentMode =
+		contentModeRaw === 'general' ||
 		contentModeRaw === 'fact' ||
 		contentModeRaw === 'story' ||
 		contentModeRaw === 'quote' ||
@@ -61,6 +66,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const stepCount = clampStepCount(stepCountRaw, slideCount);
 	const includeReplies = includeRepliesRaw === true;
 	const MAX_WORDS = clampMaxWords(maxWordsRaw);
+	const toneSuffix = generationTonePromptSuffix({
+		audience: audienceRaw,
+		emotion: emotionRaw,
+		style: styleRaw,
+	});
 
 	if (!env.OPENROUTER_API_KEY) {
 		const variants = getMockVariants(slideCount, title, contentMode, stepCount).map(stripEmDashes);
@@ -87,6 +97,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			`Preferred order: slide 2 = concrete evidence/stat/example, slide 3 = why it matters/implication, slide 4 = action/lesson, remaining = distinct angles. ` +
 			`Each slide feels like the NEXT PANEL in the same carousel. ` +
 			`No near-duplicates. No quotes, markdown, emojis, or hashtags.` +
+			noEmDash;
+
+		const generalSystem =
+			`You write short Instagram carousel overlay copy from a natural-language request. Output ONLY valid JSON. ` +
+			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
+			`The user asked casually (e.g. "Make me a carousel of beds") — deliver exactly that topic/shape. ` +
+			`Slide 1 = strongest hook matching their request. ` +
+			`Slides 2–N each add a NEW facet, tip, example, or beat — never paraphrase slide 1. ` +
+			`Match implied format (tips → concrete tips; product/topic → facets; story → beats; list → distinct items). ` +
+			`ALL CAPS. No near-duplicates. No quotes, markdown, emojis, or hashtags.` +
 			noEmDash;
 
 		const factSystem =
@@ -142,7 +162,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						? quoteSystem
 						: contentMode === 'steps'
 							? stepsSystem
-							: newsSystem) +
+							: contentMode === 'general'
+								? generalSystem
+								: newsSystem) +
 			(includeReplies
 				? ` ALSO return tweet reply punchlines. Output ONLY a JSON object (no markdown fences) with shape ` +
 					`{"variants":[...${slideCount} strings...],"replies":[...${slideCount} strings...]}. ` +
@@ -162,12 +184,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						? `Title: ${title || 'Untitled'}\n\nStory bible + narrative context (this is fiction or a tight anecdote — not a news article):\n${text.slice(0, 12000)}\n\n` +
 							`Write all ${slideCount} slides as ONE continuous mini-story. Slide 1 = the hook. Each later slide is the next beat: same characters, forward motion, rising stakes or emotional truth. ` +
 							`Do not pivot into tips, statistics, or unrelated angles unless they appear inside the scene.`
-						: `Source: ${sourceUrl}\nTitle: ${title}\n\nArticle text:\n${text.slice(0, 12000)}\n\n` +
-							`Write the carousel overlay copy for all ${slideCount} slides following the structure rules. ` +
-							`Slide 1 = headline hook. Every later slide must add NEW information or a new implication.`) +
+						: contentMode === 'general'
+							? `User request / title: ${title || 'Untitled'}\n\nContext bible (interpret and deliver what they asked for):\n${text.slice(0, 12000)}\n\n` +
+								`Write all ${slideCount} slides as ONE carousel that fulfills the request. Slide 1 = hook. Every later slide must add NEW information or a new angle.`
+							: `Source: ${sourceUrl}\nTitle: ${title}\n\nArticle text:\n${text.slice(0, 12000)}\n\n` +
+								`Write the carousel overlay copy for all ${slideCount} slides following the structure rules. ` +
+								`Slide 1 = headline hook. Every later slide must add NEW information or a new implication.`) +
 			(includeReplies
 				? `\n\nAlso write ${slideCount} reply tweets (one per variant) for a quote-tweet / thread reply under an image.`
-				: '');
+				: '') + toneSuffix;
 
 		const res = await fetch(OPENROUTER_API, {
 			method: 'POST',
@@ -192,7 +217,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 								? 0.82
 								: contentMode === 'steps'
 									? 0.78
-									: 0.8,
+									: contentMode === 'general'
+										? 0.86
+										: 0.8,
 				max_tokens:
 					contentMode === 'story'
 						? 1200
@@ -202,7 +229,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 								? 1400
 								: contentMode === 'quote'
 									? 1000
-									: 1000,
+									: contentMode === 'general'
+										? 1100
+										: 1000,
 			}),
 		});
 
@@ -389,7 +418,15 @@ function getMockVariants(
 					? quoteMock
 					: contentMode === 'steps'
 						? stepsMock
-						: newsMock;
+						: contentMode === 'general'
+							? [
+									title || 'HERE IS WHAT YOU NEED TO KNOW ABOUT [[BEDS]]',
+									'THE BEST ONES [[SUPPORT]] YOUR SPINE WITHOUT FEELING STIFF',
+									'MATERIAL AND [[FIRMNESS]] CHANGE HOW YOU WAKE UP',
+									'SKIP THE HYPE — MATCH THE BED TO HOW YOU [[SLEEP]]',
+									'START WITH [[ONE CHANGE]] THAT MAKES NIGHTS EASIER',
+								]
+							: newsMock;
 	const out = mock.slice(0, count);
 	while (out.length < count) out.push(out[out.length - 1]!);
 	return out;

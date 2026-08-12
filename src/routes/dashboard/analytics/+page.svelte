@@ -256,7 +256,6 @@
 			</div>
 			<div>
 				<h1 class="page-title dash-page-title">Analytics</h1>
-				<p class="page-sub dash-page-sub">Publishing performance across all your channels</p>
 			</div>
 		</div>
 		<div class="page-head-right">

@@ -13,7 +13,7 @@
 		overlays?: Overlay[];
 		onOverlaysChange?: (overlays: Overlay[]) => void;
 		resolveSrc?: (src: string) => string;
-		/** Double-click canvas to open BG tools. */
+		/** Click canvas to open BG tools. */
 		onBackgroundDblClick?: (detail: { clientX: number; clientY: number }) => void;
 	}
 
@@ -34,7 +34,7 @@
 	const showVideo = $derived(!!String(backgroundVideo ?? '').trim());
 	const showImage = $derived(!showVideo && !!String(backgroundImage ?? '').trim());
 
-	function onCanvasDblClick(e: MouseEvent) {
+	function onCanvasClick(e: MouseEvent) {
 		if (!interactive || !onBackgroundDblClick) return;
 		e.stopPropagation();
 		onBackgroundDblClick({ clientX: e.clientX, clientY: e.clientY });
@@ -52,8 +52,8 @@
 		transform-origin: top left;
 		background: {solidBackgroundColor || '#ffffff'};
 	"
-	ondblclick={onCanvasDblClick}
-	title={interactive && onBackgroundDblClick ? 'Double-click for BG tools' : undefined}
+	onclick={onCanvasClick}
+	title={interactive && onBackgroundDblClick ? 'Click for BG tools' : undefined}
 	role={interactive && onBackgroundDblClick ? 'presentation' : undefined}
 >
 	{#if showVideo}

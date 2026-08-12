@@ -134,7 +134,7 @@ export function defaultNewsLayoutGeometry(): NewsLayoutGeometry {
 		circle2BorderColor: '#ffffff',
 		circleShadow: { ...DEFAULT_CIRCLE_SHADOW },
 		circle2Shadow: { ...DEFAULT_CIRCLE_SHADOW },
-		sourceLabelMode: 'text',
+		sourceLabelMode: 'logo',
 		sourceLogoSrc: '',
 		sourceLogoWidth: 160,
 		sourceBorderKind: 'none',

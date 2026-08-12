@@ -2,6 +2,7 @@
 	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark, Save, Plus } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
+	import { setFlashToast } from '$lib/ui/flash-toast';
 
 	interface $$Props {
 		slideLabels?: string[];
@@ -67,6 +68,19 @@
 	let showMusicPanel = $state(false);
 	let showPostPanel = $state(false);
 	let showSavePanel = $state(false);
+	let toastMessage = $state('');
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showToast(message: string) {
+		const msg = String(message ?? '').trim();
+		if (!msg) return;
+		toastMessage = msg;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => {
+			toastMessage = '';
+			toastTimer = null;
+		}, 3200);
+	}
 	let saveTemplateName = $state('');
 	let saveTemplateSaving = $state(false);
 	let saveTemplateError = $state('');
@@ -191,6 +205,13 @@
 		try {
 			await onSaveTemplate(name, overwriteId ? { overwriteId } : undefined);
 			closeSavePanel();
+			const toast = overwritingBuiltin
+				? `Saved as your ${builtinLabel} default`
+				: overwriteId
+					? `Updated “${name}”`
+					: `Saved “${name}”`;
+			setFlashToast(toast);
+			showToast(toast);
 		} catch (e: unknown) {
 			saveTemplateError = e instanceof Error ? e.message : 'Save failed — try again.';
 		} finally {
@@ -382,10 +403,43 @@
 				{/if}
 			</Button>
 		{/if}
+		{#if toastMessage}
+			<div class="fa-toast" role="status" aria-live="polite">{toastMessage}</div>
+		{/if}
 	</div>
 {/if}
 
 <style>
+	.fa-toast {
+		position: fixed;
+		left: 50%;
+		bottom: 28px;
+		transform: translateX(-50%);
+		z-index: 9999;
+		max-width: min(420px, calc(100vw - 32px));
+		padding: 12px 18px;
+		border-radius: 14px;
+		background: rgba(15, 15, 16, 0.94);
+		color: #fff;
+		font-size: 13px;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+		pointer-events: none;
+		animation: fa-toast-in 180ms ease-out;
+	}
+
+	@keyframes fa-toast-in {
+		from {
+			opacity: 0;
+			transform: translateX(-50%) translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(-50%) translateY(0);
+		}
+	}
+
 	/* ── Floating panel ── */
 	.panel {
 		border-radius: 18px;

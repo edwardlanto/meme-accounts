@@ -128,7 +128,7 @@
 			return Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripTopPct)));
 		}
 		if (layout === 'hook') return 26;
-		if (layout === 'creator') return 28;
+		if (layout === 'creator') return 30;
 		if (layout === 'source') return 30;
 		return 0;
 	});
@@ -207,6 +207,21 @@
 			.join('');
 	}
 	const avatarInitials = $derived(profileInitials(profileName));
+
+	const creatorAvatarSize = $derived(previewMode ? 34 : 68);
+	const creatorProfileGap = $derived(previewMode ? 10 : 18);
+	const creatorAvatarOffset = $derived(
+		textOffsets.textCarouselAvatar ??
+			(textOffsets.videoCreatorProfile ? { ...textOffsets.videoCreatorProfile } : { x: 0, y: 0 }),
+	);
+	const creatorNameOffset = $derived(textOffsets.textCarouselName ?? { x: 0, y: 0 });
+	const creatorHandleOffset = $derived(textOffsets.textCarouselHandle ?? { x: 0, y: 0 });
+	const creatorLetterboxPadding = $derived(
+		previewMode
+			? `16px ${letterboxPadX}px 8px`
+			: `28px ${letterboxPadX}px 16px`,
+	);
+	const creatorLetterboxGap = $derived(previewMode ? 8 : 14);
 
 	const DEFAULT_VIDEO = VIDEO_STORY_DEFAULTS.videoUrl;
 
@@ -403,7 +418,7 @@
 		{frameStyle}
 		title={interactive
 			? onBackgroundDblClick
-				? 'Drag to move · Corner to expand · Double-click for BG tools'
+				? 'Drag to move · Corner to expand · Click for BG tools'
 				: 'Drag to move · Corner to expand'
 			: undefined}
 		onOffsetChange={(x, y) => onTextOffsetChange?.('videoStoryMedia', { x, y })}
@@ -850,7 +865,9 @@
 						justify-content: flex-end;
 						padding: {previewMode ? '10px' : '20px'} {letterboxPadX}px {previewMode ? '28px' : '56px'};
 						box-sizing: border-box;
-						overflow: hidden;
+						overflow: visible;
+						position: relative;
+						z-index: 5;
 					"
 				>
 					<DraggableBlock
@@ -1234,32 +1251,41 @@
 						width: 100%;
 						display: flex;
 						flex-direction: column;
-						justify-content: flex-end;
-						gap: {previewMode ? '10px' : '20px'};
-						padding: {previewMode ? '10px' : '18px'} {letterboxPadX}px {previewMode ? '10px' : '20px'};
+						justify-content: flex-start;
+						gap: {creatorLetterboxGap}px;
+						padding: {creatorLetterboxPadding};
 						box-sizing: border-box;
-						overflow: hidden;
+						overflow: visible;
+						position: relative;
+						z-index: 5;
 					"
 				>
-				<DraggableBlock
-					dx={textOffsets.videoCreatorProfile?.x ?? 0}
-					dy={textOffsets.videoCreatorProfile?.y ?? 0}
-					{interactive}
-					{scale}
-					onChange={(x, y) => onTextOffsetChange?.('videoCreatorProfile', { x, y })}
+				<div
+					style="
+						display: flex;
+						align-items: center;
+						gap: {creatorProfileGap}px;
+					"
 				>
-					{#snippet children()}
-						<div
-							style="
-								display: flex;
-								align-items: center;
-								gap: {previewMode ? '10px' : '18px'};
-							"
-						>
+					<DraggableBlock
+						dx={creatorAvatarOffset.x ?? 0}
+						dy={creatorAvatarOffset.y ?? 0}
+						{interactive}
+						{scale}
+						holdDragFromText={interactive}
+						immediateTextDrag={selectedText === 'textCarouselAvatar'}
+						snapToCenter={interactive}
+						snapRoot={exportRef}
+						onChange={(x, y) => onTextOffsetChange?.('textCarouselAvatar', { x, y })}
+					>
+						{#snippet children()}
 							<div
+								role="button"
+								tabindex="0"
+								data-text-selectable="textCarouselAvatar"
 								style="
-									width: {previewMode ? 34 : 68}px;
-									height: {previewMode ? 34 : 68}px;
+									width: {creatorAvatarSize}px;
+									height: {creatorAvatarSize}px;
 									border-radius: 50%;
 									overflow: hidden;
 									flex-shrink: 0;
@@ -1267,13 +1293,30 @@
 									display: flex;
 									align-items: center;
 									justify-content: center;
+									cursor: {interactive ? 'pointer' : 'default'};
+									outline: none;
+									{selectedText === 'textCarouselAvatar'
+										? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);'
+										: ''}
 								"
+								onclick={(e) => {
+									e.stopPropagation();
+									if (!interactive || !onTextSelect) return;
+									onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
+								}}
+								onkeydown={(e) => {
+									if (!interactive || !onTextSelect) return;
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
+									}
+								}}
 							>
 								{#if profileAvatar?.trim()}
 									<img
 										src={profileAvatar}
 										alt=""
-										style="width: 100%; height: 100%; object-fit: cover; display: block;"
+										style="width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;"
 									/>
 								{:else}
 									<span
@@ -1282,19 +1325,36 @@
 											font-weight: 700;
 											color: #fff;
 											letter-spacing: -0.02em;
+											pointer-events: none;
 										"
 									>
 										{avatarInitials}
 									</span>
 								{/if}
 							</div>
-							<div style="min-width: 0; flex: 1;">
+						{/snippet}
+					</DraggableBlock>
+
+					<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0;">
+						<DraggableBlock
+							dx={creatorNameOffset.x ?? 0}
+							dy={creatorNameOffset.y ?? 0}
+							{interactive}
+							{scale}
+							holdDragFromText={interactive}
+							immediateTextDrag={selectedText === 'textCarouselName'}
+							snapToCenter={interactive}
+							snapRoot={exportRef}
+							onChange={(x, y) => onTextOffsetChange?.('textCarouselName', { x, y })}
+						>
+							{#snippet children()}
 								<div
 									style="
 										display: flex;
 										align-items: center;
 										gap: {previewMode ? 5 : 8}px;
 										flex-wrap: wrap;
+										padding-bottom: {previewMode ? 4 : 8}px;
 									"
 								>
 									<CanvasMarkupTextBlock
@@ -1331,7 +1391,7 @@
 										viewBox="0 0 24 24"
 										fill="none"
 										aria-hidden="true"
-										style="flex-shrink: 0;"
+										style="flex-shrink: 0; pointer-events: none;"
 									>
 										<circle cx="12" cy="12" r="10" fill="#1D9BF0" />
 										<path
@@ -1343,6 +1403,21 @@
 										/>
 									</svg>
 								</div>
+							{/snippet}
+						</DraggableBlock>
+
+						<DraggableBlock
+							dx={creatorHandleOffset.x ?? 0}
+							dy={creatorHandleOffset.y ?? 0}
+							{interactive}
+							{scale}
+							holdDragFromText={interactive}
+							immediateTextDrag={selectedText === 'textCarouselHandle'}
+							snapToCenter={interactive}
+							snapRoot={exportRef}
+							onChange={(x, y) => onTextOffsetChange?.('textCarouselHandle', { x, y })}
+						>
+							{#snippet children()}
 								<CanvasMarkupTextBlock
 									value={profileHandle}
 									{interactive}
@@ -1371,10 +1446,10 @@
 										</span>
 									{/snippet}
 								</CanvasMarkupTextBlock>
-							</div>
-						</div>
-					{/snippet}
-				</DraggableBlock>
+							{/snippet}
+						</DraggableBlock>
+					</div>
+				</div>
 
 				<DraggableBlock
 					dx={textOffsets.videoStoryHeadline?.x ?? 0}
@@ -1478,7 +1553,9 @@
 						justify-content: flex-end;
 						padding: {previewMode ? '10px 16px' : `24px ${letterboxPadX}px 28px`};
 						box-sizing: border-box;
-						overflow: hidden;
+						overflow: visible;
+						position: relative;
+						z-index: 5;
 					"
 				>
 					<div style="width: 100%; max-width: {previewMode ? '92%' : '920px'}; margin: 0 auto;">

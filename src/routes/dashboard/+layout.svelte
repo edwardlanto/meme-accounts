@@ -16,6 +16,21 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { cn } from '$lib/utils.js';
 	import BrandOnboarding from '$lib/components/BrandOnboarding.svelte';
+	import { STARTER_TEMPLATES } from '$lib/templates';
+
+	const TEMPLATE_NAV_LABELS: Record<string, string> = {
+		empty: 'Blank',
+		news: 'News',
+		text: 'Text carousel',
+		'video-source': 'Highlight',
+		'video-text': 'Text on video',
+		'video-creator': 'Creator hook',
+	};
+
+	const templateNavChildren = STARTER_TEMPLATES.map((t) => ({
+		href: t.href,
+		label: TEMPLATE_NAV_LABELS[t.id] ?? t.name,
+	}));
 
 	let { children, data } = $props();
 
@@ -25,7 +40,12 @@
 			items: [
 				{ href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
 				/** Gallery of starters — must stay `/dashboard/templates` (not Studio). */
-				{ href: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate },
+				{
+					href: '/dashboard/templates',
+					label: 'Templates',
+					icon: LayoutTemplate,
+					children: templateNavChildren,
+				},
 				{ href: '/dashboard/carousels', label: 'Carousels', icon: ImagePlus },
 				{ href: '/dashboard/bulk', label: 'Bulk', icon: Rows3 },
 				{ href: '/dashboard/videos', label: 'Videos', icon: Video },

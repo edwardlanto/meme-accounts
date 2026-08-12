@@ -656,7 +656,7 @@
 						buttonVariants({ variant: 'outline', size: 'sm' }),
 						'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold rounded-xl border-[#ebebeb]',
 						pexelsKind === 'photos'
-							? 'border-violet-300 bg-violet-50 text-violet-700'
+							? 'border-[#3ecf8e] bg-[#e8faf1] text-[#1a7a4c]'
 							: 'text-muted-foreground',
 					)}
 				>
@@ -671,7 +671,7 @@
 						buttonVariants({ variant: 'outline', size: 'sm' }),
 						'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold rounded-xl border-[#ebebeb]',
 						pexelsKind === 'videos'
-							? 'border-violet-300 bg-violet-50 text-violet-700'
+							? 'border-[#3ecf8e] bg-[#e8faf1] text-[#1a7a4c]'
 							: 'text-muted-foreground',
 					)}
 				>

@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { generateSlidesBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { fitCopyBudget } from '$lib/studio/fit-copy';
+import { generationStylePrompt, generationTonePromptSuffix } from '$lib/studio/generation-tone';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -243,43 +244,24 @@ function buildPrompt(
 	emotion: string,
 ): string {
 	const styleDesc: Record<string, string> = {
-		dark: 'Ultra-minimal dark editorial: sparse, impactful. One powerful idea per slide. No fluff.',
-		bold: 'High-energy bold: short punchy bursts, strong verbs, strategic emojis. Action-first.',
-		editorial:
-			'Magazine-quality editorial: elegant rhythm, thoughtful pacing. Reads like a great article.',
-		minimal:
-			'Clean and professional: structured, credible, business-appropriate. Clear hierarchy.',
+		dark: generationStylePrompt('dark'),
+		bold: generationStylePrompt('bold'),
+		editorial: generationStylePrompt('editorial'),
+		minimal: generationStylePrompt('minimal'),
 	};
 
-	const emotionDesc: Record<string, string> = {
-		curious: 'Lean into curiosity gaps and open loops. Make them need the next slide.',
-		urgent: 'Time pressure and stakes. Short sentences. Immediate action.',
-		hopeful: 'Optimistic, forward-looking, possibility without fluff.',
-		shocking: 'Surprising claims backed by concrete specifics. Stop the scroll.',
-		calm: 'Steady, reassuring, clear. No hype. Trust over drama.',
-		witty: 'Smart humor, light wordplay. Never mean-spirited.',
-		inspiring: 'Uplifting, agency, "you can do this" energy with specific proof.',
-	};
-
+	const topicBlock = sandboxUserPlaintext('TOPIC', topic, 12000);
+	const toneBlock = generationTonePromptSuffix({ audience, emotion, style });
 	const imageGuide =
 		imageCount > 0
 			? `The creator uploaded ${imageCount} photo(s) indexed 0-${imageCount - 1}. Distribute naturally: hero + key value slides get images. Always set imageIndex: null for text-only and quote layouts.`
 			: `No photos uploaded. All slides use "text-only" or "quote" layouts. imageIndex must be null on every slide.`;
 
-	const topicBlock = sandboxUserPlaintext('TOPIC', topic, 12000);
-	const audienceBlock = audience.trim()
-		? `\n${sandboxUserPlaintext('AUDIENCE', audience, 2400)}\n`
-		: '';
-	const emotionBlock =
-		emotion && emotionDesc[emotion]
-			? `\nEMOTION (fixed directive): ${emotionDesc[emotion]}\n`
-			: '';
-
 	return `You are a world-class viral social media strategist. Generate exactly ${slideCount} carousel slides.
 Be fast and precise: one clear idea per slide, no filler.
 Copy is rendered on a 1080x1350 image, so it MUST fit: short headlines, tight body text, zero padding words.
 
-${topicBlock}${audienceBlock}${emotionBlock}
+${topicBlock}${toneBlock}
 STYLE (fixed directive): ${styleDesc[style] ?? styleDesc.dark}
 IMAGES (fixed directive): ${imageGuide}
 

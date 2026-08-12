@@ -45,6 +45,8 @@ export interface TextStyle {
 	bgColor?: string;        // hex (behind text)
 	/** Extra inset around a text background / chip (template px). */
 	padding?: number;
+	/** Corner radius for logo / image chips (template px). */
+	borderRadius?: number;
 	align?: 'left' | 'center' | 'right';
 	letterSpacing?: number;  // em
 	lineHeight?: number;     // unitless multiplier

@@ -57,22 +57,18 @@
 		onSelect(el);
 	}
 
-	function onFramePointerDown(e: PointerEvent) {
-		if (!interactive) return;
-		selectFromEvent(e.currentTarget as HTMLElement);
-	}
-
 	function onFrameClick(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
 		selectFromEvent(e.currentTarget as HTMLElement);
+		if (onDblClick) {
+			onDblClick({ clientX: e.clientX, clientY: e.clientY });
+		}
 	}
 
-	function onFrameDblClick(e: MouseEvent) {
-		if (!interactive || !onDblClick) return;
-		e.stopPropagation();
-		e.preventDefault();
-		onDblClick({ clientX: e.clientX, clientY: e.clientY });
+	function onFramePointerDown(e: PointerEvent) {
+		if (!interactive) return;
+		selectFromEvent(e.currentTarget as HTMLElement);
 	}
 
 	function onWindowPointerMove(e: PointerEvent) {
@@ -130,8 +126,7 @@
 			data-studio-media-frame
 			onpointerdown={onFramePointerDown}
 			onclick={onFrameClick}
-			ondblclick={onFrameDblClick}
-			title={title ?? (interactive ? 'Drag to move · Corner to expand · Double-click for BG tools' : undefined)}
+			title={title ?? (interactive ? 'Drag to move · Corner to expand · Click for BG tools' : undefined)}
 			style="
 				position: relative;
 				width: {stretchClamped * 100}%;

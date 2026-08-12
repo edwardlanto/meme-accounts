@@ -124,7 +124,6 @@
 	<header class="page-hero">
 		<div class="page-hero-text">
 			<h1 class="page-title dash-page-title">Templates</h1>
-			<p class="page-sub dash-page-sub">Named layouts from Studio and starters that open straight into the editor.</p>
 		</div>
 	</header>
 

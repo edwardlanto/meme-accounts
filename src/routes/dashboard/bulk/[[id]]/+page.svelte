@@ -125,8 +125,8 @@
 	let topic = $state('');
 	let audienceId = $state<string>('');
 	let audience = $state('');
-	let style = $state<'dark' | 'bold' | 'editorial' | 'minimal'>('bold');
-	let emotion = $state<BulkEmotionId>('');
+	let style = $state<'bold' | 'editorial' | 'minimal'>('bold');
+	let emotion = $state<BulkEmotionId>('inspiring');
 	/** Number of separate slideshows / ideas */
 	let ideaCount = $state(1);
 	/** Slides inside each slideshow */
@@ -1543,7 +1543,6 @@
 			<span>Style</span>
 			<select bind:value={style}>
 				<option value="bold">Bold</option>
-				<option value="dark">Dark</option>
 				<option value="editorial">Editorial</option>
 				<option value="minimal">Minimal</option>
 			</select>

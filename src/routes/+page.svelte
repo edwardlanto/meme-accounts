@@ -2,18 +2,17 @@
 	import { onMount } from 'svelte';
 	import MarketingNav from '$lib/components/MarketingNav.svelte';
 	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
+	import {
+		isMarqueeVideo,
+		marqueeAssetPath,
+		type HomeMarqueeSlide,
+	} from '$lib/marketing/home-marquee-slides';
+
+	let { data } = $props();
+	const homeMarqueeSlides: HomeMarqueeSlide[] = $derived(data.marqueeSlides ?? []);
 
 	let mounted = $state(false);
 	let counted = $state(false);
-
-	/** Phone marquee — product screen shots scrolling through the hero. */
-	const phoneScreens = [
-		{ src: '/placeholders/marquee/slide-1.png', tint: '#FFB4A2', tag: 'Carousel' },
-		{ src: '/placeholders/marquee/slide-2.png', tint: '#B5E48C', tag: 'Reel' },
-		{ src: '/placeholders/marquee/slide-3.png', tint: '#A0C4FF', tag: 'Story' },
-		{ src: '/placeholders/marquee/slide-4.png', tint: '#FFC8DD', tag: 'Post' },
-		{ src: '/placeholders/marquee/slide-5.png', tint: '#FFD6A5', tag: 'Schedule' },
-	];
 
 	/** Platforms formats are built for — shown as a trust/connector strip. */
 	const platforms = [
@@ -303,16 +302,33 @@
 			<div class="phone-marquee">
 				{#each [0, 1] as copy (copy)}
 					<div class="phone-track">
-						{#each phoneScreens as p, i (copy + '-' + i)}
-							<div class="phone" style="--tint:{p.tint}">
+						{#each homeMarqueeSlides as slide, i (copy + '-' + slide.file)}
+							<div class="phone" style="--tint:{slide.tint}">
 								<span class="phone-aura"></span>
 								<div class="phone-frame">
 									<div class="phone-notch"></div>
 									<div class="phone-screen">
-										<img src={p.src} alt="" draggable="false" />
+										{#if isMarqueeVideo(slide.file)}
+											<video
+												src={marqueeAssetPath(slide.file)}
+												poster={slide.poster ? marqueeAssetPath(slide.poster) : undefined}
+												muted
+												loop
+												playsinline
+												autoplay
+												preload="metadata"
+												aria-hidden="true"
+											></video>
+										{:else}
+											<img
+												src={marqueeAssetPath(slide.file)}
+												alt=""
+												draggable="false"
+											/>
+										{/if}
 									</div>
 									<div class="phone-bar"></div>
-									<div class="phone-pill">{p.tag}</div>
+									<div class="phone-pill">{slide.tag}</div>
 								</div>
 							</div>
 						{/each}
@@ -1069,7 +1085,8 @@
 		overflow: hidden;
 		background: #111;
 	}
-	.phone-screen img {
+	.phone-screen img,
+	.phone-screen video {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;

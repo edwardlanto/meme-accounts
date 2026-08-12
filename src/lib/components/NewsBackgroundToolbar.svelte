@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { Scissors, ImagePlus, Palette, Sparkles } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button';
+	import { Scissors, ImagePlus, Palette, Sparkles, Trash2 } from 'lucide-svelte';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { cn } from '$lib/utils.js';
 
@@ -20,6 +19,8 @@
 		anchor: DOMRect | null;
 		/** Show “Cut out subject” — only for photo backgrounds */
 		showCutout: boolean;
+		/** Show delete — when slide has a photo or video background */
+		showDelete?: boolean;
 		/** @deprecated Kept for compatibility; label is always “Image / video”. */
 		isVideoBackground?: boolean;
 		/** Optional: generate / regenerate background via AI */
@@ -27,6 +28,7 @@
 		aiDisabled?: boolean;
 		onCutOut: () => void;
 		onReplace: () => void;
+		onDelete?: () => void;
 		onClose: () => void;
 		/** Solid fill — clears photo/video and applies canvas hex */
 		onApplySolid?: (hex: string) => void;
@@ -37,11 +39,13 @@
 	let {
 		anchor,
 		showCutout,
+		showDelete = false,
 		isVideoBackground = false,
 		onAi,
 		aiDisabled = false,
 		onCutOut,
 		onReplace,
+		onDelete,
 		onClose,
 		onApplySolid,
 		solidPresets = DEFAULT_SOLID_PRESETS,
@@ -49,21 +53,46 @@
 
 	let solidPopoverOpen = $state(false);
 	let customHex = $state('#0a0a0a');
+	let shellEl = $state<HTMLDivElement | null>(null);
+	let measuredW = $state(0);
 
-	const TOOLBAR_H = 44;
+	const TOOLBAR_H = 48;
 
 	const pos = $derived.by(() => {
 		if (!anchor) return { top: 0, left: 0, show: false };
-		let tw = showCutout ? 320 : 220;
-		if (onAi) tw += 128;
-		if (onApplySolid) tw += 108;
-		tw += 40; // “Image / video” combined control
+		let tw = measuredW;
+		if (tw < 40) {
+			tw = showCutout ? 280 : 180;
+			if (onAi) tw += 72;
+			if (onApplySolid) tw += 88;
+			tw += 110; // “Image / video”
+			if (showDelete && onDelete) tw += 48;
+		}
 		const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
-		let top = anchor.top - TOOLBAR_H - 14;
-		if (top < 12) top = anchor.bottom + 14;
+		const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+		const gap = 10;
+		/* Prefer just below the trigger (dock button / click); flip above only if needed. */
+		let top = anchor.bottom + gap;
+		if (top + TOOLBAR_H > vh - 12) {
+			top = Math.max(12, anchor.top - TOOLBAR_H - gap);
+		}
 		let left = anchor.left + anchor.width / 2 - tw / 2;
 		left = Math.max(12, Math.min(left, vw - tw - 12));
 		return { top, left, show: true };
+	});
+
+	$effect(() => {
+		if (!anchor || !shellEl) {
+			measuredW = 0;
+			return;
+		}
+		const sync = () => {
+			const w = shellEl?.offsetWidth ?? 0;
+			if (w > 0) measuredW = w;
+		};
+		sync();
+		const id = requestAnimationFrame(sync);
+		return () => cancelAnimationFrame(id);
 	});
 
 	function handleDocDown(ev: MouseEvent) {
@@ -86,10 +115,6 @@
 		};
 	});
 
-	/** Same chrome + motion as News circle `PopoverContent` (rounded pill, zoom/fade). */
-	const shellClass =
-		'border-border bg-popover/95 text-foreground !flex !w-max max-w-[calc(100vw-2rem)] !flex-row flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border p-2 shadow-lg ring-1 ring-border/40 backdrop-blur-md duration-100 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 !gap-1.5 !p-2 [&_svg]:shrink-0 [&_svg]:text-foreground';
-
 	function pickSolid(hex: string) {
 		onApplySolid?.(hex);
 		solidPopoverOpen = false;
@@ -99,47 +124,45 @@
 
 {#if pos.show}
 	<div
+		bind:this={shellEl}
 		data-floating-toolbar
 		data-news-bg-toolbar
-		class={cn('fixed z-[65]', shellClass)}
-		style="top: {pos.top}px; left: {pos.left}px; min-height: {TOOLBAR_H}px;"
+		class="ftb-shell fixed z-[65] flex h-12 w-max max-w-[calc(100vw-24px)] items-center gap-1 overflow-hidden rounded-2xl px-2 py-1.5 shadow-2xl backdrop-blur-md"
+		style="top: {pos.top}px; left: {pos.left}px;"
 		role="toolbar"
 		tabindex="-1"
 		aria-label="Background"
 		onmousedown={(e) => e.stopPropagation()}
 	>
-		<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
 		{#if onAi}
-			<Button
-				variant="ghost"
-				size="sm"
-				class="h-11 shrink-0 rounded-full px-3 text-xs font-semibold"
+			<button
+				type="button"
+				class="ftb-btn flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors"
 				disabled={aiDisabled}
 				onclick={() => {
 					onAi?.();
 					onClose();
 				}}
 			>
-				<Sparkles size={18} class="text-[#7bf1a8]" strokeWidth={2} />
-				AI
-			</Button>
-			<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
+				<Sparkles size={13} class="text-[#7bf1a8]" strokeWidth={2} />
+				<span class="ftb-strong">AI</span>
+			</button>
+			<div class="ftb-div h-6 w-px shrink-0" role="separator"></div>
 		{/if}
 		{#if showCutout}
-			<Button
-				variant="ghost"
-				size="sm"
-				class="h-11 shrink-0 rounded-full px-3 text-xs font-semibold"
+			<button
+				type="button"
+				class="ftb-btn flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors"
 				onclick={() => {
 					onCutOut();
 					onClose();
 				}}
 			>
-				<Scissors size={18} class="text-emerald-500" strokeWidth={2} />
-				<span class="hidden sm:inline">Cut out subject</span>
-				<span class="sm:hidden">Cut out</span>
-			</Button>
-			<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
+				<Scissors size={13} class="text-emerald-500" strokeWidth={2} />
+				<span class="ftb-strong hidden sm:inline">Cut out subject</span>
+				<span class="ftb-strong sm:hidden">Cut out</span>
+			</button>
+			<div class="ftb-div h-6 w-px shrink-0" role="separator"></div>
 		{/if}
 		{#if onApplySolid}
 			<Popover
@@ -149,11 +172,13 @@
 				}}
 			>
 				<PopoverTrigger
-					class="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-foreground outline-none ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+					class={cn(
+						'ftb-btn inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors outline-none',
+					)}
 					onmousedown={(e) => e.stopPropagation()}
 				>
-					<Palette size={18} class="text-amber-500" strokeWidth={2} />
-					<span class="hidden sm:inline">Solid</span>
+					<Palette size={13} class="text-amber-500" strokeWidth={2} />
+					<span class="ftb-strong hidden sm:inline">Solid</span>
 				</PopoverTrigger>
 				<PopoverContent
 					class="z-[70] w-[220px] gap-0 border-border p-3 shadow-lg"
@@ -190,21 +215,75 @@
 					</div>
 				</PopoverContent>
 			</Popover>
-			<div class="bg-border h-7 w-px shrink-0" role="separator"></div>
+			<div class="ftb-div h-6 w-px shrink-0" role="separator"></div>
 		{/if}
-		<Button
-			variant="ghost"
-			size="sm"
-			class="h-11 shrink-0 rounded-full px-3 text-xs font-semibold"
+		<button
+			type="button"
+			class="ftb-btn flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors"
 			title="Upload a photo or video background"
 			onclick={() => {
 				onReplace();
 				onClose();
 			}}
 		>
-			<ImagePlus size={18} class="text-violet-500" strokeWidth={2} />
-			<span class="hidden sm:inline">Image / video</span>
-			<span class="sm:hidden">Media</span>
-		</Button>
+			<ImagePlus size={13} class="text-[#1a7a4c]" strokeWidth={2} />
+			<span class="ftb-strong hidden sm:inline">Image / video</span>
+			<span class="ftb-strong sm:hidden">Media</span>
+		</button>
+		{#if showDelete && onDelete}
+			<div class="ftb-div h-6 w-px shrink-0" role="separator"></div>
+			<button
+				type="button"
+				class="ftb-btn ftb-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
+				title="Delete background"
+				aria-label="Delete background"
+				onpointerdown={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					onDelete();
+					onClose();
+				}}
+			>
+				<Trash2 size={13} />
+			</button>
+		{/if}
 	</div>
 {/if}
+
+<style>
+	.ftb-shell {
+		background: var(--app-surface-2);
+		border: 1px solid var(--app-border);
+		border-radius: 16px;
+	}
+	:root[data-theme='dark'] .ftb-shell {
+		background: rgba(26, 26, 26, 0.95);
+		border-color: rgba(255, 255, 255, 0.1);
+	}
+	.ftb-div {
+		background: color-mix(in oklab, var(--app-text) 12%, transparent);
+	}
+	:root[data-theme='dark'] .ftb-div {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.ftb-btn:hover {
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+	}
+	:root[data-theme='dark'] .ftb-btn:hover {
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.ftb-strong {
+		color: var(--app-text);
+	}
+	.ftb-muted {
+		color: var(--app-text-2);
+	}
+	:root[data-theme='dark'] .ftb-strong {
+		color: rgba(255, 255, 255, 0.92);
+	}
+	:root[data-theme='dark'] .ftb-muted {
+		color: rgba(255, 255, 255, 0.55);
+	}
+</style>

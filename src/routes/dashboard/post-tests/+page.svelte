@@ -820,9 +820,6 @@
 		<div>
 			<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">Post tests</p>
 			<h1 class="text-xl font-display font-semibold text-white/90 mt-1">Instagram · Facebook · TikTok — post now or schedule</h1>
-			<p class="text-sm font-body text-white/45 mt-2 leading-relaxed">
-				Posts Instagram, Facebook Page, or TikTok content <em>immediately</em> (or schedules it) using media from <code class="text-white/70">static/post-tests</code>. Direct Graph / Content Posting API calls.
-			</p>
 		</div>
 
 		<a href="/dashboard/post-scheduler" class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-white/60 hover:bg-white/8 transition-colors">

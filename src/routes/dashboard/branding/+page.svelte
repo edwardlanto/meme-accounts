@@ -136,12 +136,6 @@
 			<h1 class="dash-page-title mt-2 text-[color:var(--app-text)]">
 				Carousel from your visual style
 			</h1>
-			<p
-				class="dash-page-sub mt-3 text-[color:var(--app-text-2)] border-l-2 border-[color:var(--app-focus)] pl-4"
-			>
-				Upload a reference image, describe the topic, and generate a matched set of slides - same palette,
-				type rhythm, and composition across the deck.
-			</p>
 		</div>
 
 		<div class="flex flex-shrink-0 flex-wrap items-center gap-2">
