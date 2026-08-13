@@ -1,4 +1,6 @@
 <script lang="ts">
+	import * as ToggleGroup from '$lib/components/ui/toggle-group/index.js';
+
 	export type FormatTab = { id: string; label: string; title?: string };
 
 	type Props = {
@@ -11,90 +13,19 @@
 	let { formats, selectedId, onSelect, className = '' }: Props = $props();
 </script>
 
-<div class={`format-dock-shell ${className}`} aria-label="Canvas format">
-	<div class="format-dock-float">
+<div class={className} aria-label="Canvas format">
+	<ToggleGroup.Root
+		type="single"
+		variant="outline"
+		value={selectedId}
+		onValueChange={(v) => {
+			if (v) onSelect(String(v));
+		}}
+	>
 		{#each formats as f (f.id)}
-			<button
-				type="button"
-				class="format-dock-btn"
-				class:format-dock-btn--active={selectedId === f.id}
-				aria-pressed={selectedId === f.id}
-				title={f.title ?? f.label}
-				onclick={() => onSelect(f.id)}
-			>
+			<ToggleGroup.Item value={f.id} aria-label={f.title ?? f.label} title={f.title ?? f.label}>
 				{f.label}
-			</button>
+			</ToggleGroup.Item>
 		{/each}
-	</div>
+	</ToggleGroup.Root>
 </div>
-
-<style>
-	.format-dock-shell {
-		width: auto;
-		flex: 0 0 auto;
-		display: flex;
-		justify-content: center;
-	}
-
-	.format-dock-float {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding: 6px;
-		min-height: 48px;
-		box-sizing: border-box;
-		border-radius: 16px;
-		background: rgba(255, 255, 255, 0.82);
-		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
-		backdrop-filter: blur(14px);
-		-webkit-backdrop-filter: blur(14px);
-	}
-
-	.format-dock-btn {
-		box-sizing: border-box;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 0;
-		width: auto;
-		height: 36px;
-		min-height: 36px;
-		padding: 8px 14px;
-		border: none;
-		border-radius: 11px;
-		background: transparent;
-		cursor: pointer;
-		/* Match top dock chips (Shadow / Letterbox): 10px bold caps */
-		font-size: 10px;
-		font-weight: 700;
-		line-height: 1.1;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		white-space: nowrap;
-		color: rgba(10, 10, 10, 0.45);
-		transition: background-color 140ms ease, color 140ms ease;
-	}
-
-	.format-dock-btn:hover:not(.format-dock-btn--active) {
-		color: rgba(10, 10, 10, 0.85);
-		background: rgba(10, 10, 10, 0.05);
-	}
-
-	.format-dock-btn:active {
-		opacity: 0.9;
-	}
-
-	.format-dock-btn--active {
-		/* Soft mint — same transient green used elsewhere in Studio */
-		color: #080808;
-		background: #7bf1a8;
-		border-radius: 10px;
-		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
-	}
-
-	.format-dock-btn--active:hover {
-		background: #8ff5b6;
-		color: #080808;
-	}
-</style>

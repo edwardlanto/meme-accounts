@@ -91,8 +91,8 @@ import JSZip from 'jszip';
 	import DockToolbar from '$lib/components/DockToolbar.svelte';
 	import FormatDockToolbar from '$lib/components/FormatDockToolbar.svelte';
 	import TemplateDockToolbar from '$lib/components/TemplateDockToolbar.svelte';
-	import { Button, buttonVariants } from '$lib/components/ui/button';
-	import { cn } from '$lib/utils.js';
+	import { Button } from '$lib/components/ui/button';
+	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 	import { GOOGLE_FONTS, loadGoogleFont } from '$lib/fonts';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -13307,6 +13307,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<!-- Dock stays interactive even while the canvas boot skeleton is up.
 			     Hiding it with pointer-events:none froze the whole chrome when filmstrip reveal stalled. -->
 			<div class="studio-dock-inner">
+			<ButtonGroup.Root>
 			<DockToolbar items={dockItems} inline />
 			<TemplateDockToolbar
 				templates={templateDockTabs}
@@ -13321,28 +13322,32 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				onSelect={(id) => applyTemplateToAll(id as TemplateId, { skipNewsSeed: true })}
 				onApplyAll={() => applyTemplateToAll(activeTemplate, { skipNewsSeed: true })}
 			/>
-			<div
-				class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 backdrop-blur-[14px]"
-				title="Canvas background"
-			>
-				<span class="text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.55)]">White</span>
-				<Switch
-					id="studio-canvas-bg-toggle"
-					size="sm"
-					checked={canvasBgDark}
-					onCheckedChange={(v) => setCanvasBackgroundDark(!!v)}
-					aria-label="Toggle canvas background black or white"
-				/>
-				<span class="text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.55)]">Black</span>
-			</div>
+			<ButtonGroup.Root title="Canvas background">
+				<ButtonGroup.Text>
+					<span class="text-muted-foreground">White</span>
+					<Switch
+						id="studio-canvas-bg-toggle"
+						checked={canvasBgDark}
+						onCheckedChange={(v) => setCanvasBackgroundDark(!!v)}
+						aria-label="Toggle canvas background black or white"
+					/>
+					<span class="text-muted-foreground">Black</span>
+				</ButtonGroup.Text>
+			</ButtonGroup.Root>
+			<ButtonGroup.Root>
 			<Popover bind:open={bottomShadowPopoverOpen}>
-				<PopoverTrigger
-					class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.7)] backdrop-blur-[14px] transition-colors hover:bg-white hover:text-[#111]"
-					title="Bottom shadow height and darkness"
-					aria-label="Bottom shadow"
-				>
-					<PanelBottom size={15} strokeWidth={1.8} />
-					<span class="hidden sm:inline">Shadow</span>
+				<PopoverTrigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							title="Bottom shadow height and darkness"
+							aria-label="Bottom shadow"
+						>
+							<PanelBottom />
+							Shadow
+						</Button>
+					{/snippet}
 				</PopoverTrigger>
 				<PopoverContent
 					side="bottom"
@@ -13456,13 +13461,18 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</PopoverContent>
 			</Popover>
 			<Popover bind:open={highlightPopoverOpen}>
-				<PopoverTrigger
-					class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.7)] backdrop-blur-[14px] transition-colors hover:bg-white hover:text-[#111]"
-					title="Word highlights — accent color for [[…]] markup"
-					aria-label="Highlights"
-				>
-					<Highlighter size={15} strokeWidth={1.8} />
-					<span class="hidden sm:inline">Highlights</span>
+				<PopoverTrigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							title="Word highlights — accent color for [[…]] markup"
+							aria-label="Highlights"
+						>
+							<Highlighter />
+							Highlights
+						</Button>
+					{/snippet}
 				</PopoverTrigger>
 				<PopoverContent
 					side="bottom"
@@ -13576,13 +13586,18 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</PopoverContent>
 			</Popover>
 			<Popover bind:open={brandProfilePopoverOpen}>
-				<PopoverTrigger
-					class="inline-flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-[rgba(10,10,10,0.08)] bg-[rgba(255,255,255,0.82)] px-3.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[rgba(10,10,10,0.7)] backdrop-blur-[14px] transition-colors hover:bg-white hover:text-[#111]"
-					title="Branding — name, logo, and colors"
-					aria-label="Branding"
-				>
-					<User size={15} strokeWidth={1.8} />
-					<span class="hidden sm:inline">Branding</span>
+				<PopoverTrigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							title="Branding — name, logo, and colors"
+							aria-label="Branding"
+						>
+							<User />
+							Branding
+						</Button>
+					{/snippet}
 				</PopoverTrigger>
 				<PopoverContent
 					side="bottom"
@@ -13682,6 +13697,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					</div>
 				</PopoverContent>
 			</Popover>
+			</ButtonGroup.Root>
+			</ButtonGroup.Root>
 			</div>
 		</div>
 
@@ -17211,7 +17228,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		flex-wrap: nowrap;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
+		gap: 0;
 		width: auto;
 		max-width: 100%;
 		min-width: 0;
