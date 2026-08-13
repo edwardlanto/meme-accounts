@@ -329,6 +329,35 @@ export function normalizeHighlightStyleKind(raw: unknown): StudioHighlightStyleK
 	return raw === 'pattern' || raw === 'gradient' ? raw : 'solid';
 }
 
+/** Build Studio/News `[[…]]` defaults from the saved brand kit. */
+export function highlightDefaultsFromBrandKit(kit: BrandKitSettings): {
+	color: string;
+	gradientFrom?: string;
+	gradientTo?: string;
+	pattern?: string;
+} {
+	const color = normalizeHighlightHex(kit.highlightColor, DEFAULT_BRAND_KIT.highlightColor);
+	const kind = normalizeHighlightStyleKind(kit.highlightStyleKind);
+	if (kind === 'gradient') {
+		const from = normalizeHighlightHex(
+			kit.highlightGradientFrom,
+			DEFAULT_BRAND_KIT.highlightGradientFrom,
+		);
+		const to = normalizeHighlightHex(
+			kit.highlightGradientTo,
+			DEFAULT_BRAND_KIT.highlightGradientTo,
+		);
+		return { color: from, gradientFrom: from, gradientTo: to };
+	}
+	if (kind === 'pattern') {
+		const pattern =
+			normalizeHighlightPatternName(kit.highlightPattern) ||
+			DEFAULT_BRAND_KIT.highlightPattern;
+		return { color, pattern };
+	}
+	return { color };
+}
+
 export function normalizeHighlightHex(raw: string, fallback = DEFAULT_BRAND_KIT.highlightColor): string {
 	const s = String(raw ?? '').trim();
 	if (/^#[0-9A-Fa-f]{6}$/.test(s)) return s.toUpperCase();

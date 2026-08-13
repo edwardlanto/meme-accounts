@@ -300,7 +300,7 @@ async function addHighlights(
 	maxWords = DEFAULT_MAX_WORDS,
 ): Promise<string[]> {
 		const system =
-			`You add emphasis markers to Instagram slide overlay text. Output ONLY a JSON array of strings — one per slide — with emphasis added. ` +
+			`You add emphasis markers to Instagram slide HEADLINES / primary overlay lines only — never invent a separate paragraph. Output ONLY a JSON array of strings — one per slide — with emphasis added. ` +
 			`Rules: wrap 1–3 short phrases per slide in [[double brackets]], e.g. [[key idea]] or [[33%]]. ` +
 			`Use ONLY plain [[phrase]] markers — never grad(, marker(, pattern(, or #hex: inside brackets. ` +
 			`Those spans render in the accent color. Preserve wording and line breaks. ` +

@@ -264,9 +264,15 @@
 								<Bookmark size={13} class="text-[#7c3aed]" />
 								<span class="panel-title">Save template</span>
 							</div>
-							<button type="button" onclick={closeSavePanel} class="panel-close" aria-label="Close">
-								<X size={11} />
-							</button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-xs"
+								onclick={closeSavePanel}
+								aria-label="Close"
+							>
+								<X />
+							</Button>
 						</div>
 						<div class="p-4 flex flex-col gap-3">
 							<div>
@@ -338,26 +344,26 @@
 							{#if saveTemplateError}
 								<p class="text-[11px] leading-snug text-red-600/90">{saveTemplateError}</p>
 							{/if}
-							<button
+							<Button
 								type="button"
-								class="panel-save-btn"
+								class="w-full"
 								disabled={saveTemplateSaving}
 								onclick={() => void confirmSaveTemplate()}
 							>
 								{#if saveTemplateSaving}
-									<LoaderCircle size={13} class="animate-spin" />
+									<LoaderCircle class="animate-spin" />
 									Saving…
 								{:else if overwritingBuiltin}
-									<Bookmark size={13} />
+									<Bookmark />
 									Replace {builtinLabel} default
 								{:else if overwriteId}
-									<Bookmark size={13} />
+									<Bookmark />
 									Replace template
 								{:else}
-									<Bookmark size={13} />
+									<Bookmark />
 									Save new template
 								{/if}
-							</button>
+							</Button>
 							<p class="text-[10px] leading-snug text-[rgba(10,10,10,0.38)]">
 								{#if overwritingBuiltin}
 									Becomes the {builtinLabel} starter for your account. New {builtinLabel} decks use this design and copy.

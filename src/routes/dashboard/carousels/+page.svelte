@@ -30,8 +30,12 @@
 		Loader,
 		Rows3,
 		Video,
+		MoreHorizontal,
 	} from 'lucide-svelte';
 	import { consumeFlashToast } from '$lib/ui/flash-toast';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import * as Empty from '$lib/components/ui/empty/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
@@ -1171,35 +1175,172 @@
 		<div class="page-hero-text">
 			<h1 class="page-title dash-page-title">Carousels</h1>
 		</div>
-		<div class="hero-actions">
-			<a href="/dashboard/templates" class="ma-btn ma-btn-ghost">Browse templates</a>
-			<a href="/dashboard/bulk" class="ma-btn ma-btn-primary"><Plus size={15} /> New from Bulk</a>
+		<div class="hero-actions flex flex-wrap gap-2">
+			<Button href="/dashboard/templates" variant="outline">Browse templates</Button>
+			<Button href="/dashboard/bulk">
+				<Plus data-icon="inline-start" />
+				New from Bulk
+			</Button>
 		</div>
 	</header>
 
 	{#if loading}
 		<div class="carousel-grid" style="margin-bottom: 28px;">
-			{#each Array(6) as _}
-				<div class="skeleton-card sk-shimmer"></div>
+			{#each Array(6) as _, i (i)}
+				<Skeleton class="skeleton-card aspect-4/5 rounded-xl" />
 			{/each}
 		</div>
 	{:else if libraryEmpty}
-		<div class="empty-state reveal" style="--d:0.08s">
-			<div class="empty-icon"><ImagePlus size={22} /></div>
-			<h3 class="empty-title">No carousels yet</h3>
-			<p class="empty-desc">
-				Generate in Bulk, clip a YouTube video, or edit in Studio - then save when you're ready. Use Save template for a named Studio copy.
-			</p>
-			<div class="empty-actions">
-				<a href="/dashboard/bulk" class="ma-btn ma-btn-primary"><Rows3 size={14} /> Open Bulk</a>
-				<a href="/dashboard/videos" class="ma-btn ma-btn-ghost">Clip YouTube</a>
-				<a href="/dashboard/studio?template=news" class="ma-btn ma-btn-ghost">Open Studio</a>
+		<Empty.Root class="border border-dashed reveal" style="--d:0.08s">
+			<Empty.Header>
+				<Empty.Media variant="icon">
+					<ImagePlus />
+				</Empty.Media>
+				<Empty.Title>No carousels yet</Empty.Title>
+				<Empty.Description>
+					Generate in Bulk, clip a YouTube video, or edit in Studio — then Save draft to see it under
+					Studio drafts. Use Save template for a named Studio copy.
+				</Empty.Description>
+			</Empty.Header>
+			<Empty.Content class="flex flex-wrap justify-center gap-2">
+				<Button href="/dashboard/bulk">
+					<Rows3 data-icon="inline-start" />
+					Open Bulk
+				</Button>
+				<Button href="/dashboard/videos" variant="outline">Clip YouTube</Button>
+				<Button href="/dashboard/studio?template=news" variant="outline">Open Studio</Button>
+			</Empty.Content>
+		</Empty.Root>
+	{/if}
+
+	{#if studioDrafts.length > 0}
+		<section id="studio-drafts" class="studio-drafts-block reveal" style="--d:0.02s">
+			<div class="studio-drafts-head">
+				<div class="studio-drafts-head-row">
+					<div>
+						<h2 class="studio-drafts-title">Studio drafts</h2>
+						<p class="studio-drafts-sub">
+							Saved from Studio with Save draft. Open to edit, or select several to delete.
+						</p>
+					</div>
+					<div class="draft-select-bar">
+						<Button type="button" variant="outline" size="sm" onclick={toggleSelectAllDrafts}>
+							<span class="draft-select-box" class:draft-select-box--on={allDraftsSelected} aria-hidden="true"></span>
+							{allDraftsSelected ? 'Deselect all' : 'Select all'}
+						</Button>
+						{#if selectedDraftIds.length > 0}
+							<Button
+								type="button"
+								variant="destructive"
+								size="sm"
+								disabled={bulkDeletingDrafts}
+								onclick={() => void deleteSelectedDrafts()}
+							>
+								{#if bulkDeletingDrafts}
+									<Loader class="animate-spin" />
+								{:else}
+									<Trash2 />
+								{/if}
+								Delete {selectedDraftIds.length}
+							</Button>
+						{/if}
+					</div>
+				</div>
 			</div>
-		</div>
+			<div class="carousel-grid studio-drafts-grid">
+				{#each studioDrafts as d, i (d.id)}
+					{@const pv = studioDraftPreview(d)}
+					{@const isSelected = selectedDraftIds.includes(d.id)}
+					<div
+						class="carousel-card reveal group studio-draft-card"
+						class:studio-draft-card--selected={isSelected}
+						style="--card-bg: {pv.bgSolid}; --card-color: {pv.textColor}; --d:{0.12 + i * 0.04}s"
+					>
+						<label class="draft-check">
+							<input
+								type="checkbox"
+								checked={isSelected}
+								onchange={() => toggleDraftSelected(d.id)}
+								onclick={(e) => e.stopPropagation()}
+							/>
+							<span class="sr-only">Select draft</span>
+						</label>
+						<a
+							href="/dashboard/studio?draft={d.id}"
+							class="card-preview studio-draft-card-preview"
+							style={pv.heroUrl && !pv.fullSlideRaster ? '' : `background-color: ${pv.bgSolid};`}
+						>
+							{#if pv.heroUrl}
+								<img
+									src={pv.heroUrl}
+									alt=""
+									class="studio-draft-bg-img"
+									class:studio-draft-bg-img--full-slide={pv.fullSlideRaster}
+									referrerpolicy="no-referrer"
+									loading="lazy"
+									draggable="false"
+									onerror={() => {
+										brokenDraftThumbIds = { ...brokenDraftThumbIds, [d.id]: true };
+									}}
+								/>
+								{#if !pv.fullSlideRaster}
+									<div class="studio-draft-bg-scrim"></div>
+								{/if}
+							{/if}
+							{#if !pv.fullSlideRaster || !pv.heroUrl}
+								<p class="card-preview-text studio-draft-preview-headline" style="color: {pv.textColor}">
+									{pv.headline}
+								</p>
+							{/if}
+							<div
+								class="studio-draft-filmstrip"
+								class:studio-draft-filmstrip--light={pv.filmLight}
+								aria-hidden="true"
+							>
+								{#each pv.slideHints as hint, hi}
+									<div
+										class="studio-draft-film-cell"
+										class:studio-draft-film-cell--on={hi === 0}
+										title="Slide {hi + 1}"
+									>
+										<span class="studio-draft-film-hint">{hint}</span>
+									</div>
+								{/each}
+							</div>
+						</a>
+						<div class="slide-count">{pv.slideCount} slide{pv.slideCount === 1 ? '' : 's'}</div>
+						<div class="studio-draft-template-pill">{pv.templateLabel}</div>
+						<div class="card-footer">
+							<div class="card-info">
+								<p class="card-title-text">{studioDraftTitle(d)}</p>
+								<p class="card-time">Updated {timeAgo(d.updated_at)}</p>
+							</div>
+							<div class="card-actions">
+								<a
+									href="/dashboard/studio?draft={d.id}"
+									class="card-action card-action--edit"
+									title="Open in Studio"
+								>
+									<Edit2 size={11} />
+								</a>
+								<button
+									type="button"
+									class="card-action card-action--delete"
+									title="Delete draft"
+									onclick={() => void deleteStudioDraft(d.id)}
+								>
+									<Trash2 size={11} />
+								</button>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</section>
 	{/if}
 
 	{#if clipShowCards.length > 0}
-		<section class="yt-clips-block reveal" style="--d:0.02s">
+		<section class="yt-clips-block reveal" style="--d:0.04s">
 			<div class="studio-drafts-head">
 				<div class="studio-drafts-head-row">
 					<div>
@@ -1209,22 +1350,23 @@
 							{#if clipGroups.length > 1}
 								· {clipGroups.length} videos
 							{/if}
-							- select to clean up, or open one to edit.
+							— select to clean up, or open one to edit.
 						</p>
 					</div>
-					<div class="draft-select-bar">
-						<button type="button" class="draft-select-all" onclick={toggleSelectAllClips}>
+					<div class="draft-select-bar yt-clips-actions">
+						<Button type="button" variant="outline" size="sm" onclick={toggleSelectAllClips}>
 							<span
 								class="draft-select-box"
 								class:draft-select-box--on={allClipsSelected}
 								aria-hidden="true"
 							></span>
 							{allClipsSelected ? 'Deselect all' : 'Select all'}
-						</button>
+						</Button>
 						{#if selectedClipKeys.length > 0}
-							<button
+							<Button
 								type="button"
-								class="draft-bulk-delete"
+								variant="destructive"
+								size="sm"
 								disabled={bulkDeletingClips}
 								onclick={() => void deleteSelectedClips()}
 							>
@@ -1234,11 +1376,12 @@
 									<Trash2 size={13} />
 								{/if}
 								Delete {selectedClipKeys.length}
-							</button>
+							</Button>
 						{/if}
-						<a href="/dashboard/videos" class="yt-clips-add">
-							<Video size={13} /> Find clips
-						</a>
+						<Button href="/dashboard/videos" variant="outline" size="sm">
+							<Video size={13} data-icon="inline-start" />
+							Find clips
+						</Button>
 					</div>
 				</div>
 			</div>
@@ -1246,13 +1389,14 @@
 			<div class="yt-clip-groups">
 				{#each clipGroups as group, gi (group.groupId)}
 					{@const groupOn = groupAllSelected(group.groupId)}
-					<div class="yt-clip-group" style="--d:{0.04 + gi * 0.03}s">
+					<div class="yt-clip-group" style="--d:{0.06 + gi * 0.03}s">
 						<div class="yt-clip-group-head">
 							<button
 								type="button"
-								class="draft-select-all yt-group-select"
+								class="yt-group-select"
 								onclick={() => toggleSelectClipGroup(group.groupId)}
 								title={groupOn ? 'Deselect video' : 'Select all clips from this video'}
+								aria-pressed={groupOn}
 							>
 								<span
 									class="draft-select-box"
@@ -1275,17 +1419,8 @@
 								<div
 									class="yt-clip-card group"
 									class:yt-clip-card--selected={isSelected}
-									style="--d:{0.06 + i * 0.02}s"
+									style="--d:{0.08 + i * 0.02}s"
 								>
-									<label class="draft-check yt-clip-check">
-										<input
-											type="checkbox"
-											checked={isSelected}
-											onchange={() => toggleClipSelected(card.key)}
-											onclick={(e) => e.stopPropagation()}
-										/>
-										<span class="sr-only">Select clip</span>
-									</label>
 									<a href={card.href} class="yt-clip-thumb" title={title}>
 										{#if card.show.thumb && !thumbBroken}
 											<img
@@ -1301,21 +1436,36 @@
 										{:else}
 											<span class="yt-clip-thumb-fallback">{title.slice(0, 48)}</span>
 										{/if}
+										<span class="yt-clip-thumb-bar">{card.projectTitle || 'YouTube clip'}</span>
+										{#if card.show.slideCount}
+											<span class="yt-clip-badge">{card.show.slideCount} slides</span>
+										{/if}
 									</a>
-									{#if card.show.slideCount}
-										<span class="yt-clip-slides">{card.show.slideCount}</span>
-									{/if}
-									<div class="yt-clip-caption">
-										<a href={card.href} class="yt-clip-name" title={title}>{title}</a>
-										<button
+									<label class="yt-clip-check">
+										<input
+											type="checkbox"
+											checked={isSelected}
+											onchange={() => toggleClipSelected(card.key)}
+											onclick={(e) => e.stopPropagation()}
+										/>
+										<span class="sr-only">Select clip</span>
+									</label>
+									<div class="yt-clip-meta">
+										<div class="yt-clip-meta-text">
+											<a href={card.href} class="yt-clip-name" title={title}>{title}</a>
+											<p class="yt-clip-sub">{card.pill} · {timeAgo(card.updatedAt)}</p>
+										</div>
+										<Button
 											type="button"
-											class="yt-clip-del"
-											title="Delete"
+											variant="ghost"
+											size="icon-xs"
+											class="yt-clip-more"
+											title="Delete clip"
 											aria-label="Delete clip"
 											onclick={() => void deleteOneClipCard(card)}
 										>
-											<Trash2 size={11} />
-										</button>
+											<MoreHorizontal size={16} />
+										</Button>
 									</div>
 								</div>
 							{/each}
@@ -1337,28 +1487,29 @@
 						</p>
 					</div>
 					<div class="draft-select-bar">
-						<button type="button" class="draft-select-all" onclick={toggleSelectAllBulk}>
+						<Button type="button" variant="outline" size="sm" onclick={toggleSelectAllBulk}>
 							<span
 								class="draft-select-box"
 								class:draft-select-box--on={allBulkSelected}
 								aria-hidden="true"
 							></span>
 							{allBulkSelected ? 'Deselect all' : 'Select all'}
-						</button>
+						</Button>
 						{#if selectedBulkKeys.length > 0}
-							<button
+							<Button
 								type="button"
-								class="draft-bulk-delete"
+								variant="destructive"
+								size="sm"
 								disabled={bulkDeletingBulk}
 								onclick={() => void deleteSelectedBulk()}
 							>
 								{#if bulkDeletingBulk}
-									<Loader size={13} class="spin" />
+									<Loader class="animate-spin" />
 								{:else}
-									<Trash2 size={13} />
+									<Trash2 />
 								{/if}
 								Delete {selectedBulkKeys.length}
-							</button>
+							</Button>
 						{/if}
 					</div>
 				</div>
@@ -1474,130 +1625,7 @@
 		</section>
 	{/if}
 
-	{#if studioDrafts.length > 0}
-		<section class="studio-drafts-block reveal" style="--d:0.08s">
-			<div class="studio-drafts-head">
-				<div class="studio-drafts-head-row">
-					<div>
-						<h2 class="studio-drafts-title">Studio drafts</h2>
-						<p class="studio-drafts-sub">
-							Saved from Studio with Save draft. Open to edit, or select several to delete.
-						</p>
-					</div>
-					<div class="draft-select-bar">
-						<button type="button" class="draft-select-all" onclick={toggleSelectAllDrafts}>
-							<span class="draft-select-box" class:draft-select-box--on={allDraftsSelected} aria-hidden="true"></span>
-							{allDraftsSelected ? 'Deselect all' : 'Select all'}
-						</button>
-						{#if selectedDraftIds.length > 0}
-							<button
-								type="button"
-								class="draft-bulk-delete"
-								disabled={bulkDeletingDrafts}
-								onclick={() => void deleteSelectedDrafts()}
-							>
-								{#if bulkDeletingDrafts}
-									<Loader size={13} class="spin" />
-								{:else}
-									<Trash2 size={13} />
-								{/if}
-								Delete {selectedDraftIds.length}
-							</button>
-						{/if}
-					</div>
-				</div>
-			</div>
-			<div class="carousel-grid studio-drafts-grid">
-				{#each studioDrafts as d, i (d.id)}
-					{@const pv = studioDraftPreview(d)}
-					{@const isSelected = selectedDraftIds.includes(d.id)}
-					<div
-						class="carousel-card reveal group studio-draft-card"
-						class:studio-draft-card--selected={isSelected}
-						style="--card-bg: {pv.bgSolid}; --card-color: {pv.textColor}; --d:{0.12 + i * 0.04}s"
-					>
-						<label class="draft-check">
-							<input
-								type="checkbox"
-								checked={isSelected}
-								onchange={() => toggleDraftSelected(d.id)}
-								onclick={(e) => e.stopPropagation()}
-							/>
-							<span class="sr-only">Select draft</span>
-						</label>
-						<a
-							href="/dashboard/studio?draft={d.id}"
-							class="card-preview studio-draft-card-preview"
-							style={pv.heroUrl && !pv.fullSlideRaster ? '' : `background-color: ${pv.bgSolid};`}
-						>
-							{#if pv.heroUrl}
-								<img
-									src={pv.heroUrl}
-									alt=""
-									class="studio-draft-bg-img"
-									class:studio-draft-bg-img--full-slide={pv.fullSlideRaster}
-									referrerpolicy="no-referrer"
-									loading="lazy"
-									draggable="false"
-									onerror={() => {
-										brokenDraftThumbIds = { ...brokenDraftThumbIds, [d.id]: true };
-									}}
-								/>
-								{#if !pv.fullSlideRaster}
-									<div class="studio-draft-bg-scrim"></div>
-								{/if}
-							{/if}
-							{#if !pv.fullSlideRaster || !pv.heroUrl}
-								<p class="card-preview-text studio-draft-preview-headline" style="color: {pv.textColor}">
-									{pv.headline}
-								</p>
-							{/if}
-							<div
-								class="studio-draft-filmstrip"
-								class:studio-draft-filmstrip--light={pv.filmLight}
-								aria-hidden="true"
-							>
-								{#each pv.slideHints as hint, hi}
-									<div
-										class="studio-draft-film-cell"
-										class:studio-draft-film-cell--on={hi === 0}
-										title="Slide {hi + 1}"
-									>
-										<span class="studio-draft-film-hint">{hint}</span>
-									</div>
-								{/each}
-							</div>
-						</a>
-						<div class="slide-count">{pv.slideCount} slide{pv.slideCount === 1 ? '' : 's'}</div>
-						<div class="studio-draft-template-pill">{pv.templateLabel}</div>
-						<div class="card-footer">
-							<div class="card-info">
-								<p class="card-title-text">{studioDraftTitle(d)}</p>
-								<p class="card-time">Updated {timeAgo(d.updated_at)}</p>
-							</div>
-							<div class="card-actions">
-								<a
-									href="/dashboard/studio?draft={d.id}"
-									class="card-action card-action--edit"
-									title="Open in Studio"
-								>
-									<Edit2 size={11} />
-								</a>
-								<button
-									type="button"
-									class="card-action card-action--delete"
-									title="Delete draft"
-									onclick={() => void deleteStudioDraft(d.id)}
-								>
-									<Trash2 size={11} />
-								</button>
-							</div>
-						</div>
-					</div>
-				{/each}
-			</div>
-		</section>
-	{/if}
+
 
 	{#if !loading && carousels.length > 0}
 	<section class="library-block reveal" style="--d:0.16s">
@@ -2301,48 +2329,50 @@
 		flex-wrap: wrap;
 	}
 
-	/* —— YouTube clips: dense, grouped library —— */
+	/* —— YouTube clips: media-library row (thumb + title under) —— */
 	.yt-clips-block {
-		margin-bottom: 28px;
-		padding: 18px 18px 16px;
-		border-radius: 18px;
-		border: 1px solid var(--panel-border);
-		background: var(--panel-bg);
-		box-shadow: var(--shadow-soft);
+		margin-bottom: 32px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		box-shadow: none;
 	}
-	.yt-clips-add {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 34px;
-		padding: 0 12px;
-		border-radius: 10px;
-		border: 1px solid var(--panel-border);
-		background: #fff;
-		font-size: 12px;
-		font-weight: 650;
-		color: var(--t-strong);
-		text-decoration: none;
-	}
-	.yt-clips-add:hover {
-		border-color: var(--panel-border-hover);
+	.yt-clips-actions {
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 	.yt-clip-groups {
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: 28px;
+	}
+	.yt-clip-group {
+		padding: 0;
+		border: none;
+		background: transparent;
 	}
 	.yt-clip-group-head {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		margin-bottom: 8px;
+		gap: 10px;
+		margin-bottom: 14px;
 		min-width: 0;
 	}
 	.yt-group-select {
-		padding: 0 8px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
 		height: 28px;
+		padding: 0;
 		flex-shrink: 0;
+		border-radius: 6px;
+		border: 1px solid var(--border, var(--panel-border));
+		background: var(--background, #fff);
+		cursor: pointer;
+	}
+	.yt-group-select:hover {
+		background: var(--muted, #f4f4f5);
 	}
 	.yt-clip-group-meta {
 		min-width: 0;
@@ -2351,54 +2381,45 @@
 	.yt-clip-group-title {
 		margin: 0;
 		font-size: 13px;
-		font-weight: 750;
-		color: var(--t-strong);
+		font-weight: 650;
+		color: var(--foreground, var(--t-strong));
 		letter-spacing: -0.01em;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.yt-clip-group-sub {
-		margin: 1px 0 0;
-		font-size: 11px;
-		color: var(--t-muted);
+		margin: 2px 0 0;
+		font-size: 12px;
+		color: var(--muted-foreground, var(--t-muted));
 	}
 	.yt-clips-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-		gap: 10px;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 20px 18px;
+		align-items: start;
 	}
 	.yt-clip-card {
 		position: relative;
-		border-radius: 12px;
-		border: 1px solid var(--panel-border);
-		background: #fff;
-		overflow: hidden;
-		transition:
-			border-color 0.2s ease,
-			box-shadow 0.2s ease,
-			outline-color 0.15s ease;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		min-width: 0;
+		background: transparent;
+		border: none;
+		box-shadow: none;
+		overflow: visible;
 	}
-	.yt-clip-card:hover {
-		border-color: var(--panel-border-hover);
-		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
-	}
-	.yt-clip-card--selected {
-		outline: 2px solid #111;
-		outline-offset: 1px;
-		border-color: #111;
-	}
-	.yt-clip-check {
-		top: 6px;
-		left: 6px;
-		width: 20px;
-		height: 20px;
-		border-radius: 6px;
+	.yt-clip-card--selected .yt-clip-thumb {
+		outline: 2px solid var(--foreground, #111);
+		outline-offset: 2px;
 	}
 	.yt-clip-thumb {
+		position: relative;
 		display: block;
 		aspect-ratio: 16 / 9;
-		background: #111;
+		border-radius: 12px;
+		background: #141414;
 		text-decoration: none;
 		overflow: hidden;
 	}
@@ -2407,6 +2428,10 @@
 		height: 100%;
 		object-fit: cover;
 		display: block;
+		transition: transform 0.3s ease;
+	}
+	.yt-clip-card:hover .yt-clip-thumb img {
+		transform: scale(1.04);
 	}
 	.yt-clip-thumb-fallback {
 		display: flex;
@@ -2414,81 +2439,146 @@
 		justify-content: center;
 		width: 100%;
 		height: 100%;
-		padding: 8px;
-		font-size: 10px;
-		font-weight: 650;
-		line-height: 1.3;
+		padding: 16px;
+		font-size: 13px;
+		font-weight: 600;
+		line-height: 1.35;
 		text-align: center;
-		color: rgba(255, 255, 255, 0.72);
+		color: rgba(255, 255, 255, 0.7);
 	}
-	.yt-clip-slides {
+	.yt-clip-thumb-bar {
 		position: absolute;
-		top: 6px;
-		right: 6px;
-		z-index: 4;
-		padding: 2px 6px;
-		border-radius: 5px;
-		background: rgba(0, 0, 0, 0.72);
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 2;
+		padding: 8px 12px;
+		background: rgba(0, 0, 0, 0.55);
 		color: #fff;
-		font-size: 10px;
-		font-weight: 700;
-		line-height: 1.2;
-		pointer-events: none;
-	}
-	.yt-clip-caption {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: 6px 7px 7px;
-		min-width: 0;
-	}
-	.yt-clip-name {
-		flex: 1;
-		min-width: 0;
 		font-size: 11px;
-		font-weight: 700;
-		color: var(--t-strong);
-		text-decoration: none;
+		font-weight: 500;
+		letter-spacing: 0.01em;
+		text-align: center;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		letter-spacing: -0.01em;
+		pointer-events: none;
 	}
-	.yt-clip-name:hover {
-		text-decoration: underline;
+	.yt-clip-badge {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		z-index: 3;
+		padding: 4px 8px;
+		border-radius: 6px;
+		background: rgba(28, 28, 30, 0.82);
+		color: #f5f5f5;
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 1;
+		pointer-events: none;
+		backdrop-filter: blur(6px);
 	}
-	.yt-clip-del {
-		flex-shrink: 0;
+	.yt-clip-check {
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		z-index: 5;
 		width: 22px;
 		height: 22px;
-		border: none;
+		margin: 0;
 		border-radius: 6px;
-		background: transparent;
-		color: var(--t-muted);
+		background: rgba(255, 255, 255, 0.92);
+		border: 1px solid rgba(0, 0, 0, 0.12);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
-		opacity: 0;
-		transition:
-			opacity 0.15s,
-			background 0.15s,
-			color 0.15s;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 	}
-	.yt-clip-card:hover .yt-clip-del,
-	.yt-clip-card:focus-within .yt-clip-del {
+	.yt-clip-check input {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		cursor: pointer;
+		margin: 0;
+	}
+	.yt-clip-check::after {
+		content: '';
+		width: 10px;
+		height: 10px;
+		border-radius: 3px;
+		background: transparent;
+	}
+	.yt-clip-card--selected .yt-clip-check {
+		background: #111;
+		border-color: #111;
+	}
+	.yt-clip-card--selected .yt-clip-check::after {
+		background: #fff;
+		clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+	}
+	.yt-clip-meta {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		min-width: 0;
+		padding: 0 2px;
+	}
+	.yt-clip-meta-text {
+		flex: 1;
+		min-width: 0;
+	}
+	.yt-clip-name {
+		display: block;
+		font-size: 14px;
+		font-weight: 600;
+		line-height: 1.3;
+		color: var(--foreground, var(--t-strong));
+		text-decoration: none;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		letter-spacing: -0.015em;
+	}
+	.yt-clip-name:hover {
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.yt-clip-sub {
+		margin: 3px 0 0;
+		font-size: 12px;
+		line-height: 1.3;
+		color: var(--muted-foreground, var(--t-muted));
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.yt-clip-more {
+		flex-shrink: 0;
+		margin-top: -2px;
+		color: var(--muted-foreground, var(--t-muted)) !important;
+		opacity: 0.55;
+	}
+	.yt-clip-card:hover .yt-clip-more,
+	.yt-clip-card:focus-within .yt-clip-more {
 		opacity: 1;
 	}
-	.yt-clip-del:hover {
-		background: #fef2f2;
-		color: #b91c1c;
+	.yt-clip-more:hover {
+		color: var(--foreground, var(--t-strong)) !important;
 	}
-	@media (max-width: 720px) {
+	@media (max-width: 960px) {
 		.yt-clips-grid {
-			grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-			gap: 8px;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 16px 14px;
 		}
-		.yt-clip-del {
+	}
+	@media (max-width: 560px) {
+		.yt-clips-grid {
+			grid-template-columns: 1fr;
+			gap: 16px;
+		}
+		.yt-clip-more {
 			opacity: 1;
 		}
 	}

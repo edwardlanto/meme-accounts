@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { BulkSlide } from '$lib/studio/bulk-to-studio';
+	import type { HighlightDefaults } from '$lib/highlight';
 	import { viralityScoreLabel, viralityScoreTone } from '$lib/studio/bulk-video-clips';
 	import BulkSlidePreview from '$lib/components/bulk/BulkSlidePreview.svelte';
 
@@ -15,6 +16,8 @@
 		textHighlightsEnabled?: boolean;
 		/** News source logo URL from brand kit */
 		sourceLogoSrc?: string;
+		highlightColor?: string;
+		highlightDefaults?: HighlightDefaults;
 	};
 
 	let {
@@ -25,6 +28,8 @@
 		loadingSlideIds = [],
 		textHighlightsEnabled = true,
 		sourceLogoSrc,
+		highlightColor,
+		highlightDefaults,
 	}: Props = $props();
 
 	const previewWidth = $derived(width);
@@ -286,6 +291,8 @@
 								mediaFetching={true}
 								{textHighlightsEnabled}
 								{sourceLogoSrc}
+								{highlightColor}
+								{highlightDefaults}
 							/>
 						{:else}
 							<BulkSlidePreview
@@ -296,6 +303,8 @@
 								width={previewWidth}
 								{textHighlightsEnabled}
 								{sourceLogoSrc}
+								{highlightColor}
+								{highlightDefaults}
 							/>
 						{/if}
 					</div>

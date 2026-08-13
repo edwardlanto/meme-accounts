@@ -11,6 +11,9 @@
 		loadBrandKit,
 		saveBrandKit,
 		mergeCaptionDefaultsIntoKit,
+		highlightDefaultsFromBrandKit,
+		normalizeHighlightHex,
+		normalizeHighlightStyleKind,
 		type BrandKitSettings,
 	} from '$lib/studio/brand-kit';
 	import {
@@ -28,6 +31,7 @@
 		stripEmDashes,
 		BULK_EMOTIONS,
 		BULK_AUDIENCES,
+		BULK_STYLES,
 		audiencePromptText,
 		type BulkEmotionId,
 		type BulkClipHandoff,
@@ -84,6 +88,7 @@
 		Loader2,
 		Layers,
 		ArrowRight,
+		ArrowUp,
 		Type,
 		Captions,
 		Image,
@@ -92,12 +97,31 @@
 		Download,
 		BarChart3,
 		Info,
-		Eraser,
 		Volume2,
 		VolumeX,
 		Highlighter,
+		Search,
+		Users,
+		Palette,
+		Heart,
+		History,
+		Rows3,
 	} from 'lucide-svelte';
-	import { Switch } from '$lib/components/ui/switch';
+	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
+	import {
+		AVAILABLE_PATTERNS,
+		HIGHLIGHT_SOLID_PRESETS,
+		HIGHLIGHT_GRADIENT_PRESETS,
+		normalizeHighlightPatternName,
+	} from '$lib/highlight';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import {
+		clearPromptHistory,
+		loadPromptHistory,
+		pushPromptHistory,
+		removePromptHistoryEntry,
+		type StudioPromptHistoryEntry,
+	} from '$lib/studio/prompt-history';
 
 	type SlidePopoverKind = 'intel' | 'reframe' | 'captions';
 
@@ -136,6 +160,37 @@
 	let stockNote = $state('');
 	let generating = $state(false);
 	let generateError = $state('');
+	let promptHistory = $state<StudioPromptHistoryEntry[]>([]);
+	let promptHistoryOpen = $state(false);
+
+	const promptReady = $derived(topic.trim().length > 0);
+	const promptSubmitDisabled = $derived(!promptReady || generating);
+
+	const audienceChipLabel = $derived(
+		audienceId === 'custom'
+			? audience.trim() || 'Custom…'
+			: (BULK_AUDIENCES.find((a) => a.id === audienceId)?.label ?? 'Audience'),
+	);
+	const styleChipLabel = $derived(BULK_STYLES.find((s) => s.id === style)?.label ?? 'Style');
+	const emotionChipLabel = $derived(BULK_EMOTIONS.find((e) => e.id === emotion)?.label ?? 'Emotion');
+
+	function refreshPromptHistory() {
+		if (!userId) {
+			promptHistory = [];
+			return;
+		}
+		promptHistory = loadPromptHistory(userId);
+	}
+
+	function applyPromptHistoryEntry(entry: StudioPromptHistoryEntry) {
+		topic = entry.query;
+		promptHistoryOpen = false;
+	}
+
+	function submitBulkPrompt() {
+		if (promptSubmitDisabled) return;
+		void generateIdeas();
+	}
 	/** Empty until hydrate so we never flash a blank starter show. */
 	let shows = $state<BulkShow[]>([]);
 	let selectedShowId = $state<string | null>(null);
@@ -1308,6 +1363,13 @@
 		generating = true;
 		generateError = '';
 		try {
+			if (userId) {
+				promptHistory = pushPromptHistory(userId, {
+					query: t,
+					mode: 'general',
+					title: `${ideaCount} idea${ideaCount === 1 ? '' : 's'} · ${slidesPerShow} slides`,
+				});
+			}
 			const res = await fetch('/api/generate-slides', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -1398,7 +1460,7 @@
 	function onGenerateKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
 			e.preventDefault();
-			void generateIdeas();
+			submitBulkPrompt();
 		}
 	}
 
@@ -1418,10 +1480,59 @@
 	}
 
 	const wordHighlightsOn = $derived(brandKit.textHighlightsEnabled !== false);
+	const brandHighlightDefaults = $derived(highlightDefaultsFromBrandKit(brandKit));
+	const brandHighlightColor = $derived(brandHighlightDefaults.color);
+	const highlightStyleKind = $derived(normalizeHighlightStyleKind(brandKit.highlightStyleKind));
+	const highlightColor = $derived(
+		normalizeHighlightHex(brandKit.highlightColor, DEFAULT_BRAND_KIT.highlightColor),
+	);
+	const highlightGradientFrom = $derived(
+		normalizeHighlightHex(brandKit.highlightGradientFrom, DEFAULT_BRAND_KIT.highlightGradientFrom),
+	);
+	const highlightGradientTo = $derived(
+		normalizeHighlightHex(brandKit.highlightGradientTo, DEFAULT_BRAND_KIT.highlightGradientTo),
+	);
+	const highlightPattern = $derived(
+		normalizeHighlightPatternName(brandKit.highlightPattern, DEFAULT_BRAND_KIT.highlightPattern),
+	);
+
+	function patchBrandHighlights(patch: Partial<BrandKitSettings>) {
+		brandKit = { ...brandKit, ...patch };
+		if (userId) saveBrandKit(userId, brandKit);
+	}
 
 	function setWordHighlights(on: boolean) {
-		brandKit = { ...brandKit, textHighlightsEnabled: on };
-		if (userId) saveBrandKit(userId, brandKit);
+		patchBrandHighlights({ textHighlightsEnabled: on });
+	}
+
+	function persistBrandHighlight(nextRaw: string) {
+		patchBrandHighlights({
+			highlightColor: normalizeHighlightHex(nextRaw, highlightColor),
+			highlightStyleKind: 'solid',
+			textHighlightsEnabled: true,
+		});
+	}
+
+	function persistBrandHighlightPattern(name: string) {
+		const next = normalizeHighlightPatternName(name);
+		if (!AVAILABLE_PATTERNS.some((p) => p.name === next)) return;
+		patchBrandHighlights({
+			highlightPattern: next,
+			highlightStyleKind: 'pattern',
+			textHighlightsEnabled: true,
+		});
+	}
+
+	function persistBrandHighlightGradient(from: string, to: string) {
+		const a = normalizeHighlightHex(from, highlightGradientFrom);
+		const b = normalizeHighlightHex(to, highlightGradientTo);
+		patchBrandHighlights({
+			highlightColor: a,
+			highlightStyleKind: 'gradient',
+			highlightGradientFrom: a,
+			highlightGradientTo: b,
+			textHighlightsEnabled: true,
+		});
 	}
 
 	let brandLogoBusy = $state(false);
@@ -1516,84 +1627,6 @@
 		</div>
 	</header>
 
-	<section class="generate-bar" aria-label="Generate ideas">
-		<label class="field grow">
-			<span>Topic</span>
-			<input
-				bind:value={topic}
-				placeholder="e.g. regenerative medicine breakthroughs"
-				onkeydown={(e) => e.key === 'Enter' && !e.metaKey && !e.ctrlKey && e.preventDefault()}
-			/>
-		</label>
-		<label class="field">
-			<span>Audience</span>
-			<select bind:value={audienceId}>
-				{#each BULK_AUDIENCES as a}
-					<option value={a.id}>{a.label}</option>
-				{/each}
-			</select>
-		</label>
-		{#if audienceId === 'custom'}
-			<label class="field">
-				<span>Describe audience</span>
-				<input bind:value={audience} placeholder="e.g. first-time home buyers" />
-			</label>
-		{/if}
-		<label class="field">
-			<span>Style</span>
-			<select bind:value={style}>
-				<option value="bold">Bold</option>
-				<option value="editorial">Editorial</option>
-				<option value="minimal">Minimal</option>
-			</select>
-		</label>
-		<label class="field">
-			<span>Emotion</span>
-			<select bind:value={emotion}>
-				{#each BULK_EMOTIONS as e}
-					<option value={e.id}>{e.label}</option>
-				{/each}
-			</select>
-		</label>
-		<label class="field count">
-			<span>Ideas ({ideaCount})</span>
-			<input type="range" min="1" max="8" bind:value={ideaCount} />
-		</label>
-		<label class="field count">
-			<span>Slides/show ({slidesPerShow})</span>
-			<input type="range" min="1" max="8" bind:value={slidesPerShow} />
-		</label>
-		<label
-			class="append-toggle"
-			title="Automatically fill Unsplash/Pexels media on image & video templates after generate"
-		>
-			<input type="checkbox" bind:checked={autoStock} />
-			Auto stock
-		</label>
-		<div class="generate-bar-tail">
-			<button
-				type="button"
-				class="ma-btn ma-btn-primary generate-btn"
-				onclick={() => void generateIdeas()}
-				disabled={generating || !topic.trim()}
-			>
-				{#if generating}
-					<Loader2 size={15} class="spin" />
-					Generating…
-				{:else}
-					<Sparkles size={15} />
-					Generate
-				{/if}
-			</button>
-		</div>
-	</section>
-	{#if generateError}
-		<p class="err" role="alert">{generateError}</p>
-	{/if}
-	{#if stockNote}
-		<p class="stock-note" role="status">{stockNote}</p>
-	{/if}
-
 	<section class="stack-wrap" aria-label="Slideshow stack">
 		<div class="rows-toolbar">
 			<span class="rows-count"
@@ -1610,65 +1643,163 @@
 				{/if}
 			</span>
 			<div class="rows-toolbar-actions">
-				<button
+				<Popover>
+					{#snippet highlightsTrigger({ props }: { props: Record<string, unknown> })}
+						<Button
+							{...props}
+							variant="outline"
+							size="sm"
+							title="Word highlights — accent color for [[…]] markup"
+							aria-label="Highlights"
+						>
+							<span
+								class="bulk-hl-swatch"
+								style={
+									highlightStyleKind === 'gradient'
+										? `background: linear-gradient(90deg, ${highlightGradientFrom}, ${highlightGradientTo});`
+										: highlightStyleKind === 'pattern'
+											? `background-image: url('${AVAILABLE_PATTERNS.find((p) => p.name === highlightPattern)?.url ?? ''}'); background-size: cover;`
+											: `background: ${highlightColor};`
+								}
+								aria-hidden="true"
+							></span>
+							<Highlighter data-icon="inline-start" />
+							Highlights
+						</Button>
+					{/snippet}
+					<PopoverTrigger child={highlightsTrigger} />
+					<PopoverContent
+						side="bottom"
+						sideOffset={10}
+						align="end"
+						portalProps={{ to: 'body' }}
+						class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+					>
+						<div class="mb-3 flex items-center justify-between gap-2">
+							<p class="text-[12px] font-semibold tracking-tight">Highlights</p>
+							<div class="flex items-center gap-0.5 rounded-lg bg-[#ececec] p-0.5">
+								<button
+									type="button"
+									aria-pressed={wordHighlightsOn}
+									class="h-6 rounded-md px-2.5 text-[10px] font-semibold transition-all
+										{wordHighlightsOn
+											? 'bg-white text-[#111] ring-1 ring-black/10'
+											: 'bg-transparent text-[#888] hover:text-[#333]'}"
+									onclick={() => setWordHighlights(true)}
+								>On</button>
+								<button
+									type="button"
+									aria-pressed={!wordHighlightsOn}
+									class="h-6 rounded-md px-2.5 text-[10px] font-semibold transition-all
+										{!wordHighlightsOn
+											? 'bg-white text-[#111] ring-1 ring-black/10'
+											: 'bg-transparent text-[#888] hover:text-[#333]'}"
+									onclick={() => setWordHighlights(false)}
+								>Off</button>
+							</div>
+						</div>
+						{#if wordHighlightsOn}
+							<p class="mb-2 text-[10px] leading-snug text-[#999]">
+								Accent color for highlighted words in generated copy.
+							</p>
+							<div class="flex flex-wrap items-center gap-1.5">
+								{#each HIGHLIGHT_SOLID_PRESETS as c (c)}
+									<button
+										type="button"
+										title={c}
+										aria-label="Highlight {c}"
+										aria-pressed={highlightStyleKind === 'solid' &&
+											highlightColor.toUpperCase() === c.toUpperCase()}
+										onclick={() => persistBrandHighlight(c)}
+										class="h-7 w-7 shrink-0 rounded-full transition-transform hover:scale-105
+											{highlightStyleKind === 'solid' &&
+											highlightColor.toUpperCase() === c.toUpperCase()
+												? 'ring-2 ring-[#111] ring-offset-2 ring-offset-white scale-105'
+												: 'ring-1 ring-black/15'}"
+										style="background: {c};"
+									></button>
+								{/each}
+								<label
+									title="Custom highlight color"
+									aria-label="Custom highlight color"
+									class="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-full
+										{highlightStyleKind === 'solid' &&
+										!HIGHLIGHT_SOLID_PRESETS.some((c) => c.toUpperCase() === highlightColor.toUpperCase())
+											? 'ring-2 ring-[#111] ring-offset-2 ring-offset-white'
+											: 'ring-1 ring-black/15'}"
+									style="background: {highlightColor};"
+								>
+									<input
+										type="color"
+										value={highlightColor}
+										oninput={(e) =>
+											persistBrandHighlight((e.currentTarget as HTMLInputElement).value)}
+										class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+									/>
+								</label>
+							</div>
+							<div class="mt-2 flex flex-wrap items-center gap-1.5">
+								{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to] (`${from}-${to}`)}
+									<button
+										type="button"
+										title="{from} → {to}"
+										aria-label="Highlight gradient {from} to {to}"
+										aria-pressed={highlightStyleKind === 'gradient' &&
+											highlightGradientFrom.toUpperCase() === from.toUpperCase() &&
+											highlightGradientTo.toUpperCase() === to.toUpperCase()}
+										onclick={() => persistBrandHighlightGradient(from, to)}
+										class="h-7 w-10 shrink-0 rounded-full transition-transform hover:scale-105
+											{highlightStyleKind === 'gradient' &&
+											highlightGradientFrom.toUpperCase() === from.toUpperCase() &&
+											highlightGradientTo.toUpperCase() === to.toUpperCase()
+												? 'ring-2 ring-[#111] ring-offset-2 ring-offset-white scale-105'
+												: 'ring-1 ring-black/15'}"
+										style="background: linear-gradient(90deg, {from}, {to});"
+									></button>
+								{/each}
+							</div>
+							<div class="mt-2 flex flex-wrap items-center gap-1.5">
+								{#each AVAILABLE_PATTERNS as pat (pat.name)}
+									<button
+										type="button"
+										title={pat.label}
+										aria-label="Highlight pattern {pat.label}"
+										aria-pressed={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
+										onclick={() => persistBrandHighlightPattern(pat.name)}
+										class="h-7 w-7 shrink-0 overflow-hidden rounded-full transition-transform hover:scale-105
+											{highlightStyleKind === 'pattern' && highlightPattern === pat.name
+												? 'ring-2 ring-[#111] ring-offset-2 ring-offset-white scale-105'
+												: 'ring-1 ring-black/15'}"
+										style="background-image: url('{pat.url}'); background-size: cover; background-position: center;"
+									></button>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-[11px] leading-snug text-[#888]">
+								Highlights are off. New generates stay plain; existing [[…]] markup is hidden.
+							</p>
+						{/if}
+					</PopoverContent>
+				</Popover>
+				<Button
 					type="button"
-					class="ma-btn ma-btn-ghost ma-btn-sm"
-					onclick={() => void clearAndStartFresh()}
-					disabled={libraryBusy || stackLoading}
-					title="Clear the current stack and start blank"
+					variant="outline"
+					size="sm"
+					onclick={() => (pasteOpen = !pasteOpen)}
+					disabled={stackLoading}
 				>
-					{#if libraryBusy}
-						<Loader2 size={13} class="spin" />
-					{:else}
-						<Eraser size={13} />
-					{/if}
-					Clear &amp; fresh
-				</button>
-				<button
-					type="button"
-					class="ma-btn ma-btn-ghost ma-btn-sm"
-					onclick={() => void fillStockForShows(undefined, { force: true })}
-					disabled={stockFilling || stackLoading}
-					title="Fill Unsplash/Pexels media on image & video slides"
-				>
-					{#if stockFilling}
-						<Loader2 size={13} class="spin" />
-					{:else}
-						<Image size={13} />
-					{/if}
-					Fill stock
-				</button>
-				<label
-					class="hl-toggle"
-					class:hl-toggle-on={wordHighlightsOn}
-					title={wordHighlightsOn
-						? 'Word highlights on — generate wraps key phrases; [[…]] shows colored accents on News slides'
-						: 'Word highlights off — new generates stay plain; existing [[…]] markup is hidden in previews'}
-				>
-					<Highlighter size={13} />
-					<span class="hl-toggle-label">Highlights</span>
-					<span class="hl-toggle-state" aria-hidden="true">{wordHighlightsOn ? 'On' : 'Off'}</span>
-					<Switch
-						id="bulk-word-highlights"
-						size="sm"
-						checked={wordHighlightsOn}
-						onCheckedChange={(v) => setWordHighlights(!!v)}
-						class="shrink-0"
-					/>
-				</label>
-				<button type="button" class="ma-btn ma-btn-ghost ma-btn-sm" onclick={() => (pasteOpen = !pasteOpen)} disabled={stackLoading}>
-					<Type size={13} /> Paste ideas
-				</button>
-				<button type="button" class="ma-btn ma-btn-ghost ma-btn-sm" onclick={addShow} disabled={stackLoading}>
-					<Plus size={13} /> Add slideshow
-				</button>
+					<Type /> Paste ideas
+				</Button>
+				<Button type="button" variant="outline" size="sm" onclick={addShow} disabled={stackLoading}>
+					<Plus /> Add slideshow
+				</Button>
 			</div>
 		</div>
 
 		{#if pasteOpen}
 			<div class="paste-box">
 				<textarea bind:value={pasteText} rows="3" placeholder="One idea title per line…"></textarea>
-				<button type="button" class="ma-btn ma-btn-primary ma-btn-sm" onclick={() => void applyPasteLines()}>Apply lines</button>
+				<Button type="button" size="sm" onclick={() => void applyPasteLines()}>Apply lines</Button>
 			</div>
 		{/if}
 
@@ -1723,6 +1854,8 @@
 									loadingSlideIds={show.slides.filter((s) => s.mediaLoading).map((s) => s.id)}
 									textHighlightsEnabled={wordHighlightsOn}
 									sourceLogoSrc={brandKit.logoUrl || undefined}
+									highlightColor={brandHighlightColor}
+									highlightDefaults={brandHighlightDefaults}
 									onselect={(slideId) => selectSlide(show.id, slideId)}
 								/>
 							{/if}
@@ -1750,6 +1883,8 @@
 												mediaFetching={!!sl.mediaLoading}
 												textHighlightsEnabled={wordHighlightsOn}
 												sourceLogoSrc={brandKit.logoUrl || undefined}
+												highlightColor={brandHighlightColor}
+												highlightDefaults={brandHighlightDefaults}
 											/>
 											<span class="filmstrip-num">{si + 1}</span>
 											{#if sl.clipMeta && !sl.mediaLoading}
@@ -1766,7 +1901,15 @@
 
 						<div class="show-side">
 							<div class="show-head">
-								<button type="button" class="show-index" onclick={() => selectShow(show.id)}>{i + 1}</button>
+								<Button
+									type="button"
+									variant="outline"
+									size="icon-sm"
+									class="show-index tabular-nums"
+									onclick={() => selectShow(show.id)}
+								>
+									{i + 1}
+								</Button>
 								<input
 									class="show-title"
 									value={show.title}
@@ -1775,34 +1918,56 @@
 									placeholder="Slideshow idea title"
 								/>
 								{#if show.fromVideoClips && show.clipSummary}
-									<button
+									<Button
 										type="button"
-										class="show-summary-btn"
+										variant="ghost"
+										size="icon-sm"
 										title="AI summary"
 										onclick={() => openSlidePopover(show.id, show.slides[0]!.id, 'intel')}
 									>
-										<Info size={13} />
-									</button>
+										<Info />
+									</Button>
 								{/if}
 								<div class="show-actions">
-									<button type="button" class="icon-btn" title="Move up" onclick={() => moveShow(show.id, -1)} disabled={i === 0}>
-										<ChevronUp size={14} />
-									</button>
-									<button
+									<Button
 										type="button"
-										class="icon-btn"
+										variant="ghost"
+										size="icon-sm"
+										title="Move up"
+										onclick={() => moveShow(show.id, -1)}
+										disabled={i === 0}
+									>
+										<ChevronUp />
+									</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-sm"
 										title="Move down"
 										onclick={() => moveShow(show.id, 1)}
 										disabled={i === shows.length - 1}
 									>
-										<ChevronDown size={14} />
-									</button>
-									<button type="button" class="icon-btn" title="Duplicate" onclick={() => duplicateShow(show.id)}>
-										<Copy size={14} />
-									</button>
-									<button type="button" class="icon-btn danger" title="Delete" onclick={() => deleteShow(show.id)}>
-										<Trash2 size={14} />
-									</button>
+										<ChevronDown />
+									</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-sm"
+										title="Duplicate"
+										onclick={() => duplicateShow(show.id)}
+									>
+										<Copy />
+									</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-sm"
+										class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+										title="Delete"
+										onclick={() => deleteShow(show.id)}
+									>
+										<Trash2 />
+									</Button>
 								</div>
 							</div>
 
@@ -1820,15 +1985,17 @@
 									placeholder="Slide headline / hook"
 								></textarea>
 								{#if show.slides.length > 1}
-									<button
+									<Button
 										type="button"
-										class="icon-btn remove-slide"
+										variant="ghost"
+										size="icon-sm"
+										class="remove-slide text-muted-foreground"
 										title="Remove slide"
 										aria-label="Remove slide"
 										onclick={() => removeSlideFromShow(show.id, slide.id)}
 									>
-										<X size={16} />
-									</button>
+										<X />
+									</Button>
 								{/if}
 							</div>
 
@@ -1970,15 +2137,16 @@
 							</div>
 							{/key}
 
-							<button
+							<Button
 								type="button"
-								class="studio-fab"
+								size="sm"
+								class="shadow-sm self-start max-md:self-stretch"
 								onclick={() => openShowInStudio(show)}
 								title="Edit this slideshow in Studio"
 							>
 								Edit in Studio
-								<ArrowRight size={15} />
-							</button>
+								<ArrowRight data-icon="inline-end" />
+							</Button>
 						</div>
 					</div>
 				</li>
@@ -1986,6 +2154,325 @@
 			{/if}
 		</ul>
 	</section>
+
+	<section class="bulk-prompt-chrome" aria-label="Generate ideas">
+		<div class="bulk-prompt-shell">
+			<div class="prompt-bar">
+				<div class="prompt-bar-input">
+					{#if userId}
+						<Popover
+							bind:open={promptHistoryOpen}
+							onOpenChange={(o) => {
+								if (o) refreshPromptHistory();
+							}}
+						>
+							{#snippet historyTrigger({ props }: { props: Record<string, unknown> })}
+								<Button
+									{...props}
+									variant="ghost"
+									size="icon-sm"
+									class="shrink-0 text-muted-foreground"
+									title="Prompt history"
+									aria-label="Prompt history"
+								>
+									<History />
+								</Button>
+							{/snippet}
+							<PopoverTrigger child={historyTrigger} />
+							<PopoverContent
+								side="bottom"
+								sideOffset={10}
+								align="start"
+								portalProps={{ to: 'body' }}
+								class="z-[400] w-[min(92vw,320px)] gap-0 overflow-hidden rounded-[18px] border-[#ebebeb] bg-white p-0 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+							>
+								<div class="flex items-center justify-between gap-2 border-b border-[#f0f0f0] px-3 py-2.5">
+									<span class="text-[11px] font-semibold tracking-wide text-[#444]">Recent prompts</span>
+									{#if promptHistory.length}
+										<button
+											type="button"
+											class="text-[10px] font-medium text-[#999] hover:text-[#555]"
+											onclick={() => {
+												clearPromptHistory(userId);
+												promptHistory = [];
+											}}
+										>
+											Clear
+										</button>
+									{/if}
+								</div>
+								{#if !promptHistory.length}
+									<p class="px-3 py-4 text-[12px] leading-relaxed text-[#999]">
+										Your Generate queries show up here.
+									</p>
+								{:else}
+									<ul class="max-h-[min(50vh,280px)] overflow-y-auto p-1.5">
+										{#each promptHistory as entry (entry.id)}
+											<li class="group flex items-stretch gap-0.5">
+												<button
+													type="button"
+													class="min-w-0 flex-1 rounded-xl px-2.5 py-2 text-left hover:bg-[#f6f6f6]"
+													onclick={() => applyPromptHistoryEntry(entry)}
+												>
+													<div class="truncate text-[12px] font-medium text-[#1a1a1a]">{entry.query}</div>
+													{#if entry.title}
+														<div class="mt-0.5 truncate text-[10px] text-[#999]">{entry.title}</div>
+													{/if}
+												</button>
+												<button
+													type="button"
+													class="shrink-0 rounded-lg px-2 text-[#ccc] opacity-0 hover:bg-[#f0f0f0] hover:text-[#888] group-hover:opacity-100"
+													title="Remove"
+													aria-label="Remove from history"
+													onclick={() => {
+														promptHistory = removePromptHistoryEntry(userId, entry.id);
+													}}
+												>
+													<X size={12} />
+												</button>
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							</PopoverContent>
+						</Popover>
+						<Search size={15} class="shrink-0 text-[#b0b0b0]" />
+					{:else}
+						<Search size={15} class="shrink-0 text-[#b0b0b0]" />
+					{/if}
+					<input
+						bind:value={topic}
+						placeholder="e.g. Make me carousels about regenerative medicine…"
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+								e.preventDefault();
+								submitBulkPrompt();
+							}
+						}}
+						class="prompt-bar-field"
+					/>
+					{#if generateError}
+						<div class="flex items-center gap-1 shrink-0">
+							<span class="text-[11px] font-body text-red-500 max-w-[180px] truncate" title={generateError}
+								>{generateError}</span
+							>
+						</div>
+					{/if}
+				</div>
+
+				<div class="prompt-bar-divider"></div>
+
+				<div class="prompt-bar-tools">
+					<Popover>
+						<PopoverTrigger class="prompt-chip max-w-[9.5rem]" title="Who this copy is written for">
+							<Users size={11} class="shrink-0" />
+							<span class="truncate">{audienceChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Audience
+							</p>
+							{#each BULK_AUDIENCES as aud}
+								<button
+									type="button"
+									onclick={() => (audienceId = aud.id)}
+									class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+										{audienceId === aud.id
+											? 'bg-[#f0f0f0] text-[#111]'
+											: 'text-[#555] hover:bg-[#f7f7f7]'}"
+								>
+									<span class="min-w-0 text-[12.5px] font-semibold">{aud.label}</span>
+									{#if audienceId === aud.id}
+										<span class="ml-auto shrink-0 text-[#111]">✓</span>
+									{/if}
+								</button>
+							{/each}
+							{#if audienceId === 'custom'}
+								<div class="px-2 pb-1">
+									<input
+										bind:value={audience}
+										placeholder="e.g. first-time home buyers"
+										class="h-9 w-full rounded-lg border border-[#e8e8e8] bg-white px-2.5 text-[12px] text-[#111] outline-none focus:border-[#ccc]"
+									/>
+								</div>
+							{/if}
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip max-w-[8.5rem]" title="Writing style">
+							<Palette size={11} class="shrink-0" />
+							<span class="truncate">{styleChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-56 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Style</p>
+							{#each BULK_STYLES as st}
+								<button
+									type="button"
+									onclick={() => (style = st.id)}
+									class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+										{style === st.id ? 'bg-[#f0f0f0] text-[#111]' : 'text-[#555] hover:bg-[#f7f7f7]'}"
+								>
+									<span class="text-[12.5px] font-semibold">{st.label}</span>
+									{#if style === st.id}
+										<span class="ml-auto shrink-0 text-[#111]">✓</span>
+									{/if}
+								</button>
+							{/each}
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip max-w-[8.5rem]" title="Emotional tone">
+							<Heart size={11} class="shrink-0" />
+							<span class="truncate">{emotionChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-56 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Emotion
+							</p>
+							{#each BULK_EMOTIONS as em}
+								<button
+									type="button"
+									onclick={() => (emotion = em.id)}
+									class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+										{emotion === em.id ? 'bg-[#f0f0f0] text-[#111]' : 'text-[#555] hover:bg-[#f7f7f7]'}"
+								>
+									<span class="text-[12.5px] font-semibold">{em.label}</span>
+									{#if emotion === em.id}
+										<span class="ml-auto shrink-0 text-[#111]">✓</span>
+									{/if}
+								</button>
+							{/each}
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip" title="How many slideshow ideas to generate">
+							<Rows3 size={11} class="shrink-0" />
+							<span class="truncate">{ideaCount} idea{ideaCount === 1 ? '' : 's'}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-56 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Ideas / slideshows
+							</p>
+							<div class="grid grid-cols-4 gap-1.5">
+								{#each [1, 2, 3, 4, 5, 6, 7, 8] as n}
+									<button
+										type="button"
+										onclick={() => (ideaCount = n)}
+										class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
+											{ideaCount === n
+												? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+												: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+									>
+										{n}
+									</button>
+								{/each}
+							</div>
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip" title="Slides in each slideshow">
+							<Layers size={11} class="shrink-0" />
+							<span class="truncate">{slidesPerShow} slide{slidesPerShow === 1 ? '' : 's'}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-56 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Slides / show
+							</p>
+							<div class="grid grid-cols-4 gap-1.5">
+								{#each [1, 2, 3, 4, 5, 6, 7, 8] as n}
+									<button
+										type="button"
+										onclick={() => (slidesPerShow = n)}
+										class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
+											{slidesPerShow === n
+												? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+												: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+									>
+										{n}
+									</button>
+								{/each}
+							</div>
+						</PopoverContent>
+					</Popover>
+
+					<button
+						type="button"
+						class="prompt-chip"
+						class:prompt-chip--on={autoStock}
+						title="Automatically fill Unsplash/Pexels media on image & video templates after generate"
+						onclick={() => (autoStock = !autoStock)}
+					>
+						<Image size={11} class="shrink-0" />
+						Auto stock
+					</button>
+
+					<button
+						type="button"
+						class="prompt-bar-submit"
+						disabled={promptSubmitDisabled}
+						aria-label={generating ? 'Generating' : 'Generate'}
+						onclick={() => submitBulkPrompt()}
+					>
+						{#if generating}
+							<Loader2 size={15} class="spin" />
+						{:else}
+							<ArrowUp size={15} strokeWidth={2.5} />
+						{/if}
+					</button>
+				</div>
+			</div>
+		</div>
+	</section>
+	{#if generateError}
+		<p class="err" role="alert">{generateError}</p>
+	{/if}
+	{#if stockNote}
+		<p class="stock-note" role="status">{stockNote}</p>
+	{/if}
 
 	{#if popoverSlide}
 		{@const { show: popShow, slide: popSlide, kind } = popoverSlide}
@@ -2084,29 +2571,30 @@
 						<p class="bulk-reframe-warn">Install pyautoflip: <code>npm run pyautoflip:install</code></p>
 					{/if}
 					<div class="reframe-pop-actions">
-						<button
+						<Button
 							type="button"
-							class="ma-btn ma-btn-primary ma-btn-sm"
+							size="sm"
 							disabled={popSlide.reframeBusy || !pyautoflipReady}
 							onclick={() => void reframeBulkSlide(popShow.id, popSlide.id)}
 						>
 							{#if popSlide.reframeBusy}
-								<Loader2 size={14} class="spin" />
+								<Loader2 class="animate-spin" />
 								Reframing…
 							{:else}
-								<Crop size={14} />
+								<Crop />
 								Apply to this clip
 							{/if}
-						</button>
+						</Button>
 						{#if popShow.fromVideoClips}
-							<button
+							<Button
 								type="button"
-								class="ma-btn ma-btn-ghost ma-btn-sm"
+								variant="outline"
+								size="sm"
 								disabled={!pyautoflipReady}
 								onclick={() => void reframeAllBulkSlides(popShow.id)}
 							>
 								Reframe all clips
-							</button>
+							</Button>
 						{/if}
 					</div>
 				</div>
@@ -2618,40 +3106,126 @@
 	.brand-actions {
 		margin-top: 0.85rem;
 	}
-	.generate-bar {
+	.bulk-prompt-chrome {
+		position: sticky;
+		bottom: 0;
+		z-index: 30;
+		margin: 1.25rem 0 0;
+		padding: 0.85rem 0 0.35rem;
+		background: linear-gradient(to top, #fff 55%, rgba(255, 255, 255, 0.92) 78%, transparent);
+	}
+	.bulk-prompt-shell {
+		width: 100%;
+		max-width: 52rem;
+		margin: 0 auto;
+	}
+	.bulk-prompt-chrome :global(.prompt-bar) {
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.95);
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		box-shadow:
+			0 4px 20px rgba(0, 0, 0, 0.08),
+			0 1px 3px rgba(0, 0, 0, 0.05);
+		backdrop-filter: blur(14px);
+		-webkit-backdrop-filter: blur(14px);
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-input) {
 		display: flex;
-		flex-wrap: nowrap;
-		gap: 0.55rem;
-		align-items: flex-end;
-		margin-bottom: 0.75rem;
-		padding: 0.75rem;
-		border: 1px solid var(--bulk-border);
+		align-items: center;
+		gap: 10px;
+		padding: 14px 16px 10px;
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-field) {
+		flex: 1;
+		min-width: 0;
+		background: transparent;
+		border: none;
+		outline: none;
+		box-shadow: none;
+		font-size: 14px;
+		line-height: 1.35;
+		color: #1a1a1a;
+		font-family: inherit;
+		padding: 0;
+		border-radius: 0;
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-field::placeholder) {
+		color: #b4b4b4;
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-divider) {
+		height: 1px;
+		margin: 0 14px;
+		background: rgba(10, 10, 10, 0.06);
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-tools) {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 10px 10px;
+		flex-wrap: wrap;
+	}
+	.bulk-prompt-chrome :global(.prompt-chip) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 32px;
+		padding: 0 12px;
+		border: none;
 		border-radius: 10px;
-		background: #fff;
-		overflow-x: auto;
-		scrollbar-width: thin;
-	}
-	.generate-bar-tail {
-		display: flex;
-		align-items: flex-end;
-		flex-shrink: 0;
-	}
-	.generate-bar .generate-btn {
-		flex-shrink: 0;
-		min-width: 7.35rem;
+		background: rgba(10, 10, 10, 0.04);
+		color: rgba(10, 10, 10, 0.72);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
 		white-space: nowrap;
-		padding: 9px 18px;
-		font-size: 13px;
-	}
-	.generate-bar .append-toggle {
+		cursor: pointer;
+		user-select: none;
 		flex-shrink: 0;
+		transition:
+			background-color 140ms ease,
+			color 140ms ease;
 	}
-	.generate-bar .field {
+	.bulk-prompt-chrome :global(.prompt-chip:hover) {
+		background: rgba(10, 10, 10, 0.07);
+		color: #111;
+	}
+	.bulk-prompt-chrome :global(.prompt-chip--on) {
+		background: rgba(123, 241, 168, 0.35);
+		color: #080808;
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-submit) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		margin-left: auto;
+		border: none;
+		border-radius: 11px;
+		background: #7bf1a8;
+		color: #080808;
+		cursor: pointer;
 		flex-shrink: 0;
+		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
+		transition:
+			background-color 140ms ease,
+			transform 120ms ease;
 	}
-	.generate-bar .field.grow {
-		flex: 1 1 8rem;
-		min-width: 7rem;
+	.bulk-prompt-chrome :global(.prompt-bar-submit:hover:not(:disabled)) {
+		background: #8ff5b6;
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-submit:active:not(:disabled)) {
+		transform: scale(0.94);
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-submit:disabled) {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.bulk-prompt-chrome :global(.prompt-bar-submit svg),
+	.bulk-prompt-chrome :global(.prompt-bar-submit svg *) {
+		color: #080808 !important;
+		stroke: #080808 !important;
 	}
 	.field {
 		display: flex;
@@ -2701,19 +3275,6 @@
 		padding: 0.1rem;
 		height: 2rem;
 	}
-	.field input[type='range'] {
-		padding: 0;
-		border: none;
-		background: transparent;
-	}
-	.append-toggle {
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
-		font-size: 0.75rem;
-		color: var(--app-text-2);
-		padding-bottom: 0.3rem;
-	}
 	.err {
 		color: #e11d48;
 		font-size: 0.8125rem;
@@ -2743,46 +3304,12 @@
 		gap: 0.35rem;
 		flex-wrap: wrap;
 	}
-	.hl-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		height: 1.85rem;
-		padding: 0 0.55rem 0 0.6rem;
+	.bulk-hl-swatch {
+		width: 12px;
+		height: 12px;
 		border-radius: 999px;
-		border: 1px solid var(--bulk-border);
-		background: #fff;
-		font-size: 0.72rem;
-		font-weight: 650;
-		color: var(--app-text-2);
-		cursor: pointer;
-		user-select: none;
-		transition:
-			border-color 0.15s ease,
-			background 0.15s ease,
-			color 0.15s ease;
-	}
-	.hl-toggle:hover {
-		border-color: color-mix(in oklab, var(--app-text) 22%, var(--bulk-border));
-	}
-	.hl-toggle-on {
-		border-color: color-mix(in oklab, var(--app-text) 28%, var(--bulk-border));
-		background: color-mix(in oklab, var(--app-text) 5%, #fff);
-		color: var(--app-text);
-	}
-	.hl-toggle-label {
-		letter-spacing: -0.01em;
-	}
-	.hl-toggle-state {
-		font-size: 0.62rem;
-		font-weight: 750;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		opacity: 0.55;
-		min-width: 1.4rem;
-	}
-	.hl-toggle-on .hl-toggle-state {
-		opacity: 0.85;
+		flex-shrink: 0;
+		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
 	}
 	.history-badge {
 		display: inline-flex;
@@ -3038,26 +3565,6 @@
 		flex: 1 1 auto;
 		min-width: 0;
 	}
-	.studio-fab {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.4rem;
-		align-self: flex-start;
-		padding: 0.5rem 0.85rem;
-		border: none;
-		border-radius: 999px;
-		background: var(--app-text);
-		color: var(--app-surface);
-		font-size: 0.75rem;
-		font-weight: 650;
-		cursor: pointer;
-		box-shadow: 0 4px 14px color-mix(in oklab, var(--app-text) 22%, transparent);
-	}
-	.studio-fab:hover {
-		transform: translateY(-1px);
-		box-shadow: 0 6px 18px color-mix(in oklab, var(--app-text) 28%, transparent);
-	}
 	@media (max-width: 820px) {
 		.show-body {
 			flex-direction: column;
@@ -3070,10 +3577,6 @@
 		.filmstrip-wrap {
 			width: 100%;
 			max-width: var(--bulk-preview-width);
-		}
-		.studio-fab {
-			align-self: stretch;
-			border-radius: 10px;
 		}
 	}
 	.slide-main {

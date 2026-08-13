@@ -4,8 +4,19 @@
 	import { goto } from '$app/navigation';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
-		ArrowRight, ImagePlus, Trash2, ArrowUpRight, Rows3, Video, LayoutTemplate
+		ArrowRight,
+		ImagePlus,
+		Trash2,
+		ArrowUpRight,
+		Rows3,
+		Video,
+		LayoutTemplate,
 	} from 'lucide-svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Empty from '$lib/components/ui/empty/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 
 	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
@@ -198,8 +209,13 @@
 	}
 
 	onMount(async () => {
-		const { data: { user } } = await supabase.auth.getUser();
-		if (!user) { goto('/login'); return; }
+		const {
+			data: { user },
+		} = await supabase.auth.getUser();
+		if (!user) {
+			goto('/login');
+			return;
+		}
 		userId = user.id;
 
 		const [draftRes, savedTplRes] = await Promise.all([
@@ -226,540 +242,221 @@
 	});
 </script>
 
-<div class="dash dash-page">
-	<!-- ── Hero ─────────────────────────────────────────── -->
-	<section class="hero">
-		<div class="hero-glow" aria-hidden="true"></div>
-		<div class="hero-inner">
-			<div class="hero-eyebrow">
-				<span class="hero-dot"></span>
-				<span>Studio</span>
-			</div>
-			<h1 class="hero-title dash-page-title">Create your next post</h1>
-			<div class="hero-actions">
-				<a href="/dashboard/templates" class="ma-btn ma-btn-primary">
+<div class="dash-page flex flex-col gap-8">
+	<!-- Hero -->
+	<Card.Root class="relative overflow-hidden bg-muted/40 py-0">
+		<div
+			class="pointer-events-none absolute -top-[30%] left-[12%] h-[420px] w-[640px] bg-[radial-gradient(closest-side,rgba(123,241,168,0.28),transparent_72%),radial-gradient(closest-side_at_78%_40%,rgba(232,255,72,0.12),transparent_70%)] blur-sm"
+			aria-hidden="true"
+		></div>
+		<Card.Content class="relative z-10 flex min-h-[220px] flex-col justify-center gap-5 px-8 py-9 sm:px-10">
+			<Badge variant="secondary" class="w-fit gap-1.5 rounded-full px-3 py-1">
+				<span class="size-1.5 rounded-full bg-primary" aria-hidden="true"></span>
+				Studio
+			</Badge>
+			<h1 class="dash-page-title text-foreground">Create your next post</h1>
+			<div class="flex flex-wrap gap-2.5">
+				<Button href="/dashboard/templates" size="lg">
 					Browse templates
-					<ArrowRight size={14} />
-				</a>
-				<a href="/dashboard/bulk" class="ma-btn ma-btn-ghost">Open Bulk</a>
+					<ArrowRight data-icon="inline-end" />
+				</Button>
+				<Button href="/dashboard/bulk" variant="outline" size="lg">Open Bulk</Button>
 			</div>
-		</div>
-	</section>
+		</Card.Content>
+	</Card.Root>
 
-	<!-- ── Quick actions ─────────────────────────────────── -->
-	<section class="row">
-		{#each primaryCards as c, i (c.href)}
+	<!-- Quick actions -->
+	<section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+		{#each primaryCards as c (c.href)}
 			{@const Icon = c.icon}
-			<a class="card" href={c.href} style={`--d:${i * 0.05}s`}>
-				<div class="card-icon">
-					<Icon size={18} />
-				</div>
-				<div class="card-body">
-					<p class="card-title">{c.label}</p>
-					<p class="card-sub">{c.sub}</p>
-				</div>
-				<div class="card-go">
-					<ArrowUpRight size={15} />
-				</div>
+			<a href={c.href} class="group block outline-none">
+				<Card.Root
+					size="sm"
+					class="h-full transition-colors group-hover:bg-muted/50 group-focus-visible:ring-2 group-focus-visible:ring-ring"
+				>
+					<Card.Content class="flex items-center gap-3 py-1">
+						<div
+							class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground ring-1 ring-foreground/10"
+						>
+							<Icon class="size-[18px]" />
+						</div>
+						<div class="min-w-0 flex-1">
+							<Card.Title class="text-sm font-semibold">{c.label}</Card.Title>
+							<Card.Description class="text-xs">{c.sub}</Card.Description>
+						</div>
+						<ArrowUpRight
+							class="size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+						/>
+					</Card.Content>
+				</Card.Root>
 			</a>
 		{/each}
 	</section>
 
-	<!-- ── Recent carousels ───────────────────────────────── -->
-	<section class="saved-section" aria-labelledby="recent-carousels-heading" aria-busy={loading}>
-			<div class="saved-section-head saved-section-head--row">
-				<div class="saved-section-titles">
-					<h2 id="recent-carousels-heading" class="saved-section-title">Recent carousels</h2>
-					<p class="saved-section-sub">
-						Your latest Studio drafts - open one to keep editing.
-					</p>
-				</div>
-				<a class="ma-btn ma-btn-ghost ma-btn-sm" href="/dashboard/carousels">
-					View all
-					<ArrowRight size={13} />
-				</a>
+	<!-- Recent carousels -->
+	<section class="flex flex-col gap-4" aria-labelledby="recent-carousels-heading" aria-busy={loading}>
+		<div class="flex flex-wrap items-end justify-between gap-3">
+			<div class="min-w-0 space-y-1">
+				<h2 id="recent-carousels-heading" class="text-base font-semibold tracking-tight">
+					Recent carousels
+				</h2>
+				<p class="text-sm text-muted-foreground">
+					Your latest Studio drafts — open one to keep editing.
+				</p>
 			</div>
+			<Button href="/dashboard/carousels" variant="outline" size="sm">
+				View all
+				<ArrowRight data-icon="inline-end" />
+			</Button>
+		</div>
 
-			{#if loading}
-				<div class="saved-templates-grid" aria-hidden="true">
-					{#each [0, 1, 2, 3] as i (i)}
-						<div class="saved-template-tile saved-template-skel">
-							<div class="saved-template-skel-bar"></div>
-						</div>
-					{/each}
-				</div>
-			{:else if recentCarousels.length > 0}
-				<div class="saved-templates-grid">
-					{#each recentCarousels as row (row.id)}
-						{@const pv = draftPreviewUrl(row, recentCarouselThumbById)}
-						<div class="saved-template-tile group">
-							<a
-								class="saved-template-link"
-								href="/dashboard/studio?draft={row.id}"
-								aria-label="Open carousel {carouselTitle(row)}"
-							>
-								{#if pv.url}
-									<img
-										src={pv.url}
-										alt=""
-										class="saved-template-img"
-										class:saved-template-img--full={pv.fullSlideRaster}
-										referrerpolicy="no-referrer"
-										loading="lazy"
-										draggable="false"
-									/>
-								{:else}
-									<div class="saved-template-empty">
-										<span class="saved-template-empty-text">{carouselTitle(row)}</span>
-									</div>
-								{/if}
-								<div class="saved-template-meta">
-									<span class="saved-template-meta-title">{carouselTitle(row)}</span>
-									<span class="saved-template-meta-time">{timeAgo(row.updated_at)}</span>
+		{#if loading}
+			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden="true">
+				{#each [0, 1, 2, 3] as i (i)}
+					<Skeleton class="aspect-4/5 rounded-xl" />
+				{/each}
+			</div>
+		{:else if recentCarousels.length > 0}
+			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+				{#each recentCarousels as row (row.id)}
+					{@const pv = draftPreviewUrl(row, recentCarouselThumbById)}
+					<Card.Root class="group relative gap-0 py-0 [--card-spacing:0]">
+						<a
+							class="absolute inset-0 z-0"
+							href="/dashboard/studio?draft={row.id}"
+							aria-label="Open carousel {carouselTitle(row)}"
+						></a>
+						<div class="relative aspect-4/5 overflow-hidden bg-muted">
+							{#if pv.url}
+								<img
+									src={pv.url}
+									alt=""
+									class="size-full {pv.fullSlideRaster
+										? 'object-contain bg-black/35'
+										: 'object-cover'}"
+									referrerpolicy="no-referrer"
+									loading="lazy"
+									draggable="false"
+								/>
+							{:else}
+								<div
+									class="flex size-full items-center justify-center p-4 text-center text-xs text-muted-foreground"
+								>
+									<span class="line-clamp-3">{carouselTitle(row)}</span>
 								</div>
-							</a>
-							<button
-								type="button"
-								class="saved-template-del"
-								title="Delete carousel"
-								aria-label="Delete carousel"
-								onclick={() => void deleteRecentCarousel(row.id)}
+							{/if}
+							<div
+								class="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/70 via-black/35 to-transparent p-3 pt-10"
 							>
-								<Trash2 size={12} />
-							</button>
+								<p class="truncate text-xs font-semibold text-white">{carouselTitle(row)}</p>
+								<p class="text-[11px] text-white/70">{timeAgo(row.updated_at)}</p>
+							</div>
 						</div>
-					{/each}
-				</div>
-			{:else}
-				<p class="saved-empty">
-					No carousels yet.
-					<a class="saved-section-link" href="/dashboard/templates">Pick a template</a>
-					to start one - it will show up here.
-				</p>
-			{/if}
-		</section>
-
-		<!-- ── Saved templates ────────────────────────────────── -->
-		<section class="saved-section" aria-labelledby="saved-templates-heading" aria-busy={loading}>
-			<div class="saved-section-head">
-				<div class="saved-section-titles">
-					<h2 id="saved-templates-heading" class="saved-section-title">Saved templates</h2>
-					<p class="saved-section-sub">
-						Layouts you saved from Studio. Open one to keep editing, or manage the full list on
-						<a class="saved-section-link" href="/dashboard/carousels">Carousels</a>.
-					</p>
-				</div>
+						<Button
+							type="button"
+							variant="destructive"
+							size="icon-sm"
+							class="absolute top-2.5 right-2.5 z-10 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+							title="Delete carousel"
+							aria-label="Delete carousel"
+							onclick={() => void deleteRecentCarousel(row.id)}
+						>
+							<Trash2 />
+						</Button>
+					</Card.Root>
+				{/each}
 			</div>
+		{:else}
+			<Empty.Root class="border border-dashed">
+				<Empty.Header>
+					<Empty.Title>No carousels yet</Empty.Title>
+					<Empty.Description>
+						Pick a template to start one — it will show up here.
+					</Empty.Description>
+				</Empty.Header>
+				<Empty.Content>
+					<Button href="/dashboard/templates" size="sm">Browse templates</Button>
+				</Empty.Content>
+			</Empty.Root>
+		{/if}
+	</section>
 
-			{#if loading}
-				<div class="saved-templates-grid" aria-hidden="true">
-					{#each [0, 1, 2, 3] as i (`saved-${i}`)}
-						<div class="saved-template-tile saved-template-skel">
-							<div class="saved-template-skel-bar"></div>
+	<!-- Saved templates -->
+	<section class="flex flex-col gap-4" aria-labelledby="saved-templates-heading" aria-busy={loading}>
+		<div class="space-y-1">
+			<h2 id="saved-templates-heading" class="text-base font-semibold tracking-tight">
+				Saved templates
+			</h2>
+			<p class="text-sm text-muted-foreground">
+				Layouts you saved from Studio. Open one to keep editing, or manage the full list on
+				<a class="font-medium text-foreground underline-offset-4 hover:underline" href="/dashboard/carousels"
+					>Carousels</a
+				>.
+			</p>
+		</div>
+
+		{#if loading}
+			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden="true">
+				{#each [0, 1, 2, 3] as i (`saved-${i}`)}
+					<Skeleton class="aspect-4/5 rounded-xl" />
+				{/each}
+			</div>
+		{:else if studioSavedTemplates.length > 0}
+			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+				{#each studioSavedTemplates as row (row.id)}
+					{@const pv = draftPreviewUrl(row, studioSavedTemplateThumbById)}
+					<Card.Root class="group relative gap-0 py-0 [--card-spacing:0]">
+						<a
+							class="absolute inset-0 z-0"
+							href="/dashboard/studio?saved={row.id}"
+							aria-label="Open saved template {studioSavedTemplateName(row)}"
+						></a>
+						<div class="relative aspect-4/5 overflow-hidden bg-muted">
+							{#if pv.url}
+								<img
+									src={pv.url}
+									alt=""
+									class="size-full {pv.fullSlideRaster
+										? 'object-contain bg-black/35'
+										: 'object-cover'}"
+									referrerpolicy="no-referrer"
+									loading="lazy"
+									draggable="false"
+								/>
+							{:else}
+								<div
+									class="flex size-full items-center justify-center p-4 text-center text-xs text-muted-foreground"
+								>
+									<span class="line-clamp-3">{studioSavedTemplateName(row)}</span>
+								</div>
+							{/if}
 						</div>
-					{/each}
-				</div>
-			{:else if studioSavedTemplates.length > 0}
-				<div class="saved-templates-grid">
-					{#each studioSavedTemplates as row (row.id)}
-						{@const pv = draftPreviewUrl(row, studioSavedTemplateThumbById)}
-						<div class="saved-template-tile group">
-							<a
-								class="saved-template-link"
-								href="/dashboard/studio?saved={row.id}"
-								aria-label="Open saved template {studioSavedTemplateName(row)}"
-							>
-								{#if pv.url}
-									<img
-										src={pv.url}
-										alt=""
-										class="saved-template-img"
-										class:saved-template-img--full={pv.fullSlideRaster}
-										referrerpolicy="no-referrer"
-										loading="lazy"
-										draggable="false"
-									/>
-								{:else}
-									<div class="saved-template-empty">
-										<span class="saved-template-empty-text">{studioSavedTemplateName(row)}</span>
-									</div>
-								{/if}
-							</a>
-							<button
-								type="button"
-								class="saved-template-del"
-								title="Delete template"
-								aria-label="Delete template"
-								onclick={() => void deleteStudioSavedTemplate(row.id)}
-							>
-								<Trash2 size={12} />
-							</button>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<p class="saved-empty">
-					No saved templates yet. In
-					<a class="saved-section-link" href="/dashboard/studio">Studio</a>, save a
-					layout and it will show up here.
-				</p>
-			{/if}
-		</section>
+						<Button
+							type="button"
+							variant="destructive"
+							size="icon-sm"
+							class="absolute top-2.5 right-2.5 z-10 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+							title="Delete template"
+							aria-label="Delete template"
+							onclick={() => void deleteStudioSavedTemplate(row.id)}
+						>
+							<Trash2 />
+						</Button>
+					</Card.Root>
+				{/each}
+			</div>
+		{:else}
+			<Empty.Root class="border border-dashed">
+				<Empty.Header>
+					<Empty.Title>No saved templates yet</Empty.Title>
+					<Empty.Description>
+						In Studio, save a layout and it will show up here.
+					</Empty.Description>
+				</Empty.Header>
+				<Empty.Content>
+					<Button href="/dashboard/studio" variant="outline" size="sm">Open Studio</Button>
+				</Empty.Content>
+			</Empty.Root>
+		{/if}
+	</section>
 </div>
-
-<style>
-	/* ─── tokens (match marketing homepage) ─────────────────── */
-	.dash {
-		--ap-text:   #0f0f10;
-		--ap-text-2: #5b5b62;
-		--ap-text-3: #9a9aa1;
-		--ap-line:   rgba(15, 15, 16, 0.08);
-		--ap-line-2: rgba(15, 15, 16, 0.14);
-		--ap-soft:   #f6f7f9;
-		--ap-soft-2: #eef1f5;
-		--ap-bg:     #ffffff;
-		--ap-accent: #7bf1a8;
-
-		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
-		letter-spacing: -0.01em;
-		-webkit-font-smoothing: antialiased;
-		color: var(--ap-text);
-	}
-
-	/* ─── Hero (light soft — same language as homepage) ─────── */
-	.hero {
-		position: relative;
-		border-radius: 24px;
-		overflow: hidden;
-		min-height: 260px;
-		display: flex;
-		align-items: center;
-		isolation: isolate;
-		background: var(--ap-soft);
-		border: 1px solid var(--ap-line);
-		animation: dash-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-	.hero-glow {
-		position: absolute;
-		top: -30%;
-		left: 12%;
-		width: 640px;
-		height: 420px;
-		background:
-			radial-gradient(closest-side, rgba(123, 241, 168, 0.28), transparent 72%),
-			radial-gradient(closest-side at 78% 40%, rgba(232, 255, 72, 0.12), transparent 70%);
-		filter: blur(8px);
-		pointer-events: none;
-		z-index: 0;
-	}
-
-	.hero-inner {
-		position: relative;
-		z-index: 1;
-		padding: 36px 40px;
-		max-width: 720px;
-	}
-	.hero-eyebrow {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 5px 12px 5px 10px;
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.72);
-		border: 1px solid var(--ap-line);
-		color: var(--ap-text-2);
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		margin-bottom: 18px;
-	}
-	.hero-dot {
-		width: 6px; height: 6px;
-		border-radius: 50%;
-		background: var(--ap-accent);
-		box-shadow: 0 0 0 3px rgba(123, 241, 168, 0.22);
-	}
-	.hero-title {
-		margin: 0 0 14px;
-		color: var(--ap-text);
-	}
-	.hero-sub {
-		margin: 0 0 24px;
-		color: var(--ap-text-2);
-		font-weight: 400;
-	}
-	.hero-actions {
-		display: flex;
-		gap: 10px;
-		flex-wrap: wrap;
-	}
-
-	/* ─── Quick action cards ────────────────────────────────── */
-	.row {
-		margin-top: 18px;
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 12px;
-	}
-	.card {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 14px 14px;
-		border-radius: 16px;
-		background: var(--ap-bg);
-		border: 1px solid var(--ap-line);
-		text-decoration: none;
-		color: var(--ap-text);
-		overflow: hidden;
-		transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s, box-shadow 0.25s;
-		animation: dash-fade-up 600ms cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s) both;
-	}
-	.card:hover {
-		transform: translateY(-2px);
-		border-color: var(--ap-line-2);
-		box-shadow: 0 14px 32px -16px rgba(15, 15, 16, 0.14);
-	}
-	.card-icon {
-		position: relative;
-		width: 38px;
-		height: 38px;
-		border-radius: 12px;
-		background: var(--ap-soft-2);
-		color: var(--ap-text);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.25s, color 0.25s;
-	}
-	.card:hover .card-icon {
-		transform: scale(1.05) rotate(-2deg);
-		background: var(--ap-accent);
-		color: #0f0f10;
-	}
-	.card-body { flex: 1; min-width: 0; position: relative; }
-	.card-title {
-		margin: 0;
-		font-weight: 700;
-		font-size: 13.5px;
-		letter-spacing: -0.01em;
-		color: var(--ap-text);
-	}
-	.card-sub {
-		margin: 2px 0 0;
-		font-size: 11.5px;
-		color: var(--ap-text-2);
-	}
-	.card-go {
-		position: relative;
-		color: var(--ap-text-3);
-		transition: color 0.25s, transform 0.25s;
-	}
-	.card:hover .card-go {
-		color: var(--ap-text);
-		transform: translate(2px, -2px);
-	}
-
-	/* ─── Saved templates ───────────────────────────────────── */
-	.saved-section {
-		margin-top: 36px;
-		padding: 24px 26px 22px;
-		border-radius: 22px;
-		border: 1px solid var(--ap-line);
-		background: var(--ap-bg);
-		animation: dash-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-	}
-	.saved-section-head { margin-bottom: 16px; }
-	.saved-section-title {
-		margin: 0 0 6px;
-		font-family: 'Satoshi', sans-serif;
-		font-size: 20px;
-		font-weight: 800;
-		letter-spacing: -0.02em;
-		color: var(--ap-text);
-	}
-	.saved-section-sub {
-		margin: 0;
-		font-size: 13px;
-		line-height: 1.5;
-		color: var(--ap-text-2);
-		max-width: 56rem;
-	}
-	.saved-section-link {
-		color: var(--ap-text);
-		font-weight: 600;
-		text-decoration: underline;
-		text-underline-offset: 2px;
-		text-decoration-color: var(--ap-line-2);
-		transition: text-decoration-color 0.2s;
-	}
-	.saved-section-link:hover {
-		text-decoration-color: var(--ap-text);
-	}
-	.saved-empty {
-		margin: 0;
-		font-size: 13px;
-		color: var(--ap-text-2);
-		line-height: 1.55;
-	}
-	.saved-templates-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 14px;
-	}
-	.saved-template-tile {
-		position: relative;
-		border-radius: 18px;
-		overflow: hidden;
-		border: 1px solid var(--ap-line);
-		background: var(--ap-soft);
-		transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s, box-shadow 0.25s;
-		aspect-ratio: 4 / 5;
-	}
-	.saved-template-tile:hover {
-		transform: translateY(-3px);
-		border-color: var(--ap-line-2);
-		box-shadow: 0 18px 40px -18px rgba(15, 15, 16, 0.16);
-	}
-	.saved-template-skel {
-		pointer-events: none;
-		background:
-			linear-gradient(110deg, #eef1f5 8%, #f7f8fa 18%, #eef1f5 33%);
-		background-size: 200% 100%;
-		animation: dash-skel 1.15s ease-in-out infinite;
-	}
-	.saved-template-skel-bar {
-		position: absolute;
-		left: 12px;
-		right: 12px;
-		bottom: 14px;
-		height: 10px;
-		border-radius: 6px;
-		background: rgba(15, 15, 16, 0.08);
-	}
-	@keyframes dash-skel {
-		0% { background-position: 100% 0; }
-		100% { background-position: -100% 0; }
-	}
-	.saved-template-link {
-		display: block; width: 100%; height: 100%; text-decoration: none;
-	}
-	.saved-template-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-	.saved-template-img--full {
-		object-fit: contain;
-		background: rgba(0, 0, 0, 0.35);
-	}
-	.saved-template-empty {
-		width: 100%;
-		height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 1rem;
-		color: var(--ap-text-3);
-		font-family: 'Satoshi', sans-serif;
-		font-size: 0.7rem;
-		text-align: center;
-	}
-	.saved-template-empty-text {
-		display: -webkit-box;
-		line-clamp: 3;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-	.saved-template-del {
-		position: absolute;
-		top: 0.6rem;
-		right: 0.6rem;
-		width: 32px;
-		height: 32px;
-		border-radius: 10px;
-		border: 1px solid rgba(255, 255, 255, 0.18);
-		background: rgba(0, 0, 0, 0.55);
-		color: rgba(255, 255, 255, 0.92);
-		backdrop-filter: blur(6px);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		opacity: 0;
-		transform: translateY(-2px);
-		transition: opacity 0.18s, transform 0.18s, background 0.18s;
-		cursor: pointer;
-	}
-	.saved-template-tile:hover .saved-template-del {
-		opacity: 1;
-		transform: translateY(0);
-	}
-	.saved-template-del:hover { background: rgba(239, 68, 68, 0.65); }
-
-	.loading {
-		margin-top: 18px;
-		font-size: 12px;
-		color: var(--ap-text-3);
-		font-family: 'Satoshi', sans-serif;
-	}
-
-	/* ─── motion ────────────────────────────────────────────── */
-	@keyframes dash-fade-up {
-		from { opacity: 0; transform: translateY(14px); }
-		to   { opacity: 1; transform: translateY(0); }
-	}
-
-	/* ─── responsive ────────────────────────────────────────── */
-	@media (max-width: 1080px) {
-		.row { grid-template-columns: repeat(2, 1fr); }
-	}
-	@media (max-width: 640px) {
-		.dash { padding: 22px 18px 40px; }
-		.row  { grid-template-columns: 1fr; }
-		.hero { min-height: 220px; }
-		.hero-inner { padding: 28px 24px; }
-		.hero-title { font-size: 26px; }
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.hero, .card, .saved-section { animation: none; }
-	}
-
-	.saved-section-head--row {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 16px;
-	}
-	.saved-template-meta {
-		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		padding: 28px 12px 12px;
-		background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.72) 55%);
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		pointer-events: none;
-	}
-	.saved-template-meta-title {
-		color: #fff;
-		font-size: 12px;
-		font-weight: 700;
-		letter-spacing: -0.01em;
-		display: -webkit-box;
-		line-clamp: 2;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-	.saved-template-meta-time {
-		color: rgba(255, 255, 255, 0.7);
-		font-size: 10.5px;
-		font-weight: 500;
-	}
-	@media (max-width: 640px) {
-		.saved-section-head--row { flex-direction: column; align-items: stretch; }
-	}
-
-</style>

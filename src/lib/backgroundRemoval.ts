@@ -30,8 +30,51 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 /**
+ * Materialize a remote/same-origin image into a Blob so onnxruntime never
+ * hits a CORS-tainted canvas fetch. Data URLs and Blobs pass through.
+ */
+async function sourceToBlob(source: string | Blob): Promise<Blob> {
+	if (typeof source !== 'string') return source;
+	const src = source.trim();
+	if (!src) throw new Error('No image to cut out');
+
+	if (src.startsWith('data:')) {
+		const res = await fetch(src);
+		if (!res.ok) throw new Error('Could not read image data');
+		return res.blob();
+	}
+	if (src.startsWith('blob:')) {
+		const res = await fetch(src);
+		if (!res.ok) throw new Error('Could not read blob image');
+		return res.blob();
+	}
+
+	// Relative / absolute URL — prefer same-origin fetch; CORS may block third-party hosts.
+	try {
+		const res = await fetch(src, {
+			mode: 'cors',
+			credentials: 'omit',
+			signal: AbortSignal.timeout(45_000),
+		});
+		if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
+		const blob = await res.blob();
+		if (!blob.size) throw new Error('Empty image');
+		return blob;
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : String(e);
+		if (/Failed to fetch|NetworkError|CORS|blocked/i.test(msg) || e instanceof TypeError) {
+			throw new Error(
+				'Could not load this image for cutout (CORS). Try again — Studio will proxy remote photos first.',
+			);
+		}
+		throw e instanceof Error ? e : new Error(msg || 'Image fetch failed');
+	}
+}
+
+/**
  * Cut the foreground out of `source`. Returns a transparent PNG data URL.
  * `source` may be a public URL, data URL, or Blob.
+ * Prefer passing a data URL / Blob for remote CDN images (CORS).
  */
 export async function removeBackground(
 	source: string | Blob,
@@ -47,7 +90,10 @@ export async function removeBackground(
 	const { removeBackground: rembg } = await import('@imgly/background-removal');
 
 	try {
-		const blob = await rembg(source as any, {
+		onProgress?.({ phase: 'processing', message: 'Loading image…', progress: 0.05 });
+		const inputBlob = await sourceToBlob(source);
+
+		const blob = await rembg(inputBlob, {
 			// Downloads model from @imgly's CDN on first call, then caches in the browser.
 			progress: (key: string, current: number, total: number) => {
 				const pct = total > 0 ? current / total : undefined;
@@ -67,7 +113,7 @@ export async function removeBackground(
 		});
 
 		const dataUrl = await blobToDataUrl(blob);
-		onProgress?.({ phase: 'done' });
+		onProgress?.({ phase: 'done', progress: 1, message: 'Done' });
 		if (cacheKey) cutoutCache.set(cacheKey, dataUrl);
 		return dataUrl;
 	} catch (e: any) {

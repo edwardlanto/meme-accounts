@@ -181,12 +181,12 @@ async function batchAddHighlights(headlines: string[]): Promise<string[]> {
 	if (!env.OPENROUTER_API_KEY || !headlines.length) return headlines;
 
 	const system =
-		`You add emphasis markers to short Instagram News headlines. Output ONLY a JSON array of strings — one per input — with emphasis added. ` +
+		`You add emphasis markers to short Instagram News HEADLINES only (not body/paragraph copy). Output ONLY a JSON array of strings — one per input — with emphasis added. ` +
 		`Rules: wrap 1–3 short phrases per headline in [[double brackets]], e.g. [[key idea]] or [[33%]]. ` +
 		`Use ONLY plain [[phrase]] markers — never grad(, marker(, pattern(, or #hex: inside brackets. ` +
 		`Preserve wording exactly aside from adding brackets. No hashtags, emojis, or other markdown. No nested brackets.`;
 
-	const user = `Headlines:\n${JSON.stringify(headlines, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases.`;
+	const user = `Headlines:\n${JSON.stringify(headlines, null, 2)}\n\nReturn the same array with [[highlights]] added to key phrases in each HEADLINE.`;
 
 	try {
 		const res = await fetch(OPENROUTER_API, {

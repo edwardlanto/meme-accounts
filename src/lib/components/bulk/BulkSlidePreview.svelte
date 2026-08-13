@@ -48,7 +48,8 @@
 		WHITE_THREAD_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
 	import { ensureFirstWordHighlight } from '$lib/video-clips/video-hook';
-	import { stripMarkup } from '$lib/highlight';
+	import { stripMarkup, type HighlightDefaults } from '$lib/highlight';
+	import { DEFAULT_BRAND_KIT } from '$lib/studio/brand-kit';
 	import { optimizeImageUrl, preloadImage } from '$lib/client/optimize-image-url';
 	import { Loader2 } from 'lucide-svelte';
 
@@ -88,6 +89,9 @@
 		textHighlightsEnabled?: boolean;
 		/** Optional News source logo when slide is in logo mode. */
 		sourceLogoSrc?: string;
+		/** Brand-kit highlight paint for bare `[[phrase]]` (Settings → Branding). */
+		highlightColor?: string;
+		highlightDefaults?: HighlightDefaults;
 	};
 
 	let {
@@ -97,7 +101,17 @@
 		preferThumb = false,
 		textHighlightsEnabled = true,
 		sourceLogoSrc = '',
+		highlightColor = DEFAULT_BRAND_KIT.highlightColor,
+		highlightDefaults,
 	}: Props = $props();
+
+	const resolvedHighlightColor = $derived(
+		String(highlightDefaults?.color ?? highlightColor ?? DEFAULT_BRAND_KIT.highlightColor).trim() ||
+			DEFAULT_BRAND_KIT.highlightColor,
+	);
+	const resolvedHighlightDefaults = $derived(
+		highlightDefaults ?? { color: resolvedHighlightColor },
+	);
 
 	const slide = $derived(slideProp ?? createBlankSlide('news'));
 	const previewMuted = $derived(slide.videoMuted !== false);
@@ -429,13 +443,7 @@
 											: undefined
 				}
 				bodyStyle={template === 'videoFeature' ? { ...VIDEO_FEATURE_BODY_STYLE } : undefined}
-				highlightColor={
-					template === 'videoFeature'
-						? VIDEO_FEATURE_DEFAULTS.highlightColor
-						: template === 'videoSource'
-							? VIDEO_SOURCE_DEFAULTS.highlightColor
-							: '#F5A623'
-				}
+				highlightColor={resolvedHighlightColor}
 				w={CANVAS_W}
 				h={CANVAS_H}
 				{scale}
@@ -480,7 +488,8 @@
 				videoMuted={previewMuted}
 				videoTrimStartSec={mediaKind === 'video' ? trimStart : 0}
 				videoTrimEndSec={mediaKind === 'video' ? trimEnd : 0}
-				highlightColor="#F5A623"
+				highlightColor={resolvedHighlightColor}
+				highlightDefaults={resolvedHighlightDefaults}
 				textColor="#FFFFFF"
 				templateTheme="dark"
 				allowCircle={false}
@@ -489,6 +498,9 @@
 				bgZoom={100}
 				bgOffsetX={50}
 				bgOffsetY={50}
+				shadowHeight={58}
+				shadowStrength={0.88}
+				shadowCurve="natural"
 				w={CANVAS_W}
 				h={CANVAS_H}
 				{scale}

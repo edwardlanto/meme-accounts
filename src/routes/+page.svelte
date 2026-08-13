@@ -2,11 +2,29 @@
 	import { onMount } from 'svelte';
 	import MarketingNav from '$lib/components/MarketingNav.svelte';
 	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
+	import AnimatedHikeCard from '$lib/components/ui/animated-hike-card.svelte';
+	import { AtSign, Clock, Instagram, Layers, Sparkles, Video } from 'lucide-svelte';
 	import {
 		isMarqueeVideo,
 		marqueeAssetPath,
 		type HomeMarqueeSlide,
 	} from '$lib/marketing/home-marquee-slides';
+
+	const storyStackImages = [
+		'/home/story-placeholder/slide-1.png',
+		'/home/story-placeholder/slide-2.png',
+		'/home/story-placeholder/slide-3.png',
+		'/home/story-placeholder/slide-4.png',
+		'/home/story-placeholder/slide-5.png',
+	];
+
+	const memeNicheImages = [
+		'/placeholders/home/feat-viral-hooks.png',
+		'/placeholders/carousel/tweet-cover.png',
+		'/placeholders/carousel/text-cover.png',
+		'/placeholders/carousel/creator-hook-cover.png',
+		'/placeholders/home/feat-carousels.png',
+	];
 
 	let { data } = $props();
 	const homeMarqueeSlides: HomeMarqueeSlide[] = $derived(data.marqueeSlides ?? []);
@@ -33,16 +51,16 @@
 	];
 
 	const featured = [
-		{ title: 'Viral Hooks', creator: 'Maya Carter', initials: 'MC',
+		{ title: 'Viral Hooks',
 		  bg: '#7B2D26', img: '/placeholders/home/feat-viral-hooks.png',
 		  alt: '3D art of a phone with floating speech bubbles for viral hook templates' },
-		{ title: 'Carousels', creator: 'Avery James', initials: 'AJ',
+		{ title: 'Carousels',
 		  bg: '#D67862', img: '/placeholders/home/feat-carousels.png',
 		  alt: '3D art of stacked carousel slide cards' },
-		{ title: 'News Studio', creator: 'Sienna Cole', initials: 'SC',
+		{ title: 'News Studio',
 		  bg: '#3D6B8C', img: '/placeholders/home/feat-news-studio.png',
 		  alt: '3D art of a news-style frame for meme posts' },
-		{ title: 'Slide Composer', creator: 'Devin Park', initials: 'DP',
+		{ title: 'Slide Composer',
 		  bg: '#A6B4C4', img: '/placeholders/home/feat-slide-composer.png',
 		  alt: '3D art of a creative studio desk assembling slides' },
 	];
@@ -67,30 +85,6 @@
 			title: 'Studio polish',
 			desc: 'Tweak type, crops, and branding in one studio so every post looks intentional — not copy-pasted.',
 			icon: 'wand',
-		},
-	];
-
-	const testimonials = [
-		{
-			quote: 'I went from posting twice a week to testing a full week of ideas in one sitting. The bulk studio does what used to eat my whole Sunday.',
-			name: 'Maya Carter',
-			role: 'Runs a 240K-follower meme page',
-			initials: 'MC',
-			bg: '#7B2D26',
-		},
-		{
-			quote: 'Templates that already look like the top posts in my niche — I just swap the joke and see which version people react to.',
-			name: 'Avery James',
-			role: 'Instagram carousel creator',
-			initials: 'AJ',
-			bg: '#D67862',
-		},
-		{
-			quote: 'I use it to mock up formats before I commit. Potential customers react in hours instead of me guessing in Canva all week.',
-			name: 'Sienna Cole',
-			role: 'News-style meme account',
-			initials: 'SC',
-			bg: '#3D6B8C',
 		},
 	];
 
@@ -263,15 +257,6 @@
 	<section class="hero">
 		<div class="hero-glow" aria-hidden="true"></div>
 		<div class="hero-inner">
-			<div class="hero-app">
-				<img
-					src="/logo/meme-accounts-logo.webp"
-					alt="Meme Accounts"
-					class="hero-logo"
-					width="280"
-					height="44"
-				/>
-			</div>
 			<h1 class="hero-title">Build meme templates fast</h1>
 			<p class="hero-sub">Pick a layout, spin up posts in Studio, and test what potential customers react to — without living in Canva for hours.</p>
 			<div class="hero-ctas">
@@ -350,6 +335,36 @@
 		</div>
 	</section>
 
+	<!-- Story / niche cards -->
+	<section class="story-stack" aria-label="Product highlights">
+		<div class="container story-stack-inner reveal">
+			<AnimatedHikeCard
+				class="story-stack-card"
+				title="News Stories"
+				images={storyStackImages}
+				stats={[
+					{ icon: Layers, label: '5 slides' },
+					{ icon: Clock, label: '~2 min' },
+					{ icon: Sparkles, label: '4:5 feed' },
+				]}
+				description="Spin a full news carousel in Studio — portrait 4:5 slides with hooks, highlights, and brand chrome ready to export."
+				href="/dashboard/studio?template=news"
+			/>
+			<AnimatedHikeCard
+				class="story-stack-card"
+				title="Made for meme & niche pages"
+				images={memeNicheImages}
+				stats={[
+					{ icon: Video, label: 'faceless reels' },
+					{ icon: Instagram, label: 'faceless instagram' },
+					{ icon: AtSign, label: 'faceless tiktok' },
+				]}
+				description="Templates match formats that already work on Instagram: viral hooks, news frames, text carousels, quote/tweet-style graphics, video-with-text layouts — not generic “marketing flyer” templates."
+				href="/dashboard/templates"
+			/>
+		</div>
+	</section>
+
 	<!-- FEATURED -->
 	<section id="features" class="featured">
 		<div class="container">
@@ -372,11 +387,6 @@
 						<span class="feat-badge">Featured</span>
 						<div class="feat-info">
 							<h3 class="feat-title">{f.title}</h3>
-							<p class="feat-by">
-								by
-								<span class="feat-avatar">{f.initials}</span>
-								<span class="feat-creator">{f.creator}</span>
-							</p>
 						</div>
 					</a>
 				{/each}
@@ -404,10 +414,6 @@
 						</div>
 						<div class="fc-text">
 							<p class="fc-title">Studio Pack</p>
-							<div class="fc-by">
-								<span class="fc-dot"></span>
-								<span>Maya Carter</span>
-							</div>
 						</div>
 					</div>
 					<h3 class="how-step-title">Pick your template</h3>
@@ -485,30 +491,6 @@
 						<h3 class="benefit-title">{b.title}</h3>
 						<p class="benefit-desc">{b.desc}</p>
 					</div>
-				{/each}
-			</div>
-		</div>
-	</section>
-
-	<!-- TESTIMONIALS -->
-	<section id="testimonials" class="testimonials">
-		<div class="container">
-			<div class="section-head reveal">
-				<h2 class="testimonials-h">Creators run their pages on Meme Accounts</h2>
-				<p class="section-sub">Real workflows from people who post daily, not just when they find time.</p>
-			</div>
-			<div class="testi-grid">
-				{#each testimonials as t, i}
-					<figure class="testi-card reveal" style="--d:{i * 0.08}s">
-						<blockquote class="testi-quote">&ldquo;{t.quote}&rdquo;</blockquote>
-						<figcaption class="testi-by">
-							<span class="testi-avatar" style="background:{t.bg}">{t.initials}</span>
-							<span>
-								<span class="testi-name">{t.name}</span>
-								<span class="testi-role">{t.role}</span>
-							</span>
-						</figcaption>
-					</figure>
 				{/each}
 			</div>
 		</div>
@@ -1150,9 +1132,26 @@
 		margin-inline: auto;
 	}
 
+	/* ─── story stack (above featured) ─────────────────────── */
+	.story-stack {
+		padding: 48px 24px 0;
+	}
+	.story-stack-inner {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 20px;
+		align-items: stretch;
+		padding-block: 8px 12px;
+	}
+	.story-stack-inner :global(.story-stack-card) {
+		max-width: none;
+		width: 100%;
+		height: 100%;
+	}
+
 	/* ─── featured ────────────────────────────────────────── */
 	.featured {
-		padding: 100px 24px 40px;
+		padding: 72px 24px 40px;
 		scroll-margin-top: 88px;
 	}
 	.featured-h {
@@ -1224,32 +1223,10 @@
 		font-weight: 800;
 		font-size: 22px;
 		letter-spacing: -0.02em;
-		margin: 0 0 8px;
+		margin: 0;
 		color: #fff;
 		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
 	}
-	.feat-by {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		color: rgba(255, 255, 255, 0.85);
-		margin: 0;
-	}
-	.feat-avatar {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
-		border-radius: 50%;
-		background: rgba(255, 255, 255, 0.92);
-		color: #0f0f10;
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.02em;
-	}
-	.feat-creator { font-weight: 600; }
 
 	/* ─── how it works (floating cards) ───────────────────── */
 	.how {
@@ -1335,18 +1312,6 @@
 		letter-spacing: -0.01em;
 		margin: 0;
 		color: var(--ap-text);
-	}
-	.fc-by {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		color: var(--ap-text-2);
-	}
-	.fc-dot {
-		width: 14px; height: 14px;
-		border-radius: 50%;
-		background: linear-gradient(135deg, #E8B4B8, #A6B4C4);
 	}
 	.fc-handle {
 		font-size: 12px;
@@ -1447,70 +1412,6 @@
 		line-height: 1.55;
 		color: var(--ap-text-2);
 		margin: 0;
-	}
-
-	/* ─── testimonials ────────────────────────────────────── */
-	.testimonials {
-		padding: 100px 24px;
-		scroll-margin-top: 88px;
-	}
-	.testimonials-h {
-		font-weight: 900;
-		font-size: clamp(30px, 4vw, 44px);
-		letter-spacing: -0.03em;
-		line-height: 1.08;
-		margin: 0;
-	}
-	.testi-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 20px;
-	}
-	.testi-card {
-		background: var(--ap-soft);
-		border: 1px solid var(--ap-line);
-		border-radius: 20px;
-		padding: 26px;
-		display: flex;
-		flex-direction: column;
-		justify-content: space-between;
-		gap: 22px;
-	}
-	.testi-quote {
-		font-size: 15px;
-		line-height: 1.6;
-		color: var(--ap-text);
-		margin: 0;
-		font-weight: 500;
-		letter-spacing: -0.01em;
-	}
-	.testi-by {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		font-size: 13px;
-	}
-	.testi-avatar {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 38px;
-		height: 38px;
-		border-radius: 50%;
-		color: #fff;
-		font-weight: 800;
-		font-size: 13px;
-		flex-shrink: 0;
-	}
-	.testi-name {
-		display: block;
-		font-weight: 700;
-		color: var(--ap-text);
-	}
-	.testi-role {
-		display: block;
-		color: var(--ap-text-3);
-		font-size: 12px;
 	}
 
 	/* ─── faq ─────────────────────────────────────────────── */
@@ -1616,7 +1517,6 @@
 		.preview-sidebar { display: none; }
 		.stats-row { grid-template-columns: 1fr; gap: 40px; }
 		.benefits-grid { grid-template-columns: repeat(2, 1fr); }
-		.testi-grid { grid-template-columns: 1fr; }
 	}
 
 	@media (max-width: 880px) {
@@ -1625,6 +1525,8 @@
 		.preview-canvas { grid-template-columns: repeat(2, 1fr); }
 		.phone-stage { margin-top: 48px; }
 		.phone-frame { width: 200px; border-radius: 34px; }
+
+		.story-stack-inner { grid-template-columns: 1fr; gap: 16px; }
 
 		.featured { padding: 80px 20px 20px; }
 		.featured-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
@@ -1635,8 +1537,6 @@
 
 		.benefits { padding: 24px 20px 80px; }
 		.benefits-grid { grid-template-columns: 1fr; }
-
-		.testimonials { padding: 80px 20px; }
 
 		.faq { padding: 80px 20px 20px; }
 		.faq-q { font-size: 16px; padding-right: 32px; }

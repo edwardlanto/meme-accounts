@@ -19,21 +19,29 @@
 	import {
 		Link2,
 		Upload,
-		Sparkles,
 		Loader,
 		AlertCircle,
 		Film,
 		Clapperboard,
+		ChevronDown,
+		ArrowUp,
+		Scissors,
+		Hash,
+		Timer,
+		Type,
 	} from 'lucide-svelte';
+	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 
 	type Props = {
 		userId: string;
 		/** `split` = page layout (form + recent side-by-side). `stack` = dialog. */
 		layout?: 'stack' | 'split';
+		/** When false, hide the recent-projects sidebar (page can render its own library). */
+		showRecent?: boolean;
 		oncomplete?: (result: BulkClipImportResult) => void;
 	};
 
-	let { userId, layout = 'stack', oncomplete }: Props = $props();
+	let { userId, layout = 'stack', showRecent = true, oncomplete }: Props = $props();
 
 	let importTab = $state<'youtube' | 'upload'>('youtube');
 	let youtubeUrl = $state('');
@@ -318,9 +326,24 @@
 	const hasRecent = $derived(apiProjects.length > 0 || savedJobs.length > 0);
 	const recentApi = $derived(apiProjects.slice(0, layout === 'split' ? 8 : 4));
 	const recentLocal = $derived(savedJobs.slice(0, layout === 'split' ? 4 : 2));
+
+	const lengthChipLabel = $derived(
+		CLIP_LENGTH_PRESETS.find((p) => p.id === clipLengthPreset)?.label ?? 'Length',
+	);
+	const modeChipLabel = $derived(clipMode === 'all' ? 'Split full' : 'Highlights');
+	const canSubmitYoutube = $derived(youtubeUrl.trim().length > 0 && !busy);
+	const submitDisabled = $derived(
+		busy || (importTab === 'youtube' ? !youtubeUrl.trim() : false),
+	);
+
+	function submitFindClips() {
+		if (busy) return;
+		if (importTab === 'youtube') void analyzeFromYoutube();
+		else fileInput?.click();
+	}
 </script>
 
-<div class="import-form" class:layout-split={layout === 'split'}>
+<div class="import-form" class:layout-split={layout === 'split' && showRecent}>
 	{#if toolsWarning}
 		<p class="warn" role="status"><AlertCircle size={14} /> {toolsWarning}</p>
 	{/if}
@@ -330,90 +353,265 @@
 			{@render recentPanel()}
 		{/if}
 
-		<div class="tabs">
-			<button type="button" class:tab-on={importTab === 'youtube'} disabled={busy} onclick={() => (importTab = 'youtube')}>
-				<Link2 size={14} /> YouTube link
-			</button>
-			<button type="button" class:tab-on={importTab === 'upload'} disabled={busy} onclick={() => (importTab = 'upload')}>
-				<Upload size={14} /> Upload file
-			</button>
-		</div>
+		<div class="video-prompt-chrome">
+			<div class="prompt-bar">
+				<div class="prompt-bar-input">
+					{#if importTab === 'youtube'}
+						<Link2 size={15} class="shrink-0 text-[#b0b0b0]" />
+						<input
+							bind:value={youtubeUrl}
+							placeholder="Paste a YouTube URL…"
+							disabled={busy}
+							onkeydown={(e) => {
+								if (e.key === 'Enter') {
+									e.preventDefault();
+									if (canSubmitYoutube) void analyzeFromYoutube();
+								}
+							}}
+							class="prompt-bar-field"
+						/>
+					{:else}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<button
+							type="button"
+							class="video-drop-inline"
+							class:drag-on={isDragging}
+							disabled={busy}
+							ondragover={onDragOver}
+							ondragleave={onDragLeave}
+							ondrop={onDrop}
+							onclick={() => !busy && fileInput?.click()}
+						>
+							<Upload size={15} class="shrink-0 text-[#b0b0b0]" />
+							<span class="video-drop-copy">
+								{#if phase === 'importing' || phase === 'analyzing'}
+									{statusLabel} {uploadProgress}%
+								{:else}
+									Drop a video or click to upload · MP4, WebM, MOV
+								{/if}
+							</span>
+						</button>
+						<input
+							type="file"
+							accept="video/mp4,video/webm,video/quicktime"
+							class="hidden-input"
+							bind:this={fileInput}
+							onchange={(e) => void onFileChange(e)}
+						/>
+					{/if}
+					{#if error}
+						<span class="prompt-inline-err" title={error}>{error}</span>
+					{/if}
+				</div>
 
-		{#if importTab === 'youtube'}
-			<label class="field">
-				<span>YouTube URL</span>
-				<input
-					bind:value={youtubeUrl}
-					placeholder="https://youtube.com/watch?v=…"
-					disabled={busy}
-					onkeydown={(e) => e.key === 'Enter' && void analyzeFromYoutube()}
-				/>
-			</label>
-			<button type="button" class="btn-find" disabled={busy} onclick={() => void analyzeFromYoutube()}>
-				{#if busy}
-					<Loader size={15} class="spin" />
-					{statusLabel}
-				{:else}
-					<Sparkles size={15} />
-					Find clips
-				{/if}
-			</button>
-		{:else}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class="dropzone"
-				class:drag-on={isDragging}
-				ondragover={onDragOver}
-				ondragleave={onDragLeave}
-				ondrop={onDrop}
-				onclick={() => !busy && fileInput?.click()}
-			>
-				<Upload size={22} />
-				<p>Drop video or click to upload</p>
-				<span>MP4, WebM, MOV — max 200 MB</span>
-				{#if phase === 'importing' || phase === 'analyzing'}
-					<span class="upload-pct">{uploadProgress}%</span>
-				{/if}
+				<div class="prompt-bar-divider"></div>
+
+				<div class="prompt-bar-tools">
+					<Popover>
+						<PopoverTrigger class="prompt-chip" disabled={busy} title="Source">
+							{#if importTab === 'youtube'}
+								<Link2 size={11} class="shrink-0" />
+								YouTube
+							{:else}
+								<Upload size={11} class="shrink-0" />
+								Upload
+							{/if}
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-52 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Source
+							</p>
+							<button
+								type="button"
+								onclick={() => (importTab = 'youtube')}
+								class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{importTab === 'youtube' ? 'bg-[#f0f0f0] text-[#111]' : 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Link2 size={13} class="shrink-0" />
+								<span class="text-[12.5px] font-semibold">YouTube link</span>
+								{#if importTab === 'youtube'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (importTab = 'upload')}
+								class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{importTab === 'upload' ? 'bg-[#f0f0f0] text-[#111]' : 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Upload size={13} class="shrink-0" />
+								<span class="text-[12.5px] font-semibold">Upload file</span>
+								{#if importTab === 'upload'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip" disabled={busy} title="Clip mode">
+							<Scissors size={11} class="shrink-0" />
+							<span class="truncate">{modeChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-56 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Mode
+							</p>
+							<button
+								type="button"
+								onclick={() => (clipMode = 'highlights')}
+								class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{clipMode === 'highlights' ? 'bg-[#f0f0f0] text-[#111]' : 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="text-[12.5px] font-semibold">Best highlights</span>
+								{#if clipMode === 'highlights'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (clipMode = 'all')}
+								class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{clipMode === 'all' ? 'bg-[#f0f0f0] text-[#111]' : 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="text-[12.5px] font-semibold">Split full video</span>
+								{#if clipMode === 'all'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+						</PopoverContent>
+					</Popover>
+
+					{#if clipMode === 'highlights'}
+						<Popover>
+							<PopoverTrigger class="prompt-chip" disabled={busy} title="How many clips">
+								<Hash size={11} class="shrink-0" />
+								<span class="truncate">{clipCount} clip{clipCount === 1 ? '' : 's'}</span>
+								<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+							</PopoverTrigger>
+							<PopoverContent
+								side="bottom"
+								sideOffset={10}
+								align="start"
+								portalProps={{ to: 'body' }}
+								class="z-[400] w-56 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+							>
+								<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+									Clips
+								</p>
+								<div class="grid grid-cols-4 gap-1.5">
+									{#each [1, 2, 3, 4, 5, 6, 8, 10] as n}
+										<button
+											type="button"
+											onclick={() => (clipCount = n)}
+											class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
+												{clipCount === n
+													? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+										>
+											{n}
+										</button>
+									{/each}
+								</div>
+							</PopoverContent>
+						</Popover>
+					{/if}
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip" disabled={busy} title="Clip length">
+							<Timer size={11} class="shrink-0" />
+							<span class="truncate">{lengthChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-56 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Length
+							</p>
+							{#each CLIP_LENGTH_PRESETS as p}
+								<button
+									type="button"
+									onclick={() => onLengthPresetChange(p.id)}
+									class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+										{clipLengthPreset === p.id
+											? 'bg-[#f0f0f0] text-[#111]'
+											: 'text-[#555] hover:bg-[#f7f7f7]'}"
+								>
+									<span class="text-[12.5px] font-semibold">{p.label}</span>
+									{#if clipLengthPreset === p.id}
+										<span class="ml-auto shrink-0 text-[#111]">✓</span>
+									{/if}
+								</button>
+							{/each}
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger
+							class="prompt-chip max-w-[10rem]"
+							disabled={busy}
+							title="Optional topic hint"
+						>
+							<Type size={11} class="shrink-0" />
+							<span class="truncate">{topicHint.trim() || 'Topic'}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							align="start"
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-64 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Topic hint
+							</p>
+							<input
+								bind:value={topicHint}
+								placeholder="e.g. best moments, funny fails…"
+								disabled={busy}
+								class="h-9 w-full rounded-lg border border-[#e8e8e8] bg-white px-2.5 text-[12px] text-[#111] outline-none focus:border-[#ccc]"
+							/>
+						</PopoverContent>
+					</Popover>
+
+					<button
+						type="button"
+						class="prompt-bar-submit"
+						disabled={submitDisabled}
+						aria-label={busy ? statusLabel : importTab === 'youtube' ? 'Find clips' : 'Upload video'}
+						title={busy ? statusLabel : importTab === 'youtube' ? 'Find clips' : 'Choose video file'}
+						onclick={() => submitFindClips()}
+					>
+						{#if busy}
+							<Loader size={15} class="spin" />
+						{:else if importTab === 'youtube'}
+							<ArrowUp size={15} strokeWidth={2.5} />
+						{:else}
+							<Upload size={15} strokeWidth={2.5} />
+						{/if}
+					</button>
+				</div>
 			</div>
-			<input
-				type="file"
-				accept="video/mp4,video/webm,video/quicktime"
-				class="hidden-input"
-				bind:this={fileInput}
-				onchange={(e) => void onFileChange(e)}
-			/>
-		{/if}
-
-		<div class="prefs">
-			<label class="field">
-				<span>Mode</span>
-				<select bind:value={clipMode} disabled={busy}>
-					<option value="highlights">Best highlights</option>
-					<option value="all">Split full video</option>
-				</select>
-			</label>
-			{#if clipMode === 'highlights'}
-				<label class="field">
-					<span>Clips</span>
-					<input type="number" min="1" max="40" bind:value={clipCount} disabled={busy} />
-				</label>
-			{/if}
-			<label class="field">
-				<span>Length</span>
-				<select
-					value={clipLengthPreset}
-					disabled={busy}
-					onchange={(e) => onLengthPresetChange((e.currentTarget as HTMLSelectElement).value as ClipLengthPresetId)}
-				>
-					{#each CLIP_LENGTH_PRESETS as p}
-						<option value={p.id}>{p.label}</option>
-					{/each}
-				</select>
-			</label>
-			<label class="field grow">
-				<span>Topic hint</span>
-				<input bind:value={topicHint} placeholder="e.g. best moments" disabled={busy} />
-			</label>
 		</div>
 
 		{#if error}
@@ -421,7 +619,7 @@
 		{/if}
 	</div>
 
-	{#if layout === 'split'}
+	{#if layout === 'split' && showRecent}
 		<aside class="recent-col" aria-label="Recent clip projects">
 			{@render recentPanel()}
 		</aside>
@@ -546,6 +744,167 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		min-width: 0;
+	}
+	.video-prompt-chrome {
+		width: 100%;
+	}
+	.video-prompt-chrome :global(.prompt-bar) {
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.95);
+		border: 1px solid rgba(10, 10, 10, 0.08);
+		box-shadow:
+			0 4px 20px rgba(0, 0, 0, 0.08),
+			0 1px 3px rgba(0, 0, 0, 0.05);
+		backdrop-filter: blur(14px);
+		-webkit-backdrop-filter: blur(14px);
+	}
+	.video-prompt-chrome :global(.prompt-bar-input) {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 14px 16px 10px;
+		min-height: 48px;
+	}
+	.video-prompt-chrome :global(.prompt-bar-field) {
+		flex: 1;
+		min-width: 0;
+		background: transparent;
+		border: none;
+		outline: none;
+		box-shadow: none;
+		font-size: 14px;
+		line-height: 1.35;
+		color: #1a1a1a;
+		font-family: inherit;
+		padding: 0;
+		border-radius: 0;
+	}
+	.video-prompt-chrome :global(.prompt-bar-field::placeholder) {
+		color: #b4b4b4;
+	}
+	.video-prompt-chrome :global(.prompt-bar-field:disabled) {
+		opacity: 0.6;
+	}
+	.video-drop-inline {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		cursor: pointer;
+		text-align: left;
+	}
+	.video-drop-inline:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	.video-drop-inline.drag-on .video-drop-copy {
+		color: #080808;
+	}
+	.video-drop-copy {
+		flex: 1;
+		min-width: 0;
+		font-size: 14px;
+		line-height: 1.35;
+		color: #b4b4b4;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.prompt-inline-err {
+		flex-shrink: 0;
+		max-width: 160px;
+		font-size: 11px;
+		color: #b91c1c;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.video-prompt-chrome :global(.prompt-bar-divider) {
+		height: 1px;
+		margin: 0 14px;
+		background: rgba(10, 10, 10, 0.06);
+	}
+	.video-prompt-chrome :global(.prompt-bar-tools) {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 10px 10px;
+		flex-wrap: wrap;
+	}
+	.video-prompt-chrome :global(.prompt-chip) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 32px;
+		padding: 0 12px;
+		border: none;
+		border-radius: 10px;
+		background: rgba(10, 10, 10, 0.04);
+		color: rgba(10, 10, 10, 0.72);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		white-space: nowrap;
+		cursor: pointer;
+		user-select: none;
+		flex-shrink: 0;
+		transition:
+			background-color 140ms ease,
+			color 140ms ease;
+	}
+	.video-prompt-chrome :global(.prompt-chip:hover:not(:disabled)) {
+		background: rgba(10, 10, 10, 0.07);
+		color: #111;
+	}
+	.video-prompt-chrome :global(.prompt-chip:disabled) {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.video-prompt-chrome :global(.prompt-bar-submit) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		margin-left: auto;
+		border: none;
+		border-radius: 11px;
+		background: #7bf1a8;
+		color: #080808;
+		cursor: pointer;
+		flex-shrink: 0;
+		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
+		transition:
+			background-color 140ms ease,
+			transform 120ms ease;
+	}
+	.video-prompt-chrome :global(.prompt-bar-submit:hover:not(:disabled)) {
+		background: #8ff5b6;
+	}
+	.video-prompt-chrome :global(.prompt-bar-submit:active:not(:disabled)) {
+		transform: scale(0.94);
+	}
+	.video-prompt-chrome :global(.prompt-bar-submit:disabled) {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.video-prompt-chrome :global(.prompt-bar-submit svg),
+	.video-prompt-chrome :global(.prompt-bar-submit svg *) {
+		color: #080808 !important;
+		stroke: #080808 !important;
+	}
+	.hidden-input {
+		display: none;
+	}
+	.err {
+		margin: 0;
+		font-size: 0.78rem;
+		color: #b91c1c;
 	}
 	.recent-col {
 		min-width: 0;
@@ -740,120 +1099,6 @@
 		line-height: 1.45;
 		color: var(--app-text-2);
 		max-width: 32ch;
-	}
-	.tabs {
-		display: flex;
-		gap: 0.35rem;
-	}
-	.tabs button {
-		flex: 1;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.35rem;
-		padding: 0.5rem 0.55rem;
-		border: 1px solid var(--bulk-border, #e2e8f0);
-		border-radius: 10px;
-		background: var(--app-surface);
-		font-size: 0.78rem;
-		font-weight: 650;
-		color: var(--app-text-2);
-		cursor: pointer;
-	}
-	.tabs button.tab-on {
-		border-color: var(--app-accent, #7bf1a8);
-		background: color-mix(in oklab, var(--app-accent, #7bf1a8) 18%, transparent);
-		color: var(--app-text);
-	}
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		font-size: 0.65rem;
-		font-weight: 650;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--app-text-3);
-	}
-	.field.grow {
-		flex: 1;
-	}
-	.field input,
-	.field select {
-		font: inherit;
-		text-transform: none;
-		letter-spacing: normal;
-		font-size: 0.82rem;
-		font-weight: 550;
-		padding: 0.5rem 0.6rem;
-		border: 1px solid var(--bulk-border, #e2e8f0);
-		border-radius: 10px;
-		background: var(--app-surface);
-		color: var(--app-text);
-	}
-	.btn-find {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.4rem;
-		width: 100%;
-		padding: 0.62rem 0.75rem;
-		border: none;
-		border-radius: 12px;
-		background: var(--app-accent, #7bf1a8);
-		color: #080808;
-		font-size: 0.85rem;
-		font-weight: 700;
-		cursor: pointer;
-	}
-	.btn-find:disabled {
-		opacity: 0.65;
-		cursor: not-allowed;
-	}
-	.dropzone {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 0.35rem;
-		padding: 1.35rem;
-		border: 2px dashed var(--bulk-border, #e2e8f0);
-		border-radius: 14px;
-		color: var(--app-text-2);
-		cursor: pointer;
-		text-align: center;
-	}
-	.dropzone.drag-on {
-		border-color: var(--app-accent, #7bf1a8);
-		background: color-mix(in oklab, var(--app-accent, #7bf1a8) 12%, transparent);
-	}
-	.dropzone p {
-		margin: 0;
-		font-size: 0.82rem;
-		font-weight: 650;
-		color: var(--app-text);
-	}
-	.dropzone span {
-		font-size: 0.72rem;
-	}
-	.upload-pct {
-		font-weight: 700;
-		color: var(--app-text);
-	}
-	.hidden-input {
-		display: none;
-	}
-	.prefs {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-		gap: 0.5rem;
-		padding-top: 0.35rem;
-		border-top: 1px solid var(--bulk-border, #e2e8f0);
-	}
-	.err {
-		margin: 0;
-		font-size: 0.78rem;
-		color: #b91c1c;
 	}
 	:global(.spin) {
 		animation: spin 0.8s linear infinite;

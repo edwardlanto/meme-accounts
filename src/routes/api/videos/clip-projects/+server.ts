@@ -41,6 +41,13 @@ export const GET: RequestHandler = async ({ locals }) => {
 			const bulkShows = Array.isArray(p.bulk_shows) ? (p.bulk_shows as BulkShow[]) : [];
 			const clips = (Array.isArray(p.clips) ? p.clips : []) as VideoClip[];
 			const projectThumb = safeListThumb(p.thumbnail_url, p.source?.thumbnailUrl);
+			const durationSec = clips.reduce((sum, c) => {
+				const start = Number(c.startSec) || 0;
+				const end = Number(c.endSec) || 0;
+				const span = Math.max(0, end - start);
+				return sum + (span > 0 ? span : 0);
+			}, 0);
+			const sourceDuration = Number(p.source?.durationSec) || 0;
 			const shows =
 				bulkShows.length > 0
 					? bulkShows.slice(0, 24).map((s) => {
@@ -65,13 +72,17 @@ export const GET: RequestHandler = async ({ locals }) => {
 							thumb: safeListThumb(c.thumbnailUrl, projectThumb),
 							template: 'news',
 						}));
+			const topicHint = String((p.source as { topicHint?: string } | undefined)?.topicHint ?? '').trim();
 			return {
 				id: p.id,
 				title: p.title || p.source?.title || 'YouTube clips',
 				thumbnailUrl: projectThumb || p.thumbnail_url,
 				sourceTitle: p.source?.title ?? '',
+				sourceKind: p.source?.kind === 'upload' ? 'upload' : 'youtube',
 				clipCount: clips.length,
 				showCount: shows.length,
+				durationSec: durationSec || sourceDuration,
+				topic: topicHint,
 				summary: p.summary,
 				updatedAt: p.updated_at,
 				hasBulkShows: bulkShows.length > 0,

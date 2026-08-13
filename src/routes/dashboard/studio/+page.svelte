@@ -657,6 +657,26 @@ import JSZip from 'jszip';
 		return '';
 	}
 
+	/** Typed prompt text for the active mode (chips alone don’t count). */
+	const promptFieldText = $derived.by(() => {
+		if (newsContentMode === 'general') return generalTopicPrompt.trim();
+		if (newsContentMode === 'news') return search.trim();
+		if (newsContentMode === 'fact') return factTopicPrompt.trim();
+		if (newsContentMode === 'quote') return quoteTopicPrompt.trim();
+		if (newsContentMode === 'steps') return stepsTopicPrompt.trim();
+		if (newsContentMode === 'story') return storyTopicPrompt.trim();
+		return '';
+	});
+
+	/** Generate needs a typed prompt before submit is enabled. */
+	const promptReadyToGenerate = $derived(promptFieldText.length > 0);
+	const promptSubmitDisabled = $derived(!promptReadyToGenerate || fetchingNews || studioGenerating);
+
+	function submitPromptIfReady() {
+		if (promptSubmitDisabled) return;
+		void loadAndFill();
+	}
+
 	function refreshPromptHistory() {
 		if (!userId) {
 			promptHistory = [];
@@ -4539,13 +4559,14 @@ import JSZip from 'jszip';
 	function newSlideId() { return `s_${++_slideUid}_${Date.now().toString(36)}`; }
 	let slideIds = $state<string[]>(emptySlides(() => newSlideId()));
 	$effect(() => {
-		// Keep slideIds length in sync with slideCount (pad only).
-		// We intentionally avoid trimming here because it can make a slide
-		// "disappear" if slideCount is temporarily out of sync during drag/drop.
-		if (slideIds.length < slideCount) {
+		// Keep slideIds length in sync with the real deck (`slides`), not a lone slideCount.
+		const n = Math.max(1, slides.length);
+		if (slideIds.length < n) {
 			const add: string[] = [];
-			for (let i = slideIds.length; i < slideCount; i++) add.push(newSlideId());
+			for (let i = slideIds.length; i < n; i++) add.push(newSlideId());
 			slideIds = [...slideIds, ...add];
+		} else if (slideIds.length > n) {
+			slideIds = slideIds.slice(0, n);
 		}
 	});
 
@@ -4761,6 +4782,39 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	/** Remove the current slide (dock). */
 	function deleteActiveSlide() {
 		deleteSlideAt(activeSlide);
+	}
+
+	/**
+	 * Resize the real deck to `n` slides (1–10). The prompt chip must call this —
+	 * assigning `slideCount` alone only pads filmstrip ids and leaves `slides[]` stale,
+	 * so Generate fills the old length and snaps the chip back.
+	 */
+	function setDeckSlideCount(n: number) {
+		const target = Math.max(1, Math.min(10, Math.floor(Number(n) || 1)));
+		const prevActive = activeSlide;
+		if (target === slides.length) {
+			slideCount = target;
+			if (slideIds.length < target) {
+				const add: string[] = [];
+				for (let i = slideIds.length; i < target; i++) add.push(newSlideId());
+				slideIds = [...slideIds, ...add];
+			} else if (slideIds.length > target) {
+				slideIds = slideIds.slice(0, target);
+			}
+			return;
+		}
+		while (slides.length < target) {
+			const prevTpl = coerceTemplateId(
+				slideTemplates[slides.length - 1] ?? lastTemplateUsed ?? 'news',
+			);
+			addSlide({ template: prevTpl, copyClipFrom: null });
+		}
+		while (slides.length > target) {
+			deleteSlideAt(slides.length - 1);
+		}
+		slideCount = slides.length;
+		activeSlide = Math.max(0, Math.min(slides.length - 1, prevActive));
+		if (slideIds.length > slides.length) slideIds = slideIds.slice(0, slides.length);
 	}
 
 	// Filmstrip DnD (dnd-kit). Keep a temporary visual order while dragging
@@ -8229,9 +8283,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return typeof u === 'string' && u.startsWith('data:image/');
 	}
 
-	async function uploadTemplateMediaToR2AndRewriteState(templateId: string, state: Record<string, any>) {
+	async function uploadTemplateMediaToR2AndRewriteState(
+		mediaId: string,
+		state: Record<string, any>,
+		opts?: { folder?: 'templates' | 'drafts' },
+	) {
 		const out = { ...(state ?? {}) } as Record<string, any>;
-		const base = `${userId}/templates/${templateId}`;
+		const folder = opts?.folder === 'drafts' ? 'drafts' : 'templates';
+		const base = `${userId}/${folder}/${mediaId}`;
 
 		// Background images (by template, by slide)
 		if (out.bgImagesByTemplate && typeof out.bgImagesByTemplate === 'object') {
@@ -8483,15 +8542,15 @@ tweetTopImagePanYBySlide,
 			articleSwipeTextBySlide,
 			articleLogoSrcBySlide: articleLogoSrcBySlide.map(pruneMediaUrl),
 			slideIds,
-			subjectCutouts,
+			subjectCutouts: subjectCutouts.map(pruneMediaUrl),
 			showCutout,
 			slideMusic,
 			showCircleBySlide,
-			circleImages,
+			circleImages: circleImages.map(pruneMediaUrl),
 			circleBorderColor,
 			circleShadow,
 			showCircle2BySlide,
-			circle2Images,
+			circle2Images: circle2Images.map(pruneMediaUrl),
 			circle2BorderColor,
 			circle2Shadow,
 			circleX,
@@ -8653,67 +8712,114 @@ tweetTopImagePanYBySlide,
 
 	type SaveDraftNowOpts = { captureThumbnail?: boolean };
 
-	/** Persist workspace draft (`news_studio`) — listed under Carousels after user confirms. */
+	/** Persist workspace draft (`news_studio`) — listed under Carousels → Studio drafts. */
 	async function saveDraftNow(opts?: SaveDraftNowOpts) {
 		if (!userId) return;
 		const captureThumbnail = opts?.captureThumbnail === true;
 		draftSaving = true;
 		draftError = '';
-		await materializeBlobUrlsForDraftSave();
+		try {
+			await materializeBlobUrlsForDraftSave();
 
-		const rowId = draftId || crypto.randomUUID();
-		let nextPreviewUrl = draftPreviewUrl;
-		let nextPreviewKey = draftPreviewKey;
-		if (captureThumbnail) {
-			try {
-				const thumbDataUrl = await captureDraftThumbnailDataUrl();
-				if (thumbDataUrl) {
-					const key = `${userId}/${rowId}.png`;
-					const blob = await (await fetch(thumbDataUrl)).blob();
-					await r2UploadBlob({ key, blob, filename: 'draft-thumb.png' });
-					nextPreviewUrl = '';
-					nextPreviewKey = key;
+			const rowId = String(draftId ?? '').trim() || crypto.randomUUID();
+			const isUpdate = !!String(draftId ?? '').trim();
+			let nextPreviewUrl = draftPreviewUrl;
+			let nextPreviewKey = draftPreviewKey;
+			if (captureThumbnail) {
+				try {
+					const thumbDataUrl = await captureDraftThumbnailDataUrl();
+					if (thumbDataUrl) {
+						const key = `${userId}/${rowId}.png`;
+						const blob = await (await fetch(thumbDataUrl)).blob();
+						await r2UploadBlob({ key, blob, filename: 'draft-thumb.png' });
+						nextPreviewUrl = '';
+						nextPreviewKey = key;
+					}
+				} catch {
+					// Keep previous draftPreviewUrl / draftPreviewKey if capture/upload fails.
 				}
-			} catch {
-				// Keep previous draftPreviewUrl / draftPreviewKey if capture/upload fails.
 			}
-		}
-		draftPreviewUrl = nextPreviewUrl;
-		draftPreviewKey = nextPreviewKey;
+			draftPreviewUrl = nextPreviewUrl;
+			draftPreviewKey = nextPreviewKey;
 
-		const payload = {
-			user_id: userId,
-			kind: DRAFT_KIND,
-			state: buildDraftState(),
-			id: rowId,
-		};
-		const { data, error } = await (supabase as any)
-			.from('drafts')
-			.upsert(payload, { onConflict: 'id' })
-			.select('id')
-			.single();
-		draftSaving = false;
-		if (error) {
-			draftError = error.message ?? 'Failed to save draft';
-			return;
+			// Keep media in state long enough to upload to R2 (draft prune would strip cutouts first).
+			let state: Record<string, any> = { ...buildDraftState('template') };
+			const touchedAt = new Date().toISOString();
+
+			// Ensure a row exists before R2 rewrite (needs a stable id).
+			if (!isUpdate) {
+				const { data, error } = await (supabase as any)
+					.from('drafts')
+					.insert({
+						id: rowId,
+						user_id: userId,
+						kind: DRAFT_KIND,
+						state: {
+							formatId: state.formatId,
+							slides: state.slides,
+							slideTemplates: state.slideTemplates,
+							draftPreviewKey: nextPreviewKey,
+							draftPreviewPath: nextPreviewKey,
+							_saving: true,
+						},
+					})
+					.select('id')
+					.single();
+				if (error) {
+					draftError = error.message ?? 'Failed to save draft';
+					return;
+				}
+				if (data?.id) draftId = String(data.id);
+			}
+
+			try {
+				state = await uploadTemplateMediaToR2AndRewriteState(rowId, state, { folder: 'drafts' });
+			} catch (e: unknown) {
+				console.warn('Draft R2 media upload failed:', e);
+				// Fall back to pruned draft-sized payload so save still succeeds.
+				state = { ...buildDraftState('draft') };
+			}
+
+			const { error: writeErr } = await (supabase as any)
+				.from('drafts')
+				.update({ state, updated_at: touchedAt })
+				.eq('id', rowId)
+				.eq('user_id', userId)
+				.eq('kind', DRAFT_KIND);
+			if (writeErr) {
+				draftError = writeErr.message ?? 'Failed to save draft';
+				return;
+			}
+
+			if (!draftId) draftId = rowId;
+		} catch (e: unknown) {
+			draftError = e instanceof Error ? e.message : 'Failed to save draft';
+		} finally {
+			draftSaving = false;
 		}
-		if (data?.id) draftId = data.id;
 	}
 
-	/** User-confirmed draft save — never auto-writes to Carousels. */
+	/** User-confirmed draft save — writes to Carousels → Studio drafts. */
 	async function confirmAndSaveDraft() {
-		if (!userId || draftSaving || draftRestoring) return;
+		if (!userId || draftSaving) return;
+		if (draftRestoring) {
+			alert('Still loading — wait a moment, then try Save draft again.');
+			return;
+		}
 		const isNew = !String(draftId ?? '').trim();
 		const ok = confirm(
 			isNew
-				? 'Save this as a Studio draft in Carousels?'
-				: 'Update your Studio draft in Carousels?',
+				? 'Save this as a Studio draft on the Carousels page?'
+				: 'Update your Studio draft on the Carousels page?',
 		);
 		if (!ok) return;
 		await saveDraftNow({ captureThumbnail: true });
 		if (draftError) {
 			alert(draftError);
+			return;
 		}
+		setFlashToast(isNew ? 'Draft saved — see Studio drafts' : 'Draft updated');
+		await goto('/dashboard/carousels#studio-drafts');
 	}
 
 	$effect(() => {
@@ -9019,14 +9125,15 @@ tweetTopImagePanYBySlide,
 		return { maxChars: 200, maxWords: 32, maxSentences: 2 };
 	}
 
-	/** News supporting paragraph under the headline — 1–2 full sentences, never ellipsis. */
+	/** News supporting paragraph under the headline — 1–2 full sentences, never ellipsis.
+	 *  Paragraphs stay plain: auto-highlights belong on headlines only. */
 	function clampNewsSubtext(text: string, maxLen?: number): string {
 		const lenBudget = newsSubtextBudget();
 		const layoutCap = captureLiveNewsLayoutDocument(activeSlide).slotBudgets?.subtextMaxChars;
 		const budget =
 			maxLen ??
 			(typeof layoutCap === 'number' && layoutCap > 0 ? layoutCap : lenBudget.maxChars);
-		const plain = stripEmDashes(String(text ?? '').trim())
+		const plain = stripMarkup(stripEmDashes(String(text ?? '').trim()))
 			.replace(/\u2026/g, '')
 			.replace(/\.\.\.$/g, '')
 			.replace(/\s+/g, ' ')
@@ -9068,7 +9175,7 @@ tweetTopImagePanYBySlide,
 		previous?: string;
 		slideIndex?: number;
 	}): string {
-		const body = String(opts.body ?? '').trim();
+		const body = stripMarkup(String(opts.body ?? '').trim());
 		if (!body) return '';
 		const sentences = splitPlainSentences(body);
 		if (!sentences.length) return clampNewsSubtext(body);
@@ -9808,7 +9915,9 @@ tweetTopImagePanYBySlide,
 			if (!fillExistingDeck && newsContentMode === 'steps') {
 				slideCount = stepsDeckLength(resolvedStepsCount);
 			}
-			const n = fillExistingDeck ? Math.max(1, slides.length) : Math.max(1, slideCount);
+			// Grow/shrink the real deck to the chip count before filling (including fillExistingDeck).
+			setDeckSlideCount(slideCount);
+			const n = Math.max(1, slides.length);
 			slideCount = n;
 			lastTemplateUsed = contentTemplate;
 
@@ -10086,10 +10195,6 @@ tweetTopImagePanYBySlide,
 				}
 			}
 
-		} catch (e: any) {
-			newsError = e.message;
-		}
-
 		// Keep source logo/byline + last drag position after generate (don't reset to category tags).
 		source = resolveNewsSourceAfterFetch();
 		if (userId) {
@@ -10130,8 +10235,12 @@ tweetTopImagePanYBySlide,
 		}
 
 		await flushStudioLoadingPaint();
-		fetchingNews = false;
-		generatingVariants = false;
+		} catch (e: unknown) {
+			newsError = e instanceof Error ? e.message : String(e);
+		} finally {
+			fetchingNews = false;
+			generatingVariants = false;
+		}
 	}
 
 	type FillSlot =
@@ -10145,21 +10254,26 @@ tweetTopImagePanYBySlide,
 	}
 
 	function splitBodyIntoPlaceholderLines(hookText: string, rawText: string): string[] {
+		/* Hook may keep [[highlights]]; paragraph lines are always plain. */
 		const hook = String(hookText ?? '').trim();
-		const body = String(rawText ?? '').trim();
+		const body = stripMarkup(String(rawText ?? '').trim());
 		const extraLines = body
 			.split(/(?<=[.!?])\s+/)
 			.map((s) => s.trim())
 			.filter(Boolean)
 			.slice(0, 7);
-		return [hook, ...extraLines.filter((l) => l !== hook)].filter(Boolean);
+		return [hook, ...extraLines.filter((l) => l !== stripMarkup(hook))].filter(Boolean);
 	}
 
 	function setTextOverlayText(template: TemplateId, slide: number, overlayId: string, text: string) {
 		const rows = slideTextOverlaysByTemplate[template] ?? [];
 		const nextRows = rows.map((r) => [...r]);
 		while (nextRows.length <= slide) nextRows.push([]);
-		nextRows[slide] = (nextRows[slide] ?? []).map((o) => (o.id === overlayId ? { ...o, text } : o));
+		/* Free-form text tags are paragraph-role: never inherit headline [[highlights]]. */
+		const plain = stripMarkup(String(text ?? '').trim());
+		nextRows[slide] = (nextRows[slide] ?? []).map((o) =>
+			o.id === overlayId ? { ...o, text: plain } : o,
+		);
 		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: nextRows };
 	}
 
@@ -11012,28 +11126,50 @@ tweetTopImagePanYBySlide,
 			alert(cutoutError);
 			return;
 		}
+		if (String((bgVideosByTemplate[t] ?? [])[slideIdx] ?? '').trim()) {
+			cutoutError = 'Cut out works on photo backgrounds — remove the video first.';
+			alert(cutoutError);
+			return;
+		}
 		await ensureR2Resolved(raw);
-		const src = resolveMediaUrl(raw);
-		if (!src || src.startsWith('r2:')) {
+		const resolved = resolveMediaUrl(raw);
+		if (!resolved || resolved.startsWith('r2:')) {
 			cutoutError = 'Background is still loading — try again in a moment.';
 			alert(cutoutError);
 			return;
 		}
 		cutoutError = '';
-		const n = Math.max(slides.length, slideIdx + 1, subjectCutouts.length, showCutout.length, cuttingOut.length);
+		const n = Math.max(slides.length, slideIdx + 1, subjectCutouts.length, showCutout.length, cuttingOut.length, showCircleBySlide.length);
 		const padStr = (arr: string[]) => Array.from({ length: n }, (_, i) => arr[i] ?? '');
 		const padBool = (arr: boolean[]) => Array.from({ length: n }, (_, i) => arr[i] ?? false);
 		cuttingOut = padBool(cuttingOut).map((v, i) => (i === slideIdx ? true : v));
 		cutoutProgress = 0;
-		cutoutMessage = 'Starting…';
+		cutoutMessage = 'Preparing image…';
 		try {
-			const dataUrl = await removeBackground(src, (p) => {
+			/* Remote CDN photos fail CORS inside onnx — proxy to a data URL first. */
+			cutoutMessage = 'Loading photo…';
+			const safeSrc = await toExportSafeImageUrl(resolved);
+			if (!safeSrc || (!safeSrc.startsWith('data:') && !safeSrc.startsWith('blob:'))) {
+				throw new Error(
+					'Could not load this photo for cutout. Try a different image or upload one.',
+				);
+			}
+			const dataUrl = await removeBackground(safeSrc, (p) => {
 				cutoutProgress = p.progress ?? cutoutProgress;
 				cutoutMessage = p.message ?? cutoutMessage;
 			});
+			if (!dataUrl.startsWith('data:image/')) {
+				throw new Error('Cutout returned an empty result — try another photo.');
+			}
 			subjectCutouts = padStr(subjectCutouts).map((v, i) => (i === slideIdx ? dataUrl : v));
 			// Auto-enable the toggle on first cutout so the user immediately sees the effect.
 			showCutout = padBool(showCutout).map((v, i) => (i === slideIdx ? true : v));
+			/* Editorial look: cutout overlaps the circle — turn the badge on if it was hidden. */
+			if (!(showCircleBySlide[slideIdx] ?? false)) {
+				showCircleBySlide = padBool(showCircleBySlide).map((v, i) =>
+					i === slideIdx ? true : v,
+				);
+			}
 		} catch (e: any) {
 			cutoutError = e?.message ?? 'Background removal failed';
 			alert(cutoutError);
@@ -12266,10 +12402,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		if (filmstripInitialPassPending) filmstripInitialPassPending = false;
 	}
 
-	/** Don't leave filmstrip thumbs skeletoned forever if capture stalls. */
+	/** Don't leave canvas boot / filmstrip thumbs locked forever if capture stalls. */
 	$effect(() => {
 		if (!studioCanvasReady || !filmstripInitialPassPending) return;
-		const t = setTimeout(() => void finishFilmstripInitialPass(), 8000);
+		const t = setTimeout(() => void finishFilmstripInitialPass(), 2500);
 		return () => clearTimeout(t);
 	});
 
@@ -12671,8 +12807,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 
 		return () => {
 			if (filmstripThumbTimer) clearTimeout(filmstripThumbTimer);
-			// Invalidate in-flight "finish reveal" callbacks from this pass.
-			if (isInitialReveal) filmstripPassId++;
+			// Invalidate in-flight capture for this pass only. Do NOT clear
+			// filmstripInitialPassPending here — rapid dep changes during generate
+			// would unlock the canvas mid-capture. The 2.5s watchdog + capture
+			// finally handle unlock; the dock stays clickable regardless.
+			filmstripPassId++;
 		};
 	});
 </script>
@@ -12715,7 +12854,9 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				bind:this={newsBgToolbarMediaInput}
 				onchange={handleNewsBgToolbarMediaChange}
 			/>
-			<div class="studio-dock-inner" class:studio-dock-dimmed={!studioRevealReady}>
+			<!-- Dock stays interactive even while the canvas boot skeleton is up.
+			     Hiding it with pointer-events:none froze the whole chrome when filmstrip reveal stalled. -->
+			<div class="studio-dock-inner">
 			<DockToolbar items={dockItems} inline />
 			<TemplateDockToolbar
 				templates={templateDockTabs}
@@ -13089,13 +13230,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</PopoverContent>
 			</Popover>
 			</div>
-			{#if !studioRevealReady}
-				<div class="studio-dock-skel" aria-hidden="true">
-					{#each Array(10) as _}
-						<span class="studio-dock-skel-pill"></span>
-					{/each}
-				</div>
-			{/if}
 		</div>
 
 		<!-- Slide indicator + nav arrows -->
@@ -15143,42 +15277,42 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						<input
 							bind:value={generalTopicPrompt}
 							placeholder="e.g. Make me a carousel of beds…"
-							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							onkeydown={(e) => { if (e.key === 'Enter') submitPromptIfReady(); }}
 							class="prompt-bar-field"
 						/>
 					{:else if newsContentMode === 'news'}
 						<input
 							bind:value={search}
-							placeholder="Search keyword (optional)…"
-							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							placeholder="Search keyword…"
+							onkeydown={(e) => { if (e.key === 'Enter') submitPromptIfReady(); }}
 							class="prompt-bar-field"
 						/>
 					{:else if newsContentMode === 'fact'}
 						<input
 							bind:value={factTopicPrompt}
-							placeholder="Specific angle or context (optional)…"
-							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							placeholder="Specific angle or context…"
+							onkeydown={(e) => { if (e.key === 'Enter') submitPromptIfReady(); }}
 							class="prompt-bar-field"
 						/>
 					{:else if newsContentMode === 'quote'}
 						<input
 							bind:value={quoteTopicPrompt}
 							placeholder="Topic for the quote (e.g. discipline, leadership)…"
-							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							onkeydown={(e) => { if (e.key === 'Enter') submitPromptIfReady(); }}
 							class="prompt-bar-field"
 						/>
 					{:else if newsContentMode === 'steps'}
 						<input
 							bind:value={stepsTopicPrompt}
 							placeholder="e.g. 5 steps to get a better gut…"
-							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							onkeydown={(e) => { if (e.key === 'Enter') submitPromptIfReady(); }}
 							class="prompt-bar-field"
 						/>
 					{:else}
 						<input
 							bind:value={storyTopicPrompt}
-							placeholder="Story direction or angle (optional)…"
-							onkeydown={(e) => { if (e.key === 'Enter') void loadAndFill(); }}
+							placeholder="Story direction or angle…"
+							onkeydown={(e) => { if (e.key === 'Enter') submitPromptIfReady(); }}
 							class="prompt-bar-field"
 						/>
 					{/if}
@@ -15671,7 +15805,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{#each [3, 4, 5, 6, 7, 8] as n}
 									<button
 										type="button"
-										onclick={() => (slideCount = n)}
+										onclick={() => setDeckSlideCount(n)}
 										class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
 											{slideCount === n
 												? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
@@ -15686,24 +15820,28 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 					<div class="flex-1"></div>
 
-					<!-- Submit button — dark circle with arrow -->
-					<button
+					<!-- Submit — disabled until the prompt has text -->
+					<Button
 						type="button"
-						onclick={() => void loadAndFill()}
-						disabled={fetchingNews}
-						title={fetchingNews
+						size="icon"
+						onclick={() => submitPromptIfReady()}
+						disabled={promptSubmitDisabled}
+						title={fetchingNews || studioGenerating
 							? newsContentMode === 'news'
 								? 'Fetching…'
 								: 'Generating…'
-							: 'Load & Fill'}
-						class="prompt-bar-submit"
+							: !promptReadyToGenerate
+								? 'Type a prompt to generate'
+								: 'Load & Fill'}
+						aria-disabled={promptSubmitDisabled}
+						class="prompt-bar-submit size-9 shrink-0 rounded-full"
 					>
-						{#if fetchingNews}
-							<Loader size={15} class="animate-spin" />
+						{#if fetchingNews || studioGenerating}
+							<Loader class="animate-spin" />
 						{:else}
-							<ArrowUp size={15} strokeWidth={2.5} />
+							<ArrowUp strokeWidth={2.5} />
 						{/if}
-					</button>
+					</Button>
 				</div>
 							</div>
 				<!-- {#if articleUrl}
@@ -16601,59 +16739,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		max-width: 100%;
 		min-width: 0;
 	}
-	.studio-dock-dimmed {
-		opacity: 0;
-		pointer-events: none;
-	}
-	.studio-dock-skel {
-		position: absolute;
-		inset: 0;
-		z-index: 2;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.4rem;
-		padding: 0 0.5rem;
-		pointer-events: none;
-	}
-	.studio-dock-skel-pill {
-		width: 2rem;
-		height: 2rem;
-		border-radius: 0.55rem;
-		background: color-mix(in oklab, var(--app-text) 10%, transparent);
-		animation: studio-dock-pulse 1.2s ease-in-out infinite;
-	}
-	.studio-dock-skel-chip {
-		width: 4.25rem;
-		height: 1.85rem;
-		border-radius: 0.45rem;
-		background: color-mix(in oklab, var(--app-text) 10%, transparent);
-		animation: studio-dock-pulse 1.2s ease-in-out infinite;
-	}
-	.studio-dock-skel-gap {
-		width: 0.85rem;
-	}
-	.studio-dock-skel-pill:nth-child(odd),
-	.studio-dock-skel-chip:nth-child(odd) {
-		animation-delay: 0.15s;
-	}
-	@keyframes studio-dock-pulse {
-		0%,
-		100% {
-			opacity: 0.55;
-		}
-		50% {
-			opacity: 1;
-		}
-	}
 	@media (prefers-reduced-motion: reduce) {
 		.studio-canvas-shell.is-measured,
 		.studio-canvas-frame.is-measured {
 			transition: none;
-		}
-		.studio-dock-skel-pill,
-		.studio-dock-skel-chip {
-			animation: none;
 		}
 	}
 

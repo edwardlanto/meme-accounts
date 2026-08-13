@@ -103,9 +103,12 @@ async function openRouterComplete(
 }
 
 async function applyHighlightMarkup(overlayText: string): Promise<string> {
-	const highlightPrompt = `You are a graphic designer. Given this Instagram overlay text, wrap 1-3 key phrases in [[...]] for highlighting.
+	const highlightPrompt = `You are a graphic designer marking an Instagram NEWS HEADLINE (ALL CAPS overlay).
+
+Wrap 1-3 key phrases in [[...]] for highlighting.
 
 Rules:
+- This is a HEADLINE only — emphasize the punch (numbers, proper nouns, the claim)
 - Wrap ONLY nouns, numbers, proper nouns, or the most impactful words
 - Never wrap: articles (the, a, an), prepositions, conjunctions
 - Max 3 wrapped phrases
@@ -113,9 +116,9 @@ Rules:
 - NEVER use em dashes (—) or en dashes (–). Use a comma, period, or plain hyphen (-) only.
 - Example: "TESLA RAISES [[PRICES BY 12%]] ACROSS ALL MODELS"
 
-Text: "${overlayText}"
+Headline: "${overlayText}"
 
-Return ONLY the modified text with [[ ]] markup. No explanation.`;
+Return ONLY the modified headline with [[ ]] markup. No explanation.`;
 
 	const highlighted = await openRouterComplete(
 		[{ role: 'user', content: highlightPrompt }],
@@ -807,6 +810,7 @@ Rules:
 - Must end on a finished sentence with . ! or ?
 - NEVER use ellipsis (…) or cut a word short
 - NEVER use em dashes (—) or en dashes (–)
+- NEVER use [[double brackets]] or any highlight markup — plain text only (highlights belong on the headline)
 - No hashtags, no emojis, no quotes around the whole blurb
 - Faithful to the source; do not invent facts
 - Prefer one concrete fact or implication — no essay
@@ -831,6 +835,8 @@ Return ONLY the supporting paragraph.`;
 			);
 			supportingCopy = clampToCompleteWords(supportingCopy, supportCap);
 		}
+		/* Paragraph role: never ship highlight markup under the headline. */
+		supportingCopy = supportingCopy.replace(/\[\[|\]\]/g, '').trim();
 	}
 
 	return json({
