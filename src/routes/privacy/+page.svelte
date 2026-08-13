@@ -7,7 +7,7 @@
 	<meta name="description" content="How Meme Accounts collects, uses, and protects your data — including payments, AI features, and connected social accounts." />
 </svelte:head>
 
-<LegalDoc title="Meme Accounts — Privacy Policy" effectiveDate="August 5, 2026">
+<LegalDoc title="Meme Accounts — Privacy Policy" effectiveDate="August 12, 2026">
 	<h2>1. Who we are</h2>
 	<p>
 		Meme Accounts (&ldquo;we&rdquo;, &ldquo;us&rdquo;) provides tools to design social posts,
@@ -15,30 +15,49 @@
 		collect and how we use it.
 	</p>
 
-	<h2>2. Information we collect</h2>
+	<h2>2. We collect user data</h2>
+	<p>
+		When you use Meme Accounts, we collect personal and usage data needed to run the Service.
+		Categories include:
+	</p>
 	<ul>
 		<li><strong>Account data</strong> — email, name, and authentication identifiers when you sign up.</li>
-		<li><strong>Content you create</strong> — templates, captions, images, videos, and schedules you upload or generate.</li>
+		<li><strong>Content you create or upload</strong> — templates, captions, images, videos, cutouts, brand assets, and schedules you upload or generate.</li>
 		<li><strong>Connected accounts</strong> — OAuth tokens and profile metadata from platforms you connect (Instagram, TikTok, LinkedIn, YouTube, Bluesky, Google Business, etc.).</li>
 		<li><strong>Payment data</strong> — billing is handled by Stripe. We store your plan, Stripe customer id, and subscription status — not full card numbers.</li>
-		<li><strong>Usage & diagnostics</strong> — basic logs, errors, and feature usage to keep the service reliable.</li>
+		<li><strong>Usage &amp; diagnostics</strong> — basic logs, errors, IP/device signals as needed for security, and feature usage to keep the service reliable.</li>
 	</ul>
 
 	<h2>3. How we use information</h2>
 	<ul>
 		<li>Authenticate you and maintain your session.</li>
-		<li>Render, export, and publish content you request.</li>
-		<li>Run AI-assisted features (hooks, captions, image generation) using third-party AI providers.</li>
-		<li>Process subscriptions and enforce plan limits (including free-trial export limits).</li>
+		<li>Render, export, store, and publish content you request.</li>
+		<li>
+			<strong>Run AI-assisted features</strong> (hooks, captions, variants, image generation,
+			video clip analysis, and similar) by sending relevant prompts and media to
+			<strong>third-party AI providers</strong>.
+		</li>
+		<li>Process subscriptions, send billing-related notices (via Stripe), and enforce plan limits (including free-trial export limits).</li>
 		<li>Improve the product and prevent abuse.</li>
 	</ul>
 	<p>We do not sell your personal information.</p>
 
-	<h2>4. Third-party services</h2>
+	<h2>4. Third-party data collectors &amp; processors</h2>
 	<p>
-		We use Supabase (auth & database), Stripe (payments), cloud storage (e.g. R2), and AI/media
-		providers (OpenRouter, Fal, Vertex, Unsplash, Pexels, etc.). Connected social platforms
-		receive only the content and permissions you authorize.
+		We share data with service providers who process it on our behalf to operate Meme Accounts.
+		These include (as used):
+	</p>
+	<ul>
+		<li><strong>Supabase</strong> — authentication and database.</li>
+		<li><strong>Stripe</strong> — payments, invoices, subscription management, and renewal receipts/reminders.</li>
+		<li><strong>Cloudflare R2</strong> (or equivalent object storage) — uploaded and generated media files.</li>
+		<li><strong>AI providers</strong> — including OpenRouter, Fal, and Google Vertex / Gemini for text, image, and video features.</li>
+		<li><strong>Stock media APIs</strong> — Unsplash and Pexels when you search or insert stock assets.</li>
+		<li><strong>Publishing / OAuth partners</strong> — e.g. Zernio and connected social networks when you authorize publishing.</li>
+	</ul>
+	<p>
+		Connected social platforms receive only the content and permissions you authorize.
+		Each provider has its own privacy policy governing their processing.
 	</p>
 
 	<h2>5. Cookies</h2>
@@ -47,16 +66,23 @@
 		We do not use third-party advertising cookies.
 	</p>
 
-	<h2>6. Data retention</h2>
+	<h2>6. Data retention &amp; deletion of uploads</h2>
 	<ul>
 		<li>OAuth tokens remain until you disconnect an integration.</li>
-		<li>Created content remains until you delete it or close your account.</li>
-		<li>Account data is deleted within 30 days of a verified deletion request.</li>
+		<li>Created content and uploads remain until you delete them or close your account.</li>
+		<li>
+			<strong>Account deletion</strong> — from Settings → Account you can permanently delete your
+			account. We cancel active Stripe subscriptions when possible, remove your account records,
+			and purge media stored under your account prefix in object storage (uploads, drafts media,
+			templates, videos). Residual backups or logs may take up to <strong>30 days</strong> to fully clear.
+		</li>
+		<li>You may also email <a href="mailto:support@memeaccounts.com">support@memeaccounts.com</a> to request deletion.</li>
 	</ul>
 
 	<h2>7. Your rights</h2>
 	<p>
-		You may access, correct, or delete your data by contacting
+		Depending on where you live, you may have rights to access, correct, delete, or export your
+		data, or to object to certain processing. Contact
 		<a href="mailto:support@memeaccounts.com">support@memeaccounts.com</a>.
 		You can revoke third-party access in each platform&apos;s settings at any time.
 	</p>

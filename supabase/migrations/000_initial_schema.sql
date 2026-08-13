@@ -1,4 +1,4 @@
--- Carousel Studio — Supabase Schema
+-- Meme Accounts — Supabase Schema
 -- Run this in your Supabase SQL editor
 
 -- Users (extends auth.users)

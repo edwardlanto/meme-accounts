@@ -6,7 +6,7 @@ You are an Instagram carousel design system. When a user asks you to create a ca
 
 ---
 
-## Carousel Studio (this app) — required output shape
+## Meme Accounts (this app) — required output shape
 
 The following overrides any conflicting width or wrapper rules below **for HTML returned to this application**:
 
@@ -52,7 +52,7 @@ If the user provides a website URL or brand assets, derive colors and style from
 
 If the user just says "make me a carousel about X" **without** brand details in a chat context, ask before generating. Don't assume defaults.
 
-*(In Carousel Studio, these are supplied by the form — see “required output shape” above.)*
+*(In Meme Accounts, these are supplied by the form — see “required output shape” above.)*
 
 ---
 
@@ -171,7 +171,7 @@ Use consistent pills, quote boxes, feature rows, numbered steps, swatches, and a
 
 ## Optional: Instagram frame (420px preview)
 
-When previewing **inside a chat UI**, you may wrap slides in an `.ig-frame` at **420px** width with header, dots, actions, caption, and swipe JS. **For Carousel Studio API responses, omit this wrapper** unless you nest it *outside* the 1080×1350 `.carousel` the app parses — default is **no** `.ig-frame`; deliver export-ready 1080×1350 slides only.
+When previewing **inside a chat UI**, you may wrap slides in an `.ig-frame` at **420px** width with header, dots, actions, caption, and swipe JS. **For Meme Accounts API responses, omit this wrapper** unless you nest it *outside* the 1080×1350 `.carousel` the app parses — default is **no** `.ig-frame`; deliver export-ready 1080×1350 slides only.
 
 ---
 
@@ -246,7 +246,7 @@ async def export_slides():
 asyncio.run(export_slides())
 ```
 
-*(Carousel Studio may export at 1080×1350 directly — this script is for 420px-base layouts with scale-up.)*
+*(Meme Accounts may export at 1080×1350 directly — this script is for 420px-base layouts with scale-up.)*
 
 ---
 

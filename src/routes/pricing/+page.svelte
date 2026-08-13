@@ -256,7 +256,8 @@
 			<div class="faq-grid">
 				{#each [
 					['Is checkout secure?', 'Yes. Payments run on Stripe Checkout - card numbers never hit Meme Accounts servers. We only store your plan status and Stripe customer id.'],
-					['Can I change plans later?', 'Anytime. Upgrade from Pricing or manage cancel / invoices in Settings → Billing via the Stripe Customer Portal.'],
+					['Can I change plans later?', 'Anytime. Upgrade from Pricing, or cancel / change plans in Settings → Billing (one-click Cancel subscription opens Stripe).'],
+					['Will I get a renewal reminder?', 'Yes. Subscriptions auto-renew and Stripe emails receipts and renewal-related notices to your billing email. The next renewal date also appears in Settings → Billing.'],
 					['Do you offer refunds?', 'If something goes wrong in the first 7 days of a paid plan, email support and we’ll make it right.'],
 					['What happens if I cancel?', 'You keep access until the period ends, then drop back to Free. Your projects stay in your account.'],
 				] as [q, a]}

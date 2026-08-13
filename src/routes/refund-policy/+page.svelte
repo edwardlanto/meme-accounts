@@ -7,17 +7,26 @@
 	<meta name="description" content="Meme Accounts refund and cancellation policy for Pro and Agency subscriptions." />
 </svelte:head>
 
-<LegalDoc title="Meme Accounts — Refund Policy" effectiveDate="August 5, 2026">
-	<h2>1. Subscriptions</h2>
+<LegalDoc title="Meme Accounts — Refund Policy" effectiveDate="August 12, 2026">
+	<h2>1. Subscriptions &amp; auto-renewal</h2>
 	<p>
-		Paid plans are billed monthly or yearly through Stripe. Your subscription renews automatically
-		until you cancel from <strong>Settings → Billing</strong> (Stripe Customer Portal).
+		Paid plans are billed monthly or yearly through Stripe. Your subscription
+		<strong>renews automatically</strong> until you cancel. Stripe sends payment receipts and
+		renewal-related emails to the billing email on your Stripe customer. The next renewal date
+		is shown in <strong>Settings → Billing</strong>.
 	</p>
 
-	<h2>2. Cancellation</h2>
+	<h2>2. Cancellation (as easy as signup)</h2>
+	<p>
+		Cancel anytime from <strong>Settings → Billing → Cancel subscription</strong>. That opens
+		the Stripe Customer Portal directly on the cancel flow — the same number of steps as
+		upgrading (one click from Settings). You can also use &ldquo;Manage subscription&rdquo; in
+		the portal.
+	</p>
 	<p>
 		When you cancel, you keep access until the end of the current billing period. After that,
-		your account reverts to the Free plan and trial limits apply again.
+		your account reverts to the Free plan and trial limits apply again. Your projects remain
+		in your account unless you delete them or close the account.
 	</p>
 
 	<h2>3. Refunds</h2>

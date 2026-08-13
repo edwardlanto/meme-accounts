@@ -3,7 +3,7 @@
 	import MarketingNav from '$lib/components/MarketingNav.svelte';
 	import MarketingFooter from '$lib/components/MarketingFooter.svelte';
 	import AnimatedHikeCard from '$lib/components/ui/animated-hike-card.svelte';
-	import { AtSign, Clock, Instagram, Layers, Sparkles, Video } from 'lucide-svelte';
+	import { AtSign, Clock, Hash, Layers, Sparkles, Video } from 'lucide-svelte';
 	import {
 		isMarqueeVideo,
 		marqueeAssetPath,
@@ -356,7 +356,7 @@
 				images={memeNicheImages}
 				stats={[
 					{ icon: Video, label: 'faceless reels' },
-					{ icon: Instagram, label: 'faceless instagram' },
+					{ icon: Hash, label: 'faceless instagram' },
 					{ icon: AtSign, label: 'faceless tiktok' },
 				]}
 				description="Templates match formats that already work on Instagram: viral hooks, news frames, text carousels, quote/tweet-style graphics, video-with-text layouts — not generic “marketing flyer” templates."

@@ -88,7 +88,8 @@
 			<h2>Continue to Stripe</h2>
 			<p class="pay-copy">
 				You’ll complete payment on Stripe’s PCI-certified page. Card details never pass through
-				Meme Accounts.
+				Meme Accounts. Your plan <strong>auto-renews</strong> until you cancel; Stripe emails
+				receipts and renewal notices. Cancel anytime from Settings → Billing (one click).
 			</p>
 
 			<div class="account">
@@ -119,7 +120,8 @@
 				By continuing you agree to our
 				<a href="/terms">Terms</a>
 				and
-				<a href="/privacy">Privacy Policy</a>.
+				<a href="/privacy">Privacy Policy</a>,
+				including auto-renewal until you cancel.
 			</p>
 		</section>
 	</main>

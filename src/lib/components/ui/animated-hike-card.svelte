@@ -1,11 +1,12 @@
 <script lang="ts">
-	import type { Component } from 'svelte';
 	import { ArrowRight } from 'lucide-svelte';
 	import { cn } from '$lib/utils';
 
 	export type CardStat = {
 		label: string;
-		icon: Component<{ class?: string }>;
+		/** Lucide (or any) Svelte icon component */
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		icon: any;
 	};
 
 	type Props = {

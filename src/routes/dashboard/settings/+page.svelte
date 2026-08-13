@@ -472,13 +472,15 @@
 		}
 	}
 
-	async function openPortal() {
+	async function openPortal(flow: 'manage' | 'cancel' = 'manage') {
 		billingBusy = true;
 		billingError = null;
 		try {
 			const res = await fetch('/api/stripe/portal', {
 				method: 'POST',
 				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(flow === 'cancel' ? { flow: 'cancel' } : {}),
 			});
 			const json = await res.json();
 			if (!res.ok || !json?.ok || !json?.url) {
@@ -608,7 +610,7 @@
 		{
 			id: 'gmb',
 			title: 'Google Business Profile',
-			desc: 'Post updates to your Google Business locations directly from Carousel Studio.',
+			desc: 'Post updates to your Google Business locations directly from Meme Accounts.',
 			color: '#4285F4',
 			bg: 'rgba(66,133,244,0.08)',
 			status: gmbStatusDerived,
@@ -895,7 +897,8 @@
 			<div class="settings-card settings-card--danger">
 				<h2 class="card-title card-title--danger">Danger Zone</h2>
 				<p class="card-desc">
-					Permanently delete your account, drafts, and connected data. Active Stripe subscriptions are canceled when possible. This cannot be undone.
+					Permanently delete your account, drafts, uploaded media, and connected data. We purge
+					files stored for your account and cancel active Stripe subscriptions when possible. This cannot be undone.
 				</p>
 				{#if !showDeleteConfirm}
 					<Button
@@ -1080,7 +1083,7 @@
 			<p class="tab-desc">Sign in to connect social accounts.</p>
 		{:else}
 		<div class="tab-content">
-			<p class="tab-desc">Connect your social accounts to enable publishing and scheduling from Carousel Studio.</p>
+			<p class="tab-desc">Connect your social accounts to enable publishing and scheduling from Meme Accounts.</p>
 
 			{#if loading}
 				<div class="loading-row">
@@ -1207,7 +1210,7 @@
 
 			<div class="settings-card settings-card--info">
 				<h2 class="card-title">Channel overview</h2>
-				<p class="card-desc">Connected accounts publish and schedule from Carousel Studio. OAuth tokens are stored securely server-side.</p>
+				<p class="card-desc">Connected accounts publish and schedule from Meme Accounts. OAuth tokens are stored securely server-side.</p>
 			</div>
 		</div>
 		{/if}
@@ -1279,16 +1282,37 @@
 
 				<div class="billing-actions">
 					{#if billing?.hasCustomer}
-						<Button type="button" variant="outline" size="sm" disabled={billingBusy} onclick={openPortal}>
+						<Button type="button" variant="outline" size="sm" disabled={billingBusy} onclick={() => openPortal('manage')}>
 							{billingBusy ? 'Opening…' : 'Manage subscription'}
 						</Button>
-						<Button type="button" variant="outline" size="sm" disabled={billingBusy} onclick={openPortal}>
+						<Button type="button" variant="outline" size="sm" disabled={billingBusy} onclick={() => openPortal('manage')}>
 							Invoices & payment method
 						</Button>
+						{#if billing?.plan !== 'free' && billing?.hasSubscription}
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								class="border-red-300 text-red-700 hover:bg-red-50"
+								disabled={billingBusy}
+								onclick={() => openPortal('cancel')}
+							>
+								Cancel subscription
+							</Button>
+						{/if}
 					{:else}
 						<Button href="/pricing" variant="outline" size="sm">View all plans</Button>
 					{/if}
 				</div>
+				{#if billing?.plan !== 'free'}
+					<p class="card-desc billing-renew-note">
+						Subscriptions auto-renew until canceled. Stripe emails receipts and renewal notices to your billing email.
+						{#if billing?.currentPeriodEnd}
+							Next renewal: <strong>{new Date(billing.currentPeriodEnd).toLocaleDateString()}</strong>.
+						{/if}
+						Cancel anytime above — same one-click path as upgrading.
+					</p>
+				{/if}
 			</div>
 
 			<div class="settings-card">
@@ -1322,7 +1346,16 @@
 									{planId === 'agency' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
 								</Button>
 							{:else if planId === 'free' && billing?.plan !== 'free'}
-								<p class="plan-compare-note">Downgrade via Stripe portal</p>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									class="plan-compare-cta w-full"
+									disabled={billingBusy}
+									onclick={() => openPortal('cancel')}
+								>
+									Cancel / downgrade
+								</Button>
 							{/if}
 						</div>
 					{/each}
@@ -1351,7 +1384,8 @@
 				<h2 class="card-title">Billing compliance</h2>
 				<p class="card-desc">
 					Payments are processed by Stripe. We store your plan and subscription status - not full card numbers.
-					See our <a href="/refund-policy" class="inline-link">Refund Policy</a> for cancellations and refunds.
+					Plans auto-renew until you cancel; Stripe sends renewal receipts to your billing email.
+					Cancel anytime from this page. See our <a href="/refund-policy" class="inline-link">Refund Policy</a>.
 				</p>
 			</div>
 		</div>
@@ -1363,7 +1397,7 @@
 			<div class="settings-card">
 				<h2 class="card-title">Legal & privacy</h2>
 				<p class="card-desc">
-					Carousel Studio is operated in compliance with standard SaaS privacy and billing practices.
+					Meme Accounts is operated in compliance with standard SaaS privacy and billing practices.
 					Review the documents below for how we handle your data and subscriptions.
 				</p>
 				<div class="legal-links">
@@ -1397,10 +1431,10 @@
 			<div class="settings-card">
 				<h2 class="card-title">Your data rights</h2>
 				<p class="card-desc">
-					You may access or correct your profile in Account settings. To permanently delete your account and data, use
-					<strong> Danger Zone</strong> on the Account tab, or email
+					You may access or correct your profile in Account settings. To permanently delete your account,
+					uploads, and data, use <strong>Danger Zone</strong> on the Account tab, or email
 					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
-					from the address on your account.
+					from the address on your account. Residual backups may clear within 30 days.
 				</p>
 			</div>
 
@@ -1954,7 +1988,8 @@
 	.plan-feature  { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: var(--ap-text-2); }
 	:global(.feature-check) { color: #059669; flex-shrink: 0; }
 
-	.billing-actions { display: flex; gap: 0.65rem; }
+	.billing-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; }
+	.billing-renew-note { margin-top: 0.85rem; }
 	.btn-outline-sm {
 		padding: 0.5rem 1rem; border-radius: 10px;
 		border: 1px solid var(--ap-line);

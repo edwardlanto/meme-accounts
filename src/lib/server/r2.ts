@@ -1,5 +1,13 @@
 import { env } from '$env/dynamic/private';
-import { S3Client, DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+	S3Client,
+	DeleteObjectCommand,
+	DeleteObjectsCommand,
+	HeadObjectCommand,
+	PutObjectCommand,
+	GetObjectCommand,
+	ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 function must(name: string): string {
@@ -60,6 +68,53 @@ export async function r2Delete(key: string): Promise<void> {
 	await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
+/**
+ * Delete every object under `{ownerId}/` (uploads, drafts media, templates, videos).
+ * Best-effort — logs and continues on partial failures.
+ */
+export async function r2DeleteOwnerPrefix(ownerId: string): Promise<{ deleted: number }> {
+	const id = String(ownerId ?? '').trim();
+	if (!id || id.includes('/') || id.includes('..')) {
+		throw new Error('Invalid owner id for R2 purge');
+	}
+	const prefix = `${id}/`;
+	const { s3, bucket } = r2Client();
+	let deleted = 0;
+	let token: string | undefined;
+	do {
+		const listed = await s3.send(
+			new ListObjectsV2Command({
+				Bucket: bucket,
+				Prefix: prefix,
+				ContinuationToken: token,
+				MaxKeys: 1000,
+			}),
+		);
+		const keys = (listed.Contents ?? [])
+			.map((o) => o.Key)
+			.filter((k): k is string => typeof k === 'string' && k.startsWith(prefix));
+		for (let i = 0; i < keys.length; i += 1000) {
+			const chunk = keys.slice(i, i + 1000);
+			if (!chunk.length) continue;
+			const res = await s3.send(
+				new DeleteObjectsCommand({
+					Bucket: bucket,
+					Delete: {
+						Objects: chunk.map((Key) => ({ Key })),
+						Quiet: true,
+					},
+				}),
+			);
+			deleted += chunk.length - (res.Errors?.length ?? 0);
+			if (res.Errors?.length) {
+				console.warn('[r2DeleteOwnerPrefix] partial errors', res.Errors.slice(0, 5));
+			}
+		}
+		token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+	} while (token);
+	return { deleted };
+}
+
 export async function r2Exists(key: string): Promise<boolean> {
 	const { s3, bucket } = r2Client();
 	try {
@@ -69,4 +124,3 @@ export async function r2Exists(key: string): Promise<boolean> {
 		return false;
 	}
 }
-

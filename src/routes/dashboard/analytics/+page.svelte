@@ -615,7 +615,7 @@
 			</div>
 		{:else if tab === 'facebook'}
 			<div class="conn-card">
-				<p class="conn-desc">Connect a Facebook Page via Zernio. After OAuth, pick your Page in Zernio’s flow; we sync the account into Carousel Studio.</p>
+				<p class="conn-desc">Connect a Facebook Page via Zernio. After OAuth, pick your Page in Zernio’s flow; we sync the account into Meme Accounts.</p>
 				{#if zernioReady}
 					<div class="cred-ok"><CheckCircle2 size={14}/><span>Zernio configuration looks good.</span></div>
 				{:else}

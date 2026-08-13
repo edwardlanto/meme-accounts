@@ -2,11 +2,12 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { adminClient } from '$lib/server/auth';
 import { getStripe } from '$lib/server/stripe';
+import { r2DeleteOwnerPrefix } from '$lib/server/r2';
 
 /**
  * Permanently delete the signed-in user.
- * Cancels Stripe subscriptions when possible, then removes auth.users
- * (public.users and related rows cascade).
+ * Cancels Stripe subscriptions when possible, purges R2 uploads under `{userId}/`,
+ * then removes auth.users (public.users and related rows cascade).
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
@@ -51,6 +52,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			/* Stripe not configured — still delete the account */
 			console.warn('[account/delete] stripe unavailable', e);
 		}
+	}
+
+	// Purge uploaded media before auth delete (keys are `{userId}/…`).
+	try {
+		const { deleted } = await r2DeleteOwnerPrefix(user.id);
+		console.info(`[account/delete] purged ${deleted} R2 object(s) for ${user.id}`);
+	} catch (e) {
+		console.warn('[account/delete] R2 purge failed (continuing with account delete)', e);
 	}
 
 	const { error } = await supabase.auth.admin.deleteUser(user.id);
