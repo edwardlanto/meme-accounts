@@ -343,7 +343,12 @@ export const newsBodySchema = z.object({
 	avoidHooks: z.array(z.string().max(200)).max(12).optional(),
 	maxWords: z.preprocess(
 		(val) => (val === undefined || val === null ? undefined : Number(val)),
-		z.number().finite().int().min(6).max(40).optional(),
+		z.number().finite().int().min(6).max(120).optional(),
+	),
+	/** Supporting paragraph under the hook (Default body budget). Falls back to maxWords. */
+	maxWordsSupport: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(6).max(120).optional(),
 	),
 	audience: z.string().max(2000).optional().transform((s) => (s ?? '').trim()),
 	emotion: z
@@ -375,7 +380,7 @@ export const newsVariantsBodySchema = z.object({
 	includeReplies: z.boolean().optional(),
 	maxWords: z.preprocess(
 		(val) => (val === undefined || val === null ? undefined : Number(val)),
-		z.number().finite().int().min(6).max(40).optional(),
+		z.number().finite().int().min(6).max(120).optional(),
 	),
 	audience: z.string().max(2000).optional().transform((s) => (s ?? '').trim()),
 	emotion: z

@@ -358,9 +358,8 @@ export function createBlankShow(
 	slideCount = 3,
 ): BulkShow {
 	const n = Math.max(1, Math.min(12, Math.floor(Number(slideCount)) || 3));
-	const slides = Array.from({ length: n }, (_, i) =>
-		createBlankSlide(i === 0 ? template : 'textCarousel', captionDefaults),
-	);
+	const tpl = coerceTemplateId(template);
+	const slides = Array.from({ length: n }, () => createBlankSlide(tpl, captionDefaults));
 	return {
 		id: newId(),
 		title: '',

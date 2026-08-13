@@ -410,6 +410,7 @@ async function syntheticContent(
 	regenNonce = '',
 	stepCount = 5,
 	maxWords = 28,
+	maxWordsSupport = 0,
 	tone: { audience?: string; emotion?: string; style?: string } = {},
 	avoidHooks: string[] = [],
 ) {
@@ -418,6 +419,14 @@ async function syntheticContent(
 	const hintSafe = syntheticHint.trim().replace(/"/g, "'").slice(0, 600);
 	const hasHint = hintSafe.length > 0;
 	const stepsN = clampStepCount(stepCount);
+	const supportCap =
+		maxWordsSupport > 0
+			? Math.max(6, Math.min(120, maxWordsSupport))
+			: maxWords <= 16
+				? Math.max(12, Math.min(16, maxWords + 2))
+				: maxWords <= 28
+					? Math.min(28, Math.max(20, maxWords))
+					: Math.max(24, Math.min(120, maxWords));
 
 	const avoidClean = avoidHooks
 		.map((h) => String(h ?? '').replace(/\[\[|\]\]/g, '').replace(/"/g, "'").trim())
@@ -473,7 +482,7 @@ Rules for "context":
 - Match the shape they implied (tips → numbered ideas; product/topic → facets; story → beats; list → distinct items)
 - Do not paste the hook verbatim
 - Prefer specific nouns, numbers, and images over vague advice
-- Sentence 1 is the on-canvas paragraph under the headline — make it a sharp, self-contained lede (not a throat-clearing intro)
+- Sentence 1 is the on-canvas paragraph under the headline — make it a sharp, self-contained lede of at most ${supportCap} words (1–2 sentences). Remaining sentences are bible only for later slides.
 
 ${hasHint ? `User request (MUST follow this closely):\n"""${hintSafe}"""` : `No request given — invent a vivid, useful carousel topic.`}${regenBlock}`
 
@@ -607,15 +616,21 @@ Rules for "context":
 
 	const title = titleFromHook(overlayText);
 
+	overlayText = clampToCompleteWords(
+		stripEmDashes(String(overlayText ?? '').replace(/\[\[|\]\]/g, '')),
+		maxWords,
+	);
+	description = stripEmDashes(description);
+
 	if (autoHighlight && overlayText && !overlayText.includes('[[')) {
 		overlayText = await applyHighlightMarkup(overlayText);
 	}
 
 	return {
-		text: stripEmDashes(overlayText),
+		text: overlayText,
 		imageUrl: null,
 		title: stripEmDashes(title),
-		description: stripEmDashes(description),
+		description,
 		source:
 			mode === 'general'
 				? 'General'
@@ -656,12 +671,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
 	const syntheticHint = String(body.syntheticHint ?? '').trim();
 	const stepCount = clampStepCount(body.stepCount);
-	const maxWords = Math.max(6, Math.min(40, Math.floor(Number(body.maxWords)) || 28));
+	const maxWords = Math.max(6, Math.min(120, Math.floor(Number(body.maxWords)) || 28));
+	const maxWordsSupport = Math.max(
+		6,
+		Math.min(120, Math.floor(Number(body.maxWordsSupport)) || 0),
+	);
 	const tone = {
 		audience: body.audience,
 		emotion: body.emotion,
 		style: body.style,
 	};
+
+	/** Supporting paragraph under the hook — prefer explicit body budget from Studio. */
+	function supportWordCap(headlineWords: number): number {
+		if (maxWordsSupport > 0) return maxWordsSupport;
+		if (headlineWords <= 16) return Math.max(12, Math.min(16, headlineWords + 2));
+		if (headlineWords <= 28) return Math.min(28, Math.max(20, headlineWords));
+		return Math.max(24, Math.min(120, headlineWords));
+	}
 
 	if (mode === 'general' || mode === 'fact' || mode === 'story' || mode === 'quote' || mode === 'steps') {
 		if (mode === 'general' && !syntheticHint) {
@@ -695,6 +722,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				regenNonce,
 				stepCount,
 				maxWords,
+				maxWordsSupport,
 				tone,
 				avoidHooks,
 			),
@@ -797,15 +825,21 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 		);
 		if (candidate) overlayText = candidate;
 
+		overlayText = clampToCompleteWords(
+			stripEmDashes(String(overlayText ?? '').replace(/\[\[|\]\]/g, '')),
+			maxWords,
+		);
+
 		if (autoHighlight && overlayText) {
 			overlayText = await applyHighlightMarkup(overlayText);
 		}
 
-		const supportPrompt = `You write the SHORT supporting paragraph under an Instagram news meme headline.
+		const supportCap = supportWordCap(maxWords);
+		const supportPrompt = `You write the supporting paragraph under an Instagram news meme headline.
 
 Rules:
-- ${maxWords <= 16 ? 'Exactly 1 complete sentence only' : '1 or 2 complete sentences only (never 3+)'}
-- Max ${Math.max(10, Math.min(32, maxWords <= 16 ? Math.max(12, maxWords + 2) : maxWords <= 28 ? 24 : 32))} words total
+- ${supportCap <= 16 ? 'Exactly 1 complete sentence only' : '1 or 2 complete sentences only (never 3+)'}
+- Max ${supportCap} words total — match this budget closely (SoftBank-length lede when ~24)
 - Sentence case (not ALL CAPS)
 - Must end on a finished sentence with . ! or ?
 - NEVER use ellipsis (…) or cut a word short
@@ -813,7 +847,7 @@ Rules:
 - NEVER use [[double brackets]] or any highlight markup — plain text only (highlights belong on the headline)
 - No hashtags, no emojis, no quotes around the whole blurb
 - Faithful to the source; do not invent facts
-- Prefer one concrete fact or implication — no essay
+- Prefer concrete fact or implication — no essay
 
 Headline: "${stripEmDashes(article.title ?? '')}"
 Source blurb: "${stripEmDashes(String(article.description ?? '').slice(0, 500))}"
@@ -824,19 +858,21 @@ Return ONLY the supporting paragraph.`;
 		const support = await openRouterComplete(
 			[{ role: 'user', content: supportPrompt }],
 			0.55,
-			maxWords <= 16 ? 60 : 100,
+			supportCap <= 16 ? 60 : supportCap <= 28 ? 100 : Math.min(200, 40 + supportCap * 3),
 		);
 		if (support) supportingCopy = stripEmDashes(support.replace(/\u2026/g, '').trim());
 		// Keep supporting copy in the same ballpark as the word-count chip.
 		{
-			const supportCap = Math.max(
-				10,
-				Math.min(32, maxWords <= 16 ? Math.max(12, maxWords + 2) : maxWords <= 28 ? 24 : 32),
-			);
 			supportingCopy = clampToCompleteWords(supportingCopy, supportCap);
 		}
 		/* Paragraph role: never ship highlight markup under the headline. */
 		supportingCopy = supportingCopy.replace(/\[\[|\]\]/g, '').trim();
+	} else {
+		overlayText = clampToCompleteWords(stripEmDashes(String(overlayText ?? '')), maxWords);
+		supportingCopy = clampToCompleteWords(
+			stripEmDashes(String(supportingCopy ?? '')),
+			supportWordCap(maxWords),
+		).replace(/\[\[|\]\]/g, '').trim();
 	}
 
 	return json({

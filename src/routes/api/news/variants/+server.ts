@@ -13,7 +13,7 @@ const DEFAULT_MAX_WORDS = 28;
 function clampMaxWords(raw: unknown): number {
 	const n = Math.floor(Number(raw));
 	if (!Number.isFinite(n)) return DEFAULT_MAX_WORDS;
-	return Math.max(6, Math.min(40, n));
+	return Math.max(6, Math.min(120, n));
 }
 
 function truncate(text: string, max = DEFAULT_MAX_WORDS): string {

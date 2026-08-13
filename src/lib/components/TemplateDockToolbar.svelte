@@ -53,7 +53,12 @@
 			>
 				{selectedLabel}
 			</SelectTrigger>
-			<SelectContent class="z-[200] min-w-[var(--bits-select-anchor-width)]" align="center" sideOffset={8}>
+			<SelectContent
+				preventScroll={false}
+				class="z-[200] min-w-[var(--bits-select-anchor-width)]"
+				align="center"
+				sideOffset={8}
+			>
 				{#each templates as t (t.id)}
 					<SelectItem value={t.id} label={t.label} title={t.title ?? t.label}>
 						{t.label}

@@ -23,6 +23,8 @@
 		BRAND_STACK_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
 		NEWS_DEFAULT_SOURCE,
+		NEWS_HEADLINE_STYLE,
+		NEWS_SUBTEXT_STYLE,
 		PHOTO_CAPTION_DEFAULTS,
 		PHOTO_TOPIC_DEFAULTS,
 		PHOTO_TOPIC_BODY_STYLE,
@@ -501,6 +503,8 @@
 				shadowHeight={58}
 				shadowStrength={0.88}
 				shadowCurve="natural"
+				headlineStyle={{ ...NEWS_HEADLINE_STYLE }}
+				subtextStyle={{ ...NEWS_SUBTEXT_STYLE }}
 				w={CANVAS_W}
 				h={CANVAS_H}
 				{scale}

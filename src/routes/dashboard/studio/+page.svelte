@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { supabase } from '$lib/supabase';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { goto, afterNavigate } from '$app/navigation';
 import { toPng } from 'html-to-image';
 import JSZip from 'jszip';
@@ -133,6 +133,7 @@ import JSZip from 'jszip';
 		HIGHLIGHT_GRADIENT_PRESETS,
 	} from '$lib/highlight';
 	import { stripEmDashes } from '$lib/strip-em-dashes';
+	import { TEXT_PAD_DEFAULT } from '$lib/textStyleCss';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import {
@@ -169,6 +170,9 @@ import JSZip from 'jszip';
 		NEWS_DEFAULT_SOURCE,
 		NEWS_DEFAULT_SUBTEXT,
 		NEWS_DEFAULT_LAYOUT,
+		NEWS_DEFAULT_CIRCLE_IMAGE,
+		NEWS_HEADLINE_STYLE,
+		NEWS_SUBTEXT_STYLE,
 		NEWS_DEMO_VIDEO,
 		NEWS_DEMO_IMAGE,
 		TWEET_DEFAULTS,
@@ -407,6 +411,7 @@ import JSZip from 'jszip';
 	function placeholderCopyForWordBudget(): string {
 		const kind = selectedText;
 		const tpl = previewTemplate;
+		if (kind === 'headline') return NEWS_PLACEHOLDER_HEADLINE;
 		if (kind === 'newsSubtext') return NEWS_DEFAULT_SUBTEXT;
 		if (kind === 'source') return NEWS_DEFAULT_SOURCE;
 		if (kind === 'tweetTopText') return TWEET_DEFAULTS.topText;
@@ -457,27 +462,105 @@ import JSZip from 'jszip';
 			case 'photoTopic':
 				return PHOTO_TOPIC_DEFAULTS.headline;
 			case 'photoCaption':
-				return PHOTO_CAPTION_DEFAULTS.headline;
+				return PHOTO_CAPTION_DEFAULTS.body;
 			case 'whiteThread':
 				return WHITE_THREAD_DEFAULTS.body;
 			case 'whiteMedia':
 				return WHITE_MEDIA_DEFAULTS.body;
 			case 'blackText':
-				return BLACK_TEXT_CAROUSEL_DEFAULTS.headline;
+				return BLACK_TEXT_CAROUSEL_DEFAULTS.body;
+			case 'news':
+				/* Default word budget = paragraph placeholder (not the short headline). */
+				return NEWS_DEFAULT_SUBTEXT;
 			default:
-				return NEWS_PLACEHOLDER_HEADLINE;
+				return NEWS_DEFAULT_SUBTEXT;
 		}
 	}
 
-	const studioMaxWords = $derived.by(() => {
-		if (newsCopyLength === 'short') return 12;
-		if (newsCopyLength === 'standard') return 28;
-		const words = stripMarkup(placeholderCopyForWordBudget())
+	function countPlainWords(text: string): number {
+		return stripMarkup(String(text ?? ''))
 			.replace(/\s+/g, ' ')
 			.trim()
 			.split(' ')
-			.filter(Boolean);
-		return Math.max(6, Math.min(40, words.length || 28));
+			.filter(Boolean).length;
+	}
+
+	/** Live on-canvas copy for the Default word-budget chip (prefer what the user already has). */
+	function liveCopyForWordBudget(): string {
+		const kind = selectedText;
+		const tpl = previewTemplate;
+		const si = activeSlide;
+		if (kind === 'headline') return readSlidePrimary(tpl, si);
+		if (kind === 'newsSubtext') return readSlideBody('news', si);
+		if (kind === 'tweetTopText') return String(tweetTopTextBySlide[si] ?? '').trim();
+		if (kind === 'tweetBottomText') return String(tweetBottomTextBySlide[si] ?? '').trim();
+		if (kind === 'articleBody') return String(articleTextBySlide[si] ?? '').trim();
+		if (kind === 'textCarouselBody') return String(textCarouselTextBySlide[si] ?? '').trim();
+		if (kind === 'blackTextHeadline') return String(blackTextHeadlineBySlide[si] ?? '').trim();
+		if (kind === 'blackTextBody') return String(blackTextBodyBySlide[si] ?? '').trim();
+		if (kind === 'videoStoryHeadline') return String(videoStoryHeadlineBySlide[si] ?? '').trim();
+		if (kind === 'imageQuoteFooterLeft') return String(imageQuoteFooterLeftBySlide[si] ?? '').trim();
+		if (kind === 'imageQuoteFooterRight') return String(imageQuoteFooterRightBySlide[si] ?? '').trim();
+		if (kind === 'textOverlay' && selectedTextOverlayId) {
+			const ov = ((slideTextOverlaysByTemplate[tpl] ?? [])[si] ?? []).find(
+				(o) => o.id === selectedTextOverlayId,
+			);
+			return String(ov?.text ?? '').trim();
+		}
+		/* No field selected — match the template’s body/paragraph when present (not the hook). */
+		const body = readSlideBody(tpl, si);
+		if (body) return body;
+		if (tpl === 'textCarousel' || isWhitePostFamily(tpl)) {
+			return String(textCarouselTextBySlide[si] ?? '').trim();
+		}
+		return readSlidePrimary(tpl, si);
+	}
+
+	const studioHeadlineMaxWords = $derived.by(() => {
+		if (newsCopyLength === 'short') return 10;
+		if (newsCopyLength === 'standard') return 16;
+		/* Default = SoftBank-length headline (not the body budget). */
+		const n = countPlainWords(NEWS_PLACEHOLDER_HEADLINE);
+		return Math.max(6, Math.min(24, n || 12));
+	});
+
+	/** Body / paragraph budget (News subtext, carousel, etc.). Default = placeholder — never live-inflated. */
+	const studioBodyMaxWords = $derived.by(() => {
+		if (newsCopyLength === 'short') return 12;
+		if (newsCopyLength === 'standard') return 28;
+		const tpl = previewTemplate;
+		const sample =
+			tpl === 'news'
+				? NEWS_DEFAULT_SUBTEXT
+				: tpl === 'textCarousel' || isWhitePostFamily(tpl)
+					? TEXT_CAROUSEL_DEFAULTS.body
+					: tpl === 'blackText' || isPhotoStoryFamily(tpl)
+						? BLACK_TEXT_CAROUSEL_DEFAULTS.body
+						: tpl === 'imageQuote'
+							? IMAGE_QUOTE_DEFAULTS.body
+							: placeholderCopyForWordBudget();
+		const n = countPlainWords(sample);
+		return Math.max(6, Math.min(80, n || 24));
+	});
+
+	/** Chip label: field-aware when a slot is selected; otherwise body budget. */
+	const studioMaxWords = $derived.by(() => {
+		if (newsCopyLength === 'short') return 12;
+		if (newsCopyLength === 'standard') return 28;
+		const kind = selectedText;
+		if (
+			kind === 'headline' ||
+			kind === 'blackTextHeadline' ||
+			kind === 'videoStoryHeadline' ||
+			kind === 'tweetTopText'
+		) {
+			return studioHeadlineMaxWords;
+		}
+		return studioBodyMaxWords;
+	});
+
+	const studioDefaultWordBudgetLabel = $derived.by(() => {
+		return `Match placeholder — ${studioMaxWords} words`;
 	});
 
 	function studioStockQuery(): string {
@@ -885,6 +968,17 @@ import JSZip from 'jszip';
 				bgVideosByTemplate = { ...bgVideosByTemplate, news: nextVids };
 				bgImagesByTemplate = { ...bgImagesByTemplate, news: nextImgs };
 			}
+			while (circleImages.length <= idx) {
+				circleImages = [...circleImages, ''];
+			}
+			while (showCircleBySlide.length <= idx) {
+				showCircleBySlide = [...showCircleBySlide, false];
+			}
+			if (!String(circleImages[idx] ?? '').trim() && (showCircleBySlide[idx] || idx === 0)) {
+				circleImages = circleImages.map((x, i) =>
+					i === idx ? NEWS_DEFAULT_CIRCLE_IMAGE : x,
+				);
+			}
 			return;
 		}
 		if (t === 'tweet') {
@@ -1197,8 +1291,14 @@ import JSZip from 'jszip';
 		);
 	}
 
+	/** Single text bucket — join/split headline+body when carrying across templates. */
 	function templateIsLongFormPrimary(template: TemplateId): boolean {
-		return template === 'textCarousel' || isWhitePostFamily(template) || template === 'article';
+		return (
+			template === 'textCarousel' ||
+			isWhitePostFamily(template) ||
+			template === 'article' ||
+			template === 'imageQuote'
+		);
 	}
 
 	function readSlidePrimary(template: TemplateId, idx: number): string {
@@ -1330,8 +1430,10 @@ import JSZip from 'jszip';
 
 	/**
 	 * Remap the active slide’s story into the target template’s copy fields (no LLM).
-	 * Heading ↔ body when both exist; long-form (Text carousel) splits/joins as needed.
+	 * Heading ↔ body when both exist; long-form (Text carousel / Quote) splits/joins as needed.
 	 * Preserves `[[highlight]]` markup — fetch clamps must not run on this path.
+	 * Round-trip safe: leaving a 2-field template for a 1-field one must not wipe the
+	 * second field when you switch back.
 	 */
 	function carrySlideCopyAcrossTemplates(from: TemplateId, to: TemplateId, idx: number) {
 		if (from === to || to === 'blank') return;
@@ -1371,8 +1473,27 @@ import JSZip from 'jszip';
 		}
 
 		if (primary) writeSlidePrimary(to, idx, primary, carryOpts);
-		if (templateHasBodyField(to)) {
+
+		if (!templateHasBodyField(to)) {
+			/* One-field destination (video, etc.): keep source body storage untouched for round-trip. */
+			return;
+		}
+
+		if (body) {
 			writeSlideBody(to, idx, body, carryOpts);
+			return;
+		}
+
+		/*
+		 * No body to carry. If the source was also two-field (empty/stock body), clear only
+		 * stock demos on the destination. If the source was one-field, leave the destination
+		 * body alone so News/Photo subtext survives Video → News (etc.).
+		 */
+		if (templateHasBodyField(from)) {
+			const existing = readSlideBody(to, idx);
+			if (!existing || isStockSlideBody(to, existing)) {
+				writeSlideBody(to, idx, '', carryOpts);
+			}
 		}
 	}
 
@@ -1615,6 +1736,14 @@ import JSZip from 'jszip';
 			shadowCurve = NEWS_DEFAULT_LAYOUT.shadowCurve;
 		}
 		showCircleBySlide = showCircleBySlide.map((v, i) => (i === idx ? true : v));
+		while (circleImages.length <= idx) {
+			circleImages = [...circleImages, ''];
+		}
+		if (!String(circleImages[idx] ?? '').trim()) {
+			circleImages = circleImages.map((x, i) =>
+				i === idx ? NEWS_DEFAULT_CIRCLE_IMAGE : x,
+			);
+		}
 	}
 
 	function finalizeTemplateSwitch(from: TemplateId, to: TemplateId, idx: number) {
@@ -2739,7 +2868,7 @@ import JSZip from 'jszip';
 			sourceLabelMode = 'logo';
 			sourceBorderKind = 'none';
 			circleImages = Array.from({ length: slides.length }, (_, idx) =>
-				idx === i ? '' : (circleImages[idx] ?? ''),
+				idx === i ? NEWS_DEFAULT_CIRCLE_IMAGE : (circleImages[idx] ?? ''),
 			);
 			circle2Images = Array.from({ length: slides.length }, (_, idx) =>
 				idx === i ? '' : (circle2Images[idx] ?? ''),
@@ -3294,7 +3423,7 @@ import JSZip from 'jszip';
 	/** Primary news circle: per-slide visibility (slide 0 defaults on; add Shape on other slides if desired). */
 	let showCircleBySlide = $state<boolean[]>(emptySlides((i) => i === 0));
 	// Circle images are per-slide (so each slide can have its own badge photo).
-	let circleImages = $state<string[]>([]);
+	let circleImages = $state<string[]>(emptySlides((i) => (i === 0 ? NEWS_DEFAULT_CIRCLE_IMAGE : '')));
 	let circleBorderColor = $state('#FFFFFF');
 	let circleShadow = $state({ ...DEFAULT_CIRCLE_SHADOW });
 	// Optional second circle is also per-slide.
@@ -3772,7 +3901,6 @@ import JSZip from 'jszip';
 		}
 	}
 	onMount(() => {
-		// Track global theme changes (dashboard toggle updates <html data-theme="...">).
 		const readTheme = (): 'light' | 'dark' => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 		uiTheme = readTheme();
 
@@ -3781,7 +3909,12 @@ import JSZip from 'jszip';
 			textColor = uiTheme === 'dark' ? '#FFFFFF' : '#0a0a0a';
 		}
 
-		const obs = new MutationObserver(() => {
+		const obs = new MutationObserver(() => clearStuckBodyLockIfIdle());
+		obs.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+		const bodyLockPoll = window.setInterval(clearStuckBodyLockIfIdle, 1500);
+		forceUnlockStudioUI();
+
+		const themeObs = new MutationObserver(() => {
 			const next = readTheme();
 			if (next === uiTheme) return;
 			uiTheme = next;
@@ -3789,8 +3922,13 @@ import JSZip from 'jszip';
 				textColor = uiTheme === 'dark' ? '#FFFFFF' : '#0a0a0a';
 			}
 		});
-		obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-		return () => obs.disconnect();
+		themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+		return () => {
+			obs.disconnect();
+			themeObs.disconnect();
+			window.clearInterval(bodyLockPoll);
+			clearDocumentBodyPointerLock();
+		};
 	});
 
 	// ── Grid (global, applies to all slides/exports) ──────────────────────
@@ -4489,16 +4627,21 @@ import JSZip from 'jszip';
 	let highlightPopoverOpen = $state(false);
 	let brandProfilePopoverOpen = $state(false);
 
-	/* Opening Branding re-pushes identity onto the canvas so panel + preview stay aligned. */
+	let brandDisplayName = $state(DEFAULT_BRAND_KIT.displayName);
+	let brandHandle = $state(DEFAULT_BRAND_KIT.handle);
+	/* Opening Branding re-pushes identity once — do not re-run while open (apply writes
+	   slide arrays which would re-trigger this effect → infinite_loop / frozen UI). */
+	let prevBrandProfilePopoverOpen = false;
 	$effect(() => {
-		if (!brandProfilePopoverOpen) return;
+		const open = brandProfilePopoverOpen;
+		const justOpened = open && !prevBrandProfilePopoverOpen;
+		prevBrandProfilePopoverOpen = open;
+		if (!justOpened) return;
 		const name = String(brandDisplayName ?? '').trim();
 		const handle = String(brandHandle ?? '').trim();
 		if (!name && !handle) return;
-		applyBrandProfileToSlides(name, handle, { force: true });
+		untrack(() => applyBrandProfileToSlides(name, handle, { force: true }));
 	});
-	let brandDisplayName = $state(DEFAULT_BRAND_KIT.displayName);
-	let brandHandle = $state(DEFAULT_BRAND_KIT.handle);
 
 	const activeFilmStrip = $derived.by(() => {
 		const t = activeTemplate;
@@ -4950,10 +5093,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					return 38;
 				}
 				return headlinePx;
-			case 'newsSubtext': {
-				const h = headlinePx ?? newsAutoHeadlinePx(slides[paintSlide] ?? '');
-				return Math.round(h * 0.3);
-			}
+			case 'newsSubtext':
+				return NEWS_SUBTEXT_STYLE.fontSize;
 
 			// Article
 			case 'articleBody': return 46;
@@ -5267,17 +5408,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				activeTemplate,
 			);
 		}
-	}
-
-	/** Word selection only — never invent a full-field range (that broke block BG). */
-	function activeWordMarkupRange(raw: string): { start: number; end: number } | null {
-		if (selectedText === 'textOverlay') {
-			if (textOverlayRange && textOverlayRange.end > textOverlayRange.start) return textOverlayRange;
-			return null;
-		}
-		ensurePlainRangeForMarkupTools(raw);
-		if (headlineRange && headlineRange.end > headlineRange.start) return headlineRange;
-		return null;
 	}
 
 	function onHighlight(spec: HighlightSpec) {
@@ -5677,7 +5807,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return true;
 	}
 
-	/** Routes text/BG color to `[[…]]` markup when a phrase is selected in the DOM (even if state lost the range). */
+	/** Routes text color to `[[…]]` markup when a phrase is selected; BG always paints the whole field. */
 	function onFloatingToolbarChange(patch: Partial<TextStyle>) {
 		if (
 			selectedText === 'articleImage' ||
@@ -5695,23 +5825,24 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				}
 			}
 			if ('bgColor' in patch) {
-				// Word selection → inline marker. Otherwise block `bgColor` (survives drag + shows in chip).
-				const wordRange = activeWordMarkupRange(raw);
-				if (wordRange) {
-					const bg = patch.bgColor;
-					if (bg === undefined || bg === 'transparent') onHighlight({ kind: 'clear' });
-					else {
-						const marker =
-							bg.toLowerCase() === '#000000' || bg.toLowerCase() === '#000' ? '#FFEB3B' : bg;
-						onHighlight({ kind: 'marker', color: marker });
-					}
-					return;
-				}
-				// Migrate legacy full-field markers onto block style so chip + drag stay in sync.
+				// Always whole-field block BG (Canva-style). Strip legacy word markers so the
+				// chip / paint match — never apply [[marker]] to a partial selection from BG.
 				const stripped = stripMarkerBackgrounds(raw, studioHighlightDefaults);
 				pushUndo(previewTemplate, paintSlide);
 				if (stripped !== raw) setToolbarHighlightableRaw(stripped);
-				patchActiveStyle(patch, { skipUndo: true });
+				const nextPad =
+					typeof getActiveStyleForSelection().padding === 'number'
+						? undefined
+						: TEXT_PAD_DEFAULT;
+				const bg = patch.bgColor;
+				const clear = bg === undefined || bg === 'transparent' || bg === 'none';
+				patchActiveStyle(
+					{
+						...patch,
+						...(clear ? { padding: undefined } : nextPad != null ? { padding: nextPad } : {}),
+					},
+					{ skipUndo: true },
+				);
 				return;
 			}
 		} else if (
@@ -5720,21 +5851,23 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			raw &&
 			'bgColor' in patch
 		) {
-			const wordRange = activeWordMarkupRange(raw);
-			if (wordRange) {
-				const bg = patch.bgColor;
-				if (bg === undefined || bg === 'transparent') onHighlight({ kind: 'clear' });
-				else {
-					const marker =
-						bg.toLowerCase() === '#000000' || bg.toLowerCase() === '#000' ? '#FFEB3B' : bg;
-					onHighlight({ kind: 'marker', color: marker });
-				}
-				return;
-			}
 			const stripped = stripMarkerBackgrounds(raw, studioHighlightDefaults);
 			pushUndo(previewTemplate, paintSlide);
 			if (stripped !== raw) setToolbarHighlightableRaw(stripped);
-			patchActiveStyle(patch, { skipUndo: true });
+			const ovStyle =
+				((slideTextOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []).find(
+					(o) => o.id === selectedTextOverlayId,
+				)?.style ?? {};
+			const nextPad = typeof ovStyle.padding === 'number' ? undefined : TEXT_PAD_DEFAULT;
+			const bg = patch.bgColor;
+			const clear = bg === undefined || bg === 'transparent' || bg === 'none';
+			patchActiveStyle(
+				{
+					...patch,
+					...(clear ? { padding: undefined } : nextPad != null ? { padding: nextPad } : {}),
+				},
+				{ skipUndo: true },
+			);
 			return;
 		}
 		patchActiveStyle(patch);
@@ -6597,11 +6730,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const logo = String(logoRaw ?? '').trim();
 		if (!logo) return;
 		const n = slides.length;
-		textCarouselAvatarImageBySlide = Array.from({ length: n }, (_, i) => {
+		const next = Array.from({ length: n }, (_, i) => {
 			const cur = String(textCarouselAvatarImageBySlide[i] ?? '').trim();
 			if (force || !cur) return logo;
 			return cur;
 		});
+		const changed = next.some((v, i) => v !== (textCarouselAvatarImageBySlide[i] ?? ''));
+		if (changed) textCarouselAvatarImageBySlide = next;
 	}
 
 	/** Push News logo chrome onto every slide from brand kit values. */
@@ -6709,7 +6844,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const n = slides.length;
 		if (nextName) {
 			const nextLabels = Array.from({ length: n }, (_, i) => textCarouselAvatarLabelBySlide[i] ?? '');
-			textCarouselNameBySlide = Array.from({ length: n }, (_, i) => {
+			const nextNames = Array.from({ length: n }, (_, i) => {
 				const cur = textCarouselNameBySlide[i] ?? '';
 				const replace = force || isPlaceholderProfileName(cur);
 				if (replace && force && cur.trim().toLowerCase() !== nextName.toLowerCase()) {
@@ -6717,13 +6852,20 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				}
 				return replace ? nextName : cur;
 			});
-			if (force) textCarouselAvatarLabelBySlide = nextLabels;
+			const namesChanged = nextNames.some((v, i) => v !== (textCarouselNameBySlide[i] ?? ''));
+			if (namesChanged) textCarouselNameBySlide = nextNames;
+			if (force) {
+				const labelsChanged = nextLabels.some((v, i) => v !== (textCarouselAvatarLabelBySlide[i] ?? ''));
+				if (labelsChanged) textCarouselAvatarLabelBySlide = nextLabels;
+			}
 		}
 		if (nextHandle) {
-			textCarouselHandleBySlide = Array.from({ length: n }, (_, i) => {
+			const nextHandles = Array.from({ length: n }, (_, i) => {
 				const cur = textCarouselHandleBySlide[i] ?? '';
 				return force || isPlaceholderProfileHandle(cur) ? nextHandle : cur;
 			});
+			const handlesChanged = nextHandles.some((v, i) => v !== (textCarouselHandleBySlide[i] ?? ''));
+			if (handlesChanged) textCarouselHandleBySlide = nextHandles;
 		}
 		applyNewsSourceFromBrand(nextName, force);
 		if (force) {
@@ -7236,7 +7378,16 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		showCircleBySlide = starter?.showCircleBySlide?.length
 			? padBool(starter.showCircleBySlide, false)
 			: Array.from({ length: targetLen }, (_, i) => i === 0);
-		circleImages = padStr(starter?.circleImages ?? circleImages);
+		{
+			const prevCircles = circleImages;
+			circleImages = Array.from({ length: targetLen }, (_, i) => {
+				const fromStarter = String(starter?.circleImages?.[i] ?? '').trim();
+				if (fromStarter) return fromStarter;
+				const cur = String(prevCircles[i] ?? '').trim();
+				if (!force && cur) return cur;
+				return showCircleBySlide[i] ? NEWS_DEFAULT_CIRCLE_IMAGE : '';
+			});
+		}
 		circle2Images = padStr(starter?.circle2Images ?? circle2Images);
 		showCircle2BySlide = padBool(starter?.showCircle2BySlide ?? showCircle2BySlide);
 		shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
@@ -8932,6 +9083,7 @@ tweetTopImagePanYBySlide,
 						draftRestoring = false;
 						draftLoaded = true;
 						studioComposePrefsReady = true;
+						forceUnlockStudioUI();
 					}
 				})();
 			});
@@ -9125,16 +9277,29 @@ tweetTopImagePanYBySlide,
 	}
 
 	/** Word/char budgets for the News body under the headline (respect Short/Standard/Default). */
-	function newsSubtextBudget(): { maxChars: number; maxWords: number; maxSentences: number } {
+	function newsSubtextBudget(previous?: string): {
+		maxChars: number;
+		maxWords: number;
+		maxSentences: number;
+	} {
 		if (newsCopyLength === 'short') return { maxChars: 100, maxWords: 16, maxSentences: 1 };
 		if (newsCopyLength === 'standard') return { maxChars: 160, maxWords: 26, maxSentences: 2 };
-		return { maxChars: 200, maxWords: 32, maxSentences: 2 };
+		/* Default = SoftBank paragraph length — do not inflate from a previous overlong generate. */
+		const placeholderWords = countPlainWords(NEWS_DEFAULT_SUBTEXT) || 24;
+		const w = Math.max(6, Math.min(80, studioBodyMaxWords || placeholderWords));
+		const placeholderSentences = splitPlainSentences(NEWS_DEFAULT_SUBTEXT).length || 2;
+		void previous;
+		return {
+			maxChars: Math.max(140, Math.min(320, w * 7)),
+			maxWords: w,
+			maxSentences: Math.max(1, Math.min(2, placeholderSentences)),
+		};
 	}
 
-	/** News supporting paragraph under the headline — 1–2 full sentences, never ellipsis.
+	/** News supporting paragraph under the headline — full sentences only, never ellipsis.
 	 *  Paragraphs stay plain: auto-highlights belong on headlines only. */
-	function clampNewsSubtext(text: string, maxLen?: number): string {
-		const lenBudget = newsSubtextBudget();
+	function clampNewsSubtext(text: string, maxLen?: number, previous?: string): string {
+		const lenBudget = newsSubtextBudget(previous);
 		const layoutCap = captureLiveNewsLayoutDocument(activeSlide).slotBudgets?.subtextMaxChars;
 		const budget =
 			maxLen ??
@@ -9173,7 +9338,8 @@ tweetTopImagePanYBySlide,
 
 	/**
 	 * Pick an on-canvas News paragraph from the long context bible.
-	 * Avoids always clamping to sentence #1 (which made regenerates look stuck).
+	 * Default mode matches the previous copy’s sentence/word length so regenerates
+	 * don’t collapse a 2-sentence lede into a stub.
 	 */
 	function pickNewsSubtext(opts: {
 		body: string;
@@ -9184,45 +9350,164 @@ tweetTopImagePanYBySlide,
 		const body = stripMarkup(String(opts.body ?? '').trim());
 		if (!body) return '';
 		const sentences = splitPlainSentences(body);
-		if (!sentences.length) return clampNewsSubtext(body);
+		if (!sentences.length) return clampNewsSubtext(body, undefined, opts.previous);
 
-		const prev = String(opts.previous ?? '').trim().toLowerCase();
+		const prev = String(opts.previous ?? '').trim();
+		const prevLow = prev.toLowerCase();
+		const prevSentences = splitPlainSentences(prev);
+		const budget = newsSubtextBudget(prev);
+		const wantSentences =
+			newsCopyLength === 'default' && prevSentences.length > 0
+				? Math.min(budget.maxSentences, Math.max(1, prevSentences.length))
+				: newsCopyLength === 'short'
+					? 1
+					: Math.min(budget.maxSentences, Math.max(1, Math.min(2, sentences.length)));
+
 		const headline = stripHighlightMarkers(String(opts.headline ?? ''))
 			.replace(/\s+/g, ' ')
 			.trim()
 			.toLowerCase();
 		const slideIndex = Math.max(0, Math.floor(opts.slideIndex ?? 0));
 
-		const scored = sentences.map((s, i) => {
-			const clamped = clampNewsSubtext(s);
+		type Window = { text: string; score: number; start: number };
+		const windows: Window[] = [];
+		for (let start = 0; start < sentences.length; start++) {
+			const end = Math.min(sentences.length, start + wantSentences);
+			const chunk = sentences.slice(start, end).join(' ').trim();
+			if (!chunk) continue;
+			const clamped = clampNewsSubtext(chunk, undefined, prev);
+			if (!clamped) continue;
 			const low = clamped.toLowerCase();
-			let score = i; // slight preference for earlier beats
-			if (prev && (low === prev || prev.startsWith(low.slice(0, 36)) || low.startsWith(prev.slice(0, 36)))) {
+			let score = start; // slight preference for earlier beats
+			if (
+				prevLow &&
+				(low === prevLow ||
+					prevLow.startsWith(low.slice(0, 36)) ||
+					low.startsWith(prevLow.slice(0, 36)))
+			) {
 				score += 200;
 			}
 			if (headline) {
 				const h = headline.slice(0, 28);
 				if (h.length >= 8 && (low.includes(h) || headline.includes(low.slice(0, 28)))) score += 80;
 			}
-			/* On later slides, bias toward later sentences. */
-			score += Math.abs(i - Math.min(slideIndex, sentences.length - 1)) * 3;
-			return { clamped, score, i };
-		});
-		scored.sort((a, b) => a.score - b.score || a.i - b.i);
+			/* Prefer windows whose word count is close to the previous lede. */
+			if (newsCopyLength === 'default' && prevSentences.length > 0) {
+				const prevW = countPlainWords(prev);
+				const curW = countPlainWords(clamped);
+				score += Math.abs(curW - prevW) * 2;
+				const curS = splitPlainSentences(clamped).length;
+				if (curS < wantSentences) score += 40;
+			}
+			score += Math.abs(start - Math.min(slideIndex, Math.max(0, sentences.length - wantSentences))) * 3;
+			windows.push({ text: clamped, score, start });
+		}
+		if (!windows.length) return clampNewsSubtext(sentences[0]!, undefined, prev);
 
-		let chosen = scored[0]?.clamped ?? clampNewsSubtext(sentences[0]!);
-		if (prev && chosen.toLowerCase() === prev) {
-			const alt = scored.find((x) => x.clamped.toLowerCase() !== prev);
-			if (alt) chosen = alt.clamped;
+		windows.sort((a, b) => a.score - b.score || a.start - b.start);
+		let chosen = windows[0]!.text;
+		if (prevLow && chosen.toLowerCase() === prevLow) {
+			const alt = windows.find((x) => x.text.toLowerCase() !== prevLow);
+			if (alt) chosen = alt.text;
 		}
 		return chosen;
+	}
+
+	/**
+	 * Split the article/body across N News slides so each slide gets its own beat —
+	 * never dump the whole lede onto slide 0 only.
+	 */
+	function distributeNewsSubtextAcrossSlides(
+		body: string,
+		headlines: string[],
+		count: number,
+	): string[] {
+		const n = Math.max(1, count);
+		const source = stripMarkup(String(body ?? '').trim());
+		if (!source) return Array.from({ length: n }, () => '');
+
+		const sentences = splitPlainSentences(source);
+		if (!sentences.length) {
+			const one = clampNewsSubtext(source, undefined, '');
+			return Array.from({ length: n }, () => one);
+		}
+
+		if (n === 1) {
+			return [
+				pickNewsSubtext({
+					body: source,
+					headline: headlines[0] ?? '',
+					previous: '',
+					slideIndex: 0,
+				}),
+			];
+		}
+
+		const buckets: string[][] = Array.from({ length: n }, () => []);
+		if (sentences.length >= n) {
+			for (let i = 0; i < n; i++) {
+				const start = Math.floor((i * sentences.length) / n);
+				const end = Math.floor(((i + 1) * sentences.length) / n);
+				buckets[i] = sentences.slice(start, Math.max(start + 1, end));
+			}
+		} else {
+			for (let i = 0; i < sentences.length; i++) buckets[i] = [sentences[i]!];
+		}
+
+		const out: string[] = [];
+		for (let i = 0; i < n; i++) {
+			const chunk = buckets[i]!.join(' ').trim();
+			if (chunk) {
+				out.push(clampNewsSubtext(chunk, undefined, chunk) || chunk);
+				continue;
+			}
+			out.push(
+				pickNewsSubtext({
+					body: source,
+					headline: headlines[i] ?? '',
+					previous: out.filter(Boolean).join(' '),
+					slideIndex: i,
+				}),
+			);
+		}
+		return out;
+	}
+
+	/** Write distributed News paragraphs onto `newsSubtextBySlide` for the given slide indexes. */
+	function applyDistributedNewsSubtexts(body: string, newsSlideIndexes?: number[]) {
+		const source = String(body ?? '').trim();
+		const n = Math.max(1, slides.length);
+		const idxs = (newsSlideIndexes?.length
+			? [...newsSlideIndexes]
+			: Array.from({ length: n }, (_, i) => i)
+		)
+			.filter((i) => i >= 0 && i < n)
+			.sort((a, b) => a - b);
+		if (!idxs.length) return;
+
+		while (newsSubtextBySlide.length < n) {
+			newsSubtextBySlide = [...newsSubtextBySlide, ''];
+		}
+
+		if (!source) {
+			newsSubtextBySlide = newsSubtextBySlide.map((x, i) => (idxs.includes(i) ? '' : x));
+			return;
+		}
+
+		const headlines = idxs.map((i) => String(slides[i] ?? '').trim());
+		const parts = distributeNewsSubtextAcrossSlides(source, headlines, idxs.length);
+		newsSubtextBySlide = Array.from({ length: Math.max(n, newsSubtextBySlide.length) }, (_, i) => {
+			const j = idxs.indexOf(i);
+			if (j >= 0) return parts[j] ?? '';
+			return newsSubtextBySlide[i] ?? '';
+		});
 	}
 
 	/** Text carousel: respect Studio Short/Standard/Default word budget. */
 	function clampFetchedTextCarouselBody(text: string, _maxLen: number, opts?: { padToMin?: boolean }): string {
 		const raw = stripEmDashes(String(text ?? '').trim());
 		if (!raw) return opts?.padToMin && newsCopyLength === 'default' ? ensureTextCarouselBodyMinLength('') : '';
-		const budget = textCarouselBudgetFromMaxWords(studioMaxWords);
+		const budget = textCarouselBudgetFromMaxWords(studioBodyMaxWords);
 		const s = fitTextCarouselBodyToCanvas(stripHighlightMarkers(raw), {
 			randomizeParagraphCount: false,
 			maxParagraphs: budget.paragraphCount,
@@ -9240,7 +9525,7 @@ tweetTopImagePanYBySlide,
 		slideIndex?: number;
 		slideCount?: number;
 	}): Promise<string> {
-		const budget = textCarouselBudgetFromMaxWords(studioMaxWords);
+		const budget = textCarouselBudgetFromMaxWords(studioBodyMaxWords);
 		const paragraphCount =
 			typeof opts.paragraphCount === 'number' && opts.paragraphCount >= 1 && opts.paragraphCount <= 3
 				? opts.paragraphCount
@@ -9281,7 +9566,7 @@ tweetTopImagePanYBySlide,
 	) {
 		const n = Math.max(1, count);
 		const source = String(rawText || articleSnippet || articleTitle || '').trim();
-		const budget = textCarouselBudgetFromMaxWords(studioMaxWords);
+		const budget = textCarouselBudgetFromMaxWords(studioBodyMaxWords);
 		const { copyStrings: beats } = await fetchDeckStoryBeats(hookText, rawText, n, {
 			autoHighlight: false,
 		});
@@ -9379,8 +9664,16 @@ tweetTopImagePanYBySlide,
 				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.imageQuote, preserveMarkup);
 			case 'brandStack':
 				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.brandStack, preserveMarkup);
-			case 'news':
-				return clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.news, preserveMarkup);
+			case 'news': {
+				const byChars = clampFetchedPlainLength(raw, FETCH_TEXT_CLIP.news, preserveMarkup);
+				/* Enforce Default/Short/Standard word chip — char clip alone was far too loose. */
+				const plain = stripHighlightMarkers(byChars).replace(/\s+/g, ' ').trim();
+				const wordClamped = clampToCompleteWords(plain, studioHeadlineMaxWords);
+				if (preserveMarkup && byChars.includes('[[') && countPlainWords(plain) <= studioHeadlineMaxWords) {
+					return byChars;
+				}
+				return preserveMarkup && wordClamped === plain ? byChars : wordClamped;
+			}
 			default:
 				return fitCopyBudget(raw, { maxChars: FETCH_TEXT_CLIP.news });
 		}
@@ -9482,7 +9775,7 @@ tweetTopImagePanYBySlide,
 					contentMode: newsContentMode,
 					stepCount: newsContentMode === 'steps' ? stepsCount : undefined,
 					includeReplies: !!opts?.includeReplies,
-					maxWords: studioMaxWords,
+					maxWords: studioHeadlineMaxWords,
 					...studioGenerationTonePayload(),
 				}),
 			});
@@ -9873,7 +10166,8 @@ tweetTopImagePanYBySlide,
 					syntheticHint: syntheticHintStr || undefined,
 					stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
 					studioRegenAt: Date.now(),
-					maxWords: studioMaxWords,
+					maxWords: studioHeadlineMaxWords,
+					maxWordsSupport: studioBodyMaxWords,
 					avoidHooks: avoidHooks.length ? avoidHooks : undefined,
 					...studioGenerationTonePayload(),
 				}),
@@ -9881,8 +10175,12 @@ tweetTopImagePanYBySlide,
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
 
-			hookText = data.text ?? '';
-			rawText = data.description ?? data.title ?? '';
+			hookText = clampFetchedPrimaryForTemplate(
+				fillExistingDeck ? 'news' : contentTemplate,
+				String(data.text ?? ''),
+			);
+			/* Keep full description as the slide bible; per-slide clamps enforce Default length. */
+			rawText = String(data.description ?? data.title ?? '');
 			if (newsContentMode !== 'news') {
 				const histQuery = syntheticHintStr || activeSyntheticQuery();
 				recordPromptHistoryRun(
@@ -9982,7 +10280,7 @@ tweetTopImagePanYBySlide,
 				const longBodyBySlide = new Map<number, string>();
 				if (longBodyTargets.length) {
 					try {
-						const carouselBudget = textCarouselBudgetFromMaxWords(studioMaxWords);
+						const carouselBudget = textCarouselBudgetFromMaxWords(studioBodyMaxWords);
 						if (carouselBudget.maxWordsTotal <= 16) {
 							for (const t of longBodyTargets) {
 								longBodyBySlide.set(
@@ -10064,6 +10362,16 @@ tweetTopImagePanYBySlide,
 						String(rawText || articleSnippet || '').trim(),
 					);
 				}
+				// Partition the body across every News slide so N slides get N distinct paragraphs.
+				{
+					const newsIdxs = targets.filter((t) => t.template === 'news').map((t) => t.slide);
+					if (newsIdxs.length) {
+						applyDistributedNewsSubtexts(
+							String(rawText || articleSnippet || '').trim(),
+							newsIdxs,
+						);
+					}
+				}
 				// Blank never renders `slides[]` — drop stale News headline strings after fetch.
 				for (let i = 0; i < n; i++) {
 					if (coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed) === 'blank') {
@@ -10115,15 +10423,8 @@ tweetTopImagePanYBySlide,
 						news: Array.from({ length: n }, () => []),
 					};
 					showCircleBySlide = Array.from({ length: n }, (_, i) => i === 0);
-					const sub0 = String(rawText || '').trim()
-						? pickNewsSubtext({
-								body: String(rawText),
-								headline: String(hookText || ''),
-								previous: '',
-								slideIndex: 0,
-							})
-						: '';
-					newsSubtextBySlide = Array.from({ length: n }, (_, i) => (i === 0 ? sub0 : ''));
+					/* Subtexts filled after headlines/variants so each of N slides gets its own beat. */
+					newsSubtextBySlide = Array.from({ length: n }, () => '');
 				} else {
 					const heroBgRow =
 						templateAcceptsArticleHeroBackground(contentTemplate) && newsImageSourceMode === 'pull' && newsGenerateImages
@@ -10167,6 +10468,11 @@ tweetTopImagePanYBySlide,
 							generatingVariants = false;
 						}
 					}
+				}
+
+				// News: split the article body across all N slides (not only the hook).
+				if (contentTemplate === 'news') {
+					applyDistributedNewsSubtexts(String(rawText || articleSnippet || '').trim());
 				}
 
 				// Black text: hook lines come from variants above; body must follow the same article (not stale template defaults).
@@ -10331,9 +10637,9 @@ tweetTopImagePanYBySlide,
 			while (newsSubtextBySlide.length <= slide) {
 				newsSubtextBySlide = [...newsSubtextBySlide, ''];
 			}
+			/* Every News slide in the deck gets its own paragraph beat when body exists. */
 			const hadSubtext = String(newsSubtextBySlide[slide] ?? '').trim().length > 0;
-			/* Hook always gets a lede when body exists; other slides keep/fill only if the user added a paragraph tag. */
-			const shouldFillSubtext = hadSubtext || (slide === 0 && !!body);
+			const shouldFillSubtext = !!body || hadSubtext;
 			const sub = shouldFillSubtext && body
 				? pickNewsSubtext({
 						body,
@@ -10577,7 +10883,21 @@ tweetTopImagePanYBySlide,
 					while (newsSubtextBySlide.length <= slot.slide) {
 						newsSubtextBySlide = [...newsSubtextBySlide, ''];
 					}
-					const next = clampNewsSubtext(text);
+					const previous = String(newsSubtextBySlide[slot.slide] ?? '').trim();
+					/* Prefer a multi-sentence body when Default so we don’t collapse to one short line. */
+					const bodyPool = [
+						String(articleSnippet ?? '').trim(),
+						lines.slice(i, i + 3).join(' ').trim(),
+						text,
+					]
+						.filter(Boolean)
+						.join(' ');
+					const next = pickNewsSubtext({
+						body: bodyPool || text,
+						headline: String(slides[slot.slide] ?? '').trim(),
+						previous,
+						slideIndex: slot.slide,
+					});
 					newsSubtextBySlide = newsSubtextBySlide.map((x, idx) =>
 						idx === slot.slide ? next : x,
 					);
@@ -10601,9 +10921,117 @@ tweetTopImagePanYBySlide,
 		}
 	}
 
+	/**
+	 * Bits UI ScrollLock sets body { pointer-events: none; overflow: hidden } while a
+	 * popover/select is open. Stale locks or remounts mid-generate can freeze the UI.
+	 */
+	function studioOverlayChromeOpen(): boolean {
+		return (
+			bottomShadowPopoverOpen ||
+			highlightPopoverOpen ||
+			brandProfilePopoverOpen ||
+			promptHistoryOpen ||
+			showVideoTrim
+		);
+	}
+
+	function clearDocumentBodyPointerLock() {
+		if (typeof document === 'undefined') return;
+		document.body.style.pointerEvents = '';
+		document.body.style.overflow = '';
+		document.body.style.removeProperty('--scrollbar-width');
+		document.body.style.paddingRight = '';
+		document.body.style.marginRight = '';
+	}
+
+	function bitsFloatingLayerOpenInDom(): boolean {
+		if (typeof document === 'undefined') return false;
+		return !!document.querySelector(
+			'[data-slot="popover-content"][data-state="open"], [data-slot="select-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"]',
+		);
+	}
+
+	function releaseStudioPointerBlockers() {
+		bottomShadowPopoverOpen = false;
+		highlightPopoverOpen = false;
+		brandProfilePopoverOpen = false;
+		promptHistoryOpen = false;
+		showVideoTrim = false;
+		videoSeekSec = NaN;
+		if (!filmstripPreviewInFlight && canvasRasterSlide !== null) {
+			canvasRasterSlide = null;
+		}
+		clearDocumentBodyPointerLock();
+	}
+
+	/** Hard reset after Generate — clears stuck filmstrip raster + body lock. */
+	function forceUnlockStudioUI() {
+		releaseStudioPointerBlockers();
+		if (!exporting && !exportingAll) {
+			filmstripPreviewInFlight = false;
+			filmstripBulkCapturing = false;
+			canvasRasterSlide = null;
+		}
+		filmstripRecaptureNonce++;
+		if (typeof document === 'undefined') return;
+		clearDocumentBodyPointerLock();
+		requestAnimationFrame(() => {
+			clearDocumentBodyPointerLock();
+			requestAnimationFrame(clearDocumentBodyPointerLock);
+		});
+	}
+
+	function clearStuckBodyLockIfIdle() {
+		if (typeof document === 'undefined') return;
+		if (studioOverlayChromeOpen() || bitsFloatingLayerOpenInDom()) return;
+		if (
+			document.body.style.pointerEvents === 'none' ||
+			document.body.style.overflow === 'hidden'
+		) {
+			clearDocumentBodyPointerLock();
+		}
+	}
+
+	/** Generate / fetch can leave filmstrip raster state or body lock stuck. */
+	let wasStudioGenerateBusy = $state(false);
+	$effect(() => {
+		const busy = studioGenerating || fetchingNews || generatingVariants;
+		if (wasStudioGenerateBusy && !busy) {
+			queueMicrotask(() => forceUnlockStudioUI());
+		}
+		wasStudioGenerateBusy = busy;
+	});
+
+	/** Never leave the main canvas non-interactive after filmstrip capture finishes. */
+	$effect(() => {
+		if (
+			filmstripPreviewInFlight ||
+			filmstripBulkCapturing ||
+			exporting ||
+			exportingAll
+		) {
+			return;
+		}
+		if (canvasRasterSlide !== null) canvasRasterSlide = null;
+	});
+
+	/** Abort a stuck filmstrip raster pass so Generate doesn't leave the UI frozen. */
+	$effect(() => {
+		if (!filmstripPreviewInFlight) return;
+		const t = window.setTimeout(() => {
+			if (!filmstripPreviewInFlight) return;
+			filmstripPreviewInFlight = false;
+			filmstripBulkCapturing = false;
+			canvasRasterSlide = null;
+			forceUnlockStudioUI();
+		}, 20_000);
+		return () => window.clearTimeout(t);
+	});
+
 	/** Load an article (or generate content) then immediately fill every template text slot.
 	 *  This combines the old two-step workflow into one action. */
 	async function loadAndFill() {
+		forceUnlockStudioUI();
 		studioGenerating = true;
 		fetchingNews = true;
 		await tick();
@@ -10682,6 +11110,7 @@ tweetTopImagePanYBySlide,
 			newsGenerateImages = prevGenerateImages;
 			studioGenerating = false;
 			fetchingNews = false;
+			forceUnlockStudioUI();
 		}
 	}
 
@@ -10701,6 +11130,9 @@ tweetTopImagePanYBySlide,
 				copyStrings,
 				template === 'tweet' ? tweetReplies : undefined,
 			);
+			if (template === 'news') {
+				applyDistributedNewsSubtexts(String(rawText || articleSnippet || '').trim());
+			}
 			if (template === 'blackText') {
 				const body0 = clampFetchedBlackTextBody(String(rawText || articleSnippet || '').trim());
 				if (body0) {
@@ -10715,6 +11147,9 @@ tweetTopImagePanYBySlide,
 				template,
 				fallbackStoryBeats(hookText, rawText, slideCount),
 			);
+			if (template === 'news') {
+				applyDistributedNewsSubtexts(String(rawText || articleSnippet || '').trim());
+			}
 		}
 	}
 
@@ -12738,11 +13173,16 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	let filmstripThumbTimer: ReturnType<typeof setTimeout> | null = null;
 	/** Bumps when a new filmstrip pass is requested; stale passes must not clear the initial skeleton. */
 	let filmstripPassId = 0;
+	/** Bumped after Generate so one capture runs when the deck settles. */
+	let filmstripRecaptureNonce = $state(0);
 
 	$effect(() => {
 		void filmstripThumbDeps;
+		void filmstripRecaptureNonce;
 		void studioBooting;
 		if (studioBooting) return;
+		// Don't rasterize while Generate is filling slides — it pegs the CPU and locks the canvas.
+		if (studioGenerating || fetchingNews || generatingVariants) return;
 		if (filmstripThumbTimer) clearTimeout(filmstripThumbTimer);
 
 		const n = slides.length;
@@ -12839,9 +13279,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		</div>
 	{/if}
 
-		<!-- Editor dock + format dock — fixed height so boot never reflows the row -->
+		<!-- Editor dock — sticky + high z so canvas Bits layers can't steal clicks. -->
 		<div
-			class="studio-dock-row relative z-30 flex w-full max-w-full shrink-0 flex-nowrap items-center justify-center gap-3 px-1 py-1"
+			class="studio-dock-row sticky top-0 z-[200] flex w-full max-w-full shrink-0 flex-nowrap items-center justify-center gap-3 px-1 py-1"
+			role="toolbar"
+			aria-label="Editor dock"
 		>
 			<!-- Hidden picker for dock “Image” (image stickers / logos) — must stay in DOM for bind:this -->
 			<input
@@ -12906,6 +13348,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					side="bottom"
 					sideOffset={10}
 					align="center"
+					trapFocus={false}
 					portalProps={{ to: 'body' }}
 					class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 				>
@@ -13025,6 +13468,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					side="bottom"
 					sideOffset={10}
 					align="center"
+					trapFocus={false}
 					portalProps={{ to: 'body' }}
 					class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 				>
@@ -13144,6 +13588,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					side="bottom"
 					sideOffset={10}
 					align="center"
+					trapFocus={false}
 					portalProps={{ to: 'body' }}
 					class="z-[400] max-h-[min(70vh,640px)] w-[320px] gap-0 overflow-y-auto rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
 				>
@@ -13310,7 +13755,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		{/if}
 		<div
 			class="studio-canvas-live"
-			class:is-live={studioRevealReady && !studioCanvasBusyLoading}
+			class:is-live={studioRevealReady}
 			aria-hidden={!studioRevealReady}
 		>
 			{#if editingBrandCta || exportingBrandCta}
@@ -13471,8 +13916,8 @@ showSubjectCutout={canvasShowCutout}
 					textOverlays={
 						exporting || exportingAll || filmstripBulkCapturing ? canvasTextOverlays : []
 					}
-					headlineStyle={canvasHeadlineStyle}
-					subtextStyle={canvasNewsSubtextStyle}
+					headlineStyle={{ ...NEWS_HEADLINE_STYLE, ...canvasHeadlineStyle }}
+					subtextStyle={{ ...NEWS_SUBTEXT_STYLE, ...canvasNewsSubtextStyle }}
 					sourceStyle={canvasSourceStyle}
 					textOffsets={offsetsForTemplate(paintSlide, 'news')}
 					onTextOffsetChange={(kind, next) => {
@@ -14967,9 +15412,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 				<!-- ── Video trimmer (YouTube-style bottom timeline) ───────────── -->
 				{#if effectiveBackgroundVideo && showVideoTrim}
-					<!-- Click-off backdrop: closes the trimmer -->
+					<!-- Click-off backdrop: below the top dock (z-100) so Shadow/Highlights stay usable -->
 					<div
-						class="fixed inset-0 z-40"
+						class="fixed inset-0 z-[45]"
 						onpointerdown={() => { showVideoTrim = false; videoSeekSec = NaN; }}
 						aria-hidden="true"
 					></div>
@@ -15649,7 +16094,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							>
 								<span class="min-w-0">
 									<span class="block text-[12.5px] font-semibold">Default</span>
-									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">This field’s placeholder — {studioMaxWords} words</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]">{studioDefaultWordBudgetLabel}</span>
 								</span>
 								{#if newsCopyLength === 'default'}
 									<span class="ml-auto shrink-0 text-[#111]">✓</span>
@@ -16351,6 +16796,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	}
 	:root:not([data-theme="dark"]) .studio-right {
 		background: var(--app-bg) !important;
+		pointer-events: auto;
 	}
 
 	/* — Backgrounds: black/neutral-950/900/etc → white surfaces — */
@@ -16611,6 +17057,26 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	.studio-dock-row {
 		min-height: 56px;
 		box-sizing: border-box;
+		pointer-events: auto;
+		isolation: isolate;
+	}
+
+	.studio-dock-inner,
+	.studio-dock-inner :global(button),
+	.studio-dock-inner :global([data-slot='popover-trigger']),
+	.studio-dock-inner :global([data-slot='select-trigger']) {
+		pointer-events: auto;
+	}
+
+	.studio-prompt-chrome,
+	.studio-prompt-chrome :global(button),
+	.studio-prompt-chrome :global(input),
+	.studio-prompt-chrome :global(textarea),
+	.studio-prompt-chrome :global([data-slot='popover-trigger']),
+	.studio-prompt-chrome :global([data-slot='select-trigger']),
+	.filmstrip-row,
+	.filmstrip-row :global(button) {
+		pointer-events: auto;
 	}
 
 	.filmstrip-row {

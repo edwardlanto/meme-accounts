@@ -7,6 +7,7 @@
  *   node scripts/generate-template-demos.mjs
  *   node scripts/generate-template-demos.mjs --photos-only
  *   node scripts/generate-template-demos.mjs --skip-download   # rewrite TS from cache
+ *   node scripts/generate-template-demos.mjs --only=video-source
  *
  * Then refresh covers:
  *   node scripts/capture-template-previews.mjs
@@ -28,6 +29,10 @@ const PHOTOS_ONLY = args.has('--photos-only');
 const SKIP_DOWNLOAD = args.has('--skip-download');
 /** Regenerate copy via Claude; keep existing media files. */
 const IDEAS_ONLY = args.has('--ideas') || args.has('--ideas-only');
+const ONLY_ID = (() => {
+	const raw = process.argv.find((a) => a.startsWith('--only='));
+	return raw ? raw.slice('--only='.length).trim() : '';
+})();
 
 function loadEnv() {
 	const env = { ...process.env };
@@ -50,6 +55,26 @@ function loadEnv() {
 		}
 	} catch {
 		/* no .env */
+	}
+	try {
+		const raw = readFileSync(path.join(ROOT, '.env.local'), 'utf8');
+		for (const line of raw.split('\n')) {
+			const t = line.trim();
+			if (!t || t.startsWith('#')) continue;
+			const i = t.indexOf('=');
+			if (i < 0) continue;
+			const k = t.slice(0, i).trim();
+			let v = t.slice(i + 1).trim();
+			if (
+				(v.startsWith('"') && v.endsWith('"')) ||
+				(v.startsWith("'") && v.endsWith("'"))
+			) {
+				v = v.slice(1, -1);
+			}
+			env[k] = v;
+		}
+	} catch {
+		/* no .env.local */
 	}
 	return env;
 }
@@ -161,15 +186,15 @@ const POSTS = [
 	{
 		id: 'video-source',
 		kind: 'video',
-		query: 'entrepreneur speaking podcast microphone',
-		photoQuery: 'founder speaking stage spotlight',
+		query: 'laptop coding neon desk night productivity',
+		photoQuery: 'neon desk workspace code screen',
 		orientation: 'portrait',
 		fields: {
 			headline:
 				'[[Stop]] building features nobody asked for — the first dollar teaches you more than another month of "polish."',
 			highlightColor: '#39FF14',
-			videoUrl: '/videos/demos/founder-talk.mp4',
-			posterUrl: '/templates/demos/video-source-poster.jpg',
+			videoUrl: '/videos/demos/highlight-hook.mp4',
+			posterUrl: '/templates/demos/highlight-hook-poster.jpg',
 		},
 	},
 	{
@@ -592,44 +617,50 @@ async function main() {
 	const resolved = [];
 
 	for (const post of POSTS) {
-		console.log(`\n[${post.id}]`);
+		const skipMedia = ONLY_ID && post.id !== ONLY_ID;
+		if (!skipMedia) console.log(`\n[${post.id}]`);
+		else if (ONLY_ID) {
+			/* keep catalog entry without re-fetching media */
+		}
 		const fields = { ...post.fields };
 
-		if (post.kind === 'photo' && fields.imageUrl) {
-			await fetchPhotoTo(
-				post.query,
-				fields.imageUrl.replace(/^\//, ''),
-				post.orientation || 'portrait',
-			);
-		} else if (post.kind === 'video') {
-			const videoRel = fields.videoUrl.replace(/^\//, '');
-			const posterRel = fields.posterUrl.replace(/^\//, '');
-			const got = await fetchVideoTo(
-				post.query,
-				videoRel,
-				posterRel,
-				post.orientation || 'portrait',
-			);
-			fields.videoUrl = got.videoUrl ? `/${got.videoUrl}` : '';
-			fields.posterUrl = `/${got.posterUrl}`;
-			if (fields.bottomMediaUrl && post.fields.bottomQuery) {
+		if (!skipMedia && !SKIP_DOWNLOAD) {
+			if (post.kind === 'photo' && fields.imageUrl) {
 				await fetchPhotoTo(
-					post.fields.bottomQuery,
-					fields.bottomMediaUrl.replace(/^\//, ''),
-					'landscape',
+					post.query,
+					fields.imageUrl.replace(/^\//, ''),
+					post.orientation || 'portrait',
 				);
-			}
-			if (fields.avatarUrl && (post.avatarQuery || post.fields.avatarQuery)) {
-				await fetchPhotoTo(
-					post.avatarQuery || post.fields.avatarQuery,
-					fields.avatarUrl.replace(/^\//, ''),
-					'squarish',
+			} else if (post.kind === 'video') {
+				const videoRel = fields.videoUrl.replace(/^\//, '');
+				const posterRel = fields.posterUrl.replace(/^\//, '');
+				const got = await fetchVideoTo(
+					post.query,
+					videoRel,
+					posterRel,
+					post.orientation || 'portrait',
 				);
+				fields.videoUrl = got.videoUrl ? `/${got.videoUrl}` : '';
+				fields.posterUrl = `/${got.posterUrl}`;
+				if (fields.bottomMediaUrl && post.fields.bottomQuery) {
+					await fetchPhotoTo(
+						post.fields.bottomQuery,
+						fields.bottomMediaUrl.replace(/^\//, ''),
+						'landscape',
+					);
+				}
+				if (fields.avatarUrl && (post.avatarQuery || post.fields.avatarQuery)) {
+					await fetchPhotoTo(
+						post.avatarQuery || post.fields.avatarQuery,
+						fields.avatarUrl.replace(/^\//, ''),
+						'squarish',
+					);
+				}
 			}
-		}
 
-		if (fields.avatarUrl && post.avatarQuery && post.kind !== 'video') {
-			await fetchPhotoTo(post.avatarQuery, fields.avatarUrl.replace(/^\//, ''), 'squarish');
+			if (fields.avatarUrl && post.avatarQuery && post.kind !== 'video') {
+				await fetchPhotoTo(post.avatarQuery, fields.avatarUrl.replace(/^\//, ''), 'squarish');
+			}
 		}
 
 		resolved.push({ id: post.id, fields });

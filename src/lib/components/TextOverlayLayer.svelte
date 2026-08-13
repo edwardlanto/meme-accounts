@@ -459,6 +459,16 @@
 			{@const family = css.fontFamily
 				? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif`
 				: `'Satoshi', var(--font-sans), system-ui, -apple-system, sans-serif`}
+			{@const blockBg = String(css.bgColor ?? '').trim()}
+			{@const hasBlockBg =
+				!!blockBg && blockBg !== 'transparent' && blockBg !== 'none'}
+			{@const textBoxWidth = hasBlockBg ? 'fit-content' : '100%'}
+			{@const textBoxMargin =
+				align === 'center'
+					? 'margin-left: auto; margin-right: auto;'
+					: align === 'right'
+						? 'margin-left: auto; margin-right: 0;'
+						: 'margin-left: 0; margin-right: auto;'}
 			<div
 				style="
 					position: absolute;
@@ -511,7 +521,9 @@
 							letter-spacing: {tracking};
 							{textShadowStyleAttr(css)}
 							{textBgCss(css)}
-							width: 100%;
+							width: {textBoxWidth};
+							max-width: 100%;
+							{textBoxMargin}
 						"
 						onclick={(e) => e.stopPropagation()}
 						role="presentation"
@@ -625,7 +637,9 @@
 							letter-spacing: {tracking};
 							{textShadowStyleAttr(css)}
 							{textBgCss(css)}
-							width: 100%;
+							width: {textBoxWidth};
+							max-width: 100%;
+							{textBoxMargin}
 							overflow: visible;
 							user-select: none;
 							white-space: pre-wrap;

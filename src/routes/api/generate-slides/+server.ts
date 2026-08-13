@@ -272,6 +272,11 @@ PROVEN SLIDE FORMULA:
 ${slideCount - 1}. PROOF or SHIFT: Story, stat, or perspective change.
 ${slideCount}. CTA: Save / Follow / Comment / Share. Clear and specific.
 
+SPLIT THE IDEA (critical):
+- You must return exactly ${slideCount} slides. Never collapse the carousel into one slide of dense copy.
+- Each slide's body must be a DISTINCT beat — do not repeat the same paragraph on multiple slides.
+- Partition the topic so reading slides 1→${slideCount} tells one complete story with no leftover text dumped only on slide 1.
+
 OUTPUT: Raw JSON array only. No markdown. No explanation. No wrapper.
 
 [

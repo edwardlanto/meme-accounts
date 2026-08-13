@@ -412,9 +412,7 @@
 
 <Popover bind:open={popoverOpen}>
 	<PopoverTrigger
-		openOnHover={!!interactive && !active}
-		openDelay={120}
-		closeDelay={280}
+		openOnHover={false}
 		child={stickerTrigger}
 	/>
 	{#if interactive}

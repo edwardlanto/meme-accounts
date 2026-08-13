@@ -36,6 +36,30 @@ export const NEWS_DEFAULT_LAYOUT = {
 	shadowCurve: 'news' as const,
 };
 
+/** Default circular badge photo when News shows the circle with no upload yet. */
+export const NEWS_DEFAULT_CIRCLE_IMAGE = '/placeholders/news/circle-default.png';
+
+/**
+ * Default News headline type. Omit `fontSize` so NewsTemplate keeps length-based auto-size
+ * until the author sets an explicit size in Studio.
+ */
+export const NEWS_HEADLINE_STYLE = {
+	fontFamily: 'Bebas Neue',
+	fontWeight: 400,
+	align: 'left' as const,
+	/** Tight leading for display caps (Bebas leaves large em padding). */
+	lineHeight: 1.0,
+} as const;
+
+/** Supporting paragraph under the News headline. */
+export const NEWS_SUBTEXT_STYLE = {
+	fontFamily: 'Satoshi',
+	fontWeight: 500,
+	fontSize: 48,
+	align: 'left' as const,
+	lineHeight: 1.4,
+} as const;
+
 export {
 	BOTTOM_SHADOW_CURVES,
 	BOTTOM_SHADOW_PRESETS,

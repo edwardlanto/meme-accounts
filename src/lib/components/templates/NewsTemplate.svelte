@@ -12,6 +12,10 @@
 		CANVAS_TEXT_BOX_TRIM,
 		CANVAS_TEXT_FOCUS_RING,
 	} from '$lib/studio/canvas-text-chrome';
+	import {
+		NEWS_HEADLINE_STYLE,
+		NEWS_SUBTEXT_STYLE,
+	} from '$lib/studio/slide-content-defaults';
 	import { appendTextBgCss, appendTextShadowCss, textPaddingCss, textShadowStyleAttr, TEXT_BG_CHIP_BOX_CSS } from '$lib/textStyleCss';
 	import {
 		CLIPPED_TEXT_SHADOW_WRAP_CSS,
@@ -232,7 +236,7 @@
 		circleImagePanX = $bindable(50),
 		circleImagePanY = $bindable(50),
 		circleBorderColor = $bindable('#FFFFFF'),
-		circleBorderWidth = $bindable(0),
+		circleBorderWidth = $bindable(16),
 		circleShadow = $bindable<CircleShadow>({ ...DEFAULT_CIRCLE_SHADOW }),
 		showCircle2 = false,
 		circle2Image = '',
@@ -453,8 +457,8 @@
 
 	// Preload display + override fonts (Bebas Neue = default news headline).
 	$effect(() => {
-		const family = headlineStyle.fontFamily || 'Bebas Neue';
-		const weight = headlineStyle.fontWeight ?? 400;
+		const family = headlineStyle.fontFamily || NEWS_HEADLINE_STYLE.fontFamily;
+		const weight = headlineStyle.fontWeight ?? NEWS_HEADLINE_STYLE.fontWeight;
 		void loadGoogleFont(family, weight);
 		if (sourceStyle.fontFamily) {
 			void loadGoogleFont(sourceStyle.fontFamily, sourceStyle.fontWeight ?? 700);
@@ -465,22 +469,21 @@
 	const headlineCss = $derived.by(() => {
 		const s = headlineStyle;
 		const lines: string[] = [];
-		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', 'Bebas Neue', Impact, sans-serif;`);
-		else lines.push(`font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;`);
+		const family = s.fontFamily ?? NEWS_HEADLINE_STYLE.fontFamily;
+		lines.push(`font-family: '${family}', 'Bebas Neue', Impact, sans-serif;`);
 		lines.push(`font-size: ${s.fontSize ?? fontSize}px;`);
-		lines.push(`font-weight: ${s.fontWeight ?? 400};`);
+		lines.push(`font-weight: ${s.fontWeight ?? NEWS_HEADLINE_STYLE.fontWeight};`);
 		// Bebas Neue is single-weight — allow synthetic bold so toolbar weight changes are visible.
-		if (!s.fontFamily || s.fontFamily === 'Bebas Neue') {
+		if (family === 'Bebas Neue') {
 			lines.push('font-synthesis: weight;');
 		}
 		if (s.italic) lines.push('font-style: italic;');
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? textColor};`);
-		lines.push(`text-align: ${s.align ?? 'left'};`);
+		lines.push(`text-align: ${s.align ?? NEWS_HEADLINE_STYLE.align};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
-		// Tight leading + trim so selection/edit rings hug glyph caps (Bebas leaves large em padding).
-		// Prefer author line-height when set; otherwise a compact default for display caps.
-		const lh = s.lineHeight != null ? s.lineHeight : 0.82;
+		// Prefer author line-height; fall back to product default from slide-content-defaults.
+		const lh = s.lineHeight != null ? s.lineHeight : NEWS_HEADLINE_STYLE.lineHeight;
 		lines.push(`line-height: ${lh};`);
 		lines.push(CANVAS_TEXT_BOX_TRIM);
 		appendTextShadowCss(lines, s);
@@ -503,16 +506,20 @@
 	const subtextCss = $derived.by(() => {
 		const s = subtextStyle;
 		const lines: string[] = [];
-		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif;`);
-		else lines.push(`font-family: var(--font-sans), system-ui, -apple-system, sans-serif;`);
+		const family = s.fontFamily ?? NEWS_SUBTEXT_STYLE.fontFamily;
+		lines.push(
+			`font-family: '${family}', var(--font-sans), system-ui, -apple-system, sans-serif;`,
+		);
 		lines.push(`font-size: ${effectiveSubtextFontSize}px;`);
-		lines.push(`font-weight: ${s.fontWeight ?? 500};`);
+		lines.push(`font-weight: ${s.fontWeight ?? NEWS_SUBTEXT_STYLE.fontWeight};`);
 		if (s.italic) lines.push('font-style: italic;');
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? textColor};`);
-		lines.push(`text-align: ${s.align ?? headlineStyle.align ?? 'left'};`);
+		lines.push(
+			`text-align: ${s.align ?? headlineStyle.align ?? NEWS_SUBTEXT_STYLE.align};`,
+		);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '0'};`);
-		lines.push(`line-height: ${s.lineHeight ?? 1.4};`);
+		lines.push(`line-height: ${s.lineHeight ?? NEWS_SUBTEXT_STYLE.lineHeight};`);
 		lines.push(`opacity: ${s.color ? 1 : 0.86};`);
 		lines.push(CANVAS_TEXT_BOX_TRIM);
 		appendTextShadowCss(lines, s);
@@ -1160,7 +1167,8 @@
 	// ── Circle drag ────────────────────────────────────────────────────────
 	let dragging = $state(false);
 	let resizingCircle = $state(false);
-	/** Drives circle chrome + shadcn popover; bits-ui trigger uses openOnHover. */
+	/** Drives circle chrome + shadcn popover. Click-to-open only — hover was leaving
+	 *  Bits dismiss layers that swallowed top-dock clicks after Generate. */
 	let circleToolbarPopoverOpen = $state(false);
 	let circleShadowPanelOpen = $state(false);
 	let circleColorPanelOpen = $state(false);
@@ -2368,17 +2376,15 @@
 			<Popover
 				bind:open={circleToolbarPopoverOpen}
 				onOpenChange={(o) => {
-					if (!o && (circleShadowPanelOpen || circleColorPanelOpen)) {
-						circleToolbarPopoverOpen = true;
-						return;
-					}
 					circleToolbarPopoverOpen = o;
+					if (!o) {
+						circleShadowPanelOpen = false;
+						circleColorPanelOpen = false;
+					}
 				}}
 			>
 				<PopoverTrigger
-					openOnHover={!!interactive}
-					openDelay={0}
-					closeDelay={280}
+					openOnHover={false}
 					child={newsCirclePopoverTrigger}
 				/>
 				{#if interactive}
@@ -2602,17 +2608,15 @@
 			<Popover
 				bind:open={circle2ToolbarPopoverOpen}
 				onOpenChange={(o) => {
-					if (!o && (circle2ShadowPanelOpen || circle2ColorPanelOpen)) {
-						circle2ToolbarPopoverOpen = true;
-						return;
-					}
 					circle2ToolbarPopoverOpen = o;
+					if (!o) {
+						circle2ShadowPanelOpen = false;
+						circle2ColorPanelOpen = false;
+					}
 				}}
 			>
 				<PopoverTrigger
-					openOnHover={!!interactive}
-					openDelay={0}
-					closeDelay={280}
+					openOnHover={false}
 					child={newsCircle2PopoverTrigger}
 				/>
 				{#if interactive}
@@ -2895,9 +2899,7 @@
 											{#if interactive}
 												<Popover bind:open={sourceLogoToolbarOpen}>
 													<PopoverTrigger
-														openOnHover={true}
-														openDelay={0}
-														closeDelay={280}
+														openOnHover={false}
 														child={sourceLogoTrigger}
 													/>
 													<PopoverContent

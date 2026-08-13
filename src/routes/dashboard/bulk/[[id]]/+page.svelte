@@ -82,14 +82,12 @@
 		Sparkles,
 		Plus,
 		Trash2,
-		Copy,
 		ChevronUp,
 		ChevronDown,
 		Loader2,
 		Layers,
 		ArrowRight,
 		ArrowUp,
-		Type,
 		Captions,
 		Image,
 		X,
@@ -194,8 +192,6 @@
 	/** Empty until hydrate so we never flash a blank starter show. */
 	let shows = $state<BulkShow[]>([]);
 	let selectedShowId = $state<string | null>(null);
-	let pasteOpen = $state(false);
-	let pasteText = $state('');
 	let libraryOpen = $state(false);
 	let libraryEntries = $state<CloudWorkspaceListItem[]>([]);
 	let libraryBusy = $state(false);
@@ -1167,26 +1163,6 @@
 		}
 	}
 
-	function duplicateShow(id: string) {
-		const src = shows.find((s) => s.id === id);
-		if (!src) return;
-		const slides = src.slides.map((sl) => ({
-			...sl,
-			id: crypto.randomUUID(),
-			captions: { ...sl.captions },
-		}));
-		const copy: BulkShow = {
-			...src,
-			id: crypto.randomUUID(),
-			title: src.title ? `${src.title} (copy)` : '',
-			slides,
-			activeSlideId: slides[0]?.id ?? '',
-		};
-		const idx = shows.findIndex((s) => s.id === id);
-		shows = [...shows.slice(0, idx + 1), copy, ...shows.slice(idx + 1)];
-		selectedShowId = copy.id;
-	}
-
 	function deleteShow(id: string) {
 		if (shows.length <= 1) {
 			const show = createBlankShow(
@@ -1234,27 +1210,6 @@
 				s.activeSlideId === slideId ? slides[0]!.id : s.activeSlideId;
 			return { ...s, slides, activeSlideId };
 		});
-	}
-
-	async function applyPasteLines() {
-		const lines = pasteText
-			.split(/\n/)
-			.map((l) => stripEmDashes(l))
-			.filter(Boolean);
-		if (!lines.length) return;
-		const caps = captionDefaultsFromKit(brandKit);
-		const t = coerceTemplateId(brandKit.defaultTemplateId);
-		const newShows = lines.map((title) => {
-			const show = createBlankShow(t, caps, slidesPerShow);
-			show.title = title;
-			if (show.slides[0]) show.slides[0].headline = title;
-			return show;
-		});
-		await archiveCurrentToCloud().catch(() => {});
-		shows = newShows;
-		selectedShowId = shows[0]?.id ?? null;
-		pasteOpen = false;
-		pasteText = '';
 	}
 
 	async function fillStockForShows(showIds?: string[], opts?: { force?: boolean }) {
@@ -1388,6 +1343,7 @@
 			if (!res.ok) throw new Error(data?.error || `Generate failed (${res.status})`);
 
 			const caps = captionDefaultsFromKit(brandKit);
+			const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
 			let decks = Array.isArray(data.decks) ? data.decks : [];
 			// Fallback: single carousel → one show
 			if (!decks.length && Array.isArray(data.slides)) {
@@ -1399,21 +1355,18 @@
 				const slidesRaw = Array.isArray(d.slides) ? d.slides : [];
 				let slides: BulkSlide[] = slidesRaw.map((s: any) => ({
 					id: crypto.randomUUID(),
-					template: templateForSlideType(s.type),
+					// Keep the brand/default template for every beat so N slides stay one layout
+					// (e.g. News) with the idea split across them — not only slide 1.
+					template: defaultTpl || templateForSlideType(s.type),
 					headline: stripEmDashes(String(s.headline ?? '')),
 					body: stripEmDashes(String(s.body ?? s.subheadline ?? '')),
 					captions: { ...caps },
 				}));
 				while (slides.length < slidesPerShow) {
-					slides.push(
-						createBlankSlide(
-							slides.length === 0 ? 'news' : 'textCarousel',
-							caps,
-						),
-					);
+					slides.push(createBlankSlide(defaultTpl || 'news', caps));
 				}
 				slides = slides.slice(0, slidesPerShow);
-				if (!slides.length) slides.push(createBlankSlide('news', caps));
+				if (!slides.length) slides.push(createBlankSlide(defaultTpl || 'news', caps));
 				return {
 					id: crypto.randomUUID(),
 					title: stripEmDashes(String(d.title ?? '')),
@@ -1781,27 +1734,11 @@
 						{/if}
 					</PopoverContent>
 				</Popover>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					onclick={() => (pasteOpen = !pasteOpen)}
-					disabled={stackLoading}
-				>
-					<Type /> Paste ideas
-				</Button>
 				<Button type="button" variant="outline" size="sm" onclick={addShow} disabled={stackLoading}>
 					<Plus /> Add slideshow
 				</Button>
 			</div>
 		</div>
-
-		{#if pasteOpen}
-			<div class="paste-box">
-				<textarea bind:value={pasteText} rows="3" placeholder="One idea title per line…"></textarea>
-				<Button type="button" size="sm" onclick={() => void applyPasteLines()}>Apply lines</Button>
-			</div>
-		{/if}
 
 		<ul class="show-stack" class:show-stack-loading={stackLoading}>
 			{#if stackLoading}
@@ -1948,15 +1885,6 @@
 										disabled={i === shows.length - 1}
 									>
 										<ChevronDown />
-									</Button>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon-sm"
-										title="Duplicate"
-										onclick={() => duplicateShow(show.id)}
-									>
-										<Copy />
 									</Button>
 									<Button
 										type="button"
@@ -3254,7 +3182,6 @@
 	}
 	.field input,
 	.field select,
-	.paste-box textarea,
 	.tpl-select,
 	.slide-headline,
 	.slide-body-text,
@@ -3464,12 +3391,6 @@
 	}
 	.history-delete {
 		align-self: center;
-	}
-	.paste-box {
-		display: flex;
-		flex-direction: column;
-		gap: 0.45rem;
-		margin-bottom: 0.65rem;
 	}
 	.show-stack {
 		list-style: none;

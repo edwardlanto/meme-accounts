@@ -5,9 +5,9 @@
 
 export const GENERATED_DEMO_POSTS = {
 	"news": {
-		headline: "SOFTBANK 3 JUST PUT $40B INTO OPENAI - WALL STREET BARELY FLINCHED",
-		body: "The largest AI check ever written - and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.",
-		source: "YOUR NAME",
+		headline: "SOFTBANK JUST PUT $40B INTO OPENAI — WALL STREET BARELY FLINCHED",
+		body: "The largest AI check ever written — and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.",
+		source: "Markets",
 		imageUrl: "/templates/demos/news.jpg",
 	},
 	"image-quote": {
@@ -29,13 +29,13 @@ export const GENERATED_DEMO_POSTS = {
 	"text": {
 		name: "Signal Over Noise",
 		handle: "@signalovernoise",
-		body: "Most founders optimize for looking busy.\n\nThe dangerous ones optimize for [[one metric]] customers actually feel.",
+		body: "Most founders optimize for looking busy.\n\nThe dangerous ones optimize for one metric customers actually feel.",
 	},
 	"black-text": {
 		name: "Lena Ortiz",
 		handle: "@lenabuilds",
 		headline: "Charge more. Talk less. Ship weekly.",
-		body: "Underpricing is a confidence problem dressed up as a pricing strategy.\n\nRaise the price until the [[wrong customers]] leave.\n\nThen build for the ones who stayed.",
+		body: "Underpricing is a confidence problem dressed up as a pricing strategy.\n\nRaise the price until the wrong customers leave.\n\nThen build for the ones who stayed.",
 	},
 	"video-feature": {
 		headline: "Claude just became the [[co-founder]] most teams were afraid to hire",
@@ -47,8 +47,8 @@ export const GENERATED_DEMO_POSTS = {
 	"video-source": {
 		headline: "[[Stop]] building features nobody asked for — the first dollar teaches you more than another month of \"polish.\"",
 		highlightColor: "#39FF14",
-		videoUrl: "/videos/demos/founder-talk.mp4",
-		posterUrl: "/templates/demos/video-source-poster.jpg",
+		videoUrl: "/videos/demos/highlight-hook.mp4",
+		posterUrl: "/templates/demos/highlight-hook-poster.jpg",
 	},
 	"video-text": {
 		headline: "POV: you finally deleted the roadmap and asked one customer what hurts",
