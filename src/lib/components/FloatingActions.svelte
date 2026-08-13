@@ -23,8 +23,6 @@
 		onListSavedTemplates?: () => Promise<{ id: string; name: string; updatedAt: string }[]>;
 		/** Prefill for the save-template name field when the popover opens. */
 		defaultTemplateName?: string;
-		/** Built-in starter this canvas belongs to (e.g. News). Choosing it replaces that default. */
-		builtinTemplateLabel?: string;
 		/** Explicit workspace draft save (listed under Carousels → Studio drafts). */
 		onSaveDraft?: () => void | Promise<void>;
 		draftSaving?: boolean;
@@ -45,7 +43,6 @@
 		onSaveTemplate = undefined,
 		onListSavedTemplates = undefined,
 		defaultTemplateName = '',
-		builtinTemplateLabel = '',
 		onSaveDraft = undefined,
 		draftSaving = false,
 	} = ($props() as $$Props);
@@ -87,11 +84,8 @@
 	let savedTemplates = $state<{ id: string; name: string; updatedAt: string }[]>([]);
 	let savedTemplatesLoading = $state(false);
 	let overwriteId = $state('');
-	const BUILTIN_DEFAULT_ID = '__builtin__';
 
 	const overwriteTarget = $derived(savedTemplates.find((t) => t.id === overwriteId) ?? null);
-	const overwritingBuiltin = $derived(overwriteId === BUILTIN_DEFAULT_ID);
-	const builtinLabel = $derived(builtinTemplateLabel.trim() || 'template');
 
 	function formatTemplateTime(iso: string): string {
 		if (!iso) return '';
@@ -174,13 +168,6 @@
 		}
 	}
 
-	function chooseBuiltinDefault() {
-		overwriteId = BUILTIN_DEFAULT_ID;
-		if (!saveTemplateName.trim()) {
-			saveTemplateName = `${builtinLabel} default`;
-		}
-	}
-
 	function chooseOverwrite(row: { id: string; name: string }) {
 		overwriteId = row.id;
 		saveTemplateName = row.name;
@@ -189,14 +176,9 @@
 	async function confirmSaveTemplate() {
 		if (!onSaveTemplate || saveTemplateSaving) return;
 		const name = saveTemplateName.trim() || defaultTemplateName.trim() || 'My carousel layout';
-		if (overwritingBuiltin) {
+		if (overwriteId) {
 			const ok = confirm(
-				`Replace the built-in ${builtinLabel} template with this design? New ${builtinLabel} decks will use this look.`,
-			);
-			if (!ok) return;
-		} else if (overwriteId) {
-			const ok = confirm(
-				`Replace “${overwriteTarget?.name || name}” and use it as the ${builtinLabel} default? This cannot be undone.`,
+				`Replace “${overwriteTarget?.name || name}” with this design? This only updates your saved template.`,
 			);
 			if (!ok) return;
 		}
@@ -205,11 +187,7 @@
 		try {
 			await onSaveTemplate(name, overwriteId ? { overwriteId } : undefined);
 			closeSavePanel();
-			const toast = overwritingBuiltin
-				? `Saved as your ${builtinLabel} default`
-				: overwriteId
-					? `Updated “${name}”`
-					: `Saved “${name}”`;
+			const toast = overwriteId ? `Updated “${name}”` : `Saved “${name}”`;
 			setFlashToast(toast);
 			showToast(toast);
 		} catch (e: unknown) {
@@ -288,19 +266,7 @@
 										<span class="tpl-ico"><Plus size={12} /></span>
 										<span class="tpl-copy">
 											<span class="tpl-name">New template</span>
-											<span class="tpl-meta">Keep existing ones</span>
-										</span>
-									</button>
-									<button
-										type="button"
-										class="tpl-row"
-										class:tpl-row--on={overwritingBuiltin}
-										disabled={saveTemplateSaving}
-										onclick={chooseBuiltinDefault}
-									>
-										<span class="tpl-copy">
-											<span class="tpl-name">{builtinLabel} default</span>
-											<span class="tpl-meta">Replace the built-in starter</span>
+											<span class="tpl-meta">Saved to your account</span>
 										</span>
 									</button>
 									{#if savedTemplatesLoading}
@@ -327,7 +293,7 @@
 							</div>
 							<div>
 								<p class="panel-label">
-									{overwritingBuiltin ? 'Save as' : overwriteId ? 'Replace as' : 'Template name'}
+									{overwriteId ? 'Replace as' : 'Template name'}
 								</p>
 								<input
 									type="text"
@@ -353,9 +319,6 @@
 								{#if saveTemplateSaving}
 									<LoaderCircle class="animate-spin" />
 									Saving…
-								{:else if overwritingBuiltin}
-									<Bookmark />
-									Replace {builtinLabel} default
 								{:else if overwriteId}
 									<Bookmark />
 									Replace template
@@ -365,12 +328,10 @@
 								{/if}
 							</Button>
 							<p class="text-[10px] leading-snug text-[rgba(10,10,10,0.38)]">
-								{#if overwritingBuiltin}
-									Becomes the {builtinLabel} starter for your account. New {builtinLabel} decks use this design and copy.
-								{:else if overwriteId}
-									Overwrites that named template and sets it as your {builtinLabel} default.
+								{#if overwriteId}
+									Overwrites that named template on your account only.
 								{:else}
-									Creates a named copy under Carousels. Choose “{builtinLabel} default” to replace the built-in starter.
+									Saves a named template to your account under Carousels.
 								{/if}
 							</p>
 						</div>

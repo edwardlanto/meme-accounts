@@ -6,8 +6,8 @@
 	import { gradientTextFillCss, patternStyleForUrl, wrapClippedFillHtml } from '$lib/components/textOverlayPattern';
 	import { textBgCss, textShadowStyleAttr } from '$lib/textStyleCss';
 	import {
-		CANVAS_TEXT_BOX_TRIM,
-		CANVAS_TEXT_FOCUS_RING,
+		CANVAS_TEXT_OVERLAY_PAD_PX,
+		CANVAS_TEXT_OVERLAY_RING,
 	} from '$lib/studio/canvas-text-chrome';
 
 	interface Props {
@@ -63,8 +63,10 @@
 	const SNAP_IN_PX = 10;
 	const SNAP_OUT_PX = 16;
 	const ps = $derived(Math.max(0.001, pointerScale ?? scale));
-	const MIN_BOX_W = 80;
-	const MIN_BOX_H = 40;
+	const PAD = CANVAS_TEXT_OVERLAY_PAD_PX;
+	const MIN_BOX_W = 80 + PAD * 2;
+	const MIN_BOX_H = 40 + PAD * 2;
+	const HANDLE = 10;
 
 	type OverlayAction = 'drag' | 'resize' | null;
 
@@ -448,6 +450,15 @@
 			{@const isSelected = !!selectedId && selectedId === t.id}
 			{@const css = t.style ?? {}}
 			{@const dims = overlayDims(t)}
+			{@const fontPx = css.fontSize ?? 36}
+			{@const weight = css.fontWeight ?? 600}
+			{@const align = css.align ?? 'left'}
+			{@const lh = css.lineHeight ?? 1.3}
+			{@const tracking =
+				css.letterSpacing != null ? `${css.letterSpacing}em` : '-0.015em'}
+			{@const family = css.fontFamily
+				? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif`
+				: `'Satoshi', var(--font-sans), system-ui, -apple-system, sans-serif`}
 			<div
 				style="
 					position: absolute;
@@ -455,9 +466,17 @@
 					width: {dims.boxW}px;
 					min-height: {Math.max(MIN_BOX_H, Number(t.h) || 0)}px;
 					height: auto;
-					overflow: {isSelected && !isEditing ? 'visible' : 'hidden'};
+					padding: {PAD}px;
+					box-sizing: border-box;
+					overflow: visible;
 					z-index: 60;
 					touch-action: none;
+					border-radius: 4px;
+					{isSelected && !isEditing ? CANVAS_TEXT_OVERLAY_RING : ''}
+					{!isSelected && !isEditing
+						? 'box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);'
+						: ''}
+					{isEditing ? CANVAS_TEXT_OVERLAY_RING : ''}
 					cursor: {interactive
 						? overlayAction === 'resize' && actionOverlayId === t.id
 							? 'default'
@@ -482,17 +501,14 @@
 							padding: 0;
 							margin: 0;
 							box-sizing: border-box;
-							border-radius: 2px;
 							background: transparent;
-							{CANVAS_TEXT_FOCUS_RING}
-							{CANVAS_TEXT_BOX_TRIM}
 							color: {css.color ?? '#FFFFFF'};
-							font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
-							font-size: {css.fontSize ?? 42}px;
-							font-weight: {css.fontWeight ?? 700};
-							text-align: {css.align ?? 'left'};
-							line-height: {css.lineHeight ?? 1.15};
-							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							font-family: {family};
+							font-size: {fontPx}px;
+							font-weight: {weight};
+							text-align: {align};
+							line-height: {lh};
+							letter-spacing: {tracking};
 							{textShadowStyleAttr(css)}
 							{textBgCss(css)}
 							width: 100%;
@@ -506,9 +522,10 @@
 								rows={1}
 								minHeight="0px"
 								showToolbar={false}
+								hugGlyphs={false}
 								defaultColor={highlightColor}
 								fontFamily={css.fontFamily}
-								fontSize={css.fontSize ?? 42}
+								fontSize={fontPx}
 								liveLineHeight={css.lineHeight}
 								lineHeight="inherit"
 								ariaLabel="Text overlay editor"
@@ -534,22 +551,27 @@
 							/>
 						{:else}
 							<textarea
-								rows={3}
+								rows={2}
 								aria-label="Text overlay editor"
-								class="w-full min-h-[2.5em] resize-y border-0 bg-transparent p-0 outline-none"
+								class="w-full resize-none border-0 bg-transparent p-0 outline-none"
 								style="
 									color: {css.color ?? '#FFFFFF'};
-									font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
-									font-size: {css.fontSize ?? 42}px;
-									font-weight: {css.fontWeight ?? 700};
-									text-align: {css.align ?? 'left'};
-									line-height: {css.lineHeight ?? 1.15};
-									letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+									font-family: {family};
+									font-size: {fontPx}px;
+									font-weight: {weight};
+									text-align: {align};
+									line-height: {lh};
+									letter-spacing: {tracking};
 									{textShadowStyleAttr(css)}
-							{textBgCss(css)}
-									{CANVAS_TEXT_BOX_TRIM}
+									{textBgCss(css)}
 									padding: 0;
 									margin: 0;
+									field-sizing: content;
+									min-height: {Math.max(fontPx * lh, 1)}px;
+									overflow: hidden;
+									white-space: pre-wrap;
+									overflow-wrap: break-word;
+									word-break: normal;
 								"
 								value={t.text}
 								oninput={(e) => {
@@ -593,24 +615,22 @@
 							padding: 0;
 							margin: 0;
 							box-sizing: border-box;
-							border-radius: 2px;
 							background: transparent;
-							border: 1px dashed rgba(255,255,255,0.28);
-							{isSelected ? CANVAS_TEXT_FOCUS_RING : ''}
-							{CANVAS_TEXT_BOX_TRIM}
 							color: {css.color ?? '#FFFFFF'};
-							font-family: {css.fontFamily ? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif` : `var(--font-sans), system-ui, -apple-system, sans-serif`};
-							font-size: {css.fontSize ?? 42}px;
-							font-weight: {css.fontWeight ?? 700};
-							text-align: {css.align ?? 'left'};
-							line-height: {css.lineHeight ?? 1.15};
-							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							font-family: {family};
+							font-size: {fontPx}px;
+							font-weight: {weight};
+							text-align: {align};
+							line-height: {lh};
+							letter-spacing: {tracking};
 							{textShadowStyleAttr(css)}
 							{textBgCss(css)}
 							width: 100%;
-							overflow: hidden;
+							overflow: visible;
 							user-select: none;
 							white-space: pre-wrap;
+							overflow-wrap: break-word;
+							word-break: normal;
 						"
 					>
 						{#if parseHighlightMarkup}
@@ -637,14 +657,14 @@
 							data-resize-handle={handle.id}
 							style="
 								position: absolute;
-								left: calc({handle.fx * 100}% - 5px);
-								top: calc({handle.fy * 100}% - 5px);
-								width: 10px;
-								height: 10px;
+								left: calc({handle.fx * 100}% - {HANDLE / 2}px);
+								top: calc({handle.fy * 100}% - {HANDLE / 2}px);
+								width: {HANDLE}px;
+								height: {HANDLE}px;
 								border-radius: 2px;
 								background: #fff;
-								border: 1px solid rgba(0,0,0,0.45);
-								box-shadow: 0 0 0 1px rgba(255,255,255,0.25);
+								border: 1px solid rgba(0,0,0,0.4);
+								box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
 								cursor: {handle.cursor};
 								z-index: 3;
 								touch-action: none;

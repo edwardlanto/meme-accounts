@@ -2180,14 +2180,14 @@
 							border: 1px dashed rgba(255,255,255,0.28);
 							color: {css.color ?? '#FFFFFF'};
 							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'Satoshi', system-ui, -apple-system, sans-serif`};
-							font-size: {css.fontSize ?? 42}px;
-							font-weight: {css.fontWeight ?? 700};
+							font-size: {css.fontSize ?? 36}px;
+							font-weight: {css.fontWeight ?? 600};
 							text-align: {css.align ?? 'left'};
-							line-height: {css.lineHeight ?? 1.15};
-							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '0'};
+							line-height: {css.lineHeight ?? 1.3};
+							letter-spacing: {css.letterSpacing != null ? `${css.letterSpacing}em` : '-0.015em'};
 							{textShadowStyleAttr(css)}
 							{CANVAS_TEXT_BOX_TRIM}
-							overflow: hidden;
+							overflow: visible;
 							user-select: none;
 						"
 					>

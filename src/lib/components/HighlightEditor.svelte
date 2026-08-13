@@ -60,6 +60,12 @@
 		onSelectionChange?: (hasRange: boolean, range?: { start: number; end: number } | null) => void;
 		onFocus?: () => void;
 		onBlur?: (e: FocusEvent) => void;
+		/**
+		 * When true (default), trim half-leading so the editor hugs caps — good for
+		 * display headlines. Free text overlays should pass false so multi-line
+		 * body copy keeps a stable, Canva-like box.
+		 */
+		hugGlyphs?: boolean;
 	}
 
 	let {
@@ -78,6 +84,7 @@
 		typographySnapshot = null,
 		uppercase = false,
 		showToolbar = false,
+		hugGlyphs = true,
 		class: klass = '',
 		ariaLabel,
 		onChange,
@@ -613,8 +620,9 @@
 				padding: 0;
 				margin: 0;
 				border: 0;
-				text-box-trim: trim-both;
-				text-box-edge: cap alphabetic;
+				{hugGlyphs
+					? 'text-box-trim: trim-both; text-box-edge: cap text;'
+					: 'text-box: normal; text-box-trim: none;'}
 				{typographySnapshot
 					? `
 						line-height: ${resolvedLineHeight};

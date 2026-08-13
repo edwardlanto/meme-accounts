@@ -1,9 +1,9 @@
 <script lang="ts">
 	/**
-	 * First-run identity sheet — username + handle for Text Carousel /
-	 * Creator hook (News branding uses logo, not a text byline).
+	 * First-run identity sheet — username, handle, and logo for brand kit.
 	 */
 	import { onMount } from 'svelte';
+	import { ImagePlus, X } from 'lucide-svelte';
 	import {
 		hydrateBrandKit,
 		loadBrandKit,
@@ -22,10 +22,10 @@
 	let open = $state(false);
 	let name = $state('');
 	let handle = $state('');
+	let logoUrl = $state('');
+	let logoInput = $state<HTMLInputElement | null>(null);
 	let error = $state('');
 
-	const previewName = $derived(name.trim() || 'YOUR NAME');
-	const previewHandle = $derived(normalizeBrandHandle(handle) || '@yourhandle');
 	const canSave = $derived(name.trim().length >= 2);
 
 	onMount(() => {
@@ -39,9 +39,38 @@
 			}
 			name = kit.displayName;
 			handle = kit.handle;
+			logoUrl = String(kit.logoUrl ?? '').trim();
 			open = true;
 		})();
 	});
+
+	function onLogoPicked(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		input.value = '';
+		if (!file || !file.type.startsWith('image/')) {
+			error = 'Choose an image file for your logo.';
+			return;
+		}
+		error = '';
+		const reader = new FileReader();
+		reader.onload = () => {
+			const next = typeof reader.result === 'string' ? reader.result : '';
+			if (!next.startsWith('data:image/')) {
+				error = 'Could not read that logo — try a PNG or JPG.';
+				return;
+			}
+			logoUrl = next;
+		};
+		reader.onerror = () => {
+			error = 'Could not read that logo — try again.';
+		};
+		reader.readAsDataURL(file);
+	}
+
+	function clearLogo() {
+		logoUrl = '';
+	}
 
 	function submit() {
 		const displayName = name.trim();
@@ -51,11 +80,14 @@
 		}
 		error = '';
 		const nextHandle = normalizeBrandHandle(handle);
+		const nextLogo = logoUrl.trim();
 		const kit = loadBrandKit(userId);
 		const saved: BrandKitSettings = {
 			...kit,
 			displayName,
 			handle: nextHandle,
+			logoUrl: nextLogo,
+			sourceLabelMode: nextLogo ? 'logo' : kit.sourceLabelMode,
 			onboardingComplete: true,
 		};
 		saveBrandKit(userId, saved);
@@ -70,19 +102,6 @@
 		<div class="ob-sheet">
 			<p class="ob-kicker">First, your identity</p>
 			<h2 id="ob-title" class="ob-title">Who should appear on every slide?</h2>
-			<p class="ob-lede">
-				Username and handle show on Text Carousel and Creator hooks. Add your logo in Branding
-				for News slides. You can change these later in Branding or Settings.
-			</p>
-
-			<div class="ob-preview" aria-hidden="true">
-				<div class="ob-rule">
-					<span class="ob-rule-line"></span>
-					<span class="ob-rule-name">{previewName}</span>
-					<span class="ob-rule-line"></span>
-				</div>
-				<p class="ob-preview-handle">{previewHandle}</p>
-			</div>
 
 			<form
 				class="ob-form"
@@ -111,6 +130,45 @@
 					autocomplete="username"
 					maxlength={48}
 				/>
+
+				<p class="ob-label" id="ob-logo-label">Logo</p>
+				<input
+					bind:this={logoInput}
+					type="file"
+					accept="image/*"
+					class="sr-only"
+					aria-labelledby="ob-logo-label"
+					onchange={onLogoPicked}
+				/>
+				{#if logoUrl}
+					<div class="ob-logo-row">
+						<img class="ob-logo-preview" src={logoUrl} alt="Brand logo preview" />
+						<div class="ob-logo-actions">
+							<button type="button" class="ob-logo-btn" onclick={() => logoInput?.click()}>
+								Replace
+							</button>
+							<button type="button" class="ob-logo-btn is-quiet" onclick={clearLogo}>
+								<X size={14} strokeWidth={2.2} />
+								Remove
+							</button>
+						</div>
+					</div>
+				{:else}
+					<button
+						type="button"
+						class="ob-logo-drop"
+						onclick={() => logoInput?.click()}
+					>
+						<span class="ob-logo-icon" aria-hidden="true">
+							<ImagePlus size={18} strokeWidth={2} />
+						</span>
+						<span class="ob-logo-copy">
+							<span class="ob-logo-title">Upload logo</span>
+							<span class="ob-logo-sub">PNG or JPG · used on News slides</span>
+						</span>
+					</button>
+				{/if}
+
 				{#if error}
 					<p class="ob-error">{error}</p>
 				{/if}
@@ -154,54 +212,12 @@
 		color: #b0892e;
 	}
 	.ob-title {
-		margin: 0 0 10px;
+		margin: 0 0 22px;
 		font-family: 'Satoshi', sans-serif;
 		font-size: 26px;
 		font-weight: 800;
 		letter-spacing: -0.035em;
 		line-height: 1.15;
-	}
-	.ob-lede {
-		margin: 0 0 22px;
-		font-size: 13px;
-		line-height: 1.5;
-		color: rgba(20, 18, 15, 0.62);
-	}
-	.ob-preview {
-		margin: 0 0 22px;
-		padding: 18px 16px 14px;
-		border-radius: 14px;
-		background: #111110;
-	}
-	.ob-rule {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.ob-rule-line {
-		flex: 1;
-		height: 2px;
-		background: #e8c547;
-		opacity: 0.92;
-	}
-	.ob-rule-name {
-		font-family: 'Satoshi', sans-serif;
-		font-size: 13px;
-		font-weight: 800;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: #e8c547;
-		white-space: nowrap;
-		max-width: 70%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.ob-preview-handle {
-		margin: 10px 0 0;
-		text-align: center;
-		font-size: 12px;
-		font-style: italic;
-		color: rgba(255, 255, 255, 0.45);
 	}
 	.ob-form {
 		display: flex;
@@ -228,8 +244,91 @@
 		outline: none;
 	}
 	.ob-input:focus {
-		border-color: #c4a035;
-		box-shadow: 0 0 0 3px rgba(232, 197, 71, 0.28);
+		border-color: #7bf1a8;
+		box-shadow: 0 0 0 3px rgba(123, 241, 168, 0.28);
+	}
+	.ob-logo-drop {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		width: 100%;
+		margin: 0 0 14px;
+		padding: 12px 14px;
+		border-radius: 12px;
+		border: 1px dashed rgba(20, 18, 15, 0.18);
+		background: #fffdf8;
+		text-align: left;
+		cursor: pointer;
+		color: inherit;
+	}
+	.ob-logo-drop:hover {
+		border-color: rgba(123, 241, 168, 0.8);
+		background: color-mix(in oklab, #7bf1a8 10%, #fffdf8);
+	}
+	.ob-logo-icon {
+		display: grid;
+		place-items: center;
+		width: 40px;
+		height: 40px;
+		border-radius: 10px;
+		background: color-mix(in oklab, #7bf1a8 22%, #fff);
+		color: #0f0f10;
+		flex-shrink: 0;
+	}
+	.ob-logo-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.ob-logo-title {
+		font-size: 13px;
+		font-weight: 700;
+	}
+	.ob-logo-sub {
+		font-size: 11px;
+		color: rgba(20, 18, 15, 0.5);
+	}
+	.ob-logo-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin: 0 0 14px;
+		padding: 10px 12px;
+		border-radius: 12px;
+		border: 1px solid rgba(20, 18, 15, 0.1);
+		background: #fffdf8;
+	}
+	.ob-logo-preview {
+		width: 48px;
+		height: 48px;
+		border-radius: 10px;
+		object-fit: contain;
+		background: #111110;
+		flex-shrink: 0;
+	}
+	.ob-logo-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.ob-logo-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 32px;
+		padding: 0 10px;
+		border-radius: 8px;
+		border: 1px solid rgba(20, 18, 15, 0.12);
+		background: #fff;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		color: #14120f;
+	}
+	.ob-logo-btn.is-quiet {
+		background: transparent;
+		color: rgba(20, 18, 15, 0.55);
 	}
 	.ob-error {
 		margin: -6px 0 12px;
@@ -241,8 +340,8 @@
 		height: 44px;
 		border: 0;
 		border-radius: 999px;
-		background: #111110;
-		color: #f7f4ee;
+		background: #7bf1a8;
+		color: #0f0f10;
 		font-size: 13px;
 		font-weight: 700;
 		letter-spacing: 0.02em;
@@ -253,6 +352,6 @@
 		cursor: not-allowed;
 	}
 	.ob-go:not(:disabled):hover {
-		background: #2a2824;
+		background: #a7f7c6;
 	}
 </style>

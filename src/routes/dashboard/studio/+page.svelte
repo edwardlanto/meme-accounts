@@ -4345,7 +4345,7 @@ import JSZip from 'jszip';
 			if (!String(newsSubtextBySlide[idx] ?? '').trim()) {
 				pushUndo('news', idx);
 				newsSubtextBySlide = newsSubtextBySlide.map((x, i) =>
-					i === idx ? 'put a paragraph here' : x,
+					i === idx ? 'Add your text' : x,
 				);
 				selectedText = 'newsSubtext';
 				selectedTextOverlayId = null;
@@ -4358,12 +4358,22 @@ import JSZip from 'jszip';
 		const current = (slideTextOverlaysByTemplate[tpl] ?? [])[idx] ?? [];
 		const next: TextOverlay = {
 			id: crypto.randomUUID(),
-			text: 'put a paragraph here',
-			x: 80,
-			y: 260,
-			w: 520,
-			h: 64,
-			style: { color: '#FFFFFF', fontSize: 42, fontWeight: 800, align: 'left', lineHeight: 1.1 },
+			text: 'Add your text',
+			x: 72,
+			y: 280,
+			// Hug the placeholder on one line (Canva-style); drag side handles to wrap.
+			w: 320,
+			h: 76,
+			style: {
+				color: '#FFFFFF',
+				fontFamily: 'Satoshi',
+				fontSize: 36,
+				fontWeight: 600,
+				align: 'left',
+				lineHeight: 1.3,
+				letterSpacing: -0.015,
+				textShadow: '0 1px 3px rgba(0,0,0,0.45)',
+			},
 		};
 		setSlideTextOverlays(idx, [...current, next], tpl);
 		selectedTextOverlayId = next.id;
@@ -8130,17 +8140,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			(nameOverride ?? studioTemplateName).trim() ||
 			`Studio template ${new Date().toLocaleDateString()}`;
 		const overwriteId = String(opts?.overwriteId ?? '').trim();
+		// `__builtin__` was the old “replace starter” path — Save template is per-customer only.
 		if (overwriteId === BUILTIN_TEMPLATE_OVERWRITE_ID) {
-			studioTemplateSaving = true;
-			studioTemplateFeedback = '';
-			try {
-				await persistActiveTemplateAsAccountDefault();
-				const label = TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'template';
-				studioTemplateFeedback = `Saved as your ${label} default`;
-			} finally {
-				studioTemplateSaving = false;
-			}
-			return;
+			throw new Error('Use the DEV chip to replace the product-wide template default.');
 		}
 		studioTemplateName = name;
 		studioTemplateSaving = true;
@@ -8260,14 +8262,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					const msg = e instanceof Error ? e.message : String(e);
 					r2Note = ` R2 error: ${msg}. Check .env R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET — restart dev after changes.`;
 				}
-			}
-		}
-		if (overwriteId) {
-			try {
-				await persistActiveTemplateAsAccountDefault();
-			} catch (e: unknown) {
-				const msg = e instanceof Error ? e.message : 'Could not set template default';
-				r2Note = `${r2Note} Default override: ${msg}`;
 			}
 		}
 		studioTemplateSaving = false;
@@ -12705,6 +12699,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		const node = exportRef;
 		if (node && slides.length > 0) {
 			const prevRaster = canvasRasterSlide;
+			filmstripBulkCapturing = true;
 			try {
 				for (let i = 0; i < slides.length; i++) {
 					canvasRasterSlide = i;
@@ -12724,6 +12719,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					}
 				}
 			} finally {
+				filmstripBulkCapturing = false;
 				canvasRasterSlide = prevRaster ?? null;
 				await tick();
 			}
@@ -13470,7 +13466,11 @@ showSubjectCutout={canvasShowCutout}
 					interactive={canvasInteractive}
 					overlays={canvasOverlays}
 					resolveSrc={resolveMediaUrl}
-					textOverlays={canvasTextOverlays}
+					/* Live preview: StudioTextOverlays paints free text (Canva chrome).
+					   Export/filmstrip rasterize NewsTemplate alone, so feed overlays then. */
+					textOverlays={
+						exporting || exportingAll || filmstripBulkCapturing ? canvasTextOverlays : []
+					}
 					headlineStyle={canvasHeadlineStyle}
 					subtextStyle={canvasNewsSubtextStyle}
 					sourceStyle={canvasSourceStyle}
@@ -15906,7 +15906,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				saveStudioTemplateNamed(name, opts),
 			onListSavedTemplates: () => listSavedStudioTemplates(),
 			defaultTemplateName: `Template · ${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'Studio'}`,
-			builtinTemplateLabel: TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? 'News',
 			onPost: async () => {
 				const n = await exportAllSlidesToDraft();
 				if (!n) {
