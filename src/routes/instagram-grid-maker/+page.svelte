@@ -27,34 +27,52 @@
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'WebApplication',
-		name: 'Meme Accounts — Instagram Grid Maker',
+		name: 'Meme Accounts: Instagram Grid Maker',
 		applicationCategory: 'DesignApplication',
 		operatingSystem: 'Web',
 		description:
-			'Free Instagram grid maker. Plan a cohesive feed, design square and Feed posts, and export a polished profile grid from Meme Accounts.',
+			'Free Instagram grid maker. Plan a cohesive feed, design square and Feed posts, and export a profile grid that reads as one layout.',
 		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+	};
+
+	const faqItems: [string, string][] = [
+		['Is this free?', 'Yes to try. Sign in and get one trial export. Pro unlocks unlimited exports and AI.'],
+		['Is this a 3x3 planner?', 'You design each post in Studio at Instagram size, then arrange the live grid when you publish in order.'],
+		['What is the difference between a carousel and a grid?', 'A carousel is one multi-slide post. Grid maker plans the mosaic your whole profile makes. Both use the same studio.'],
+		['Can I schedule posts from here?', 'Yes. Export the tiles or send them straight to the post scheduler after connecting your Instagram account.'],
+	];
+
+	const faqJsonLd = {
+		'@context': 'https://schema.org',
+		'@type': 'FAQPage',
+		mainEntity: faqItems.map(([q, a]) => ({
+			'@type': 'Question',
+			name: q,
+			acceptedAnswer: { '@type': 'Answer', text: a },
+		})),
 	};
 </script>
 
 <svelte:head>
-	<title>Instagram Grid Maker — Free Feed Grid Planner &amp; Post Designer | Meme Accounts</title>
+	<title>Instagram Grid Maker: Free Feed Grid Planner &amp; Post Designer | Meme Accounts</title>
 	<meta
 		name="description"
-		content="Make a cohesive Instagram feed grid. Design square and 4:5 posts, align a 3×3 profile look, export PNGs, and schedule. Free trial — then unlimited on Pro."
+		content="Plan an Instagram feed grid that actually looks planned. Design square and 4:5 posts, line up a 3x3 profile layout, export PNGs, and schedule. Free trial, then unlimited on Pro."
 	/>
 	<meta
 		name="keywords"
 		content="instagram grid maker, instagram feed planner, profile grid maker, 3x3 instagram grid, feed aesthetic maker, meme accounts"
 	/>
 	<link rel="canonical" href="https://memeaccounts.com/instagram-grid-maker" />
-	<meta property="og:title" content="Instagram Grid Maker — Meme Accounts" />
+	<meta property="og:title" content="Instagram Grid Maker: Meme Accounts" />
 	<meta
 		property="og:description"
-		content="Plan and design a cohesive Instagram profile grid. Square &amp; Feed sizes, templates, AI backgrounds — free trial."
+		content="Plan and design an Instagram profile grid that reads as one layout. Square and Feed sizes, templates, AI backgrounds, free trial."
 	/>
 	<meta property="og:image" content="https://memeaccounts.com/images/seo/carousel-maker-studio.png" />
 	<meta property="og:type" content="website" />
 	{@html `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`}
+	{@html `<script type="application/ld+json">${JSON.stringify(faqJsonLd)}</script>`}
 </svelte:head>
 
 <div class="page">
@@ -68,16 +86,16 @@
 			Design a feed that looks <span class="accent">intentional</span>
 		</h1>
 		<p class="lead">
-			Build posts that tile into a clean profile grid - square or Feed 4:5, shared templates and
-			palette, then export or schedule. Pair a grid with
+			Every post gets built to tile into one clean profile grid: square or Feed 4:5, same
+			templates, same palette, then export or schedule. Pair a grid with
 			<a href="/instagram-carousel-maker">Instagram carousels</a>
 			or a
 			<a href="/fake-tweet-maker">tweet graphic</a>
-			when a tile needs a hook. Public page; sign in to open Grid Studio (1 free trial export).
+			when a single tile needs a hook. Public page, sign in to open Grid Studio for one free trial export.
 		</p>
 		<div class="cta-row">
 			<a href={studioHref} class="cta-primary">
-				{signedIn ? 'Open grid studio' : 'Try free — sign up'}
+				{signedIn ? 'Open grid studio' : 'Try free, sign up'}
 				<ArrowRight size={18} />
 			</a>
 			<a href="/pricing" class="cta-ghost">See plans</a>
@@ -92,17 +110,17 @@
 				</div>
 			{/each}
 		</figure>
-		<p class="shot-caption">A 3×3 profile grid — plan tiles in Studio, then publish in order.</p>
+		<p class="shot-caption">A 3x3 profile grid, planned tile by tile in Studio, then published in order.</p>
 	</section>
 
 	<section class="features container">
 		<h2>Made for profile grids</h2>
 		<div class="feat-grid">
 			{#each [
-				{ icon: Grid3x3, title: 'Think in tiles', body: 'Design each post so the profile read as one composition — not nine random squares.' },
-				{ icon: Ratio, title: 'Square & Feed', body: 'Switch 1:1 and 4:5 without rebuilding. Match what Instagram actually crops.' },
+				{ icon: Grid3x3, title: 'Think in tiles', body: 'Design each post so the profile reads as one composition, not nine random squares.' },
+				{ icon: Ratio, title: 'Square & Feed', body: 'Switch between 1:1 and 4:5 without rebuilding. Matches what Instagram actually crops.' },
 				{ icon: Image, title: 'Shared assets', body: 'Reuse brand photos, stickers, and AI backgrounds across every tile in the set.' },
-				{ icon: Sparkles, title: 'Templates that ship', body: 'News, quote, blank, and more - same dock tools as the rest of Meme Accounts.' },
+				{ icon: Sparkles, title: 'Templates that ship', body: 'News, quote, blank, and more, using the same dock tools as the rest of Meme Accounts.' },
 			] as f}
 				<article class="feat">
 					<f.icon size={18} />
@@ -126,8 +144,8 @@
 		<div class="strip-copy">
 			<h2>One studio for the whole grid</h2>
 			<p>
-				Grid Studio is Meme Accounts focused for feed posts - filmstrip for multi-slide tiles,
-				library assets, and export ready for a cohesive profile.
+				Grid Studio is Meme Accounts tuned for feed posts: a filmstrip for multi-slide tiles, a
+				shared asset library, and exports sized for a profile that hangs together.
 			</p>
 			<ul>
 				{#each ['Square or Feed aspect in one click', 'Asset library for repeating brand art', 'Export PNG or send to scheduler'] as item}
@@ -139,12 +157,7 @@
 
 	<section class="faq container">
 		<h2>Instagram grid maker FAQ</h2>
-		{#each [
-			['Is this free?', 'Yes to try — sign in and get one trial export. Pro unlocks unlimited exports and AI.'],
-			['Is this a 3×3 planner?', 'You design posts in Studio sized for Instagram; arrange the live profile grid when you publish in order.'],
-			['Carousel vs grid?', 'Carousels are multi-slide posts. Grid maker is for the profile mosaic - both use the same studio.'],
-			['Can I schedule posts?', 'Yes. Export or send to the post scheduler after connecting Instagram.'],
-		] as [q, a]}
+		{#each faqItems as [q, a]}
 			<details class="faq-item">
 				<summary>{q}</summary>
 				<p>{a}</p>

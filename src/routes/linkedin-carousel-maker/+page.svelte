@@ -15,34 +15,52 @@
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'WebApplication',
-		name: 'Meme Accounts — LinkedIn Carousel Maker',
+		name: 'Meme Accounts: LinkedIn Carousel Maker',
 		applicationCategory: 'DesignApplication',
 		operatingSystem: 'Web',
 		description:
-			'Free LinkedIn carousel maker. Build multi-slide document posts from news, templates, and AI — export PNG for LinkedIn carousels and PDFs.',
+			'Free LinkedIn carousel maker. Build multi-slide document posts from news, templates, and AI, then export PNG for LinkedIn carousels and PDFs.',
 		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+	};
+
+	const faqItems: [string, string][] = [
+		['Is this free?', 'Yes to try. Sign in and get one trial export. Pro unlocks unlimited carousels and AI.'],
+		['Can I post directly to LinkedIn?', 'Export PNGs for a document carousel, or schedule after connecting LinkedIn under Settings then Integrations.'],
+		['What size works best?', 'Square 1:1 and Feed 4:5 both work for LinkedIn document posts. Switch formats in Studio without rebuilding the deck.'],
+		['How is this different from Canva?', 'Built for news and creator speed: fetch, deck, export. Not a general design suite.'],
+	];
+
+	const faqJsonLd = {
+		'@context': 'https://schema.org',
+		'@type': 'FAQPage',
+		mainEntity: faqItems.map(([q, a]) => ({
+			'@type': 'Question',
+			name: q,
+			acceptedAnswer: { '@type': 'Answer', text: a },
+		})),
 	};
 </script>
 
 <svelte:head>
-	<title>LinkedIn Carousel Maker — Free Multi-Slide Post Generator | Meme Accounts</title>
+	<title>LinkedIn Carousel Maker: Free Multi-Slide Post Generator | Meme Accounts</title>
 	<meta
 		name="description"
-		content="Make LinkedIn carousels fast. Hook → slides → CTA decks, news-to-post, Square & Feed formats, AI backgrounds. Sign in for a free trial export."
+		content="Make LinkedIn carousels fast. Hook to slides to CTA decks, news-to-post, Square and Feed formats, AI backgrounds. Sign in for a free trial export."
 	/>
 	<meta
 		name="keywords"
 		content="linkedin carousel maker, linkedin carousel generator, linkedin document post, multi slide linkedin post, meme accounts"
 	/>
 	<link rel="canonical" href="https://memeaccounts.com/linkedin-carousel-maker" />
-	<meta property="og:title" content="LinkedIn Carousel Maker — Meme Accounts" />
+	<meta property="og:title" content="LinkedIn Carousel Maker: Meme Accounts" />
 	<meta
 		property="og:description"
-		content="Design multi-slide LinkedIn carousels with news, templates, and AI. Free trial — then unlimited on Pro."
+		content="Design multi-slide LinkedIn carousels with news, templates, and AI. Free trial, then unlimited on Pro."
 	/>
 	<meta property="og:image" content="https://memeaccounts.com/images/seo/carousel-maker-studio.png" />
 	<meta property="og:type" content="website" />
 	{@html `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`}
+	{@html `<script type="application/ld+json">${JSON.stringify(faqJsonLd)}</script>`}
 </svelte:head>
 
 <div class="page">
@@ -56,16 +74,17 @@
 			LinkedIn carousel maker for <span class="accent">document posts</span>
 		</h1>
 		<p class="lead">
-			Build Hook → slides → CTA decks that perform on LinkedIn. Pull news, swap templates, pick
-			Square or Feed sizes - then export PNGs for document carousels. Same studio as
+			Build Hook, slides, and CTA decks that actually get read on LinkedIn. Pull news, swap
+			templates, pick Square or Feed sizes, then export PNGs for document carousels. Same studio
+			as
 			<a href="/instagram-carousel-maker">Instagram carousels</a>
 			and the
 			<a href="/fake-tweet-maker">tweet maker</a>.
-			Public page; sign in to use the studio (1 free trial export).
+			Public page, sign in to use the studio for one free trial export.
 		</p>
 		<div class="cta-row">
 			<a href={studioHref} class="cta-primary">
-				{signedIn ? 'Open carousel studio' : 'Try free — sign up'}
+				{signedIn ? 'Open carousel studio' : 'Try free, sign up'}
 				<ArrowRight size={18} />
 			</a>
 			<a href="/pricing" class="cta-ghost">See plans</a>
@@ -82,16 +101,16 @@
 				loading="eager"
 			/>
 		</figure>
-		<p class="shot-caption">Real product UI — dock tools, News template, aspect formats, slide strip.</p>
+		<p class="shot-caption">Real product UI: dock tools, News template, aspect formats, slide strip.</p>
 	</section>
 
 	<section class="features container">
 		<h2>Built for LinkedIn carousels</h2>
 		<div class="feat-grid">
 			{#each [
-				{ icon: Briefcase, title: 'News → thought leadership', body: 'Fetch a story, auto-fill Hook + body slides, pull a matching image for professional posts.' },
-				{ icon: Ratio, title: 'Square & Feed sizes', body: 'Export at Square 1:1 or Feed 4:5 — the formats LinkedIn document carousels expect.' },
-				{ icon: Layers, title: 'Hook · Slides · CTA', body: 'Filmstrip for every panel — reorder, duplicate, and end with a clear follow or CTA slide.' },
+				{ icon: Briefcase, title: 'News to thought leadership', body: 'Fetch a story, auto-fill Hook and body slides, pull a matching image for a professional post.' },
+				{ icon: Ratio, title: 'Square & Feed sizes', body: 'Export at Square 1:1 or Feed 4:5, the formats LinkedIn document carousels expect.' },
+				{ icon: Layers, title: 'Hook · Slides · CTA', body: 'Filmstrip for every panel: reorder, duplicate, and end with a clear follow or CTA slide.' },
 				{ icon: Sparkles, title: 'AI backgrounds', body: 'Generate or swap slide art from the dock without leaving the canvas.' },
 			] as f}
 				<article class="feat">
@@ -116,8 +135,8 @@
 		<div class="strip-copy">
 			<h2>See every slide at once</h2>
 			<p>
-				The filmstrip keeps Hook, body slides, CTA, and Add aligned — so you always know what
-				you’re shipping before you export to LinkedIn.
+				The filmstrip keeps Hook, body slides, CTA, and Add aligned, so you always know what
+				you're shipping before you export to LinkedIn.
 			</p>
 			<ul>
 				{#each ['Drag to reorder', 'Brand kit on every slide', 'Schedule to LinkedIn after connect'] as item}
@@ -129,12 +148,7 @@
 
 	<section class="faq container">
 		<h2>LinkedIn carousel maker FAQ</h2>
-		{#each [
-			['Is this free?', 'Yes to try — sign in and get one trial export. Pro unlocks unlimited carousels and AI.'],
-			['Can I post directly to LinkedIn?', 'Yes. Export PNGs for a document carousel, or schedule after connecting LinkedIn in Settings → Integrations.'],
-			['What size works best?', 'Square 1:1 and Feed 4:5 both work well for LinkedIn document posts. Switch formats in Studio without rebuilding the deck.'],
-			['How is this different from Canva?', 'Built for news + creator velocity: fetch → deck → export, not a general design suite.'],
-		] as [q, a]}
+		{#each faqItems as [q, a]}
 			<details class="faq-item">
 				<summary>{q}</summary>
 				<p>{a}</p>

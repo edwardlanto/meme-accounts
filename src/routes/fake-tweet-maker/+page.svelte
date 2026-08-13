@@ -38,7 +38,7 @@
 	const jsonLd = {
 		'@context': 'https://schema.org',
 		'@type': 'WebApplication',
-		name: 'Meme Accounts Fake Tweet Maker',
+		name: 'Meme Accounts: Fake Tweet Maker',
 		applicationCategory: 'DesignApplication',
 		operatingSystem: 'Web',
 		description:
@@ -48,6 +48,23 @@
 			price: '0',
 			priceCurrency: 'USD',
 		},
+	};
+
+	const faqItems: [string, string][] = [
+		['Is this a real Twitter account?', 'No. Meme Accounts generates static graphics only. Nothing is posted to X unless you publish it yourself.'],
+		['Can I use these for commercial content?', 'Yes, subject to our Terms and the rules of the platform where you publish. Do not use it to impersonate real people deceptively.'],
+		['How does the free trial work?', 'After signing in, you can export one tweet graphic. Upgrade to Pro for unlimited exports and full studio access.'],
+		['Does this work for X threads?', 'Yes. Use Tweet Studio in the dashboard for multi-slide tweet carousels.'],
+	];
+
+	const faqJsonLd = {
+		'@context': 'https://schema.org',
+		'@type': 'FAQPage',
+		mainEntity: faqItems.map(([q, a]) => ({
+			'@type': 'Question',
+			name: q,
+			acceptedAnswer: { '@type': 'Answer', text: a },
+		})),
 	};
 
 	async function exportPng() {
@@ -96,23 +113,25 @@
 </script>
 
 <svelte:head>
-	<title>Fake Tweet Maker — Free Twitter / X Post Generator | Meme Accounts</title>
+	<title>Fake Tweet Maker: Free Twitter / X Post Generator | Meme Accounts</title>
 	<meta
 		name="description"
-		content="Make fake tweets for Instagram carousels and memes. Free tweet maker with realistic Twitter/X layout — sign in for 1 trial export, then upgrade for unlimited."
+		content="Make fake tweets for Instagram carousels and memes. Free tweet maker with realistic Twitter/X layout. Sign in for 1 trial export, then upgrade for unlimited."
 	/>
 	<meta
 		name="keywords"
 		content="fake tweet maker, tweet maker, twitter post generator, fake twitter screenshot, x post maker, tweet template"
 	/>
 	<link rel="canonical" href="https://memeaccounts.com/fake-tweet-maker" />
-	<meta property="og:title" content="Fake Tweet Maker — Meme Accounts" />
+	<meta property="og:title" content="Fake Tweet Maker: Meme Accounts" />
 	<meta
 		property="og:description"
 		content="Design realistic fake tweets for social content. Free trial export, then upgrade for unlimited."
 	/>
+	<meta property="og:image" content="https://memeaccounts.com/images/seo/carousel-maker-studio.png" />
 	<meta property="og:type" content="website" />
 	{@html `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`}
+	{@html `<script type="application/ld+json">${JSON.stringify(faqJsonLd)}</script>`}
 </svelte:head>
 
 <div class="page">
@@ -180,7 +199,7 @@
 						{#if trialRemaining > 0}
 							<Sparkles size={14} /> {trialRemaining} free export left on your trial
 						{:else}
-							Trial used — <a href="/pricing">upgrade</a> for unlimited exports
+							Trial used. <a href="/pricing">Upgrade</a> for unlimited exports
 						{/if}
 					</p>
 				{/if}
@@ -231,7 +250,7 @@
 		<h2>Why creators use our tweet maker</h2>
 		<div class="seo-grid">
 			{#each [
-				['Realistic Twitter / X layout', 'Pixel-faithful tweet cards with replies — perfect for carousel slide 1.'],
+				['Realistic Twitter / X layout', 'Pixel-faithful tweet cards with replies, built for carousel slide one.'],
 				['Built for meme & commentary pages', 'Turn viral tweet formats into scroll-stopping Instagram content.'],
 				['Export-ready PNGs', '1080×1350 output sized for Reels, Stories, and feed carousels.'],
 				['Try before you upgrade', 'One free export on signup. Unlimited with Pro or Agency.'],
@@ -245,12 +264,7 @@
 
 		<div class="faq">
 			<h2>Fake tweet maker FAQ</h2>
-			{#each [
-				['Is this a real Twitter account?', 'No - Meme Accounts generates static graphics only. Nothing is posted to X unless you publish separately.'],
-				['Can I use these for commercial content?', 'Yes, subject to our Terms and the platform rules where you publish. Do not impersonate real people deceptively.'],
-				['How does the free trial work?', 'After signing in, you can export one tweet graphic. Upgrade to Pro for unlimited exports and full studio access.'],
-				['Does this work for X (Twitter) threads?', 'Yes — use Tweet Studio in the dashboard for multi-slide tweet carousels.'],
-			] as [q, a]}
+			{#each faqItems as [q, a]}
 				<details class="faq-item">
 					<summary>{q}</summary>
 					<p>{a}</p>

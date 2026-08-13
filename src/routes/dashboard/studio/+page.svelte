@@ -7366,6 +7366,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		textPanelOffsetY = layout.textPanelOffsetY;
 		shadowHeight = layout.shadowHeight;
 		shadowStrength = layout.shadowStrength;
+		if ('shadowCurve' in layout && layout.shadowCurve != null) {
+			shadowCurve = normalizeBottomShadowCurve((layout as { shadowCurve?: unknown }).shadowCurve);
+		}
+		if (typeof (layout as { shadowAutoFit?: unknown }).shadowAutoFit === 'boolean') {
+			shadowAutoFit = !!(layout as { shadowAutoFit: boolean }).shadowAutoFit;
+		}
 		circleBorderColor = layout.circleBorderColor;
 		circle2BorderColor = layout.circle2BorderColor;
 		circleShadow = layout.circleShadow;
@@ -7899,6 +7905,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (typeof layout.textPanelOffsetY === 'number') textPanelOffsetY = layout.textPanelOffsetY;
 			if (typeof layout.shadowHeight === 'number') shadowHeight = layout.shadowHeight;
 			if (typeof layout.shadowStrength === 'number') shadowStrength = layout.shadowStrength;
+			if ((layout as { shadowCurve?: unknown }).shadowCurve != null) {
+				shadowCurve = normalizeBottomShadowCurve((layout as { shadowCurve?: unknown }).shadowCurve);
+			}
+			if (typeof (layout as { shadowAutoFit?: unknown }).shadowAutoFit === 'boolean') {
+				shadowAutoFit = !!(layout as { shadowAutoFit: boolean }).shadowAutoFit;
+			}
 			if (typeof layout.circleBorderColor === 'string') circleBorderColor = layout.circleBorderColor;
 			if (typeof layout.circle2BorderColor === 'string') circle2BorderColor = layout.circle2BorderColor;
 			if (layout.circleShadow) circleShadow = normalizeCircleShadow(layout.circleShadow);
