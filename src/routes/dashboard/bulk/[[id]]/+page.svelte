@@ -52,6 +52,7 @@
 		showsHaveContent,
 		touchBulkWorkspaceSession,
 		archiveBulkShowsToHistory,
+		rematerializeBulkShows,
 	} from '$lib/studio/bulk-workspace';
 	import type { PageData } from './$types';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
@@ -113,6 +114,10 @@
 		normalizeHighlightPatternName,
 	} from '$lib/highlight';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
 	import {
 		clearPromptHistory,
 		loadPromptHistory,
@@ -320,6 +325,19 @@
 		}
 	}
 
+	async function resignShowsMedia(source: BulkShow[]): Promise<BulkShow[]> {
+		if (!source.length) return source;
+		try {
+			return await rematerializeBulkShows(source, async (key) => {
+				const { url } = await r2SignRead({ key });
+				return url;
+			});
+		} catch (e) {
+			console.warn('[bulk] rematerialize media failed', e);
+			return source;
+		}
+	}
+
 	async function finishWorkspaceHydrate(opts?: { skeletonCount?: number; resumeUrl?: boolean }) {
 		workspaceHydrated = true;
 		const holdMs = opts?.skeletonCount != null && opts.skeletonCount > 0 ? 280 : 160;
@@ -514,10 +532,12 @@
 			const cloud = data.cloudWorkspace;
 			if (cloud?.shows?.length) {
 				cloudWorkspaceId = cloud.id;
-				shows = cloud.shows.map((s) => ({
-					...s,
-					slides: (s.slides ?? []).map((sl) => ({ ...sl })),
-				}));
+				shows = await resignShowsMedia(
+					cloud.shows.map((s) => ({
+						...s,
+						slides: (s.slides ?? []).map((sl) => ({ ...sl })),
+					})),
+				);
 				const showParam = $page.url.searchParams.get('show');
 				selectedShowId =
 					showParam && shows.some((s) => s.id === showParam)
@@ -581,7 +601,7 @@
 			// Bare /dashboard/bulk → placeholders. Resume only with ?resume=1 (Studio / F5 mid-edit).
 			const wantResume = $page.url.searchParams.get('resume') === '1';
 			if (wantResume && saved?.shows?.length) {
-				shows = saved.shows;
+				shows = await resignShowsMedia(saved.shows);
 				selectedShowId =
 					saved.selectedShowId && saved.shows.some((s) => s.id === saved.selectedShowId)
 						? saved.selectedShowId
@@ -819,8 +839,8 @@
 			};
 			setClipProjectContext(importResult);
 			if (project.bulkShows?.length) {
-				shows = project.bulkShows;
-				selectedShowId = project.bulkShows[0]?.id ?? null;
+				shows = await resignShowsMedia(project.bulkShows);
+				selectedShowId = shows[0]?.id ?? null;
 			} else {
 				onClipImportComplete(importResult, { skipContext: true });
 			}
@@ -1836,21 +1856,22 @@
 							{/if}
 						</div>
 
-						<div class="show-side">
-							<div class="show-head">
+						<div class="show-side flex min-w-0 flex-1 flex-col gap-3">
+							<div class="flex min-w-0 items-center gap-2">
 								<Button
 									type="button"
 									variant="outline"
 									size="icon-sm"
-									class="show-index tabular-nums"
+									class="tabular-nums"
 									onclick={() => selectShow(show.id)}
 								>
 									{i + 1}
 								</Button>
-								<input
-									class="show-title"
+								<Input
+									class="min-w-0 flex-1"
 									value={show.title}
-									oninput={(e) => updateShow(show.id, { title: (e.currentTarget as HTMLInputElement).value })}
+									oninput={(e) =>
+										updateShow(show.id, { title: (e.currentTarget as HTMLInputElement).value })}
 									onfocus={() => selectShow(show.id)}
 									placeholder="Slideshow idea title"
 								/>
@@ -1865,7 +1886,7 @@
 										<Info />
 									</Button>
 								{/if}
-								<div class="show-actions">
+								<div class="flex shrink-0 items-center gap-0.5">
 									<Button
 										type="button"
 										variant="ghost"
@@ -1900,24 +1921,24 @@
 							</div>
 
 							{#key slide.id}
-							<div class="slide-editor">
-							<div class="slide-main">
-								<textarea
-									class="slide-headline"
-									rows="2"
+							<div class="flex flex-col gap-3">
+							<div class="flex items-start gap-2">
+								<Textarea
+									class="min-w-0 flex-1"
+									rows={2}
 									value={slide.headline}
 									oninput={(e) =>
 										updateSlide(show.id, slide.id, {
 											headline: (e.currentTarget as HTMLTextAreaElement).value,
 										})}
 									placeholder="Slide headline / hook"
-								></textarea>
+								/>
 								{#if show.slides.length > 1}
 									<Button
 										type="button"
 										variant="ghost"
 										size="icon-sm"
-										class="remove-slide text-muted-foreground"
+										class="text-muted-foreground"
 										title="Remove slide"
 										aria-label="Remove slide"
 										onclick={() => removeSlideFromShow(show.id, slide.id)}
@@ -1928,16 +1949,15 @@
 							</div>
 
 							{#if rowNeedsBody(slide.template)}
-								<textarea
-									class="slide-body-text"
-									rows="3"
+								<Textarea
+									rows={3}
 									value={slide.body}
 									oninput={(e) =>
 										updateSlide(show.id, slide.id, {
 											body: (e.currentTarget as HTMLTextAreaElement).value,
 										})}
 									placeholder="Body copy"
-								></textarea>
+								/>
 							{/if}
 
 							<div class="slide-menu">
@@ -2047,20 +2067,23 @@
 								{/if}
 							</div>
 
-							<div class="slide-template-row">
-								<label class="slide-template-label">
-									<span>Template</span>
-									<select
-										class="tpl-select"
-										value={slide.template}
-										onchange={(e) =>
-											setSlideTemplate(show.id, slide.id, (e.currentTarget as HTMLSelectElement).value as TemplateId)}
-									>
-										{#each STUDIO_TEMPLATES as t}
-											<option value={t.id}>{t.label}</option>
-										{/each}
-									</select>
-								</label>
+							<div class="flex flex-col gap-1.5">
+								<Label for="bulk-tpl-{slide.id}">Template</Label>
+								<NativeSelect.Root
+									id="bulk-tpl-{slide.id}"
+									class="w-full max-w-xs"
+									value={slide.template}
+									onchange={(e) =>
+										setSlideTemplate(
+											show.id,
+											slide.id,
+											(e.currentTarget as HTMLSelectElement).value as TemplateId,
+										)}
+								>
+									{#each STUDIO_TEMPLATES as t}
+										<NativeSelect.Option value={t.id}>{t.label}</NativeSelect.Option>
+									{/each}
+								</NativeSelect.Root>
 							</div>
 							</div>
 							{/key}
@@ -3182,10 +3205,6 @@
 	}
 	.field input,
 	.field select,
-	.tpl-select,
-	.slide-headline,
-	.slide-body-text,
-	.show-title,
 	.cap-grid input,
 	.cap-grid select {
 		font: inherit;
@@ -3422,70 +3441,6 @@
 		gap: 0.85rem;
 		min-width: 0;
 	}
-	.show-preview-col {
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		gap: 0.45rem;
-		flex: 0 0 auto;
-		width: var(--bulk-preview-width);
-		min-width: 0;
-	}
-	.show-side {
-		display: flex;
-		flex-direction: column;
-		gap: 0.55rem;
-		flex: 1 1 0;
-		min-width: 0;
-	}
-	.show-head {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		min-width: 0;
-	}
-	.show-index {
-		width: 1.85rem;
-		height: 1.85rem;
-		flex-shrink: 0;
-		border-radius: 7px;
-		border: 1px solid var(--bulk-border);
-		background: #fff;
-		color: var(--app-text);
-		font-weight: 700;
-		font-size: 0.75rem;
-		cursor: pointer;
-	}
-	.show-title {
-		flex: 1 1 0;
-		min-width: 0;
-		font-weight: 650;
-		font-size: 0.8125rem;
-		background: #fff;
-		border: 1px solid var(--bulk-border);
-		border-radius: 8px;
-		padding: 0.35rem 0.5rem;
-	}
-	.show-meta {
-		font-size: 0.68rem;
-		color: var(--app-text-3);
-	}
-	.show-actions {
-		display: flex;
-		gap: 0.1rem;
-		flex-shrink: 0;
-	}
-	.slide-editor {
-		display: flex;
-		flex-direction: column;
-		gap: 0.45rem;
-		padding: 0.65rem 0.7rem 0.75rem;
-		border-radius: 10px;
-		background: #fff;
-		border: 1px solid var(--bulk-border);
-		flex: 1 1 auto;
-		min-width: 0;
-	}
 	@media (max-width: 820px) {
 		.show-body {
 			flex-direction: column;
@@ -3500,52 +3455,18 @@
 			max-width: var(--bulk-preview-width);
 		}
 	}
-	.slide-main {
-		display: flex;
-		flex-wrap: nowrap;
-		gap: 0.35rem;
-		align-items: flex-start;
-	}
-	.slide-template-row {
-		display: flex;
-		align-items: flex-end;
-		margin-top: 0.15rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid color-mix(in oklab, var(--bulk-border) 70%, transparent);
-	}
-	.slide-template-label {
+	.show-preview-col {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-		font-size: 0.6875rem;
-		font-weight: 600;
+		align-items: stretch;
+		gap: 0.45rem;
+		flex: 0 0 auto;
+		width: var(--bulk-preview-width);
+		min-width: 0;
+	}
+	.show-meta {
+		font-size: 0.68rem;
 		color: var(--app-text-3);
-		min-width: 0;
-		flex: 1 1 140px;
-	}
-	.slide-template-label .tpl-select {
-		width: 100%;
-	}
-	.tpl-select {
-		background: var(--app-surface);
-	}
-	.slide-headline {
-		flex: 1 1 180px;
-		width: 100%;
-		min-width: 0;
-		min-height: 2.75rem;
-		line-height: 1.35;
-		resize: vertical;
-		overflow: auto;
-		background: var(--app-surface);
-		font-weight: 550;
-		field-sizing: content;
-	}
-	.slide-body-text {
-		width: 100%;
-		resize: vertical;
-		min-height: 2.6rem;
-		background: var(--app-surface);
 	}
 	.slide-menu {
 		display: flex;

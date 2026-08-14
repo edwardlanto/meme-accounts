@@ -11,6 +11,7 @@
 		Rows3,
 		Video,
 		LayoutTemplate,
+		Clapperboard,
 	} from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -34,7 +35,8 @@
 
 	const primaryCards = [
 		{ href: '/dashboard/templates', icon: LayoutTemplate, label: 'Templates', sub: 'Layouts & starters' },
-		{ href: '/dashboard/carousels', icon: ImagePlus, label: 'Carousels', sub: 'Your generated posts' },
+		{ href: '/dashboard/carousels', icon: ImagePlus, label: 'Carousels', sub: 'Studio drafts & Bulk posts' },
+		{ href: '/dashboard/clips', icon: Clapperboard, label: 'Clips', sub: 'YouTube clip stacks' },
 		{ href: '/dashboard/bulk', icon: Rows3, label: 'Bulk', sub: 'Edit slideshows + clips' },
 		{ href: '/dashboard/videos', icon: Video, label: 'Videos', sub: 'Paste link → find clips' },
 	] as const;

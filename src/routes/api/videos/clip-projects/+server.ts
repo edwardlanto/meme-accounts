@@ -53,6 +53,11 @@ export const GET: RequestHandler = async ({ locals }) => {
 					? bulkShows.slice(0, 24).map((s) => {
 							const slides = Array.isArray(s.slides) ? s.slides : [];
 							const first = slides[0];
+							const durationSec = slides.reduce((sum, sl) => {
+								const start = Number(sl?.clipStart) || 0;
+								const end = Number(sl?.clipEnd) || 0;
+								return sum + (end > start ? end - start : 0);
+							}, 0);
 							return {
 								id: s.id,
 								title: String(s.title ?? '').trim() || 'Untitled',
@@ -60,18 +65,25 @@ export const GET: RequestHandler = async ({ locals }) => {
 								headline: String(first?.headline ?? '').trim(),
 								thumb: safeListThumb(first?.mediaThumb || first?.mediaUrl, projectThumb),
 								template: String(first?.template ?? 'news'),
+								durationSec: durationSec > 0 ? durationSec : undefined,
 							};
 						})
-					: clips.slice(0, 24).map((c, i) => ({
-							id: String(c.id ?? `clip-${i}`),
-							title:
-								String(c.newsHeadline ?? c.videoHook ?? c.title ?? '').trim() ||
-								`Clip ${i + 1}`,
-							slideCount: 1,
-							headline: String(c.newsHeadline ?? c.hook ?? '').trim(),
-							thumb: safeListThumb(c.thumbnailUrl, projectThumb),
-							template: 'news',
-						}));
+					: clips.slice(0, 24).map((c, i) => {
+							const start = Number(c.startSec) || 0;
+							const end = Number(c.endSec) || 0;
+							const span = end > start ? end - start : 0;
+							return {
+								id: String(c.id ?? `clip-${i}`),
+								title:
+									String(c.newsHeadline ?? c.videoHook ?? c.title ?? '').trim() ||
+									`Clip ${i + 1}`,
+								slideCount: 1,
+								headline: String(c.newsHeadline ?? c.hook ?? '').trim(),
+								thumb: safeListThumb(c.thumbnailUrl, projectThumb),
+								template: 'news',
+								durationSec: span > 0 ? span : undefined,
+							};
+						});
 			const topicHint = String((p.source as { topicHint?: string } | undefined)?.topicHint ?? '').trim();
 			return {
 				id: p.id,

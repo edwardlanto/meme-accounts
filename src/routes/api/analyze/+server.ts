@@ -80,7 +80,7 @@ Respond with a JSON object (no markdown) with these exact keys:
 			'X-Title': 'Meme Accounts',
 		},
 		body: JSON.stringify({
-			model: 'anthropic/claude-sonnet-4.5',
+			model: 'google/gemini-3.7-flash',
 			messages: [{ role: 'user', content: prompt }],
 			temperature: 0.7,
 			max_tokens: 800,

@@ -423,3 +423,101 @@ export function deleteBulkHistoryEntry(userId: string, entryId: string): BulkHis
 export function getBulkHistoryEntry(userId: string, entryId: string): BulkHistoryEntry | null {
 	return loadBulkHistory(userId).find((e) => e.id === entryId) ?? null;
 }
+
+function looksLikeR2ObjectKey(value: string): boolean {
+	const v = value.trim();
+	if (!v || v.startsWith('http://') || v.startsWith('https://') || v.startsWith('blob:') || v.startsWith('data:')) {
+		return false;
+	}
+	if (v.startsWith('r2:')) return true;
+	// ownerId/… paths used by clip stills + video uploads
+	return /^[0-9a-f-]{36}\//i.test(v) || v.includes('/videos/') || v.includes('/clip-stills/');
+}
+
+function normalizeR2Key(value: string): string {
+	const v = value.trim();
+	return v.startsWith('r2:') ? v.slice(3) : v;
+}
+
+/**
+ * Fresh signed URLs for clip media after reopen. Saved workspaces keep R2 keys +
+ * expired signed URLs; without this, News/video previews render black.
+ */
+export async function rematerializeBulkShows(
+	shows: BulkShow[],
+	signRead: (key: string) => Promise<string>,
+): Promise<BulkShow[]> {
+	const cache = new Map<string, Promise<string>>();
+	const sign = (rawKey: string): Promise<string> => {
+		const key = normalizeR2Key(rawKey);
+		if (!key) return Promise.reject(new Error('empty key'));
+		let p = cache.get(key);
+		if (!p) {
+			p = signRead(key).catch((err) => {
+				cache.delete(key);
+				throw err;
+			});
+			cache.set(key, p);
+		}
+		return p;
+	};
+
+	const nextShows: BulkShow[] = [];
+	for (const show of shows) {
+		const slides: BulkSlide[] = [];
+		for (const slide of show.slides ?? []) {
+			let mediaUrl = String(slide.mediaUrl ?? '').trim();
+			let mediaThumb = String(slide.mediaThumb ?? '').trim();
+			let reframedPlaybackUrl = String(slide.reframedPlaybackUrl ?? '').trim();
+
+			const thumbKey = String(slide.clipMeta?.thumbnailR2Key ?? '').trim();
+			if (thumbKey) {
+				try {
+					mediaThumb = await sign(thumbKey);
+				} catch {
+					/* keep prior */
+				}
+			} else if (looksLikeR2ObjectKey(mediaThumb)) {
+				try {
+					mediaThumb = await sign(mediaThumb);
+				} catch {
+					/* keep prior */
+				}
+			}
+
+			const reframedKey = String(slide.reframedR2Key ?? '').trim();
+			const sourceKey = String(slide.sourceR2Key ?? '').trim();
+			if (reframedKey) {
+				try {
+					const url = await sign(reframedKey);
+					reframedPlaybackUrl = url;
+					if (slide.mediaKind === 'video') mediaUrl = url;
+				} catch {
+					/* keep prior */
+				}
+			} else if (sourceKey && slide.mediaKind === 'video') {
+				try {
+					mediaUrl = await sign(sourceKey);
+				} catch {
+					/* keep prior */
+				}
+			} else if (looksLikeR2ObjectKey(mediaUrl)) {
+				try {
+					mediaUrl = await sign(mediaUrl);
+				} catch {
+					/* keep prior */
+				}
+			}
+
+			slides.push({
+				...slide,
+				mediaUrl: mediaUrl || undefined,
+				mediaThumb: mediaThumb || undefined,
+				reframedPlaybackUrl: reframedPlaybackUrl || undefined,
+			});
+		}
+		nextShows.push({ ...show, slides });
+	}
+	return nextShows;
+}
+

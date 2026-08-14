@@ -9,6 +9,7 @@
 		Rows3,
 		Video,
 		LayoutTemplate,
+		Clapperboard,
 	} from 'lucide-svelte';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
@@ -47,6 +48,7 @@
 					children: templateNavChildren,
 				},
 				{ href: '/dashboard/carousels', label: 'Carousels', icon: ImagePlus },
+				{ href: '/dashboard/clips', label: 'Clips', icon: Clapperboard },
 				{ href: '/dashboard/bulk', label: 'Bulk', icon: Rows3 },
 				{ href: '/dashboard/videos', label: 'Videos', icon: Video },
 			],
@@ -64,6 +66,7 @@
 		templates: 'Templates',
 		studio: 'Studio',
 		carousels: 'Carousels',
+		clips: 'Clips',
 		bulk: 'Bulk',
 		videos: 'Videos',
 		settings: 'Settings',

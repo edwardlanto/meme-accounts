@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
-				model: 'anthropic/claude-sonnet-4.5',
+				model: 'google/gemini-3.7-flash',
 				messages: [{ role: 'user', content: prompt }],
 				temperature: emotion ? 0.7 : 0.85,
 				max_tokens: decksWanted > 1 ? 8000 : 4000,
@@ -198,7 +198,7 @@ async function batchAddHighlights(headlines: string[]): Promise<string[]> {
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
-				model: 'anthropic/claude-sonnet-4.5',
+				model: 'google/gemini-3.7-flash',
 				messages: [
 					{ role: 'system', content: system },
 					{ role: 'user', content: user },

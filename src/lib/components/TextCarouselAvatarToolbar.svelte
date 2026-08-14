@@ -5,9 +5,6 @@
 		anchor: DOMRect | null;
 		avatarSrc: string;
 		innerBg: string;
-		label: string;
-		/** Shown when label is empty — derived name for initials hint */
-		nameFallback: string;
 		defaultInnerBg: string;
 		ringColor: string;
 		ringWidth: number;
@@ -16,7 +13,6 @@
 		onClearImage: () => void;
 		onInnerBg: (hex: string) => void;
 		onClearInnerBg: () => void;
-		onLabel: (value: string) => void;
 		onRingColor: (hex: string) => void;
 		onRingWidth: (px: number) => void;
 		onClose: () => void;
@@ -26,8 +22,6 @@
 		anchor,
 		avatarSrc,
 		innerBg,
-		label,
-		nameFallback,
 		defaultInnerBg,
 		ringColor,
 		ringWidth,
@@ -36,7 +30,6 @@
 		onClearImage,
 		onInnerBg,
 		onClearInnerBg,
-		onLabel,
 		onRingColor,
 		onRingWidth,
 		onClose,
@@ -44,8 +37,8 @@
 
 	let fileInput = $state<HTMLInputElement | null>(null);
 
-	/** Horizontal toolbar — wider to fit ring controls. */
-	const TOOLBAR_W = 720;
+	/** Horizontal toolbar — image, fill, ring controls. */
+	const TOOLBAR_W = 520;
 	const TOOLBAR_H = 44;
 
 	const pos = $derived.by(() => {
@@ -57,16 +50,6 @@
 		left = Math.max(12, Math.min(left, vw - TOOLBAR_W - 12));
 		return { top, left, show: true };
 	});
-
-	function initialsHint(n: string) {
-		return n
-			.replace(/[^\w\s]/g, '')
-			.trim()
-			.split(/\s+/)
-			.map((w) => w[0]?.toUpperCase() ?? '')
-			.slice(0, 3)
-			.join('');
-	}
 
 	function handleFile(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -92,12 +75,6 @@
 		document.addEventListener('mousedown', handleDocumentClick);
 		return () => document.removeEventListener('mousedown', handleDocumentClick);
 	});
-
-	const labelTitle = $derived(
-		'Text inside the circle when no photo is set. Empty → use initials from the name (' +
-			(initialsHint(nameFallback) || '…') +
-			').',
-	);
 
 	const ringPx = $derived(Math.max(0, Math.min(24, Math.round(Number(ringWidth) || 0))));
 </script>
@@ -202,28 +179,9 @@
 			/>
 		</label>
 
-		<div class="w-px h-6 shrink-0 avatar-tb-div"></div>
-
-		<label class="flex min-w-0 flex-1 items-center gap-1.5">
-			<span class="sr-only">Circle text</span>
-			<input
-				type="text"
-				value={label}
-				placeholder={initialsHint(nameFallback) || 'ABC'}
-				class="avatar-tb-input min-w-[72px] flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none"
-				style="
-					border-color: var(--app-border);
-					background: var(--app-surface-3);
-					color: var(--app-text);
-				"
-				oninput={(e) => onLabel((e.target as HTMLInputElement).value)}
-				title={labelTitle}
-			/>
-		</label>
-
 		<button
 			type="button"
-			class="avatar-tb-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
+			class="avatar-tb-btn ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
 			onclick={() => onClose()}
 			aria-label="Close"
 			title="Close"

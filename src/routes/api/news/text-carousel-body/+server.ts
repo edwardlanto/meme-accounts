@@ -9,7 +9,7 @@ import {
 import { newsTextCarouselBodySchema, parseJsonBody } from '$lib/server/request-security';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'anthropic/claude-sonnet-4.5';
+const MODEL = 'google/gemini-3.7-flash';
 
 function demoBody(
 	paragraphCount: number,

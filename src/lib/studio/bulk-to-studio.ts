@@ -260,6 +260,11 @@ export function slimBulkCoverSlide(slide: BulkSlide | null | undefined): BulkSli
 		videoMuted: true,
 	};
 
+	const clipStart = Number(slide.clipStart);
+	const clipEnd = Number(slide.clipEnd);
+	if (Number.isFinite(clipStart) && clipStart >= 0) out.clipStart = clipStart;
+	if (Number.isFinite(clipEnd) && clipEnd > 0) out.clipEnd = clipEnd;
+
 	const newsHeadline = String(slide.clipMeta?.newsHeadline ?? '').trim();
 	if (newsHeadline || slide.clipMeta?.clipId) {
 		out.clipMeta = {

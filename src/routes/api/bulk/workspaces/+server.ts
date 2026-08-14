@@ -64,6 +64,11 @@ export const GET: RequestHandler = async ({ locals }) => {
 						safeThumb = thumb;
 						break;
 					}
+					const durationSec = slides.reduce((sum: number, sl: { clipStart?: unknown; clipEnd?: unknown }) => {
+						const start = Number(sl?.clipStart) || 0;
+						const end = Number(sl?.clipEnd) || 0;
+						return sum + (end > start ? end - start : 0);
+					}, 0);
 					return {
 						id: s.id,
 						title: String(s.title ?? '').trim() || 'Untitled',
@@ -72,6 +77,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 						thumb: safeThumb,
 						template: String(first?.template ?? 'news'),
 						coverSlide,
+						durationSec: durationSec > 0 ? durationSec : undefined,
 						fromVideoClips: !!s.fromVideoClips,
 					};
 				}),

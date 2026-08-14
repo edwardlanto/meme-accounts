@@ -1,7 +1,8 @@
-/** Prompt-bar / compose settings persisted in localStorage across Studio reloads. */
+/** Prompt-bar / compose defaults. Chips are fixed on load — not restored from last session. */
 
 import { BULK_EMOTIONS, BULK_STYLES, type BulkEmotionId, type BulkStyleId } from './bulk-to-studio';
 
+/** Legacy key — cleared on load so old “remember last chips” data does not stick. */
 export const STUDIO_COMPOSE_PREFS_KEY = 'studio_compose_prefs_v1';
 
 export type NewsStudioContentMode = 'general' | 'news' | 'fact' | 'story' | 'quote' | 'steps';
@@ -38,13 +39,13 @@ export const DEFAULT_STUDIO_COMPOSE_PREFS: StudioComposePrefs = {
 	formatId: 'feed',
 	search: '',
 	category: 'general',
-	newsContentMode: 'news',
+	newsContentMode: 'general',
 	newsImageSourceMode: 'assets',
-	stockMediaKind: 'video',
+	stockMediaKind: 'photo',
 	newsCopyLength: 'default',
 	studioAudienceId: '',
 	studioAudienceCustom: '',
-	studioStyle: 'bold',
+	studioStyle: 'editorial',
 	studioEmotion: 'inspiring',
 	slideCount: 3,
 	storyCategory: 'general',
@@ -149,24 +150,21 @@ export function normalizeStudioComposePrefs(raw: unknown): StudioComposePrefs {
 	return out;
 }
 
-export function loadStudioComposePrefs(): StudioComposePrefs | null {
-	if (typeof window === 'undefined') return null;
-	try {
-		const raw = localStorage.getItem(STUDIO_COMPOSE_PREFS_KEY);
-		if (!raw) return null;
-		return normalizeStudioComposePrefs(JSON.parse(raw));
-	} catch {
-		return null;
+/** Always the fixed defaults (and drop any leftover localStorage). */
+export function loadStudioComposePrefs(): StudioComposePrefs {
+	if (typeof window !== 'undefined') {
+		try {
+			localStorage.removeItem(STUDIO_COMPOSE_PREFS_KEY);
+		} catch {
+			/* private mode */
+		}
 	}
+	return { ...DEFAULT_STUDIO_COMPOSE_PREFS };
 }
 
-export function saveStudioComposePrefs(prefs: StudioComposePrefs): void {
-	if (typeof window === 'undefined') return;
-	try {
-		localStorage.setItem(STUDIO_COMPOSE_PREFS_KEY, JSON.stringify(normalizeStudioComposePrefs(prefs)));
-	} catch {
-		/* quota / private mode */
-	}
+/** No-op — prompt chips are not persisted across reloads. */
+export function saveStudioComposePrefs(_prefs: StudioComposePrefs): void {
+	/* intentionally empty */
 }
 
 export function snapshotStudioComposePrefs(source: {

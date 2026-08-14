@@ -7,7 +7,7 @@ import { clampToCompleteWords } from '$lib/studio/fit-copy';
 import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'anthropic/claude-sonnet-4.5';
+const MODEL = 'google/gemini-3.7-flash';
 const DEFAULT_MAX_WORDS = 28;
 
 function clampMaxWords(raw: unknown): number {

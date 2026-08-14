@@ -57,7 +57,7 @@ Return a JSON array of strings only, no markdown, no commentary. Example format:
 			'X-Title': 'Meme Accounts',
 		},
 		body: JSON.stringify({
-			model: 'anthropic/claude-sonnet-4.5',
+			model: 'google/gemini-3.7-flash',
 			messages: [{ role: 'user', content: prompt }],
 			temperature: 0.85,
 			max_tokens: 600,

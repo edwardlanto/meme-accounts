@@ -485,8 +485,14 @@
 				sourceLogoSrc={String(sourceLogoSrc ?? '').trim()}
 				sourceLabelMode={String(sourceLogoSrc ?? '').trim() ? 'logo' : 'text'}
 				sourceLogoWidth={160}
-				backgroundImage={mediaKind !== 'video' ? imageSrc : ''}
-				backgroundVideo={mediaKind === 'video' ? playbackUrl : ''}
+				backgroundImage={
+					mediaKind === 'video'
+						? playbackUrl
+							? ''
+							: optimizeImageUrl(mediaThumb, fetchW)
+						: imageSrc
+				}
+				backgroundVideo={mediaKind === 'video' && playbackUrl ? playbackUrl : ''}
 				videoMuted={previewMuted}
 				videoTrimStartSec={mediaKind === 'video' ? trimStart : 0}
 				videoTrimEndSec={mediaKind === 'video' ? trimEnd : 0}

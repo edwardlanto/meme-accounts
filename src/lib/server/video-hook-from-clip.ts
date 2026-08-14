@@ -28,7 +28,7 @@ async function openRouterComplete(
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
-				model: 'anthropic/claude-sonnet-4.5',
+				model: 'google/gemini-3.7-flash',
 				messages,
 				temperature,
 				max_tokens,

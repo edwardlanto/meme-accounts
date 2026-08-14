@@ -64,8 +64,6 @@ import JSZip from 'jszip';
 	} from '$lib/studio/bulk-to-studio';
 	import {
 		loadStudioComposePrefs,
-		saveStudioComposePrefs,
-		snapshotStudioComposePrefs,
 		type StudioComposePrefs,
 	} from '$lib/studio/compose-prefs';
 	import {
@@ -315,13 +313,13 @@ import JSZip from 'jszip';
 	let category = $state('general');
 	/** Sidebar mode for the News template generator: live articles vs synthetic fact/story/steps. */
 	type NewsStudioContentMode = 'general' | 'news' | 'fact' | 'story' | 'quote' | 'steps';
-	let newsContentMode = $state<NewsStudioContentMode>('news');
+	let newsContentMode = $state<NewsStudioContentMode>('general');
 	/** How Load & Fill fills backgrounds in News studio (News / fact / story / quote / steps). */
 	type NewsImageSourceMode = 'assets' | 'pull' | 'ai';
 	let newsImageSourceMode = $state<NewsImageSourceMode>('assets');
-	/** When stock source is active: Pexels videos (default) vs still photos. */
+	/** When stock source is active: still photos (default) vs Pexels videos. */
 	type StockMediaKind = 'photo' | 'video';
-	let stockMediaKind = $state<StockMediaKind>('video');
+	let stockMediaKind = $state<StockMediaKind>('photo');
 	/** Pushed into the assets sidebar search when Generate runs. */
 	let assetsSidebarSeedQuery = $state('');
 	/** Whether to generate/pull images at all (when off, only text is generated). */
@@ -330,7 +328,7 @@ import JSZip from 'jszip';
 	let newsCopyLength = $state<NewsCopyLength>('default');
 	let studioAudienceId = $state('');
 	let studioAudienceCustom = $state('');
-	let studioStyle = $state<BulkStyleId>('bold');
+	let studioStyle = $state<BulkStyleId>('editorial');
 	let studioEmotion = $state<BulkEmotionId>('inspiring');
 	const studioAudiencePrompt = $derived(audiencePromptText(studioAudienceId, studioAudienceCustom));
 	const studioAudienceChipLabel = $derived.by(() => {
@@ -356,7 +354,6 @@ import JSZip from 'jszip';
 	}
 
 	let studioDraftWasRestored = $state(false);
-	let studioComposePrefsReady = $state(false);
 
 	function applyStudioComposePrefs(prefs: StudioComposePrefs) {
 		formatId = normalizeStudioFormatId(prefs.formatId);
@@ -383,31 +380,6 @@ import JSZip from 'jszip';
 		generalTopicPrompt = '';
 	}
 
-	function snapshotStudioComposePrefsFromState(): StudioComposePrefs {
-		return snapshotStudioComposePrefs({
-			formatId,
-			search: '',
-			category,
-			newsContentMode,
-			newsImageSourceMode,
-			stockMediaKind,
-			newsCopyLength,
-			studioAudienceId,
-			studioAudienceCustom,
-			studioStyle,
-			studioEmotion,
-			slideCount,
-			storyCategory,
-			factTopicCategory,
-			quoteTopicCategory,
-			stepsCount,
-			generalTopicPrompt: '',
-			factTopicPrompt: '',
-			storyTopicPrompt: '',
-			quoteTopicPrompt: '',
-			stepsTopicPrompt: '',
-		});
-	}
 	function placeholderCopyForWordBudget(): string {
 		const kind = selectedText;
 		const tpl = previewTemplate;
@@ -6072,10 +6044,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	type FormatId = 'feed' | 'vertical' | 'wide' | 'square';
 	type Format = { id: FormatId; label: string; w: number; h: number; igType: 'post' | 'reel' | 'story' };
 	const FORMATS: Format[] = [
-		{ id: 'feed', label: 'FEED (4:5)', w: 1080, h: 1350, igType: 'post' },
-		{ id: 'vertical', label: 'VERTICAL (9:16)', w: 1080, h: 1920, igType: 'reel' },
-		{ id: 'wide', label: 'WIDE (16:9)', w: 1920, h: 1080, igType: 'post' },
-		{ id: 'square', label: 'SQUARE (1:1)', w: 1080, h: 1080, igType: 'post' },
+		{ id: 'feed', label: 'Feed (4:5)', w: 1080, h: 1350, igType: 'post' },
+		{ id: 'vertical', label: 'Vertical (9:16)', w: 1080, h: 1920, igType: 'reel' },
+		{ id: 'wide', label: 'Wide (16:9)', w: 1920, h: 1080, igType: 'post' },
+		{ id: 'square', label: 'Square (1:1)', w: 1080, h: 1080, igType: 'post' },
 	];
 	let formatId = $state<FormatId>('feed');
 
@@ -6245,36 +6217,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray(s.slides)) slides = s.slides.map((x: unknown) => stripEmDashes(String(x ?? '')));
 		if (typeof s.activeSlide === 'number') activeSlide = Math.max(0, Math.min((s.slides?.length ?? slides.length) - 1, s.activeSlide));
 		if (typeof s.category === 'string') category = s.category;
-		if (
-			s.newsContentMode === 'general' ||
-			s.newsContentMode === 'news' ||
-			s.newsContentMode === 'fact' ||
-			s.newsContentMode === 'story' ||
-			s.newsContentMode === 'quote' ||
-			s.newsContentMode === 'steps'
-		) {
-			newsContentMode = s.newsContentMode;
-		}
-		if (s.newsImageSourceMode === 'assets' || s.newsImageSourceMode === 'pull' || s.newsImageSourceMode === 'ai') {
-			newsImageSourceMode = s.newsImageSourceMode;
-		}
-		if (s.stockMediaKind === 'photo' || s.stockMediaKind === 'video') {
-			stockMediaKind = s.stockMediaKind;
-		}
-		if (s.newsCopyLength === 'short' || s.newsCopyLength === 'standard' || s.newsCopyLength === 'default') {
-			newsCopyLength = s.newsCopyLength;
-		}
-		if (typeof s.studioAudienceId === 'string') studioAudienceId = s.studioAudienceId;
-		if (typeof s.studioAudienceCustom === 'string') studioAudienceCustom = s.studioAudienceCustom;
-		if (typeof s.studioStyle === 'string') {
-			if (s.studioStyle === 'dark') studioStyle = 'bold';
-			else if (BULK_STYLES.some((x) => x.id === s.studioStyle)) {
-				studioStyle = s.studioStyle as BulkStyleId;
-			}
-		}
-		if (typeof s.studioEmotion === 'string' && BULK_EMOTIONS.some((x) => x.id === s.studioEmotion)) {
-			studioEmotion = (s.studioEmotion || 'inspiring') as BulkEmotionId;
-		}
+		/* Prompt-bar chips use fixed Studio defaults — not restored from drafts. */
 		if (typeof s.storyCategory === 'string') storyCategory = s.storyCategory;
 		/* Prompt fields stay empty on draft restore — use History to refill. */
 		if (typeof (s as any).factTopicCategory === 'string') factTopicCategory = String((s as any).factTopicCategory ?? 'any');
@@ -8979,15 +8922,10 @@ tweetTopImagePanYBySlide,
 		await goto('/dashboard/carousels#studio-drafts');
 	}
 
-	$effect(() => {
-		if (!studioComposePrefsReady || typeof window === 'undefined') return;
-		saveStudioComposePrefs(snapshotStudioComposePrefsFromState());
-	});
-
+	// Prompt chips use fixed defaults on load — not persisted across reloads.
 	// ── Auth ──────────────────────────────────────────────────────────────
 	onMount(async () => {
-		const savedComposePrefs = loadStudioComposePrefs();
-		if (savedComposePrefs) applyStudioComposePrefs(savedComposePrefs);
+		applyStudioComposePrefs(loadStudioComposePrefs());
 
 		const { data: { user } } = await supabase.auth.getUser();
 		if (!user) { goto('/login'); return; }
@@ -9076,13 +9014,16 @@ tweetTopImagePanYBySlide,
 						// Clear only after starter/draft mutations so the boot skeleton covers one continuous pass.
 						// Brand kit owns highlight on/off — drafts must not leave it flipped.
 						studioTextHighlightsEnabled = kit.textHighlightsEnabled !== false;
-						if (!studioDraftWasRestored) {
-							const prefs = loadStudioComposePrefs();
-							if (prefs) applyStudioComposePrefs(prefs);
+						/* Always reset prompt chips to fixed defaults (not last-session / draft chips). */
+						{
+							const deckLen = Math.max(1, slides.length);
+							applyStudioComposePrefs(loadStudioComposePrefs());
+							if (studioDraftWasRestored) {
+								slideCount = Math.max(3, Math.min(8, deckLen));
+							}
 						}
 						draftRestoring = false;
 						draftLoaded = true;
-						studioComposePrefsReady = true;
 						forceUnlockStudioUI();
 					}
 				})();
@@ -16539,8 +16480,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	anchor={selectedText === 'textCarouselAvatar' ? toolbarAnchor : null}
 	avatarSrc={textCarouselAvatarImageBySlide[paintSlide] ?? ''}
 	innerBg={textCarouselAvatarInnerBgBySlide[paintSlide] ?? ''}
-	label={textCarouselAvatarLabelBySlide[paintSlide] ?? ''}
-	nameFallback={textCarouselNameBySlide[paintSlide] ?? ''}
 	defaultInnerBg={textCarouselDefaultAvatarBg}
 	ringColor={textCarouselAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
 	ringWidth={textCarouselAvatarRingWidthBySlide[paintSlide] ?? defaultTextCarouselRingWidth}
@@ -16573,11 +16512,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		pushUndo('textCarousel', paintSlide);
 		textCarouselAvatarInnerBgBySlide = textCarouselAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? '' : x));
 	}}
-	onLabel={(value) => {
-		if (!canvasInteractive) return;
-		pushUndo('textCarousel', paintSlide);
-		textCarouselAvatarLabelBySlide = textCarouselAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
-	}}
 	onRingColor={(hex) => {
 		if (!canvasInteractive) return;
 		pushUndo('textCarousel', paintSlide);
@@ -16596,8 +16530,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	anchor={selectedText === 'tweetTopAvatar' ? toolbarAnchor : null}
 	avatarSrc={tweetTopAvatarImageBySlide[paintSlide] ?? ''}
 	innerBg={tweetTopAvatarInnerBgBySlide[paintSlide] ?? ''}
-	label={tweetTopAvatarLabelBySlide[paintSlide] ?? ''}
-	nameFallback={tweetTopNameBySlide[paintSlide] ?? ''}
 	defaultInnerBg={textCarouselDefaultAvatarBg}
 	ringColor={tweetTopAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
 	ringWidth={tweetTopAvatarRingWidthBySlide[paintSlide] ?? defaultTweetAvatarRingWidth}
@@ -16628,11 +16560,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		pushUndo('tweet', paintSlide);
 		tweetTopAvatarInnerBgBySlide = tweetTopAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? '' : x));
 	}}
-	onLabel={(value) => {
-		if (!canvasInteractive) return;
-		pushUndo('tweet', paintSlide);
-		tweetTopAvatarLabelBySlide = tweetTopAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
-	}}
 	onRingColor={(hex) => {
 		if (!canvasInteractive) return;
 		pushUndo('tweet', paintSlide);
@@ -16649,8 +16576,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	anchor={selectedText === 'tweetBottomAvatar' ? toolbarAnchor : null}
 	avatarSrc={tweetBottomAvatarImageBySlide[paintSlide] ?? ''}
 	innerBg={tweetBottomAvatarInnerBgBySlide[paintSlide] ?? ''}
-	label={tweetBottomAvatarLabelBySlide[paintSlide] ?? ''}
-	nameFallback={tweetBottomNameBySlide[paintSlide] ?? ''}
 	defaultInnerBg={textCarouselDefaultAvatarBg}
 	ringColor={tweetBottomAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
 	ringWidth={tweetBottomAvatarRingWidthBySlide[paintSlide] ?? defaultTweetAvatarRingWidth}
@@ -16680,11 +16605,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		if (!canvasInteractive) return;
 		pushUndo('tweet', paintSlide);
 		tweetBottomAvatarInnerBgBySlide = tweetBottomAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? '' : x));
-	}}
-	onLabel={(value) => {
-		if (!canvasInteractive) return;
-		pushUndo('tweet', paintSlide);
-		tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, i) => (i === paintSlide ? value : x));
 	}}
 	onRingColor={(hex) => {
 		if (!canvasInteractive) return;
