@@ -213,7 +213,7 @@
 	}
 	.ob-title {
 		margin: 0 0 22px;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 26px;
 		font-weight: 800;
 		letter-spacing: -0.035em;
@@ -240,7 +240,7 @@
 		background: #fffdf8;
 		color: #14120f;
 		font-size: 14px;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		outline: none;
 	}
 	.ob-input:focus {

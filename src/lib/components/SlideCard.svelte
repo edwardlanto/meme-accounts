@@ -107,7 +107,7 @@
 			<div
 				style="
           position: absolute; top: 48px; left: 48px;
-          font-family: 'Satoshi', sans-serif; font-size: 18px; color: rgba(255,255,255,0.6);
+          font-family: var(--font-display); font-size: 18px; color: rgba(255,255,255,0.6);
           background: rgba(0,0,0,0.4); backdrop-filter: blur(8px);
           padding: 10px 20px; border-radius: 100px;
           border: 1px solid rgba(255,255,255,0.12);
@@ -125,7 +125,7 @@
 				{#if slide.subheadline}
 					<p
 						style="
-              font-family: 'Satoshi', sans-serif; font-size: 20px;
+              font-family: var(--font-display); font-size: 20px;
               color: {brandColor}; letter-spacing: 0.12em;
               text-transform: uppercase; margin-bottom: 20px;
             "
@@ -145,7 +145,7 @@
 				{#if slide.body}
 					<p
 						style="
-              font-family: 'Satoshi', sans-serif; font-size: 30px;
+              font-family: var(--font-display); font-size: 30px;
               color: rgba(255,255,255,0.65); margin-top: 24px;
               line-height: 1.5; font-weight: 300;
             "
@@ -182,7 +182,7 @@
 				{#if slide.type === 'cta' || slide.type === 'hook'}
 					<p
 						style="
-              font-family: 'Satoshi', sans-serif; font-size: 19px;
+              font-family: var(--font-display); font-size: 19px;
               color: {brandColor}; letter-spacing: 0.14em; text-transform: uppercase;
               margin-bottom: 32px; opacity: 0.9;
             "
@@ -192,7 +192,7 @@
 				{:else if slide.type === 'tip' || slide.type === 'value'}
 					<p
 						style="
-              font-family: 'Satoshi', sans-serif; font-size: 19px;
+              font-family: var(--font-display); font-size: 19px;
               color: rgba(255,255,255,0.3); letter-spacing: 0.14em; text-transform: uppercase;
               margin-bottom: 32px;
             "
@@ -219,7 +219,7 @@
 				{#if slide.body}
 					<p
 						style="
-              font-family: 'Satoshi', sans-serif; font-size: 32px; font-weight: 300;
+              font-family: var(--font-display); font-size: 32px; font-weight: 300;
               line-height: 1.55; color: rgba(255,255,255,0.6);
               margin: 0 0 40px 0;
             "
@@ -235,7 +235,7 @@
 							<div
 								style="
                   display: flex; align-items: flex-start; gap: 20px;
-                  font-family: 'Satoshi', sans-serif; font-size: 30px;
+                  font-family: var(--font-display); font-size: 30px;
                   font-weight: 400; color: rgba(255,255,255,0.8);
                   line-height: 1.4;
                 "
@@ -257,7 +257,7 @@
 			<div
 				style="
           position: absolute; top: 48px; right: 60px;
-          font-family: 'Satoshi', sans-serif; font-size: 20px;
+          font-family: var(--font-display); font-size: 20px;
           color: rgba(255,255,255,0.2);
         "
 			>
@@ -301,7 +301,7 @@
 				{#if slide.body}
 					<p
 						style="
-              font-family: 'Satoshi', sans-serif; font-size: 30px;
+              font-family: var(--font-display); font-size: 30px;
               color: {brandColor}; margin-top: 40px; font-weight: 400;
               letter-spacing: 0.04em;
             "
@@ -347,7 +347,7 @@
 					{#if slide.subheadline}
 						<p
 							style="
-                font-family: 'Satoshi', sans-serif; font-size: 18px;
+                font-family: var(--font-display); font-size: 18px;
                 color: {brandColor}; letter-spacing: 0.1em;
                 text-transform: uppercase; margin-bottom: 24px;
               "
@@ -367,7 +367,7 @@
 					{#if slide.body}
 						<p
 							style="
-                font-family: 'Satoshi', sans-serif; font-size: 27px; font-weight: 300;
+                font-family: var(--font-display); font-size: 27px; font-weight: 300;
                 color: rgba(255,255,255,0.6); line-height: 1.5; margin-top: 28px;
               "
 						>
@@ -380,7 +380,7 @@
 								<div
 									style="
                     display: flex; align-items: flex-start; gap: 16px;
-                    font-family: 'Satoshi', sans-serif; font-size: 25px;
+                    font-family: var(--font-display); font-size: 25px;
                     color: rgba(255,255,255,0.75); line-height: 1.4;
                   "
 								>
@@ -413,7 +413,7 @@
 					{#if slide.subheadline}
 						<p
 							style="
-                font-family: 'Satoshi', sans-serif; font-size: 18px;
+                font-family: var(--font-display); font-size: 18px;
                 color: {brandColor}; letter-spacing: 0.1em;
                 text-transform: uppercase; margin-bottom: 24px;
               "
@@ -433,7 +433,7 @@
 					{#if slide.body}
 						<p
 							style="
-                font-family: 'Satoshi', sans-serif; font-size: 27px; font-weight: 300;
+                font-family: var(--font-display); font-size: 27px; font-weight: 300;
                 color: rgba(255,255,255,0.6); line-height: 1.5; margin-top: 28px;
               "
 						>
@@ -446,7 +446,7 @@
 								<div
 									style="
                     display: flex; align-items: flex-start; gap: 16px;
-                    font-family: 'Satoshi', sans-serif; font-size: 25px;
+                    font-family: var(--font-display); font-size: 25px;
                     color: rgba(255,255,255,0.75); line-height: 1.4;
                   "
 								>
@@ -492,7 +492,7 @@
 			>
 				<span
 					style="
-            font-family: 'Satoshi', sans-serif; font-size: 19px;
+            font-family: var(--font-display); font-size: 19px;
             color: rgba(255,255,255,0.25); letter-spacing: 0.06em; text-transform: uppercase;
           "
 				>
@@ -500,7 +500,7 @@
 				</span>
 				<span
 					style="
-            font-family: 'Satoshi', sans-serif; font-size: 19px;
+            font-family: var(--font-display); font-size: 19px;
             color: rgba(255,255,255,0.2);
           "
 				>
@@ -519,7 +519,7 @@
 			>
 				<span
 					style="
-            font-family: 'Satoshi', sans-serif; font-size: 19px;
+            font-family: var(--font-display); font-size: 19px;
             color: rgba(255,255,255,0.4); letter-spacing: 0.06em; text-transform: uppercase;
           "
 				>
@@ -527,7 +527,7 @@
 				</span>
 				<span
 					style="
-            font-family: 'Satoshi', sans-serif; font-size: 19px;
+            font-family: var(--font-display); font-size: 19px;
             color: rgba(255,255,255,0.3);
           "
 				>

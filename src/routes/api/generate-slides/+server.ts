@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { generateSlidesBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
+import { canConsumeCarouselTokens, consumeCarouselTokens } from '$lib/server/usage';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { fitCopyBudget } from '$lib/studio/fit-copy';
 import { generationStylePrompt, generationTonePromptSuffix } from '$lib/studio/generation-tone';
@@ -33,13 +34,27 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const decksWanted = Math.max(1, Math.min(10, deckCount ?? 1));
 	const wantHighlights = autoHighlight === true;
 
+	const tokenGate = await canConsumeCarouselTokens(user.id, decksWanted);
+	if (!tokenGate.ok) {
+		return json(
+			{
+				error: tokenGate.error,
+				code: tokenGate.code,
+				usage: tokenGate.status,
+			},
+			{ status: 402 },
+		);
+	}
+
 	if (!env.OPENROUTER_API_KEY) {
 		if (decksWanted > 1) {
+			await consumeCarouselTokens(user.id, decksWanted);
 			return json({
 				decks: getDemoDecks(decksWanted, slideCount, imageCount, wantHighlights),
 				demo: true,
 			});
 		}
+		await consumeCarouselTokens(user.id, decksWanted);
 		return json({ slides: getDemoSlides(slideCount, imageCount, wantHighlights), demo: true });
 	}
 
@@ -99,19 +114,21 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					slides: slidesRaw.map((s: GeneratedSlide, i: number) => normalizeSlide(s, i)),
 				};
 			});
-			if (wantHighlights) {
-				decks = await highlightDeckNewsHeadlines(decks);
-			}
-			return json({ decks });
-		}
-
-		let slides: GeneratedSlide[] = (
-			Array.isArray(parsedJson) ? parsedJson : parsedJson?.slides ?? []
-		).map((s: GeneratedSlide, i: number) => normalizeSlide(s, i));
 		if (wantHighlights) {
-			slides = await highlightNewsHeadlines(slides);
+			decks = await highlightDeckNewsHeadlines(decks);
 		}
-		return json({ slides });
+		await consumeCarouselTokens(user.id, decksWanted);
+		return json({ decks });
+	}
+
+	let slides: GeneratedSlide[] = (
+		Array.isArray(parsedJson) ? parsedJson : parsedJson?.slides ?? []
+	).map((s: GeneratedSlide, i: number) => normalizeSlide(s, i));
+	if (wantHighlights) {
+		slides = await highlightNewsHeadlines(slides);
+	}
+	await consumeCarouselTokens(user.id, decksWanted);
+	return json({ slides });
 	} catch (err: any) {
 		console.error('[generate-slides]', err.message);
 		return json({ error: err.message }, { status: 500 });

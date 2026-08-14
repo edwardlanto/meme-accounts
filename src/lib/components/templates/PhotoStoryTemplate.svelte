@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
@@ -352,7 +353,7 @@
 							rows={4}
 							minHeight="0px"
 							ariaLabel="Caption lead"
-							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+							fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={captionTextSize}
 							lineHeight={headlineStyle.lineHeight}
 							{showToolbar}
@@ -403,7 +404,7 @@
 							rows={4}
 							minHeight="0px"
 							ariaLabel="Caption body"
-							fontFamily={bodyStyle.fontFamily ?? 'Satoshi'}
+							fontFamily={bodyStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={captionTextSize}
 							lineHeight={bodyStyle.lineHeight}
 							{showToolbar}

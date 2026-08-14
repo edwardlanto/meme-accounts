@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
+	import { Menu } from 'lucide-svelte';
+	import { Button } from '$lib/components/ui/button';
+	import * as Sheet from '$lib/components/ui/sheet';
 
 	let { ctaHref = '/?auth=signup', ctaLabel = 'Get Meme Accounts' }: { ctaHref?: string; ctaLabel?: string } =
 		$props();
@@ -8,6 +11,13 @@
 	const user = $derived($page.data.user);
 	const path = $derived($page.url.pathname);
 	let scrolled = $state(false);
+	let menuOpen = $state(false);
+
+	const navLinks = [
+		{ href: '/#studio', label: 'Features' },
+		{ href: '/#workflow', label: 'How it works' },
+		{ href: '/pricing', label: 'Pricing', match: '/pricing' },
+	];
 
 	onMount(() => {
 		const onScroll = () => {
@@ -17,146 +27,85 @@
 		window.addEventListener('scroll', onScroll, { passive: true });
 		return () => window.removeEventListener('scroll', onScroll);
 	});
+
+	function closeMenu() {
+		menuOpen = false;
+	}
 </script>
 
-<nav class="nav" class:scrolled>
-	<a href="/" class="brand">
+<nav
+	class="sticky top-0 z-50 flex items-center justify-between gap-3 border-b px-4 py-4 transition-all sm:gap-5 sm:px-6 sm:py-5 md:px-8 {scrolled
+		? 'border-[var(--mk-line)] bg-white/82 backdrop-blur-[18px]'
+		: 'border-transparent bg-transparent'}"
+>
+	<a href="/" class="flex min-w-0 shrink items-center">
 		<img
 			src="/logo/meme-accounts-logo.webp"
 			alt="Meme Accounts"
-			class="brand-logo"
+			class="h-7 w-auto max-w-[min(200px,52vw)] object-contain"
 			width="180"
 			height="28"
 		/>
 	</a>
-	<div class="nav-links">
-		<a href="/#features">Features</a>
-		<a href="/#how">How it works</a>
-		<a href="/pricing" aria-current={path === '/pricing' ? 'page' : undefined}>Pricing</a>
+
+	<div class="hidden items-center gap-7 md:flex">
+		{#each navLinks as link}
+			<a
+				href={link.href}
+				class="text-sm font-semibold no-underline transition-colors {link.match && path === link.match
+					? 'text-[var(--mk-text)]'
+					: 'text-[var(--mk-text-2)] hover:text-[var(--mk-text)]'}"
+				aria-current={link.match && path === link.match ? 'page' : undefined}
+			>
+				{link.label}
+			</a>
+		{/each}
 	</div>
-	<div class="nav-actions">
+
+	<div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
+		<Sheet.Root bind:open={menuOpen}>
+			<Sheet.Trigger
+				class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--mk-line)] bg-white text-[var(--mk-text)] md:hidden"
+				aria-label="Open menu"
+			>
+				<Menu size={18} />
+			</Sheet.Trigger>
+			<Sheet.Content side="right" class="w-[min(100vw-2rem,320px)] gap-6 p-6">
+				<Sheet.Header class="text-left">
+					<Sheet.Title class="text-base font-bold">Menu</Sheet.Title>
+				</Sheet.Header>
+				<nav class="flex flex-col gap-1">
+					{#each navLinks as link}
+						<a
+							href={link.href}
+							class="rounded-lg px-3 py-3 text-sm font-semibold no-underline transition-colors {link.match && path === link.match
+								? 'bg-[var(--mk-soft)] text-[var(--mk-text)]'
+								: 'text-[var(--mk-text-2)] hover:bg-[var(--mk-soft)] hover:text-[var(--mk-text)]'}"
+							onclick={closeMenu}
+						>
+							{link.label}
+						</a>
+					{/each}
+				</nav>
+				<div class="mt-auto flex flex-col gap-2 border-t border-[var(--mk-line)] pt-4">
+					{#if user}
+						<Button href="/dashboard" variant="outline" class="w-full" onclick={closeMenu}>Dashboard</Button>
+					{:else}
+						<Button href="/?auth=login" variant="outline" class="w-full" onclick={closeMenu}>Sign in</Button>
+					{/if}
+					<Button href={ctaHref} class="w-full" onclick={closeMenu}>{ctaLabel}</Button>
+				</div>
+			</Sheet.Content>
+		</Sheet.Root>
+
 		{#if user}
-			<a href="/dashboard" class="btn btn-ghost">Dashboard</a>
+			<Button href="/dashboard" variant="ghost" size="sm" class="hidden sm:inline-flex">Dashboard</Button>
 		{:else}
-			<a href="/?auth=login" class="btn btn-ghost">Sign in</a>
+			<Button href="/?auth=login" variant="ghost" size="sm" class="hidden sm:inline-flex">Sign in</Button>
 		{/if}
-		<a href={ctaHref} class="btn btn-dark">{ctaLabel}</a>
+		<Button href={ctaHref} size="sm" class="px-3 sm:px-5">
+			<span class="sm:hidden">Start</span>
+			<span class="hidden sm:inline">{ctaLabel}</span>
+		</Button>
 	</div>
 </nav>
-
-<style>
-	.nav {
-		position: sticky;
-		top: 0;
-		left: 0;
-		right: 0;
-		z-index: 50;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 20px;
-		padding: 20px 32px;
-		transition:
-			background 0.35s ease,
-			backdrop-filter 0.35s ease,
-			border-color 0.35s ease,
-			padding 0.35s ease;
-		border-bottom: 1px solid transparent;
-		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
-		color: #0f0f10;
-	}
-	.nav.scrolled {
-		background: rgba(255, 255, 255, 0.82);
-		backdrop-filter: saturate(180%) blur(18px);
-		-webkit-backdrop-filter: saturate(180%) blur(18px);
-		border-bottom-color: rgba(15, 15, 16, 0.08);
-		padding: 14px 32px;
-	}
-
-	.brand {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
-		flex-shrink: 0;
-	}
-	.brand-logo {
-		display: block;
-		height: 28px;
-		width: auto;
-		max-width: min(200px, 52vw);
-		object-fit: contain;
-	}
-
-	.nav-links {
-		display: flex;
-		align-items: center;
-		gap: 28px;
-	}
-	.nav-links a {
-		font-size: 14px;
-		font-weight: 600;
-		color: #5b5b62;
-		text-decoration: none;
-	}
-	.nav-links a:hover,
-	.nav-links a[aria-current='page'] {
-		color: #0f0f10;
-	}
-
-	.nav-actions {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		padding: 11px 22px;
-		border-radius: 999px;
-		font-family: inherit;
-		font-weight: 600;
-		font-size: 14px;
-		text-decoration: none;
-		border: 1px solid transparent;
-		transition:
-			transform 0.25s ease,
-			background 0.25s ease,
-			border-color 0.25s ease,
-			color 0.25s ease;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.btn-ghost {
-		color: #0f0f10;
-		background: transparent;
-		border-color: rgba(15, 15, 16, 0.14);
-	}
-	.btn-ghost:hover {
-		background: rgba(0, 0, 0, 0.04);
-	}
-	.btn-dark {
-		color: #0a0a0a;
-		background: #7bf1a8;
-		border-color: #7bf1a8;
-	}
-	.btn-dark:hover {
-		transform: translateY(-1px);
-	}
-
-	@media (max-width: 860px) {
-		.nav-links {
-			display: none;
-		}
-		.nav {
-			padding: 16px 20px;
-		}
-		.nav.scrolled {
-			padding: 12px 20px;
-		}
-	}
-</style>

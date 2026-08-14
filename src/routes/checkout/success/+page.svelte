@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>You're in — Meme Accounts</title>
+	<title>You're in | Meme Accounts</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
@@ -17,7 +17,7 @@
 		<span class="eyebrow">Payment confirmed</span>
 		<h1>Welcome to {data.planName}.</h1>
 		<p>
-			Your subscription is active. Head to the studio and ship your next carousel —
+			Your subscription is active. Head to the studio and ship your next carousel,
 			or manage billing anytime from Settings.
 		</p>
 		<div class="actions">

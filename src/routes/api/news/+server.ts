@@ -183,30 +183,41 @@ function demoSynthetic(
 			Math.floor(Math.random() * 900000) + 100000,
 	);
 	if (mode === 'general') {
-		const h = syntheticHint.trim() || 'a carousel about something surprising';
-		const words = wordsFromHint(h, 4);
+		const h = syntheticHint.trim() || 'something surprising';
+		const topic = h.replace(/[^a-zA-Z0-9\s]/g, ' ').trim() || h;
+		const topicTitle = topic
+			.split(/\s+/)
+			.filter(Boolean)
+			.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+			.join(' ');
+		const keyWord = wordsFromHint(h, 1)[0] ?? 'IDEAS';
 		const hooks = [
-			`HERE IS WHAT YOU NEED TO KNOW ABOUT [[${words.slice(0, 2).join(' ')}]]`,
-			`EVERYONE GETS [[${words[0]}]] WRONG — START WITH [[${words[1]}]]`,
-			`THE QUIET TRUTH ABOUT [[${words.slice(0, 2).join(' ')}]]`,
-			`STOP SCROLLING IF YOU CARE ABOUT [[${words[0]}]]`,
-			`[[${words[0]}]] CHANGES FASTER THAN YOU THINK`,
+			`WHY [[${keyWord}]] MATTERS MORE THAN YOU THINK`,
+			`THE [[${keyWord}]] ANGLE MOST PEOPLE MISS`,
+			`WHAT [[${keyWord}]] TEACHES YOU ABOUT THE FEED`,
+			`START WITH [[${keyWord}]] BEFORE YOU POST ANYTHING ELSE`,
+			`[[${keyWord}]] IS NOT WHAT THE ALGORITHM REWARDS`,
 		];
 		const hook = hooks[salt % hooks.length]!;
-		const angles = [
-			`Slide 1 hooks with the core idea. Later slides unpack concrete details, a surprising angle, and a clear takeaway.`,
-			`Open with a mistake people make, then show what actually works and why it sticks.`,
-			`Start in a specific moment, then zoom out to the pattern and one practical next step.`,
-			`Lead with a number, then explain the mechanism and the myth that hides it.`,
+		const ledes = [
+			`${topicTitle} rewards creators who lead with a specific image, a concrete detail, and one clear takeaway per slide.`,
+			`Most posts about ${topic} fail because they stay generic; the ones that win name a moment, a place, or a habit readers recognize instantly.`,
+			`The best ${topic} carousels open on something tangible, then widen into a pattern your audience can act on this week.`,
+			`If you are building around ${topic}, start with what people already feel, then show the small shift that changes the outcome.`,
 		];
+		const bibleBeats = [
+			`Name one surprising fact or image tied to ${topic} that stops the scroll in the first second.`,
+			`Contrast a common mistake with what actually works for audiences interested in ${topic}.`,
+			`Give one example, scene, or object that makes ${topic} feel real instead of abstract.`,
+			`Close with a practical next step someone can try before the week ends.`,
+		];
+		const lede = ledes[salt % ledes.length]!;
+		const description = [lede, ...bibleBeats].join(' ');
 		return {
 			text: hook,
 			imageUrl: null,
 			title: titleFromHook(hook),
-			description:
-				`You asked for: ${h.slice(0, 200)}. ` +
-				angles[salt % angles.length] +
-				` Variation ${salt % 97}.`,
+			description,
 			source: 'General',
 			url: null,
 			uuid: `demo-general-${salt % 97}`,
@@ -588,15 +599,17 @@ Rules for "context":
 	let description = '';
 
 	const parsed = jsonRaw ? parseSyntheticJson(jsonRaw) : null;
+	let usedDemoFallback = false;
+	let parseWarning: string | undefined;
 	if (parsed) {
 		overlayText = parsed.hook;
 		description = parsed.context;
-	} else if (mode === 'steps') {
-		const demo = demoSynthetic('steps', storyCategory, syntheticHint, stepsN, regenNonce);
-		overlayText = demo.text;
-		description = demo.description;
-	} else if (mode === 'general') {
-		const demo = demoSynthetic('general', storyCategory, syntheticHint, stepsN, regenNonce);
+	} else if (mode === 'steps' || mode === 'general') {
+		usedDemoFallback = true;
+		if (jsonRaw) {
+			parseWarning = 'AI copy failed to parse — using offline demo. Try Generate again.';
+		}
+		const demo = demoSynthetic(mode, storyCategory, syntheticHint, stepsN, regenNonce);
 		overlayText = demo.text;
 		description = demo.description;
 	} else {
@@ -644,7 +657,8 @@ Rules for "context":
 		url: null,
 		uuid: null,
 		categories: [],
-		demo: false,
+		demo: usedDemoFallback,
+		...(parseWarning ? { warning: parseWarning } : {}),
 		...(mode === 'steps' ? { stepCount: stepsN } : {}),
 	};
 }

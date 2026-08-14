@@ -64,7 +64,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				const plan =
 					(session.metadata?.plan as PaidPlan | undefined) ||
 					planFromPriceId(priceId) ||
-					'pro';
+					'creator';
 
 				await supabase
 					.from('users')

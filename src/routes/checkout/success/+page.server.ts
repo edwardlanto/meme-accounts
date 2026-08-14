@@ -2,6 +2,8 @@ import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { adminClient } from '$lib/server/auth';
 import { getStripe, planFromPriceId, PLAN_CATALOG } from '$lib/server/stripe';
+import { PAID_PLAN_IDS, type PaidPlanId } from '$lib/pricing-catalog';
+import { normalizePlanId } from '$lib/plan-entitlements';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const { user } = await locals.safeGetSession();
@@ -12,8 +14,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		throw redirect(303, '/pricing');
 	}
 
-	let planName = 'Pro';
-  let planId: 'pro' | 'agency' = 'pro';
+	let planName = 'Creator';
+	let planId: PaidPlanId = 'creator';
 
 	try {
 		const stripe = getStripe();
@@ -21,7 +23,6 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			expand: ['subscription'],
 		});
 
-		// Only show success for sessions belonging to this user.
 		const owner =
 			session.metadata?.supabase_user_id || session.client_reference_id || null;
 		if (owner && owner !== user.id) {
@@ -32,16 +33,18 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		}
 
 		const metaPlan = session.metadata?.plan;
-		if (metaPlan === 'agency' || metaPlan === 'pro') {
-			planId = metaPlan;
+		if (metaPlan && (PAID_PLAN_IDS as readonly string[]).includes(metaPlan)) {
+			planId = metaPlan as PaidPlanId;
 		} else if (session.subscription && typeof session.subscription !== 'string') {
 			const priceId = session.subscription.items.data[0]?.price?.id;
-			planId = planFromPriceId(priceId) ?? 'pro';
+			planId = planFromPriceId(priceId) ?? 'creator';
+		} else {
+			planId = normalizePlanId(metaPlan) as PaidPlanId;
+			if (planId === 'free') planId = 'creator';
 		}
 
 		planName = PLAN_CATALOG[planId].name;
 
-		// Soft-confirm local profile (webhook is source of truth; this helps UX if webhook lags).
 		const supabase = adminClient();
 		await supabase
 			.from('users')

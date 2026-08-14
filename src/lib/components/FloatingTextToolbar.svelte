@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import type { TextStyle } from '$lib/types';
 	import type { HighlightSpec } from '$lib/highlight';
 	import {
@@ -405,9 +406,9 @@
 				<Type size={13} class="ftb-muted" />
 				<span
 					class="ftb-strong flex-1 truncate text-left text-xs"
-					style="font-family: '{style.fontFamily ?? 'Satoshi'}', sans-serif;"
+					style="font-family: '{style.fontFamily ?? FONT_TEMPLATE_DEFAULT}', sans-serif;"
 				>
-					{style.fontFamily ?? 'Satoshi'}
+					{style.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 				</span>
 				<ChevronDown size={12} class="ftb-muted" />
 			</PopoverTrigger>

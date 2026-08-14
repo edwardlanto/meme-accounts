@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT, FONT_UI_STACK } from '$lib/fonts/brand-fonts';
 	/**
 	 * Dual-panel 9:16 split — matches pyautoflip saliency “multi-face” output
 	 * (two subjects stacked top/bottom). Before reframe, previews the same source
@@ -231,7 +232,7 @@
 		left: 4%;
 		z-index: 3;
 		padding: 0.2em 0.45em;
-		font-family: 'Satoshi', ui-sans-serif, system-ui, sans-serif;
+		font-family: FONT_UI_STACK;
 		font-size: 42px;
 		font-weight: 700;
 		letter-spacing: 0.01em;

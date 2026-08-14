@@ -3,11 +3,11 @@
 </script>
 
 <svelte:head>
-	<title>Privacy Policy — Meme Accounts</title>
-	<meta name="description" content="How Meme Accounts collects, uses, and protects your data — including payments, AI features, and connected social accounts." />
+	<title>Privacy Policy | Meme Accounts</title>
+	<meta name="description" content="How Meme Accounts collects, uses, and protects your data, including payments, AI features, and connected social accounts." />
 </svelte:head>
 
-<LegalDoc title="Meme Accounts — Privacy Policy" effectiveDate="August 12, 2026">
+<LegalDoc title="Meme Accounts | Privacy Policy" effectiveDate="August 12, 2026">
 	<h2>1. Who we are</h2>
 	<p>
 		Meme Accounts (&ldquo;we&rdquo;, &ldquo;us&rdquo;) provides tools to design social posts,
@@ -21,11 +21,11 @@
 		Categories include:
 	</p>
 	<ul>
-		<li><strong>Account data</strong> — email, name, and authentication identifiers when you sign up.</li>
-		<li><strong>Content you create or upload</strong> — templates, captions, images, videos, cutouts, brand assets, and schedules you upload or generate.</li>
-		<li><strong>Connected accounts</strong> — OAuth tokens and profile metadata from platforms you connect (Instagram, TikTok, LinkedIn, YouTube, Bluesky, Google Business, etc.).</li>
-		<li><strong>Payment data</strong> — billing is handled by Stripe. We store your plan, Stripe customer id, and subscription status — not full card numbers.</li>
-		<li><strong>Usage &amp; diagnostics</strong> — basic logs, errors, IP/device signals as needed for security, and feature usage to keep the service reliable.</li>
+		<li><strong>Account data</strong>: email, name, and authentication identifiers when you sign up.</li>
+		<li><strong>Content you create or upload</strong>: templates, captions, images, videos, cutouts, brand assets, and schedules you upload or generate.</li>
+		<li><strong>Connected accounts</strong>: OAuth tokens and profile metadata from platforms you connect (Instagram, TikTok, LinkedIn, YouTube, Bluesky, Google Business, etc.).</li>
+		<li><strong>Payment data</strong>: billing is handled by Stripe. We store your plan, Stripe customer id, and subscription status, not full card numbers.</li>
+		<li><strong>Usage &amp; diagnostics</strong>: basic logs, errors, IP/device signals as needed for security, and feature usage to keep the service reliable.</li>
 	</ul>
 
 	<h2>3. How we use information</h2>
@@ -48,12 +48,12 @@
 		These include (as used):
 	</p>
 	<ul>
-		<li><strong>Supabase</strong> — authentication and database.</li>
-		<li><strong>Stripe</strong> — payments, invoices, subscription management, and renewal receipts/reminders.</li>
-		<li><strong>Cloudflare R2</strong> (or equivalent object storage) — uploaded and generated media files.</li>
-		<li><strong>AI providers</strong> — including OpenRouter, Fal, and Google Vertex / Gemini for text, image, and video features.</li>
-		<li><strong>Stock media APIs</strong> — Unsplash and Pexels when you search or insert stock assets.</li>
-		<li><strong>Publishing / OAuth partners</strong> — e.g. Zernio and connected social networks when you authorize publishing.</li>
+		<li><strong>Supabase</strong>: authentication and database.</li>
+		<li><strong>Stripe</strong>: payments, invoices, subscription management, and renewal receipts/reminders.</li>
+		<li><strong>Cloudflare R2</strong> (or equivalent object storage): uploaded and generated media files.</li>
+		<li><strong>AI providers</strong>: including OpenRouter, Fal, and Google Vertex / Gemini for text, image, and video features.</li>
+		<li><strong>Stock media APIs</strong>: Unsplash and Pexels when you search or insert stock assets.</li>
+		<li><strong>Publishing / OAuth partners</strong>: e.g. Zernio and connected social networks when you authorize publishing.</li>
 	</ul>
 	<p>
 		Connected social platforms receive only the content and permissions you authorize.
@@ -71,7 +71,7 @@
 		<li>OAuth tokens remain until you disconnect an integration.</li>
 		<li>Created content and uploads remain until you delete them or close your account.</li>
 		<li>
-			<strong>Account deletion</strong> — from Settings → Account you can permanently delete your
+			<strong>Account deletion</strong>: from Settings → Account you can permanently delete your
 			account. We cancel active Stripe subscriptions when possible, remove your account records,
 			and purge media stored under your account prefix in object storage (uploads, drafts media,
 			templates, videos). Residual backups or logs may take up to <strong>30 days</strong> to fully clear.

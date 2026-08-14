@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { adminClient } from '$lib/server/auth';
 import { PLAN_CATALOG } from '$lib/server/stripe';
+import { normalizePlanId } from '$lib/plan-entitlements';
 
 /** Return the signed-in user's plan + billing fields for Settings / checkout. */
 export const GET: RequestHandler = async ({ locals }) => {
@@ -21,7 +22,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 	if (error) return json({ ok: false, error: error.message }, { status: 500 });
 
-	const plan = (data?.plan ?? 'free') as keyof typeof PLAN_CATALOG;
+	const plan = normalizePlanId(data?.plan);
 	const catalog = PLAN_CATALOG[plan] ?? PLAN_CATALOG.free;
 
 	return json({

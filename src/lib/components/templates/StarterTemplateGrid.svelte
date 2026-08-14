@@ -169,7 +169,7 @@
 
 	:global(.tmpl-title) {
 		color: var(--t-strong) !important;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-weight: 700;
 		letter-spacing: -0.01em;
 	}

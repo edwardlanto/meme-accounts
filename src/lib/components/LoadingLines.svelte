@@ -23,7 +23,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-family: 'Satoshi', system-ui, sans-serif;
+		font-family: var(--font-display);
 		font-size: 2.2em;
 		font-weight: 700;
 		letter-spacing: 0.04em;

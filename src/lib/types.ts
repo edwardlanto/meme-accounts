@@ -36,7 +36,7 @@ export interface TextOverlay {
  * default behavior is used (e.g. undefined fontSize → auto-sizing kicks in).
  */
 export interface TextStyle {
-	fontFamily?: string;     // Display name for a typeface; app renders with self-hosted Satoshi
+	fontFamily?: string;     // Display name; default template font is FONT_TEMPLATE_DEFAULT in brand-fonts.ts
 	fontSize?: number;       // template px; overrides auto-sizing when set
 	fontWeight?: number;     // CSS weight 100–900
 	italic?: boolean;

@@ -1,24 +1,31 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getTrialStatus, TRIAL_EXPORT_LIMIT } from '$lib/server/trial';
+import { getUsageStatus } from '$lib/server/usage';
 
+/** @deprecated Prefer GET /api/usage/status */
 export const GET: RequestHandler = async ({ locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user?.id) {
 		return json({
 			ok: true,
 			signedIn: false,
-			limit: TRIAL_EXPORT_LIMIT,
-			remaining: TRIAL_EXPORT_LIMIT,
+			limit: 5,
+			remaining: 5,
 			canExport: false,
+			canGenerate: false,
 		});
 	}
 
-	const status = await getTrialStatus(user.id);
+	const status = await getUsageStatus(user.id);
 	return json({
 		ok: true,
 		signedIn: true,
-		...status,
-		remaining: status.isPaid ? null : status.remaining,
+		canExport: true,
+		canGenerate: status.canGenerate,
+		isPaid: status.isPaid,
+		used: status.used,
+		limit: status.limit,
+		remaining: status.isPaid && status.limit === null ? null : status.remaining,
+		plan: status.plan,
 	});
 };

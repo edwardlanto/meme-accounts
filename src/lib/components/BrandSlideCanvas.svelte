@@ -112,7 +112,7 @@
 
 	// ── Font loading ──────────────────────────────────────────────────────────
 	async function loadFonts(_names: string[]) {
-		/* Slides use self-hosted Satoshi only — no remote font CSS. */
+		/* Slides use Plus Jakarta Sans via global app fonts. */
 		try {
 			await document.fonts.ready;
 		} catch {}

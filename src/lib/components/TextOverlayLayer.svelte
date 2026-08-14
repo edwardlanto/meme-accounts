@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import { tick } from 'svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import { parseHighlightMarkup as parseHighlightToSegments, segmentText } from '$lib/highlight';
@@ -458,7 +459,7 @@
 				css.letterSpacing != null ? `${css.letterSpacing}em` : '-0.015em'}
 			{@const family = css.fontFamily
 				? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif`
-				: `'Satoshi', var(--font-sans), system-ui, -apple-system, sans-serif`}
+				: `FONT_TEMPLATE_DEFAULT, var(--font-sans), system-ui, -apple-system, sans-serif`}
 			{@const blockBg = String(css.bgColor ?? '').trim()}
 			{@const hasBlockBg =
 				!!blockBg && blockBg !== 'transparent' && blockBg !== 'none'}

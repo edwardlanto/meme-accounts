@@ -119,7 +119,12 @@
 				}),
 			});
 			const data = await res.json();
-			if (data.error) throw new Error(data.error);
+			if (data.error) {
+				if (res.status === 402) {
+					throw new Error(`${data.error} Upgrade at /pricing`);
+				}
+				throw new Error(data.error);
+			}
 			slides = data.slides ?? [];
 			exportRefs = new Array(slides.length).fill(null);
 
@@ -538,7 +543,7 @@
 		font-size: 13px;
 		color: var(--wiz-muted2);
 		text-decoration: none;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		transition: color 0.15s;
 	}
 	.back-btn:hover { color: var(--wiz-muted); }
@@ -554,7 +559,7 @@
 		border-radius: 50%;
 		border: 1.5px solid var(--wiz-border);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 11px;
 		color: var(--wiz-muted2);
 		transition: all 0.2s;
@@ -578,7 +583,7 @@
 	.step-line.active { background: rgba(123,241,168,0.4); }
 
 	.step-label {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 11px;
 		color: var(--wiz-muted2);
 		text-transform: uppercase;
@@ -602,7 +607,7 @@
 	}
 
 	.step-eyebrow {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 11px;
 		letter-spacing: 0.14em;
 		color: #7bf1a8;
@@ -621,7 +626,7 @@
 	}
 
 	.step-sub {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 16px;
 		color: var(--wiz-muted);
 		margin: 0 0 40px;
@@ -633,7 +638,7 @@
 
 	.field-label {
 		display: block;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
@@ -649,7 +654,7 @@
 		border: 1.5px solid var(--wiz-input-border);
 		border-radius: 12px;
 		padding: 14px 16px;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 15px;
 		color: var(--wiz-text);
 		outline: none;
@@ -663,7 +668,7 @@
 	::placeholder { color: color-mix(in oklab, var(--wiz-muted2) 70%, transparent); }
 
 	.field-hint {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 12px;
 		color: var(--wiz-muted2);
 		margin: 8px 0 0;
@@ -696,7 +701,7 @@
 	}
 
 	.drop-text {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 15px;
 		color: var(--wiz-muted);
 		margin: 0 0 6px;
@@ -704,7 +709,7 @@
 	.drop-link { color: #7bf1a8; text-decoration: underline; }
 
 	.drop-sub {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 11px;
 		color: var(--wiz-muted2);
 		margin: 0;
@@ -742,7 +747,7 @@
 
 	.thumb-idx {
 		position: absolute; bottom: 4px; left: 6px;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 10px;
 		color: rgba(255,255,255,0.5);
 		background: rgba(0,0,0,0.6);
@@ -751,7 +756,7 @@
 	}
 
 	.skip-hint {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 13px;
 		color: rgba(255,255,255,0.25);
 		text-align: center;
@@ -804,7 +809,7 @@
 	}
 
 	.style-desc {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 13px;
 		color: rgba(255,255,255,0.35);
 		margin: 0;
@@ -822,7 +827,7 @@
 		border-radius: 100px;
 		border: 1.5px solid rgba(255,255,255,0.08);
 		background: transparent;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 13px;
 		color: rgba(255,255,255,0.4);
 		cursor: pointer;
@@ -858,7 +863,7 @@
 	}
 
 	.color-hex {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 13px;
 		color: rgba(255,255,255,0.4);
 	}
@@ -905,7 +910,7 @@
 	}
 
 	.gen-sub {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 15px;
 		color: rgba(255,255,255,0.35);
 		margin: 0;
@@ -945,7 +950,7 @@
 		margin: 0;
 	}
 	.gen-error p {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 14px;
 		color: rgba(255,255,255,0.4);
 		margin: 0;
@@ -971,7 +976,7 @@
 		margin: 0 0 4px;
 	}
 	.preview-count {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 11px;
 		color: rgba(255,255,255,0.25);
 		text-transform: uppercase;
@@ -990,7 +995,7 @@
 		gap: 6px;
 		padding: 8px 16px;
 		border-radius: 10px;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
@@ -1044,7 +1049,7 @@
 	}
 
 	.film-num {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 10px;
 		color: rgba(255,255,255,0.3);
 	}
@@ -1080,7 +1085,7 @@
 	.nav-arrow:disabled { opacity: 0.25; cursor: not-allowed; }
 
 	.nav-count {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 12px;
 		color: rgba(255,255,255,0.3);
 	}
@@ -1089,7 +1094,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 11px;
 		color: rgba(255,255,255,0.3);
 	}
@@ -1117,7 +1122,7 @@
 		gap: 6px;
 		padding: 10px 20px;
 		border-radius: 10px;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 14px;
 		font-weight: 500;
 		cursor: pointer;

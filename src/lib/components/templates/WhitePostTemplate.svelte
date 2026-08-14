@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
@@ -116,7 +117,7 @@
 			box-sizing: border-box;
 			overflow: hidden;
 			padding: {padTop}px {padX}px {previewMode ? 24 : 80}px;
-			font-family: Satoshi, system-ui, sans-serif;
+			font-family: var(--font-display), system-ui, sans-serif;
 			color: #0f1419;
 		"
 	>
@@ -195,7 +196,7 @@
 							rows={1}
 							minHeight="0px"
 							ariaLabel="Display name"
-							fontFamily={nameStyle.fontFamily ?? 'Satoshi'}
+							fontFamily={nameStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={nameSize}
 							{showToolbar}
 							onTextChange={onNameChange}
@@ -231,7 +232,7 @@
 							rows={1}
 							minHeight="0px"
 							ariaLabel="Handle"
-							fontFamily={handleStyle.fontFamily ?? 'Satoshi'}
+							fontFamily={handleStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={handleSize}
 							{showToolbar}
 							onTextChange={onHandleChange}
@@ -310,7 +311,7 @@
 						rows={isMedia ? 8 : 14}
 						minHeight="0px"
 						ariaLabel="Post text"
-						fontFamily={bodyStyle.fontFamily ?? 'Satoshi'}
+						fontFamily={bodyStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 						fontSize={bodySize}
 						lineHeight={bodyStyle.lineHeight}
 						{showToolbar}

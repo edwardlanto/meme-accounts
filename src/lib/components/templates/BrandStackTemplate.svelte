@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
@@ -286,7 +287,7 @@
 							rows={1}
 							minHeight="0px"
 							ariaLabel="Watermark"
-							fontFamily={watermarkStyle.fontFamily ?? 'Satoshi'}
+							fontFamily={watermarkStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={watermarkSize}
 							{showToolbar}
 							onTextChange={onWatermarkChange}
@@ -427,7 +428,7 @@
 						rows={1}
 						minHeight="0px"
 						ariaLabel="Brand link"
-						fontFamily={brandStyle.fontFamily ?? 'Satoshi'}
+						fontFamily={brandStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 						fontSize={brandStyle.fontSize ?? (previewMode ? 16 : 34)}
 						{showToolbar}
 						onTextChange={onBrandChange}

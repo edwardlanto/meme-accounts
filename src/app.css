@@ -2,90 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
 @import "$lib/styles/prompt-bar.css";
+@import "$lib/styles/marketing.css";
 
 @custom-variant dark (&:is(.dark *));
-
-/* ─── Satoshi font face declarations ──────────────────────── */
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-light-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-light-webfont.woff') format('woff');
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-lightitalic-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-lightitalic-webfont.woff') format('woff');
-  font-weight: 300;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-regular-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-regular-webfont.woff') format('woff');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-italic-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-italic-webfont.woff') format('woff');
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-medium-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-medium-webfont.woff') format('woff');
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-mediumitalic-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-mediumitalic-webfont.woff') format('woff');
-  font-weight: 500;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-bold-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-bold-webfont.woff') format('woff');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-bolditalic-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-bolditalic-webfont.woff') format('woff');
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-black-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-black-webfont.woff') format('woff');
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/satoshi-blackitalic-webfont.woff2') format('woff2'),
-       url('/fonts/satoshi/satoshi-blackitalic-webfont.woff') format('woff');
-  font-weight: 900;
-  font-style: italic;
-  font-display: swap;
-}
 
 @theme {
   /* Core palette */
@@ -94,9 +13,9 @@
   --color-surface-2: #111111;
   --color-surface-3: #1a1a1a;
 
-  /* Accent */
-  --color-lime:   #7bf1a8;
-  --color-lime-bright: #a7f7c6;
+  /* Accent — bright signal green, the site-wide CTA color */
+  --color-lime:   #22e07a;
+  --color-lime-bright: #4ef79c;
   --color-brand-yellow: #E8FF48;
   --color-orange: #FF6B35;
   --color-violet: #8B5CF6;
@@ -122,11 +41,14 @@
   --color-text-mid:    rgba(10, 10, 10, 0.55);
   --color-text-faint:  rgba(10, 10, 10, 0.35);
 
-  /* Typography — self-hosted Satoshi only (see @font-face above) */
-  --font-display: 'Satoshi', sans-serif;
-  --font-body:    'Satoshi', sans-serif;
-  --font-mono:    'Satoshi', sans-serif;
-  --font-sans:    'Satoshi', sans-serif;
+  /* Typography — names must match src/lib/fonts/brand-fonts.ts (FONT_DISPLAY, FONT_BODY) */
+  --font-display-name: 'Plus Jakarta Sans';
+  --font-body-name:    'Inter';
+  --font-display: var(--font-display-name), sans-serif;
+  --font-body:    var(--font-body-name), sans-serif;
+  --font-ui:      var(--font-display-name), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    ui-monospace, 'SF Mono', monospace;
+  --font-sans:    var(--font-body-name), sans-serif;
   --color-sidebar-ring:    var(--sidebar-ring);
   --color-sidebar-border:    var(--sidebar-border);
   --color-sidebar-accent-foreground:    var(--sidebar-accent-foreground);
@@ -242,7 +164,7 @@
 
   --chart-5:    oklch(0.269 0 0);
 
-  --radius:    0.625rem;
+  --radius:    1rem;
 
   --sidebar:    oklch(0.985 0 0);
 
@@ -296,13 +218,13 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
 }
 
 body {
   background: var(--app-bg);
   color: var(--app-text);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   margin: 0;
   overflow-x: hidden;
   line-height: 1.5;
@@ -474,75 +396,6 @@ input[type="reset"]:disabled,
 .font-body    { font-family: var(--font-body); }
 .font-mono    { font-family: var(--font-mono); }
 
-/* ─── Shared CTAs (match marketing homepage `.btn` language) ─ */
-.ma-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 11px 22px;
-  border-radius: 999px;
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 14px;
-  line-height: 1.2;
-  text-decoration: none;
-  border: 1px solid transparent;
-  transition:
-    transform 0.25s ease,
-    background 0.25s ease,
-    border-color 0.25s ease,
-    color 0.25s ease,
-    box-shadow 0.25s ease;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ma-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-.ma-btn-primary {
-  color: #0f0f10;
-  background: var(--app-accent);
-  border-color: var(--app-accent);
-}
-.ma-btn-primary:hover:not(:disabled) {
-  background: var(--app-accent-hover);
-  border-color: var(--app-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(123, 241, 168, 0.35);
-}
-.ma-btn-ghost {
-  color: var(--app-text);
-  background: transparent;
-  border-color: var(--app-border-hover);
-}
-.ma-btn-ghost:hover:not(:disabled) {
-  background: rgba(15, 15, 16, 0.04);
-}
-.ma-btn-outline {
-  color: var(--app-text);
-  background: #fff;
-  border-color: var(--app-border-hover);
-}
-.ma-btn-outline:hover:not(:disabled) {
-  border-color: var(--app-text);
-  transform: translateY(-1px);
-}
-.ma-btn-lg {
-  padding: 16px 32px;
-  font-size: 15px;
-}
-.ma-btn-sm {
-  padding: 7px 14px;
-  font-size: 12.5px;
-}
-.ma-btn svg {
-  flex-shrink: 0;
-}
-
 /* ─── Light-mode compatibility layer (dashboard pages) ────────────────
    Many screens were initially authored “dark-only” with Tailwind classes like
    `text-white/60`, `border-white/[0.08]`, `bg-white/[0.03]`. Rather than
@@ -627,7 +480,13 @@ input[type="reset"]:disabled,
   }
 	html {
 		@apply font-sans;
+		overflow-x: hidden;
   }
+	img,
+	video {
+		max-width: 100%;
+		height: auto;
+	}
 }
 
 /* Dashboard list pages — match Carousels (`/dashboard/carousels`) */
@@ -637,11 +496,23 @@ input[type="reset"]:disabled,
 	margin: 0 auto;
 	padding: 32px 32px 64px;
 	box-sizing: border-box;
-	font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+	font-family: var(--font-body);
+}
+
+@media (max-width: 767px) {
+	.dash-page {
+		padding: 20px 16px 48px;
+	}
+}
+
+@media (max-width: 480px) {
+	.dash-page {
+		padding: 16px 12px 40px;
+	}
 }
 .dash-page-title {
 	margin: 0;
-	font-family: 'Satoshi', sans-serif;
+	font-family: var(--font-display);
 	font-size: clamp(28px, 3.4vw, 42px);
 	font-weight: 800;
 	letter-spacing: -0.025em;

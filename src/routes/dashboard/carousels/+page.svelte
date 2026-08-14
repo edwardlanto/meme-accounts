@@ -1719,7 +1719,7 @@
 	}
 
 	.page-wrap {
-		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		font-family: var(--font-body);
 	}
 	.reveal {
 		opacity: 0;

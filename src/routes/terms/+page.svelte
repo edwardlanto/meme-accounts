@@ -3,11 +3,11 @@
 </script>
 
 <svelte:head>
-	<title>Terms of Service — Meme Accounts</title>
-	<meta name="description" content="Terms of Service for Meme Accounts — acceptable use, subscriptions, trials, and third-party integrations." />
+	<title>Terms of Service | Meme Accounts</title>
+	<meta name="description" content="Terms of Service for Meme Accounts: acceptable use, subscriptions, trials, and third-party integrations." />
 </svelte:head>
 
-<LegalDoc title="Meme Accounts — Terms of Service" effectiveDate="August 12, 2026">
+<LegalDoc title="Meme Accounts | Terms of Service" effectiveDate="August 12, 2026">
 	<h2>1. Acceptance</h2>
 	<p>
 		By using Meme Accounts (&ldquo;the Service&rdquo;), you agree to these Terms. If you do not
@@ -33,13 +33,13 @@
 		<li>Free accounts include a limited trial (currently <strong>one exported post</strong> on trial-gated tools such as the Tweet Maker).</li>
 		<li>Paid plans (Pro, Agency) remove trial limits subject to fair use.</li>
 		<li>
-			<strong>Auto-renewal</strong> — Paid subscriptions renew automatically at the end of each
+			<strong>Auto-renewal</strong>: Paid subscriptions renew automatically at the end of each
 			billing period until you cancel. Stripe emails receipts and renewal-related notices to the
 			email on your Stripe customer record. You can also see the next renewal date in
 			Settings → Billing.
 		</li>
 		<li>
-			<strong>Cancel anytime</strong> — Cancel in one click from Settings → Billing →
+			<strong>Cancel anytime</strong>: Cancel in one click from Settings → Billing →
 			&ldquo;Cancel subscription&rdquo; (Stripe Customer Portal). Canceling takes no more steps
 			than signing up. You keep access until the end of the paid period, then revert to Free.
 		</li>

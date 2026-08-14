@@ -1,14 +1,15 @@
 import type { PageServerLoad } from './$types';
 import { adminClient } from '$lib/server/auth';
 import { PLAN_CATALOG } from '$lib/server/stripe';
-import { getTrialStatus, TRIAL_EXPORT_LIMIT } from '$lib/server/trial';
+import { getUsageStatus } from '$lib/server/usage';
+import { normalizePlanId } from '$lib/plan-entitlements';
 
 export const load: PageServerLoad = async ({ parent }) => {
 	const { user } = await parent();
 	if (!user) {
 		return {
 			billing: null,
-			trial: null,
+			usage: null,
 			profile: null,
 		};
 	}
@@ -25,15 +26,15 @@ export const load: PageServerLoad = async ({ parent }) => {
 	if (error) {
 		return {
 			billing: null,
-			trial: null,
+			usage: null,
 			profile: null,
 			billingError: error.message,
 		};
 	}
 
-	const plan = (data?.plan ?? 'free') as keyof typeof PLAN_CATALOG;
+	const plan = normalizePlanId(data?.plan);
 	const catalog = PLAN_CATALOG[plan] ?? PLAN_CATALOG.free;
-	const trial = await getTrialStatus(user.id);
+	const usage = await getUsageStatus(user.id);
 
 	return {
 		billing: {
@@ -47,11 +48,11 @@ export const load: PageServerLoad = async ({ parent }) => {
 			features: catalog.features,
 			monthlyPrice: catalog.monthly,
 			yearlyPrice: catalog.yearly,
+			carouselsPerMonth: catalog.carouselsPerMonth,
 		},
-		trial: {
-			...trial,
-			limit: TRIAL_EXPORT_LIMIT,
-			remaining: trial.isPaid ? null : trial.remaining,
+		usage: {
+			...usage,
+			remaining: usage.isPaid && usage.limit === null ? null : usage.remaining,
 		},
 		profile: {
 			fullName:

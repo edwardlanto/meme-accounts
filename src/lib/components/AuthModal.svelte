@@ -159,7 +159,7 @@
 				<p class="form-sub">
 					{modal.mode === 'signup'
 						? 'Create an account to start clipping and posting.'
-						: 'Welcome back — continue to your dashboard.'}
+						: 'Welcome back. Continue to your dashboard.'}
 				</p>
 
 				{#if error}
@@ -169,7 +169,7 @@
 					</div>
 				{/if}
 				{#if resetSent}
-					<div class="ok-toast" role="status">Password reset link sent — check your inbox.</div>
+					<div class="ok-toast" role="status">Password reset link sent. Check your inbox.</div>
 				{/if}
 
 				<form
@@ -311,7 +311,7 @@
 		background: #ffffff;
 		border: 1px solid rgba(15, 15, 16, 0.1);
 		color: #0f0f10;
-		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		font-family: var(--font-body);
 		box-shadow:
 			0 1px 0 rgba(255, 255, 255, 0.7) inset,
 			0 24px 64px rgba(15, 15, 16, 0.16);

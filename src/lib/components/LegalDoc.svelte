@@ -37,9 +37,9 @@
 <style>
 	.wrap {
 		min-height: auto;
-		background: #f7f4ef;
-		color: #0a0505;
-		font-family: 'Satoshi', system-ui, sans-serif;
+		background: var(--mk-soft);
+		color: var(--mk-text);
+		font-family: var(--font-body);
 		padding: 48px 24px 96px;
 	}
 	.doc {

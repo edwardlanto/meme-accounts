@@ -48,7 +48,7 @@
 	let activeTab = $state<SettingsTab>('account');
 
 	type BillingInfo = {
-		plan: 'free' | 'pro' | 'agency';
+		plan: 'free' | 'hobby' | 'creator' | 'business';
 		planName: string;
 		credits: number;
 		planStatus: string;
@@ -58,10 +58,21 @@
 		features: string[];
 		monthlyPrice: number;
 		yearlyPrice: number;
+		carouselsPerMonth: number | null;
+	};
+
+	type UsageInfo = {
+		canGenerate: boolean;
+		isPaid: boolean;
+		used: number;
+		limit: number | null;
+		remaining: number | null;
+		plan: string;
+		periodStart: string;
 	};
 
 	const billing = $derived(data.billing as BillingInfo | null);
-	const trial = $derived(data.trial);
+	const usage = $derived(data.usage as UsageInfo | null);
 	const signedIn = $derived(!!data.user);
 	const userId = $derived(data.user?.id ?? '');
 	const userEmail = $derived(data.user?.email ?? '');
@@ -739,7 +750,8 @@
 	{/if}
 
 	<Tabs.Root bind:value={activeTab} class="gap-6">
-		<Tabs.List>
+		<div class="max-w-full overflow-x-auto pb-1">
+			<Tabs.List class="min-w-max">
 			{#each tabs as t (t.id)}
 				{@const Icon = t.icon}
 				<Tabs.Trigger value={t.id} disabled={!signedIn && t.id !== 'legal'}>
@@ -747,7 +759,8 @@
 					{t.label}
 				</Tabs.Trigger>
 			{/each}
-		</Tabs.List>
+			</Tabs.List>
+		</div>
 	</Tabs.Root>
 
 	<!-- ── ACCOUNT TAB ─────────────────────────────────────────── -->
@@ -1272,16 +1285,23 @@
 						</div>
 					</div>
 
-					{#if trial && !trial.isPaid}
+					{#if usage && !usage.isPaid}
 						<div class="trial-banner">
-							<p class="trial-title">Free trial exports</p>
+							<p class="trial-title">Carousel tokens this month</p>
 							<p class="trial-sub">
-								{trial.used} of {trial.limit} free export{trial.limit === 1 ? '' : 's'} used.
-								{#if trial.remaining === 0}
-									Upgrade to Pro or Agency for unlimited exports.
+								{usage.used} of {usage.limit ?? 5} carousel{usage.limit === 1 ? '' : 's'} generated.
+								{#if (usage.remaining ?? 0) === 0}
+									Upgrade to Creator (${PLAN_CATALOG.creator.monthly}/mo) for 100 carousels/month.
 								{:else}
-									{trial.remaining} remaining on the Free plan.
+									{usage.remaining} remaining on the Free plan.
 								{/if}
+							</p>
+						</div>
+					{:else if usage?.isPaid && usage.limit !== null}
+						<div class="trial-banner">
+							<p class="trial-title">Carousel usage this month</p>
+							<p class="trial-sub">
+								{usage.used} of {usage.limit} carousels used · {usage.remaining} remaining.
 							</p>
 						</div>
 					{/if}
@@ -1332,7 +1352,7 @@
 				<h2 class="card-title">Compare plans</h2>
 				<p class="card-desc">Plans match our <a href="/pricing" class="inline-link">pricing page</a>. Checkout is secured by Stripe.</p>
 				<div class="plan-compare-grid">
-					{#each (['free', 'pro', 'agency'] as const) as planId}
+					{#each (['free', 'hobby', 'creator', 'business'] as const) as planId}
 						{@const p = PLAN_CATALOG[planId]}
 						<div class="plan-compare-card" class:plan-compare-card--current={billing?.plan === planId}>
 							<div class="plan-compare-head">
@@ -1356,7 +1376,7 @@
 							</ul>
 							{#if planId !== 'free' && billing?.plan !== planId}
 								<Button href="/checkout?plan={planId}" class="plan-compare-cta w-full">
-									{planId === 'agency' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
+									Upgrade to {p.name}
 								</Button>
 							{:else if planId === 'free' && billing?.plan !== 'free'}
 								<Button
@@ -1375,20 +1395,20 @@
 				</div>
 			</div>
 
-			{#if billing?.plan !== 'agency'}
+			{#if billing?.plan !== 'business'}
 				<div class="settings-card">
 					<h2 class="card-title">
-						{billing?.plan === 'pro' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
+						{billing?.plan === 'creator' ? 'Upgrade to Business' : 'Upgrade to Creator'}
 					</h2>
 					<p class="card-desc">
-						{#if billing?.plan === 'pro'}
-							Unlimited accounts, team workspace, white-label export, and API access - ${PLAN_CATALOG.agency.monthly}/mo.
+						{#if billing?.plan === 'creator'}
+							Unlimited carousels, team workspace, and API access — ${PLAN_CATALOG.business.monthly}/mo.
 						{:else}
-							Unlimited carousels, Claude AI, News-to-Post, and full export - ${PLAN_CATALOG.pro.monthly}/mo.
+							100 carousels/month, all caption styles, no watermark — ${PLAN_CATALOG.creator.monthly}/mo.
 						{/if}
 					</p>
-					<Button href={`/checkout?plan=${billing?.plan === 'pro' ? 'agency' : 'pro'}`}>
-						{billing?.plan === 'pro' ? 'Upgrade to Agency' : 'Upgrade to Pro'}
+					<Button href={`/checkout?plan=${billing?.plan === 'creator' ? 'business' : 'creator'}`}>
+						{billing?.plan === 'creator' ? 'Upgrade to Business' : 'Upgrade to Creator'}
 					</Button>
 				</div>
 			{/if}
@@ -1533,7 +1553,7 @@
 		--t: var(--ap-text-2);
 		--t-muted: var(--ap-text-3);
 
-		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		font-family: var(--font-body);
 		display: flex;
 		flex-direction: column;
 		gap: 22px;
@@ -1583,7 +1603,7 @@
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.5rem 1rem; border-radius: 9px; border: none;
 		background: transparent; color: var(--t-muted);
-		font-family: 'Satoshi', sans-serif; font-size: 0.8125rem; font-weight: 500;
+		font-family: var(--font-display); font-size: 0.8125rem; font-weight: 500;
 		cursor: pointer; transition: all 0.15s; white-space: nowrap;
 	}
 	.tab-btn:hover { color: var(--t-strong); background: var(--panel-bg-2); }
@@ -1608,7 +1628,7 @@
 	}
 
 	.card-title {
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 17px;
 		font-weight: 800;
 		letter-spacing: -0.02em;
@@ -1636,11 +1656,11 @@
 		width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
 		background: var(--ap-soft-2); border: 1px solid var(--ap-line);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Satoshi', sans-serif; font-size: 16px; font-weight: 800; color: var(--ap-text);
+		font-family: var(--font-display); font-size: 16px; font-weight: 800; color: var(--ap-text);
 	}
 	.profile-info { flex: 1; }
 	.profile-name  { font-size: 0.9375rem; font-weight: 600; color: var(--t-strong); margin: 0 0 0.2rem; }
-	.profile-email { font-size: 0.8125rem; color: var(--t-muted); margin: 0; font-family: 'Satoshi', sans-serif; }
+	.profile-email { font-size: 0.8125rem; color: var(--t-muted); margin: 0; font-family: var(--font-display); }
 	.profile-plan-badge {
 		padding: 4px 10px; border-radius: 999px;
 		background: var(--ap-soft); border: 1px solid var(--ap-line);
@@ -1653,6 +1673,7 @@
 	@media (max-width: 640px) {
 		.form-grid { grid-template-columns: 1fr; }
 		.form-field--wide { grid-column: auto; }
+		.settings-card { padding: 18px 16px; border-radius: 18px; }
 	}
 	.form-field { display: flex; flex-direction: column; gap: 6px; }
 	.form-label {
@@ -1717,7 +1738,7 @@
 	}
 	.hl-preview-line {
 		margin: 0;
-		font-family: 'Satoshi', sans-serif;
+		font-family: var(--font-display);
 		font-size: 16px;
 		font-weight: 800;
 		letter-spacing: -0.025em;
@@ -1821,7 +1842,7 @@
 		display: inline-flex; align-items: center; gap: 0.4rem;
 		padding: 0.55rem 1rem; border-radius: 9px; border: 1px solid rgba(239,68,68,0.3);
 		background: rgba(239,68,68,0.08); color: #f87171;
-		font-size: 0.8125rem; font-weight: 600; cursor: pointer; font-family: 'Satoshi', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; cursor: pointer; font-family: var(--font-display);
 		transition: all 0.15s;
 	}
 	.btn-danger:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.5); }
@@ -1854,7 +1875,7 @@
 	.intg-status-badge {
 		display: inline-flex; align-items: center; gap: 0.3rem;
 		padding: 4px 10px; border-radius: 6px;
-		font-size: 0.65rem; font-family: 'Satoshi', sans-serif; font-weight: 700;
+		font-size: 0.65rem; font-family: var(--font-display); font-weight: 700;
 		text-transform: uppercase; letter-spacing: 0.06em;
 		white-space: nowrap; flex-shrink: 0;
 	}
@@ -1867,13 +1888,13 @@
 	}
 	.env-block-head {
 		display: flex; align-items: center; gap: 0.4rem;
-		font-size: 0.65rem; font-family: 'Satoshi', sans-serif;
+		font-size: 0.65rem; font-family: var(--font-display);
 		text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.3);
 		margin-bottom: 0.6rem;
 	}
 	.env-code-wrap { position: relative; }
 	.env-code {
-		font-family: 'Satoshi', sans-serif; font-size: 0.7rem;
+		font-family: var(--font-display); font-size: 0.7rem;
 		color: rgba(255,255,255,0.5); line-height: 1.7;
 		background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.07);
 		border-radius: 8px; padding: 0.75rem 2.5rem 0.75rem 0.85rem;
@@ -1885,13 +1906,13 @@
 		color: rgba(255,255,255,0.4); cursor: pointer; border-radius: 5px; transition: all 0.15s;
 	}
 	.env-copy:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
-	.env-hint { font-size: 0.7rem; color: rgba(255,255,255,0.28); margin: 0.5rem 0 0; font-family: 'Satoshi', sans-serif; }
+	.env-hint { font-size: 0.7rem; color: rgba(255,255,255,0.28); margin: 0.5rem 0 0; font-family: var(--font-display); }
 
 	.intg-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
 	.btn-connect {
 		padding: 0.55rem 1.1rem; border-radius: 9px; border: none;
-		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; font-family: var(--font-display);
 		cursor: pointer; background: var(--c, #7bf1a8); color: white;
 		transition: opacity 0.12s, transform 0.12s;
 	}
@@ -1900,7 +1921,7 @@
 
 	.btn-connect-outline {
 		padding: 0.55rem 1rem; border-radius: 9px;
-		font-size: 0.8125rem; font-weight: 600; font-family: 'Satoshi', sans-serif;
+		font-size: 0.8125rem; font-weight: 600; font-family: var(--font-display);
 		cursor: pointer; background: rgba(255,255,255,0.06);
 		color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.1);
 		transition: background 0.12s;
@@ -1955,7 +1976,7 @@
 	}
 	.modal-close:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
 	.modal-sub { margin: 0; font-size: 0.8125rem; line-height: 1.5; color: rgba(255,255,255,0.45); }
-	.mono { font-family: 'Satoshi', sans-serif; }
+	.mono { font-family: var(--font-display); }
 	.modal-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
 	@media (min-width: 640px) { .modal-grid { grid-template-columns: 1fr 1fr; } }
 	.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.25rem; }
@@ -1992,18 +2013,27 @@
 
 	/* ── Billing ───────────────────────────────────────────────── */
 	.plan-row {
-		display: grid; grid-template-columns: auto 1fr; gap: 1.5rem; align-items: flex-start;
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 1rem;
+		align-items: flex-start;
+	}
+	@media (min-width: 768px) {
+		.plan-row {
+			grid-template-columns: auto 1fr;
+			gap: 1.5rem;
+		}
 	}
 	.plan-info { display: flex; align-items: center; gap: 1rem; }
 	.plan-badge {
 		width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
 		background: var(--ap-soft-2); border: 1px solid var(--ap-line);
 		display: flex; align-items: center; justify-content: center;
-		font-family: 'Satoshi', sans-serif; font-size: 11px; font-weight: 800;
+		font-family: var(--font-display); font-size: 11px; font-weight: 800;
 		color: var(--ap-text); text-transform: uppercase; letter-spacing: 0.08em;
 	}
 	.plan-name  { font-weight: 700; color: var(--ap-text); margin: 0 0 0.2rem; font-size: 0.9375rem; }
-	.plan-price { font-family: 'Satoshi', sans-serif; font-size: 1.5rem; font-weight: 800; color: var(--ap-text); margin: 0; letter-spacing: -0.03em; }
+	.plan-price { font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; color: var(--ap-text); margin: 0; letter-spacing: -0.03em; }
 	.plan-price span { font-size: 0.875rem; color: var(--ap-text-3); font-weight: 500; }
 	.plan-status {
 		margin: 0.35rem 0 0;
@@ -2021,7 +2051,10 @@
 		font-size: 0.8125rem;
 	}
 
-	.plan-features { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+	.plan-features { display: grid; grid-template-columns: 1fr; gap: 0.5rem; }
+	@media (min-width: 480px) {
+		.plan-features { grid-template-columns: 1fr 1fr; }
+	}
 	.plan-feature  { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: var(--ap-text-2); }
 	:global(.feature-check) { color: #059669; flex-shrink: 0; }
 
@@ -2032,7 +2065,7 @@
 		border: 1px solid var(--ap-line);
 		background: var(--ap-bg); color: var(--ap-text);
 		font-size: 0.8125rem; font-weight: 600; cursor: pointer;
-		font-family: 'Satoshi', sans-serif; transition: background 0.15s, border-color 0.15s;
+		font-family: var(--font-display); transition: background 0.15s, border-color 0.15s;
 	}
 	.btn-outline-sm:hover { background: var(--ap-soft); border-color: var(--ap-line-2); }
 
@@ -2041,7 +2074,7 @@
 		padding: 0.65rem 1.25rem; border-radius: 10px; border: none;
 		background: #111214; color: #fff;
 		font-size: 0.875rem; font-weight: 600; cursor: pointer;
-		font-family: 'Satoshi', sans-serif; width: fit-content;
+		font-family: var(--font-display); width: fit-content;
 	}
 	.btn-upgrade:hover { background: #2a2b2e; }
 
@@ -2052,7 +2085,7 @@
 		width: 100%; padding: 0.7rem 1rem; border-radius: 10px;
 		border: 1px solid var(--panel-border); background: var(--panel-bg-2);
 		color: var(--t-strong); font-size: 0.875rem; font-weight: 600;
-		font-family: 'Satoshi', sans-serif; cursor: pointer; transition: background 0.15s;
+		font-family: var(--font-display); cursor: pointer; transition: background 0.15s;
 	}
 	.btn-google:hover { background: var(--panel-bg); }
 	.login-divider {
@@ -2069,7 +2102,7 @@
 	}
 	.link-btn {
 		border: none; background: transparent; color: var(--t-muted);
-		font-family: 'Satoshi', sans-serif; font-size: 0.8125rem; cursor: pointer;
+		font-family: var(--font-display); font-size: 0.8125rem; cursor: pointer;
 		text-decoration: underline; padding: 0;
 	}
 	.link-btn:hover { color: var(--t-strong); }
@@ -2100,9 +2133,16 @@
 	.trial-sub { margin: 0; font-size: 0.75rem; color: var(--t-muted); line-height: 1.5; }
 
 	.plan-compare-grid {
-		display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
 	}
-	@media (max-width: 720px) { .plan-compare-grid { grid-template-columns: 1fr; } }
+	@media (min-width: 640px) {
+		.plan-compare-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	}
+	@media (min-width: 1100px) {
+		.plan-compare-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	}
 	.plan-compare-card {
 		border-radius: 12px; padding: 1rem;
 		background: var(--panel-bg-2); border: 1px solid var(--panel-border);

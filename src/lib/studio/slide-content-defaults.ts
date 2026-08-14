@@ -1,6 +1,7 @@
 import { STUDIO_TEMPLATES, type TemplateId } from './template-ids';
 import { GENERATED_DEMO_POSTS as D } from './generated-demo-posts';
 import { TEXT_ON_VIDEO_SHADOW } from '$lib/textStyleCss';
+import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 
 /** Demo headline when opening News (real story fetch replaces this). */
 export const NEWS_PLACEHOLDER_HEADLINE = D.news.headline;
@@ -54,7 +55,7 @@ export const NEWS_HEADLINE_STYLE = {
 
 /** Supporting paragraph under the News headline. */
 export const NEWS_SUBTEXT_STYLE = {
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontWeight: 500,
 	fontSize: 48,
 	align: 'left' as const,
@@ -237,7 +238,7 @@ export const BRAND_STACK_DEFAULTS = {
 export const BRAND_STACK_HEADLINE_STYLE = {
 	color: '#0f172a',
 	fontWeight: 700,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 36,
 	align: 'center' as const,
 } as const;
@@ -253,7 +254,7 @@ export const VIDEO_SPLIT_DEFAULTS = {
 export const VIDEO_STORY_HEADLINE_STYLE = {
 	color: '#f4f4f5',
 	fontWeight: 600,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 46,
 } as const;
 
@@ -268,7 +269,7 @@ export const VIDEO_HOOK_DEFAULTS = {
 export const VIDEO_HOOK_HEADLINE_STYLE = {
 	color: '#ffffff',
 	fontWeight: 400,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 56,
 	align: 'left' as const,
 } as const;
@@ -288,7 +289,7 @@ export const VIDEO_CREATOR_DEFAULTS = {
 export const VIDEO_CREATOR_HEADLINE_STYLE = {
 	color: '#ffffff',
 	fontWeight: 400,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 48,
 	align: 'left' as const,
 } as const;
@@ -308,7 +309,7 @@ export const VIDEO_POST_DEFAULTS = {
 export const VIDEO_POST_HEADLINE_STYLE = {
 	color: '#ffffff',
 	fontWeight: 600,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 44,
 	align: 'left' as const,
 } as const;
@@ -324,7 +325,7 @@ export const VIDEO_TEXT_DEFAULTS = {
 export const VIDEO_TEXT_HEADLINE_STYLE = {
 	color: '#ffffff',
 	fontWeight: 800,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 64,
 	align: 'center' as const,
 	/** Same as SH → Strong — editable via the floating toolbar. */
@@ -345,7 +346,7 @@ export const VIDEO_SOURCE_DEFAULTS = {
 export const VIDEO_SOURCE_HEADLINE_STYLE = {
 	color: '#ffffff',
 	fontWeight: 400,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 48,
 	align: 'left' as const,
 	lineHeight: 1.28,
@@ -366,7 +367,7 @@ export const VIDEO_FEATURE_DEFAULTS = {
 export const VIDEO_FEATURE_HEADLINE_STYLE = {
 	color: '#ffffff',
 	fontWeight: 700,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 44,
 	align: 'left' as const,
 } as const;
@@ -374,7 +375,7 @@ export const VIDEO_FEATURE_HEADLINE_STYLE = {
 export const VIDEO_FEATURE_BODY_STYLE = {
 	color: '#ffffff',
 	fontWeight: 500,
-	fontFamily: 'Satoshi',
+	fontFamily: FONT_TEMPLATE_DEFAULT,
 	fontSize: 32,
 	align: 'left' as const,
 } as const;

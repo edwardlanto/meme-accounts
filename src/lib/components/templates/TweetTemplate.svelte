@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 import HighlightedText from '$lib/components/HighlightedText.svelte';
 import { TWEET_DEFAULTS } from '$lib/studio/slide-content-defaults';
@@ -353,7 +354,7 @@ let {
 
 	function styleCss(s: TextStyle) {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', 'Satoshi', system-ui, sans-serif;`);
+		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', FONT_TEMPLATE_DEFAULT, system-ui, sans-serif;`);
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -449,7 +450,7 @@ let {
 			background: {card};
 			transform: scale({scale});
 			transform-origin: top left;
-			font-family: 'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+			font-family: var(--font-display);
 			box-sizing: border-box;
 			overflow: hidden;
 		"
@@ -551,7 +552,7 @@ let {
 										minHeight="0px"
 										{showToolbar}
 										ariaLabel="Top name"
-										fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+										fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 										fontSize={tweetStyles.tweetTopName?.fontSize ?? 36}
 										onTextChange={onTopNameChange}
 									>
@@ -592,7 +593,7 @@ let {
 								minHeight="0px"
 								{showToolbar}
 								ariaLabel="Top handle"
-								fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 28}
 								onTextChange={onTopHandleChange}
 							>
@@ -630,7 +631,7 @@ let {
 							minHeight="0px"
 							{showToolbar}
 							ariaLabel="Tweet text"
-							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
 							fontSize={tweetStyles.tweetTopText?.fontSize ?? 42}
 							onTextChange={onTopTextChange}
 						>
@@ -819,7 +820,7 @@ let {
 								minHeight="0px"
 								{showToolbar}
 								ariaLabel={metric.label}
-								fontFamily="'Satoshi', system-ui, sans-serif"
+								fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, sans-serif"
 								fontSize={26}
 								onTextChange={metric.onChange}
 							>
@@ -916,7 +917,7 @@ let {
 									minHeight="0px"
 									{showToolbar}
 									ariaLabel="Bottom name"
-									fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+									fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 34}
 									onTextChange={onBottomNameChange}
 								>
@@ -956,7 +957,7 @@ let {
 								minHeight="0px"
 								{showToolbar}
 								ariaLabel="Bottom handle"
-								fontFamily="'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 26}
 								onTextChange={onBottomHandleChange}
 							>
@@ -993,7 +994,7 @@ let {
 						minHeight="0px"
 						{showToolbar}
 						ariaLabel="Reply text"
-						fontFamily={headlineStyle.fontFamily ?? "'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+						fontFamily={headlineStyle.fontFamily ?? "FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
 						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 40}
 						onTextChange={onBottomTextChange}
 					>

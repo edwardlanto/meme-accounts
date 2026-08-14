@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { fillDataImgSlotsWithFal } from '$lib/server/brand-carousel-fal-slots';
 import { brandGenerateBodySchema, parseJsonBody } from '$lib/server/request-security';
+import { FONT_DISPLAY_STACK, GOOGLE_FONTS_CAROUSEL_EXPORT } from '$lib/fonts/brand-fonts';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const ANTHROPIC_MESSAGES_API = 'https://api.anthropic.com/v1/messages';
@@ -388,12 +389,8 @@ function getDemoHtml(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${brandName} Carousel</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+<link href="${GOOGLE_FONTS_CAROUSEL_EXPORT}" rel="stylesheet">
 <style>
-  @font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-regular-webfont.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
-  @font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-medium-webfont.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
-  @font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-bold-webfont.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
-  @font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-black-webfont.woff2') format('woff2'); font-weight: 900; font-style: normal; font-display: swap; }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
   .container { position: relative; width: 1080px; }
@@ -405,15 +402,15 @@ function getDemoHtml(
     width: 1080px; height: 1350px;
     display: flex; flex-direction: column;
     transition: transform 0.4s cubic-bezier(.4,0,.2,1);
-    font-family: 'Satoshi', sans-serif;
+    font-family: ${FONT_DISPLAY_STACK};
     color: ${textCol};
   }
   .slide-content { position: relative; z-index: 10; display: flex; flex-direction: column; justify-content: flex-end; padding: 72px 80px; height: 100%; }
   .bottom-content { justify-content: flex-end; }
   .img-area { position: absolute; inset: 0; }
-  .img-placeholder { color: rgba(255,255,255,0.15); font-size: 22px; font-family: 'Satoshi', sans-serif; letter-spacing: 4px; text-transform: uppercase; }
+  .img-placeholder { color: rgba(255,255,255,0.15); font-size: 22px; font-family: ${FONT_DISPLAY_STACK}; letter-spacing: 4px; text-transform: uppercase; }
   .overlay { position: absolute; inset: 0; z-index: 5; background: linear-gradient(to bottom, rgba(0,0,0,0) 30%, rgba(0,0,0,0.85) 100%); }
-  .tag { display: inline-block; background: ${color}; color: ${bg}; font-family: 'Satoshi', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 8px 20px; border-radius: 6px; margin-bottom: 24px; align-self: flex-start; }
+  .tag { display: inline-block; background: ${color}; color: ${bg}; font-family: ${FONT_DISPLAY_STACK}; font-size: 22px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 8px 20px; border-radius: 6px; margin-bottom: 24px; align-self: flex-start; }
   .tag-dark { background: ${bg}; color: ${color}; }
   h1 { font-family: 'Bebas Neue', sans-serif; font-size: 128px; line-height: 1.0; margin-bottom: 24px; }
   h2 { font-family: 'Bebas Neue', sans-serif; font-size: 88px; line-height: 1.05; margin-bottom: 24px; }
@@ -429,7 +426,7 @@ function getDemoHtml(
   .arrows { display: flex; justify-content: space-between; margin-top: 14px; }
   .arrow { width: 48px; height: 48px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: #fff; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
   .arrow:hover { background: ${color}; border-color: ${color}; }
-  .slide-counter { text-align: center; font-family: 'Satoshi', sans-serif; font-size: 18px; color: rgba(255,255,255,0.35); margin-top: 10px; }
+  .slide-counter { text-align: center; font-family: ${FONT_DISPLAY_STACK}; font-size: 18px; color: rgba(255,255,255,0.35); margin-top: 10px; }
 </style>
 </head>
 <body>

@@ -181,14 +181,32 @@ function scorePhoto(p: PhotoCandidate): number {
 	return likes * 2 + downloads * 0.05 + aspectBonus;
 }
 
+/** Prefer square-ish frames for News circle badges. */
+function scoreCirclePhoto(p: PhotoCandidate): number {
+	const likes = Number(p.likes ?? 0) || 0;
+	const downloads = Number(p.downloads ?? 0) || 0;
+	const w = Number(p.width ?? 0) || 0;
+	const h = Number(p.height ?? 0) || 0;
+	let aspectBonus = 0;
+	if (w > 0 && h > 0) {
+		const ratio = w / h;
+		aspectBonus = (1 - Math.min(1, Math.abs(ratio - 1))) * 50;
+	}
+	return likes * 2 + downloads * 0.05 + aspectBonus;
+}
+
 function bestPhoto(photos: PhotoCandidate[]): PhotoCandidate | null {
 	if (!photos.length) return null;
 	return [...photos].sort((a, b) => scorePhoto(b) - scorePhoto(a))[0] ?? null;
 }
 
-async function searchUnsplash(query: string): Promise<{ photos: PhotoCandidate[]; error?: string }> {
+async function searchUnsplash(
+	query: string,
+	page = 1,
+	perPage = 12,
+): Promise<{ photos: PhotoCandidate[]; error?: string; totalPages?: number }> {
 	const res = await fetch(
-		`/api/unsplash/search?query=${encodeURIComponent(query)}&per_page=12&page=1`,
+		`/api/unsplash/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}`,
 	);
 	const data = await res.json().catch(() => ({}));
 	if (!res.ok) {
@@ -206,14 +224,16 @@ async function searchUnsplash(query: string): Promise<{ photos: PhotoCandidate[]
 			source: 'unsplash' as const,
 		}))
 		.filter((p: PhotoCandidate) => p.regular);
-	return { photos };
+	return { photos, totalPages: Number(data?.totalPages ?? 1) || 1 };
 }
 
 async function searchPexelsPhotos(
 	query: string,
-): Promise<{ photos: PhotoCandidate[]; error?: string }> {
+	page = 1,
+	perPage = 12,
+): Promise<{ photos: PhotoCandidate[]; error?: string; totalPages?: number }> {
 	const res = await fetch(
-		`/api/pexels/search?query=${encodeURIComponent(query)}&per_page=12&page=1&orientation=portrait`,
+		`/api/pexels/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=portrait`,
 	);
 	const data = await res.json().catch(() => ({}));
 	if (!res.ok) {
@@ -231,7 +251,7 @@ async function searchPexelsPhotos(
 			source: 'pexels' as const,
 		}))
 		.filter((p: PhotoCandidate) => p.regular);
-	return { photos };
+	return { photos, totalPages: Number(data?.totalPages ?? 1) || 1 };
 }
 
 function pingUnsplashDownload(downloadLocation?: string) {
@@ -261,8 +281,14 @@ function photoKey(p: PhotoCandidate): string {
 	return p.regular.split('?')[0] || p.regular;
 }
 
-function appendUniquePhotos(out: StockPick[], photos: PhotoCandidate[], limit: number, seen: Set<string>) {
-	for (const p of [...photos].sort((a, b) => scorePhoto(b) - scorePhoto(a))) {
+function appendUniquePhotos(
+	out: StockPick[],
+	photos: PhotoCandidate[],
+	limit: number,
+	seen: Set<string>,
+	scoreFn: (p: PhotoCandidate) => number = scorePhoto,
+) {
+	for (const p of [...photos].sort((a, b) => scoreFn(b) - scoreFn(a))) {
 		const key = photoKey(p);
 		if (!key || seen.has(key)) continue;
 		seen.add(key);
@@ -291,6 +317,85 @@ export async function fetchStockImagePool(query: string, limit = 24): Promise<St
 export async function fetchStockImage(query: string): Promise<StockPick | null> {
 	const pool = await fetchStockImagePool(query, 1);
 	return pool[0] ?? null;
+}
+
+/** Pexels first, then Unsplash — ranked for square circle badges. */
+export async function fetchStockCircleImagePool(query: string, limit = 12): Promise<StockPick[]> {
+	const q = query.trim();
+	if (!q) return [];
+	const out: StockPick[] = [];
+	const seen = new Set<string>();
+	const pexels = await searchPexelsPhotos(q, 1, Math.max(limit, 12));
+	appendUniquePhotos(out, pexels.photos, limit, seen, scoreCirclePhoto);
+	if (out.length >= limit) return out;
+	const unsplash = await searchUnsplash(q, 1, Math.max(limit, 12));
+	appendUniquePhotos(out, unsplash.photos, limit, seen, scoreCirclePhoto);
+	return out;
+}
+
+export async function fetchStockCircleImage(query: string): Promise<StockPick | null> {
+	const pool = await fetchStockCircleImagePool(query, 1);
+	return pool[0] ?? null;
+}
+
+export type SidebarStockPhoto = {
+	id: string;
+	small: string;
+	regular: string;
+	alt: string;
+	photographer: string;
+	source: 'pexels' | 'unsplash';
+	downloadLocation?: string;
+	pexelsId?: number;
+};
+
+const STOCK_SIDEBAR_FILL_THRESHOLD = 6;
+
+/** Sidebar search: Pexels page first, Unsplash fills when results are sparse. */
+export async function searchStockPhotosForSidebar(
+	query: string,
+	page = 1,
+	perPage = 15,
+): Promise<{ photos: SidebarStockPhoto[]; totalPages: number; hasMore: boolean }> {
+	const q = query.trim();
+	if (!q) return { photos: [], totalPages: 1, hasMore: false };
+
+	const pexels = await searchPexelsPhotos(q, page, perPage);
+	const photos: SidebarStockPhoto[] = pexels.photos.map((p, i) => ({
+		id: `pexels-${page}-${i}-${photoKey(p)}`,
+		small: p.small || p.regular,
+		regular: p.regular,
+		alt: p.alt || '',
+		photographer: p.photographer || '',
+		source: 'pexels' as const,
+	}));
+
+	if (page === 1 && photos.length < STOCK_SIDEBAR_FILL_THRESHOLD) {
+		const unsplash = await searchUnsplash(q, 1, perPage);
+		const seen = new Set(photos.map((p) => p.regular.split('?')[0]));
+		for (const p of unsplash.photos) {
+			const key = photoKey(p);
+			if (!key || seen.has(key)) continue;
+			seen.add(key);
+			photos.push({
+				id: `unsplash-${photos.length}-${key}`,
+				small: p.small || p.regular,
+				regular: p.regular,
+				alt: p.alt || '',
+				photographer: p.photographer || '',
+				source: 'unsplash',
+				downloadLocation: p.downloadLocation,
+			});
+			if (photos.length >= perPage) break;
+		}
+	}
+
+	const totalPages = Math.max(Number(pexels.totalPages ?? 1) || 1, 1);
+	return {
+		photos,
+		totalPages,
+		hasMore: page < totalPages && pexels.photos.length > 0,
+	};
 }
 
 async function searchPexelsVideos(query: string, perPage = 15): Promise<StockPick[]> {

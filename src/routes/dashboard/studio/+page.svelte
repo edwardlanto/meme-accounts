@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT, FONT_UI_STACK } from '$lib/fonts/brand-fonts';
 	import { supabase } from '$lib/supabase';
 	import { onMount, tick, untrack } from 'svelte';
 	import { goto, afterNavigate } from '$app/navigation';
@@ -50,6 +51,8 @@ import JSZip from 'jszip';
 	import {
 		fetchStockMediaPool,
 		fetchStockImagePool,
+		fetchStockCircleImagePool,
+		stockQueryFromSlide,
 		templateUsesStockMedia,
 		templateUsesStockVideo,
 		type StockPick,
@@ -66,6 +69,10 @@ import JSZip from 'jszip';
 		loadStudioComposePrefs,
 		type StudioComposePrefs,
 	} from '$lib/studio/compose-prefs';
+	import {
+		draftStateHasEmbeddedMedia,
+		stripEmbeddedMediaFromDraftState,
+	} from '$lib/studio/draft-state-prune';
 	import {
 		clearPromptHistory,
 		loadPromptHistory,
@@ -263,16 +270,57 @@ import JSZip from 'jszip';
 	const emptySlides = <T,>(factory: (i: number) => T): T[] =>
 		Array.from({ length: DEFAULT_STUDIO_SLIDE_COUNT }, (_, i) => factory(i));
 
+	/** Empty media rows — demos are seeded only via `seedFreshTemplateSession`, not at init. */
+	const emptyTemplateMediaUrls = (): Record<TemplateId, string[]> => ({
+		blank: emptySlides(() => ''),
+		news: emptySlides(() => ''),
+		tweet: emptySlides(() => ''),
+		article: emptySlides(() => ''),
+		textCarousel: emptySlides(() => ''),
+		imageQuote: emptySlides(() => ''),
+		videoStory: emptySlides(() => ''),
+		videoFit: emptySlides(() => ''),
+		videoSplit: emptySlides(() => ''),
+		videoBlur: emptySlides(() => ''),
+		videoHook: emptySlides(() => ''),
+		videoCreator: emptySlides(() => ''),
+		videoText: emptySlides(() => ''),
+		videoSource: emptySlides(() => ''),
+		videoFeature: emptySlides(() => ''),
+		videoPost: emptySlides(() => ''),
+		brandStack: emptySlides(() => ''),
+		blackText: emptySlides(() => ''),
+		photoTopic: emptySlides(() => ''),
+		photoCaption: emptySlides(() => ''),
+		whiteThread: emptySlides(() => ''),
+		whiteMedia: emptySlides(() => ''),
+	});
+
+	function friendlySupabaseError(message: string): string {
+		if (/upstream connect error|delayed connect error:\s*111|connection refused/i.test(message)) {
+			return 'Could not reach Supabase (your database may be paused). Open the Supabase dashboard → Restore project, then refresh.';
+		}
+		return message;
+	}
+
+	function openFreshTemplateStarter(template: TemplateId) {
+		applyBlankCanvas();
+		applyTemplateToAll(template, { skipNewsSeed: true });
+		seedFreshTemplateSession(template);
+		freshStarterApplied = true;
+		consumeForcedTemplateStarter();
+	}
+
 	// ── State ──────────────────────────────────────────────────────────────
 	let userId = $state('');
 	let initialTemplateParamApplied = $state(false);
 	let forcedTemplateFromQuery = $state<TemplateId | null>(null);
-	/** Avoid re-seeding the same `?template=` deep link (would wipe per-slide mixes). */
-	let lastSeededTemplateQueryKey = $state<string | null>(null);
 	/** `?blank=1` — skip draft restore and open the Blank canvas template (custom layout; not News). */
 	let forcedBlankFromQuery = $state(false);
 	/** `?template=…` starter links (template carousel / nav) — don’t restore last autosave workspace on top of a “new” session. */
 	let skipLatestWorkspaceDraftRestore = $state(false);
+	/** True once `openFreshTemplateStarter` ran this session (avoids double-seed / wrong fallback). */
+	let freshStarterApplied = $state(false);
 	/** Clip payload from Videos → Edit in Studio (sessionStorage), applied after template boot. */
 	let pendingClipImport = $state<StudioClipImport | null>(null);
 	let clipImportApplied = $state(false);
@@ -695,6 +743,56 @@ import JSZip from 'jszip';
 			}),
 		);
 	}
+
+	let circleStockPool: StockPick[] = [];
+	let circleStockPoolKey = '';
+
+	async function applyStockCircleImage(slideIdx: number, query?: string): Promise<boolean> {
+		const headline = stripHighlightMarkers(primarySlideTextForPrompt('news', slideIdx));
+		const sub = String(newsSubtextBySlide[slideIdx] ?? '').trim();
+		const q = (query ?? stockQueryFromSlide(headline, sub, studioStockQuery())).trim() || 'editorial portrait';
+		const poolKey = `circle::${q}`;
+		if (circleStockPoolKey !== poolKey || circleStockPool.length < 1) {
+			circleStockPool = await fetchStockCircleImagePool(q, Math.max(8, slides.length));
+			circleStockPoolKey = poolKey;
+		}
+		if (!circleStockPool.length) return false;
+		const pick = circleStockPool[slideIdx % circleStockPool.length]!;
+		if (pick.source === 'unsplash' && pick.downloadLocation) {
+			void fetch('/api/unsplash/download', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ downloadLocation: pick.downloadLocation }),
+			}).catch(() => {});
+		}
+		const safe = await toExportSafeImageUrl(pick.url);
+		if (!String(safe ?? '').trim()) return false;
+		const n = Math.max(slides.length, slideIdx + 1);
+		circleImages = Array.from({ length: n }, (_, i) => (i === slideIdx ? safe : (circleImages[i] ?? '')));
+		return true;
+	}
+
+	async function applyStockCircleImages(idxs: number[], query?: string) {
+		for (const idx of idxs) {
+			await applyStockCircleImage(idx, query);
+		}
+	}
+
+	async function fillNewsCircleImages(idxs: number[], skipVertexCache = false) {
+		if (!idxs.length) return;
+		if (newsImageSourceMode === 'assets') {
+			await applyStockCircleImages(idxs, studioStockQuery());
+			return;
+		}
+		await new Promise<void>((r) => setTimeout(r, 500));
+		for (let k = 0; k < idxs.length; k++) {
+			await generateCircleImage(idxs[k], skipVertexCache);
+			if (k < idxs.length - 1) {
+				await new Promise<void>((r) => setTimeout(r, 350));
+			}
+		}
+	}
+
 	let storyCategory = $state('health');
 	/** Natural-language request for General mode — e.g. "Make me a carousel of beds". */
 	let generalTopicPrompt = $state('');
@@ -813,7 +911,7 @@ import JSZip from 'jszip';
 	let newsError = $state('');
 
 	// Multi-slide state
-	let slides = $state<string[]>(emptySlides(() => NEWS_PLACEHOLDER_HEADLINE));
+	let slides = $state<string[]>(emptySlides(() => ''));
 	let activeSlide = $state(0);
 	/** Optional brand follow slide — saved globally, appended as last slide when enabled. */
 	let brandCta = $state<BrandCtaSettings>({ ...DEFAULT_BRAND_CTA });
@@ -877,7 +975,7 @@ import JSZip from 'jszip';
 		}
 		return rows;
 	});
-	let slideTemplates = $state<TemplateId[]>(emptySlides(() => 'news'));
+	let slideTemplates = $state<TemplateId[]>(emptySlides(() => 'blank'));
 	let lastTemplateUsed = $state<TemplateId>('news');
 	const activeTemplate = $derived(coerceTemplateId(slideTemplates[activeSlide]));
 
@@ -3195,7 +3293,7 @@ import JSZip from 'jszip';
 	});
 
 	// Client-side navigations to `/dashboard/studio?template=…` don’t re-run `onMount`; sync from the URL.
-	afterNavigate(({ to }) => {
+	afterNavigate(({ from, to }) => {
 		const url = to?.url;
 		if (!url) return;
 		const pathNoTrailing = url.pathname.replace(/\/+$/, '') || '/';
@@ -3236,9 +3334,9 @@ import JSZip from 'jszip';
 		const raw = url.searchParams.get('template')?.trim() ?? '';
 		if (!raw) return;
 		const next = mapQueryParamToTemplateId(raw) ?? 'news';
-		const seedKey = `${next}|saved:${hasSaved}|draft:${hasDraft}`;
-		// Same deep link already applied this session — keep any per-slide template mix.
-		if (lastSeededTemplateQueryKey === seedKey) return;
+		const fromRaw = from?.url.searchParams.get('template')?.trim() ?? '';
+		// Same ?template= on from + to (no sidebar re-entry) — keep per-slide template mixes.
+		if (fromRaw && fromRaw.toLowerCase() === raw.toLowerCase()) return;
 		forcedTemplateFromQuery = next;
 		if (!hasSaved && !hasDraft) {
 			skipLatestWorkspaceDraftRestore = true;
@@ -3252,14 +3350,9 @@ import JSZip from 'jszip';
 				bootShellW = CANVAS_W * s;
 				bootShellH = CANVAS_H * s;
 			}
-			applyBlankCanvas();
-			applyTemplateToAll(next, { skipNewsSeed: true });
-			seedFreshTemplateSession(next);
-			lastSeededTemplateQueryKey = seedKey;
-			consumeForcedTemplateStarter();
+			openFreshTemplateStarter(next);
 		} else {
 			applyTemplateToAll(next);
-			lastSeededTemplateQueryKey = seedKey;
 			consumeForcedTemplateStarter();
 			if (isVideoStoryFamily(next)) {
 				canvasBgDark = true;
@@ -3290,54 +3383,8 @@ import JSZip from 'jszip';
 	let articleTitle = $state('');
 
 	// Background media — per template, per slide (keep EVERYTHING independent).
-	let bgImagesByTemplate = $state<Record<TemplateId, string[]>>({
-		blank: emptySlides(() => ''),
-		news: emptySlides(() => ''),
-		tweet: emptySlides(() => TWEET_DEFAULTS.topImage),
-		article: emptySlides(() => ''),
-		textCarousel: emptySlides(() => ''),
-		imageQuote: emptySlides(() => IMAGE_QUOTE_DEFAULTS.imageUrl),
-		videoStory: emptySlides(() => ''),
-		videoFit: emptySlides(() => ''),
-		videoSplit: emptySlides(() => ''),
-		videoBlur: emptySlides(() => ''),
-		videoHook: emptySlides(() => ''),
-		videoCreator: emptySlides(() => ''),
-		videoText: emptySlides(() => ''),
-		videoSource: emptySlides(() => ''),
-		videoFeature: emptySlides(() => ''),
-		videoPost: emptySlides(() => ''),
-		brandStack: emptySlides(() => BRAND_STACK_DEFAULTS.bottomMediaUrl),
-		photoTopic: emptySlides(() => PHOTO_TOPIC_DEFAULTS.imageUrl),
-		photoCaption: emptySlides(() => PHOTO_CAPTION_DEFAULTS.imageUrl),
-		whiteThread: emptySlides(() => ''),
-		whiteMedia: emptySlides(() => WHITE_MEDIA_DEFAULTS.imageUrl),
-		blackText: emptySlides(() => BLACK_TEXT_BG_DEFAULT),
-	});
-	let bgVideosByTemplate = $state<Record<TemplateId, string[]>>({
-		blank: emptySlides(() => ''),
-		news: emptySlides(() => NEWS_DEMO_VIDEO),
-		tweet: emptySlides(() => ''),
-		article: emptySlides(() => ''),
-		textCarousel: emptySlides(() => ''),
-		imageQuote: emptySlides(() => ''),
-		videoStory: emptySlides(() => VIDEO_STORY_DEFAULTS.videoUrl),
-		videoFit: emptySlides(() => VIDEO_STORY_DEFAULTS.videoUrl),
-		videoSplit: emptySlides(() => VIDEO_SPLIT_DEFAULTS.videoUrl),
-		videoBlur: emptySlides(() => VIDEO_STORY_DEFAULTS.videoUrl),
-		videoHook: emptySlides(() => VIDEO_HOOK_DEFAULTS.videoUrl),
-		videoCreator: emptySlides(() => VIDEO_CREATOR_DEFAULTS.videoUrl),
-		videoText: emptySlides(() => VIDEO_TEXT_DEFAULTS.videoUrl),
-		videoSource: emptySlides(() => VIDEO_SOURCE_DEFAULTS.videoUrl),
-		videoFeature: emptySlides(() => VIDEO_FEATURE_DEFAULTS.videoUrl),
-		videoPost: emptySlides(() => VIDEO_POST_DEFAULTS.videoUrl),
-		brandStack: emptySlides(() => BRAND_STACK_DEFAULTS.topVideoUrl),
-		photoTopic: emptySlides(() => ''),
-		photoCaption: emptySlides(() => ''),
-		whiteThread: emptySlides(() => ''),
-		whiteMedia: emptySlides(() => ''),
-		blackText: emptySlides(() => ''),
-	}); // blob URLs — per template, per slide
+	let bgImagesByTemplate = $state<Record<TemplateId, string[]>>(emptyTemplateMediaUrls());
+	let bgVideosByTemplate = $state<Record<TemplateId, string[]>>(emptyTemplateMediaUrls()); // blob URLs — per template, per slide
 	let generatingImagesByTemplate = $state<Record<TemplateId, boolean[]>>({
 		blank: emptySlides(() => false),
 		news: emptySlides(() => false),
@@ -3495,9 +3542,9 @@ import JSZip from 'jszip';
 	const activeShowCutout = $derived(showCutout[activeSlide] ?? false);
 	const activeCutting = $derived(cuttingOut[activeSlide] ?? false);
 	/** Primary news circle: per-slide visibility (slide 0 defaults on; add Shape on other slides if desired). */
-	let showCircleBySlide = $state<boolean[]>(emptySlides((i) => i === 0));
+	let showCircleBySlide = $state<boolean[]>(emptySlides(() => false));
 	// Circle images are per-slide (so each slide can have its own badge photo).
-	let circleImages = $state<string[]>(emptySlides((i) => (i === 0 ? NEWS_DEFAULT_CIRCLE_IMAGE : '')));
+	let circleImages = $state<string[]>(emptySlides(() => ''));
 	let circleBorderColor = $state('#FFFFFF');
 	let circleShadow = $state({ ...DEFAULT_CIRCLE_SHADOW });
 	// Optional second circle is also per-slide.
@@ -4578,7 +4625,7 @@ import JSZip from 'jszip';
 			h: 76,
 			style: {
 				color: '#FFFFFF',
-				fontFamily: 'Satoshi',
+				fontFamily: FONT_TEMPLATE_DEFAULT,
 				fontSize: 36,
 				fontWeight: 600,
 				align: 'left',
@@ -5142,10 +5189,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function newsAutoHeadlinePx(raw: string): number {
 		const len = stripMarkup(raw).length;
-		if (len < 60) return 108;
-		if (len < 90) return 92;
-		if (len < 120) return 78;
-		return 66;
+		if (len < 60) return 80;
+		if (len < 90) return 72;
+		if (len < 120) return 64;
+		return 56;
 	}
 
 	function defaultFontSizeForKind(kind: TextElementKind): number | undefined {
@@ -6138,7 +6185,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					? 'Lexend'
 					: kindPre === 'headline'
 						? 'Bebas Neue'
-						: 'Satoshi');
+						: FONT_TEMPLATE_DEFAULT);
 			const weight = patch.fontWeight ?? slotPre?.fontWeight ?? 400;
 			/* Run font hints after Svelte flushes the new `font-weight` to the canvas so the change feels instant. */
 			void tick().then(() => void loadGoogleFont(family, weight));
@@ -8083,7 +8130,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			.limit(1)
 			.maybeSingle();
 		if (error) {
-			draftError = error.message ?? 'Failed to load draft';
+			draftError = friendlySupabaseError(error.message ?? 'Failed to load draft');
 			return;
 		}
 		if (!data) return;
@@ -8091,26 +8138,20 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const row = data as DraftRow;
 		draftId = row.id;
 		const s = row.state ?? {};
-		// If an older draft contains huge `exportedSlides` data URLs, prune it ASAP so
-		// subsequent loads are fast (don’t block initial render on this).
-		if (Array.isArray((s as any).exportedSlides) && (s as any).exportedSlides.length) {
-			const ex = (s as any).exportedSlides as unknown[];
-			const looksHuge = ex.some((v) => typeof v === 'string' && v.startsWith('data:') && v.length > 220_000);
-			if (looksHuge) {
-				queueMicrotask(() => {
-					try {
-						void (supabase as any)
-							.from('drafts')
-							.update({ state: { ...(s as any), exportedSlides: [] } })
-							.eq('id', row.id);
-					} catch {
-						// ignore
-					}
-				});
-			}
-		}
-
 		applyDraftState(s as Record<string, any>);
+		queueDraftStateBloatCleanup(row.id, s as Record<string, unknown>);
+	}
+
+	function queueDraftStateBloatCleanup(rowId: string, s: Record<string, unknown>) {
+		if (!draftStateHasEmbeddedMedia(s)) return;
+		const cleaned = stripEmbeddedMediaFromDraftState({ ...s });
+		queueMicrotask(() => {
+			try {
+				void (supabase as any).from('drafts').update({ state: cleaned }).eq('id', rowId);
+			} catch {
+				/* ignore */
+			}
+		});
 	}
 
 	/** Open a specific workspace draft from the dashboard (`?draft=uuid`). */
@@ -8124,7 +8165,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			.eq('kind', DRAFT_KIND)
 			.maybeSingle();
 		if (error) {
-			draftError = error.message ?? 'Failed to load draft';
+			draftError = friendlySupabaseError(error.message ?? 'Failed to load draft');
 			draftId = '';
 			return;
 		}
@@ -8137,24 +8178,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const row = data as DraftRow;
 		draftId = row.id;
 		const s = row.state ?? {};
-		if (Array.isArray((s as any).exportedSlides) && (s as any).exportedSlides.length) {
-			const ex = (s as any).exportedSlides as unknown[];
-			const looksHuge = ex.some((v) => typeof v === 'string' && v.startsWith('data:') && v.length > 220_000);
-			if (looksHuge) {
-				queueMicrotask(() => {
-					try {
-						void (supabase as any)
-							.from('drafts')
-							.update({ state: { ...(s as any), exportedSlides: [] } })
-							.eq('id', row.id);
-					} catch {
-						// ignore
-					}
-				});
-			}
-		}
-
 		applyDraftState(s as Record<string, any>);
+		queueDraftStateBloatCleanup(row.id, s as Record<string, unknown>);
 	}
 
 	async function loadSavedStudioTemplate(templateDraftId: string) {
@@ -8523,6 +8548,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (!s) return '';
 			// blob: URLs don’t survive reload and can get large in drafts.
 			if (s.startsWith('blob:')) return '';
+			// Workspace drafts: media belongs in R2 — never embed base64 in Postgres.
+			if (mode === 'draft' && s.startsWith('data:')) return '';
 			// Very large data URLs make draft JSON huge and slow to restore.
 			if (s.startsWith('data:') && s.length > maxDataUrlChars) return '';
 			return s;
@@ -8873,9 +8900,11 @@ tweetTopImagePanYBySlide,
 				state = await uploadTemplateMediaToR2AndRewriteState(rowId, state, { folder: 'drafts' });
 			} catch (e: unknown) {
 				console.warn('Draft R2 media upload failed:', e);
-				// Fall back to pruned draft-sized payload so save still succeeds.
-				state = { ...buildDraftState('draft') };
+				// Never fall back to embedding base64 in Postgres — keep text/layout only.
+				state = stripEmbeddedMediaFromDraftState(buildDraftState('draft'));
 			}
+
+			state = stripEmbeddedMediaFromDraftState(state);
 
 			const { error: writeErr } = await (supabase as any)
 				.from('drafts')
@@ -9002,12 +9031,10 @@ tweetTopImagePanYBySlide,
 							applyBlankCanvas();
 						} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
 							// Fresh session from template carousel / `?template=` — never overlay last autosave.
-							const starter = forcedTemplateFromQuery;
-							applyBlankCanvas();
-							applyTemplateToAll(starter, { skipNewsSeed: true });
-							seedFreshTemplateSession(starter);
-							lastSeededTemplateQueryKey = `${starter}|saved:false|draft:false`;
-							consumeForcedTemplateStarter();
+							openFreshTemplateStarter(forcedTemplateFromQuery);
+						} else if (!studioDraftWasRestored && !freshStarterApplied) {
+							// No autosave / draft — seed the default News starter (not SSR pre-hydrate leftovers).
+							openFreshTemplateStarter('news');
 						}
 						// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
 					} finally {
@@ -9282,6 +9309,16 @@ tweetTopImagePanYBySlide,
 	 * Default mode matches the previous copy’s sentence/word length so regenerates
 	 * don’t collapse a 2-sentence lede into a stub.
 	 */
+	function isNewsMetaSentence(s: string): boolean {
+		const t = s.trim();
+		if (!t) return true;
+		if (/^you asked for:/i.test(t)) return true;
+		if (/^slide \d+ hooks/i.test(t)) return true;
+		if (/variation \d+/i.test(t)) return true;
+		if (/later slides unpack/i.test(t)) return true;
+		return false;
+	}
+
 	function pickNewsSubtext(opts: {
 		body: string;
 		headline?: string;
@@ -9290,7 +9327,7 @@ tweetTopImagePanYBySlide,
 	}): string {
 		const body = stripMarkup(String(opts.body ?? '').trim());
 		if (!body) return '';
-		const sentences = splitPlainSentences(body);
+		const sentences = splitPlainSentences(body).filter((s) => !isNewsMetaSentence(s));
 		if (!sentences.length) return clampNewsSubtext(body, undefined, opts.previous);
 
 		const prev = String(opts.previous ?? '').trim();
@@ -9367,7 +9404,7 @@ tweetTopImagePanYBySlide,
 		const source = stripMarkup(String(body ?? '').trim());
 		if (!source) return Array.from({ length: n }, () => '');
 
-		const sentences = splitPlainSentences(source);
+		const sentences = splitPlainSentences(source).filter((s) => !isNewsMetaSentence(s));
 		if (!sentences.length) {
 			const one = clampNewsSubtext(source, undefined, '');
 			return Array.from({ length: n }, () => one);
@@ -10112,6 +10149,14 @@ tweetTopImagePanYBySlide,
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
 
+			if (data.demo === true) {
+				const demoMsg =
+					typeof data.warning === 'string' && data.warning.trim()
+						? data.warning.trim()
+						: 'Using offline demo copy — add OPENROUTER_API_KEY for real AI text.';
+				setFlashToast(demoMsg);
+			}
+
 			hookText = clampFetchedPrimaryForTemplate(
 				fillExistingDeck ? 'news' : contentTemplate,
 				String(data.text ?? ''),
@@ -10444,12 +10489,7 @@ tweetTopImagePanYBySlide,
 						);
 					}
 					await new Promise<void>((r) => setTimeout(r, 500));
-					for (let k = 0; k < circleIdxs.length; k++) {
-						await generateCircleImage(circleIdxs[k]);
-						if (k < circleIdxs.length - 1) {
-							await new Promise<void>((r) => setTimeout(r, 350));
-						}
-					}
+					await fillNewsCircleImages(circleIdxs);
 				}
 			}
 
@@ -11074,7 +11114,11 @@ tweetTopImagePanYBySlide,
 				}
 				for (let k = 0; k < needCircle.length; k++) {
 					await new Promise<void>((r) => setTimeout(r, 400));
-					await generateCircleImage(needCircle[k], true);
+					if (newsImageSourceMode === 'assets') {
+						await applyStockCircleImage(needCircle[k], studioStockQuery());
+					} else {
+						await generateCircleImage(needCircle[k], true);
+					}
 					if (k < needCircle.length - 1) {
 						await new Promise<void>((r) => setTimeout(r, 350));
 					}
@@ -11339,12 +11383,7 @@ tweetTopImagePanYBySlide,
 
 	// Space out circle vs N parallel slide requests so Vertex quota is less likely to 429 the badge.
 	await new Promise<void>((r) => setTimeout(r, 1200));
-	for (let k = 0; k < circleIdxs.length; k++) {
-		await generateCircleImage(circleIdxs[k], true);
-		if (k < circleIdxs.length - 1) {
-			await new Promise<void>((r) => setTimeout(r, 350));
-		}
-	}
+	await fillNewsCircleImages(circleIdxs, true);
 
 		studioImageGenPaintHold = true;
 		await flushStudioLoadingPaint();
@@ -13355,13 +13394,14 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					<span class="text-muted-foreground">Black</span>
 				</ButtonGroup.Text>
 			</ButtonGroup.Root>
-			<ButtonGroup.Root>
+			<ButtonGroup.Root class="studio-dock-tool-group">
 			<Popover bind:open={bottomShadowPopoverOpen}>
 				<PopoverTrigger>
 					{#snippet child({ props })}
 						<Button
 							{...props}
 							variant="outline"
+							class="studio-dock-tool-btn"
 							title="Bottom shadow height and darkness"
 							aria-label="Bottom shadow"
 						>
@@ -13376,7 +13416,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					align="center"
 					trapFocus={false}
 					portalProps={{ to: 'body' }}
-					class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+					class="studio-dock-popover w-[280px]"
 				>
 					<div class="mb-3 flex items-center justify-between gap-2">
 						<p class="text-[12px] font-semibold tracking-tight">Bottom shadow</p>
@@ -13487,6 +13527,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						<Button
 							{...props}
 							variant="outline"
+							class="studio-dock-tool-btn"
 							title="Word highlights — accent color for [[…]] markup"
 							aria-label="Highlights"
 						>
@@ -13501,7 +13542,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					align="center"
 					trapFocus={false}
 					portalProps={{ to: 'body' }}
-					class="z-[400] w-[280px] gap-0 rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+					class="studio-dock-popover w-[280px]"
 				>
 					<div class="mb-3 flex items-center justify-between gap-2">
 						<p class="text-[12px] font-semibold tracking-tight">Highlights</p>
@@ -13612,6 +13653,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						<Button
 							{...props}
 							variant="outline"
+							class="studio-dock-tool-btn"
 							title="Branding — name, logo, and colors"
 							aria-label="Branding"
 						>
@@ -13626,7 +13668,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					align="center"
 					trapFocus={false}
 					portalProps={{ to: 'body' }}
-					class="z-[400] max-h-[min(70vh,640px)] w-[320px] gap-0 overflow-y-auto rounded-[16px] border-[#ebebeb] bg-white p-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+					class="studio-dock-popover max-h-[min(70vh,640px)] w-[320px] overflow-y-auto"
 				>
 					<p class="mb-3 text-[12px] font-semibold tracking-tight">Branding</p>
 
@@ -15100,7 +15142,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					{@const thumbFontFamily =
 						tplate === 'news'
 							? `'Bebas Neue', Impact, ui-sans-serif, sans-serif`
-							: `'Satoshi', ui-sans-serif, system-ui, sans-serif`}
+							: `FONT_UI_STACK`}
 					{@const thumbFontSize = tplate === 'news' ? '8px' : '7.5px'}
 					{@const thumbImgOpacity = tplate === 'tweet' && item.img ? '0.92' : '0.78'}
 					{@const rasterThumb = filmstripPreviewUrls[item.slideIndex] ?? ''}
@@ -15395,7 +15437,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{@const dragFont =
 								tDrag === 'news'
 									? `'Bebas Neue', Impact, ui-sans-serif, sans-serif`
-									: `'Satoshi', ui-sans-serif, system-ui, sans-serif`}
+									: `FONT_UI_STACK`}
 							{@const dragFs = tDrag === 'news' ? '8px' : '7.5px'}
 							{@const dragImgOp = tDrag === 'tweet' && di.img ? '0.92' : '0.78'}
 							{@const dragRaster = filmstripPreviewUrls[di.slideIndex] ?? ''}
@@ -16817,7 +16859,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		background: var(--sl-bg) !important;
 		color: var(--sl-text) !important;
 		border-right-color: var(--sl-border) !important;
-		font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+		font-family: var(--font-body);
 	}
 	:root:not([data-theme="dark"]) .studio-right {
 		background: var(--app-bg) !important;
@@ -17123,6 +17165,58 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		width: auto;
 		max-width: 100%;
 		min-width: 0;
+	}
+
+	/* Shared dock popover panel + segmented tool buttons (Shadow / Highlights / Branding) */
+	:global(.studio-dock-popover) {
+		z-index: 400;
+		gap: 0;
+		border-radius: 16px;
+		border: 1px solid #ebebeb;
+		background: #ffffff;
+		padding: 0.875rem;
+		color: #1a1a1a;
+		box-shadow:
+			0 12px 40px rgba(0, 0, 0, 0.12),
+			0 2px 8px rgba(0, 0, 0, 0.06);
+	}
+
+	.studio-dock-inner :global(.studio-dock-tool-group [data-slot='button']) {
+		border-radius: 0;
+		transform: none;
+		box-shadow: none;
+	}
+
+	.studio-dock-inner :global(.studio-dock-tool-group > :first-child [data-slot='button']),
+	.studio-dock-inner :global(.studio-dock-tool-group > :first-child[data-slot='button']) {
+		border-top-left-radius: var(--radius-md, 0.375rem);
+		border-bottom-left-radius: var(--radius-md, 0.375rem);
+	}
+
+	.studio-dock-inner :global(.studio-dock-tool-group > :last-child [data-slot='button']),
+	.studio-dock-inner :global(.studio-dock-tool-group > :last-child[data-slot='button']) {
+		border-top-right-radius: var(--radius-md, 0.375rem);
+		border-bottom-right-radius: var(--radius-md, 0.375rem);
+	}
+
+	.studio-dock-inner :global(.studio-dock-tool-group > :not(:first-child) [data-slot='button']),
+	.studio-dock-inner :global(.studio-dock-tool-group > :not(:first-child)[data-slot='button']) {
+		border-left-width: 0;
+	}
+
+	.studio-dock-inner :global(.studio-dock-tool-group [data-slot='button']:hover),
+	.studio-dock-inner :global(.studio-dock-tool-group [data-slot='button'][aria-expanded='true']) {
+		z-index: 1;
+		border-color: rgba(15, 15, 16, 0.22);
+		background: var(--mk-soft, #f6f7f9);
+		transform: none;
+	}
+
+	.studio-dock-inner :global(.studio-dock-tool-group > :not(:first-child) [data-slot='button']:hover),
+	.studio-dock-inner :global(.studio-dock-tool-group > :not(:first-child) [data-slot='button'][aria-expanded='true']),
+	.studio-dock-inner :global(.studio-dock-tool-group > :not(:first-child)[data-slot='button']:hover),
+	.studio-dock-inner :global(.studio-dock-tool-group > :not(:first-child)[data-slot='button'][aria-expanded='true']) {
+		border-left-width: 0;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.studio-canvas-shell.is-measured,

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import { supabase } from '$lib/supabase';
 	import { loadBrandKit, newsSourceFromBrand } from '$lib/studio/brand-kit';
 	import { onMount } from 'svelte';
@@ -345,7 +346,7 @@
 						<p class="leading-tight" style="color:{activeSlide.textColor};font-size:{activeSlide.fontSize}px;font-family:Impact,'Arial Black',sans-serif;font-weight:{activeSlide.bold?800:600};word-break:break-word">
 							{activeSlide.text || 'Click to edit text →'}
 						</p>
-						{#if activeSlide.subtext}<p class="mt-3 text-sm leading-relaxed" style="color:{activeSlide.textColor}99;font-family:'Satoshi',sans-serif">{activeSlide.subtext}</p>{/if}
+						{#if activeSlide.subtext}<p class="mt-3 text-sm leading-relaxed" style="color:{activeSlide.textColor}99;font-family:FONT_TEMPLATE_DEFAULT,sans-serif">{activeSlide.subtext}</p>{/if}
 					</div>
 				</div>
 			{/if}

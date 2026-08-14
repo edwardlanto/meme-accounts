@@ -24,14 +24,14 @@
 			}
 			window.location.href = json.url;
 		} catch {
-			error = 'Network error — try again';
+			error = 'Network error. Try again.';
 			busy = false;
 		}
 	}
 </script>
 
 <svelte:head>
-	<title>Secure checkout — Meme Accounts</title>
+	<title>Secure checkout | Meme Accounts</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT, FONT_UI_STACK } from '$lib/fonts/brand-fonts';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
@@ -306,7 +307,7 @@
 		s: TextStyle,
 		baseSize: number,
 		weight = 600,
-		baseFamily = `'Satoshi', ui-sans-serif, system-ui, sans-serif`,
+		baseFamily = `FONT_UI_STACK`,
 		defaultInk = HEADLINE_INK,
 	) {
 		const bits: string[] = [];
@@ -329,7 +330,7 @@
 	/** POV / text-on-video — normal TextStyle pipeline (SH presets), not a hardcoded stroke. */
 	const textOnVideoCss = $derived(hlCss(headlineStyle, textOnVideoFontSize, 800));
 	const watermarkCss = $derived(
-		hlCss(watermarkStyle, 22, 600, `'Satoshi', ui-sans-serif, system-ui, sans-serif`, WATERMARK_INK),
+		hlCss(watermarkStyle, 22, 600, `FONT_UI_STACK`, WATERMARK_INK),
 	);
 
 	const subtitleWords = $derived(
@@ -481,7 +482,7 @@
 					rows={isHookLayout ? 2 : 4}
 					minHeight="0px"
 					ariaLabel="Video headline"
-					fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+					fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 					fontSize={headlineStyle.fontSize ?? (pill ? 36 : isHookLayout ? hookFontSize : 46)}
 					lineHeight={headlineStyle.lineHeight}
 					fontWeight={headlineStyle.fontWeight}
@@ -597,7 +598,7 @@
 					rows={2}
 					minHeight="0px"
 					ariaLabel="Subtitle"
-					fontFamily={watermarkStyle.fontFamily ?? 'Satoshi'}
+					fontFamily={watermarkStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 					fontSize={watermarkStyle.fontSize ?? 28}
 					{showToolbar}
 					onTextChange={onWatermarkChange}
@@ -745,7 +746,7 @@
 								rows={4}
 								minHeight="0px"
 								ariaLabel="Feature headline"
-								fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+								fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 								fontSize={featureHeadlineSize}
 								{showToolbar}
 								onTextChange={onHeadlineChange}
@@ -795,7 +796,7 @@
 								rows={6}
 								minHeight="0px"
 								ariaLabel="Feature body"
-								fontFamily={bodyStyle.fontFamily ?? 'Satoshi'}
+								fontFamily={bodyStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 								fontSize={featureBodySize}
 								{showToolbar}
 								onTextChange={onBodyChange}
@@ -902,7 +903,7 @@
 								rows={6}
 								minHeight="0px"
 								ariaLabel="Highlight headline"
-								fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+								fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 								fontSize={sourceFontSize}
 								{showToolbar}
 								onTextChange={onHeadlineChange}
@@ -997,7 +998,7 @@
 								rows={6}
 								minHeight="0px"
 								ariaLabel="On-video text"
-								fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+								fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 								fontSize={textOnVideoFontSize}
 								{showToolbar}
 								onTextChange={onHeadlineChange}
@@ -1108,7 +1109,7 @@
 									rows={1}
 									minHeight="0px"
 									ariaLabel="Account name"
-									fontFamily="Satoshi"
+									fontFamily={FONT_TEMPLATE_DEFAULT}
 									fontSize={previewMode ? 13 : 30}
 									{showToolbar}
 									onTextChange={onProfileNameChange}
@@ -1136,7 +1137,7 @@
 									rows={1}
 									minHeight="0px"
 									ariaLabel="Account handle"
-									fontFamily="Satoshi"
+									fontFamily={FONT_TEMPLATE_DEFAULT}
 									fontSize={previewMode ? 11 : 24}
 									{showToolbar}
 									onTextChange={onProfileHandleChange}
@@ -1180,7 +1181,7 @@
 							rows={4}
 							minHeight="0px"
 							ariaLabel="Clip post hook"
-							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+							fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={postFontSize}
 							{showToolbar}
 							onTextChange={onHeadlineChange}
@@ -1391,7 +1392,7 @@
 										rows={1}
 										minHeight="0px"
 										ariaLabel="Creator name"
-										fontFamily="Satoshi"
+										fontFamily={FONT_TEMPLATE_DEFAULT}
 										fontSize={previewMode ? 13 : 30}
 										{showToolbar}
 										onTextChange={onProfileNameChange}
@@ -1452,7 +1453,7 @@
 									rows={1}
 									minHeight="0px"
 									ariaLabel="Creator handle"
-									fontFamily="Satoshi"
+									fontFamily={FONT_TEMPLATE_DEFAULT}
 									fontSize={previewMode ? 11 : 24}
 									{showToolbar}
 									onTextChange={onProfileHandleChange}
@@ -1497,7 +1498,7 @@
 							rows={3}
 							minHeight="0px"
 							ariaLabel="Creator hook headline"
-							fontFamily={headlineStyle.fontFamily ?? 'Satoshi'}
+							fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={creatorFontSize}
 							lineHeight={headlineStyle.lineHeight}
 							fontWeight={headlineStyle.fontWeight}

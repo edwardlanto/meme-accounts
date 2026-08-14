@@ -1,10 +1,11 @@
 import Stripe from 'stripe';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
-import { PLAN_CATALOG } from '$lib/pricing-catalog';
+import { PLAN_CATALOG, type PaidPlanId } from '$lib/pricing-catalog';
+import { normalizePlanId } from '$lib/plan-entitlements';
 
 export { PLAN_CATALOG };
-export type PaidPlan = 'pro' | 'agency';
+export type PaidPlan = PaidPlanId;
 export type BillingInterval = 'month' | 'year';
 
 export function getStripe(): Stripe {
@@ -21,18 +22,26 @@ export function appUrl(path = ''): string {
 	return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-export function priceIdFor(plan: PaidPlan, interval: BillingInterval): string {
-	const map: Record<PaidPlan, Record<BillingInterval, string | undefined>> = {
-		pro: {
-			month: env.STRIPE_PRICE_PRO_MONTHLY,
-			year: env.STRIPE_PRICE_PRO_YEARLY,
+function envPrice(plan: PaidPlan, interval: BillingInterval): string | undefined {
+	const keys: Record<PaidPlan, Record<BillingInterval, string | undefined>> = {
+		hobby: {
+			month: env.STRIPE_PRICE_HOBBY_MONTHLY,
+			year: env.STRIPE_PRICE_HOBBY_YEARLY,
 		},
-		agency: {
-			month: env.STRIPE_PRICE_AGENCY_MONTHLY,
-			year: env.STRIPE_PRICE_AGENCY_YEARLY,
+		creator: {
+			month: env.STRIPE_PRICE_CREATOR_MONTHLY ?? env.STRIPE_PRICE_PRO_MONTHLY,
+			year: env.STRIPE_PRICE_CREATOR_YEARLY ?? env.STRIPE_PRICE_PRO_YEARLY,
+		},
+		business: {
+			month: env.STRIPE_PRICE_BUSINESS_MONTHLY ?? env.STRIPE_PRICE_AGENCY_MONTHLY,
+			year: env.STRIPE_PRICE_BUSINESS_YEARLY ?? env.STRIPE_PRICE_AGENCY_YEARLY,
 		},
 	};
-	const id = map[plan][interval];
+	return keys[plan][interval];
+}
+
+export function priceIdFor(plan: PaidPlan, interval: BillingInterval): string {
+	const id = envPrice(plan, interval);
 	if (!id) {
 		throw new Error(`Missing Stripe price id for ${plan}/${interval}`);
 	}
@@ -42,15 +51,27 @@ export function priceIdFor(plan: PaidPlan, interval: BillingInterval): string {
 export function planFromPriceId(priceId: string | undefined | null): PaidPlan | null {
 	if (!priceId) return null;
 	const pairs: [PaidPlan, string | undefined][] = [
-		['pro', env.STRIPE_PRICE_PRO_MONTHLY],
-		['pro', env.STRIPE_PRICE_PRO_YEARLY],
-		['agency', env.STRIPE_PRICE_AGENCY_MONTHLY],
-		['agency', env.STRIPE_PRICE_AGENCY_YEARLY],
+		['hobby', env.STRIPE_PRICE_HOBBY_MONTHLY],
+		['hobby', env.STRIPE_PRICE_HOBBY_YEARLY],
+		['creator', env.STRIPE_PRICE_CREATOR_MONTHLY],
+		['creator', env.STRIPE_PRICE_CREATOR_YEARLY],
+		['creator', env.STRIPE_PRICE_PRO_MONTHLY],
+		['creator', env.STRIPE_PRICE_PRO_YEARLY],
+		['business', env.STRIPE_PRICE_BUSINESS_MONTHLY],
+		['business', env.STRIPE_PRICE_BUSINESS_YEARLY],
+		['business', env.STRIPE_PRICE_AGENCY_MONTHLY],
+		['business', env.STRIPE_PRICE_AGENCY_YEARLY],
 	];
 	for (const [plan, id] of pairs) {
 		if (id && id === priceId) return plan;
 	}
 	return null;
+}
+
+export function normalizePaidPlan(plan: string | null | undefined): PaidPlan | null {
+	const id = normalizePlanId(plan);
+	if (id === 'free') return null;
+	return id;
 }
 
 export function mapSubscriptionStatus(

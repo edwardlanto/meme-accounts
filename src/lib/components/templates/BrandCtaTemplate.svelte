@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT, FONT_UI_STACK } from '$lib/fonts/brand-fonts';
 	interface Props {
 		image?: string;
 		headline?: string;
@@ -87,7 +88,7 @@
 
 	.brand-cta-headline {
 		margin: 0;
-		font-family: 'Satoshi', ui-sans-serif, system-ui, sans-serif;
+		font-family: FONT_UI_STACK;
 		font-size: 56px;
 		font-weight: 800;
 		line-height: 1.08;
@@ -99,7 +100,7 @@
 
 	.brand-cta-subline {
 		margin: 0;
-		font-family: 'Satoshi', ui-sans-serif, system-ui, sans-serif;
+		font-family: FONT_UI_STACK;
 		font-size: 34px;
 		font-weight: 700;
 		line-height: 1.2;

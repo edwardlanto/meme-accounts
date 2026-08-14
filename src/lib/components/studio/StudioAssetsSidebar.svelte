@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { prepareImageForUpload } from '$lib/client/image-upload-prep';
+	import { searchStockPhotosForSidebar, type SidebarStockPhoto } from '$lib/studio/bulk-stock';
 	import { Film, Image, ImagePlus, Loader, Pencil, Play, Search, Trash2, Upload, X, Check, Wallpaper, Layers } from 'lucide-svelte';
 	import SkeletonGrid from '$lib/components/SkeletonGrid.svelte';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
@@ -16,24 +17,7 @@
 		thumbUrl?: string;
 	};
 
-	type UnsplashPhoto = {
-		id: string;
-		small: string;
-		regular: string;
-		alt: string;
-		photographer: string;
-		downloadLocation: string;
-	};
-
-	type PexelsPhoto = {
-		id: number;
-		small: string;
-		regular: string;
-		original: string;
-		alt: string;
-		photographer: string;
-		photographerUrl: string;
-	};
+	type StockPhoto = SidebarStockPhoto;
 
 	type PexelsVideo = {
 		id: number;
@@ -80,8 +64,8 @@
 		}) => void | Promise<void>;
 	} = $props();
 
-	let tab = $state<'library' | 'unsplash' | 'pexels'>('library');
-	let pexelsKind = $state<'photos' | 'videos'>('videos');
+	let tab = $state<'library' | 'stock'>('library');
+	let stockKind = $state<'photos' | 'videos'>('photos');
 
 	let assets = $state<StudioAsset[]>([]);
 	let loading = $state(false);
@@ -95,29 +79,19 @@
 	let fileInput: HTMLInputElement | null = $state(null);
 	let dragOver = $state(false);
 
-	let unsplashQuery = $state('');
-	let unsplashPhotos = $state<UnsplashPhoto[]>([]);
-	let unsplashLoading = $state(false);
-	let unsplashError = $state('');
-	let unsplashApplyingId = $state<string | null>(null);
-	let unsplashSearched = $state(false);
-	let unsplashPage = $state(1);
-	let unsplashHasMore = $state(true);
-	let unsplashTotalPages = $state(1);
-
-	let pexelsQuery = $state('');
-	let pexelsPhotos = $state<PexelsPhoto[]>([]);
-	let pexelsVideos = $state<PexelsVideo[]>([]);
-	let pexelsLoading = $state(false);
-	let pexelsError = $state('');
-	let pexelsApplyingId = $state<number | null>(null);
-	let pexelsSearched = $state(false);
-	let pexelsPage = $state(1);
-	let pexelsHasMore = $state(true);
-	let pexelsTotalPages = $state(1);
+	let stockQuery = $state('');
+	let stockPhotos = $state<StockPhoto[]>([]);
+	let stockVideos = $state<PexelsVideo[]>([]);
+	let stockLoading = $state(false);
+	let stockError = $state('');
+	let stockApplyingId = $state<string | null>(null);
+	let stockSearched = $state(false);
+	let stockPage = $state(1);
+	let stockHasMore = $state(true);
+	let stockTotalPages = $state(1);
 	let lastSeedKey = '';
-	let pexelsSearchSeq = 0;
-	let lastPexelsQueryForKind: { photos: string; videos: string } = { photos: '', videos: '' };
+	let stockSearchSeq = 0;
+	let lastStockQueryForKind: { photos: string; videos: string } = { photos: '', videos: '' };
 
 	function looksLikeVideoUrl(url: string): boolean {
 		const u = String(url ?? '').trim().toLowerCase();
@@ -141,28 +115,26 @@
 		if (key === lastSeedKey) return;
 		lastSeedKey = key;
 
-		unsplashQuery = q;
-		pexelsQuery = q;
-		pexelsKind = kind;
-		/* Always open Pexels on Generate — do not leave the user on Unsplash. */
-		tab = 'pexels';
+		stockQuery = q;
+		stockKind = kind;
+		tab = 'stock';
 		if (collapsed) collapsed = false;
 
 		if (kind === 'videos') {
-			void searchPexels(null, 'videos');
+			void searchStockVideos();
 		} else {
-			void searchUnsplash();
-			void searchPexels(null, 'photos');
+			void searchStockPhotos();
 		}
 	});
 
 	$effect(() => {
-		if (tab !== 'pexels') return;
-		const kind = pexelsKind;
-		const q = pexelsQuery.trim();
+		if (tab !== 'stock') return;
+		const kind = stockKind;
+		const q = stockQuery.trim();
 		if (!q) return;
-		if (lastPexelsQueryForKind[kind] === q) return;
-		void searchPexels(null, kind);
+		if (lastStockQueryForKind[kind] === q) return;
+		if (kind === 'videos') void searchStockVideos(null, kind);
+		else void searchStockPhotos(null);
 	});
 
 	const filtered = $derived.by(() => {
@@ -298,231 +270,172 @@
 		return `r2:${asset.r2_key}`;
 	}
 
-	async function searchUnsplash(pageToFetch: number | null = null) {
-		const q = unsplashQuery.trim();
+	async function searchStockPhotos(pageToFetch: number | null = null) {
+		const q = stockQuery.trim();
 		if (!q) {
-			unsplashError = 'Enter a search term';
+			stockError = 'Enter a search term';
 			return;
 		}
-		
-		// If no page specified, start fresh from page 1
+
 		const isNewSearch = pageToFetch === null;
 		const targetPage = pageToFetch ?? 1;
-		
+
 		if (isNewSearch) {
-			unsplashPage = 1;
-			unsplashPhotos = [];
+			stockPage = 1;
+			stockPhotos = [];
 		}
-		
-		unsplashLoading = true;
-		unsplashError = '';
-		unsplashSearched = true;
-		
+
+		stockLoading = true;
+		stockError = '';
+		stockSearched = true;
+
 		try {
-			console.log(`[Unsplash] Fetching page ${targetPage} for query: ${q}`);
-			const res = await fetch(`/api/unsplash/search?query=${encodeURIComponent(q)}&per_page=15&page=${targetPage}`);
-			const data = await res.json().catch(() => ({}));
-			if (!res.ok) throw new Error(data?.error ?? `Search failed (${res.status})`);
-			
-			console.log(`[Unsplash] Received ${data.photos?.length ?? 0} photos, total pages: ${data.totalPages}, current page: ${data.page}`);
-			
-			const newPhotos = Array.isArray(data.photos) ? data.photos : [];
-			
-			// For new search, replace. For load more, append
+			const result = await searchStockPhotosForSidebar(q, targetPage);
+			lastStockQueryForKind.photos = q;
 			if (isNewSearch) {
-				unsplashPhotos = newPhotos;
-				unsplashPage = 1;
+				stockPhotos = result.photos;
+				stockPage = 1;
 			} else {
-				unsplashPhotos = [...unsplashPhotos, ...newPhotos];
-				unsplashPage = targetPage;
+				stockPhotos = [...stockPhotos, ...result.photos];
+				stockPage = targetPage;
 			}
-			
-			unsplashTotalPages = Number(data?.totalPages ?? 1);
-			unsplashHasMore = unsplashPage < unsplashTotalPages && newPhotos.length > 0;
-			
-			console.log(`[Unsplash] Current state - page: ${unsplashPage}, total photos: ${unsplashPhotos.length}, hasMore: ${unsplashHasMore}`);
-			
-			if (!unsplashPhotos.length && isNewSearch) {
-				unsplashError = 'No photos found — try another keyword';
+			stockTotalPages = result.totalPages;
+			stockHasMore = result.hasMore;
+			if (!stockPhotos.length && isNewSearch) {
+				stockError = 'No photos found. Try another keyword.';
 			}
 		} catch (e: unknown) {
-			console.error('[Unsplash] Search error:', e);
-			if (isNewSearch) unsplashPhotos = [];
-			unsplashError = e instanceof Error ? e.message : 'Unsplash search failed';
+			if (isNewSearch) stockPhotos = [];
+			stockError = e instanceof Error ? e.message : 'Stock search failed';
 		} finally {
-			unsplashLoading = false;
+			stockLoading = false;
 		}
 	}
-	
-	async function loadMoreUnsplash() {
-		if (!unsplashHasMore || unsplashLoading) return;
-		const nextPage = unsplashPage + 1;
-		console.log(`[Unsplash] Loading more, fetching page ${nextPage}`);
-		await searchUnsplash(nextPage);
+
+	async function loadMoreStockPhotos() {
+		if (!stockHasMore || stockLoading || stockKind !== 'photos') return;
+		await searchStockPhotos(stockPage + 1);
 	}
 
-	async function applyUnsplash(photo: UnsplashPhoto) {
+	async function applyStockPhoto(photo: StockPhoto) {
 		if (!onUseUnsplashBackground) return;
-		unsplashApplyingId = photo.id;
-		unsplashError = '';
+		stockApplyingId = photo.id;
+		stockError = '';
 		try {
 			await onUseUnsplashBackground({
 				url: photo.regular,
-				downloadLocation: photo.downloadLocation,
+				downloadLocation: photo.downloadLocation ?? '',
 				photographer: photo.photographer,
 			});
 		} catch (e: unknown) {
-			unsplashError = e instanceof Error ? e.message : 'Could not apply photo';
+			stockError = e instanceof Error ? e.message : 'Could not apply photo';
 		} finally {
-			unsplashApplyingId = null;
+			stockApplyingId = null;
 		}
 	}
 
-	function expandUnsplashImage(photo: UnsplashPhoto, e: MouseEvent) {
+	function expandStockImage(photo: StockPhoto, e: MouseEvent) {
 		e.stopPropagation();
 		e.preventDefault();
-		// Open the regular (high-res) image in a new tab
 		window.open(photo.regular, '_blank', 'noopener,noreferrer');
 	}
 
-	async function searchPexels(
+	async function searchStockVideos(
 		pageToFetch: number | null = null,
-		kind: 'photos' | 'videos' = pexelsKind,
+		kind: 'photos' | 'videos' = stockKind,
 	) {
-		const q = pexelsQuery.trim();
+		const q = stockQuery.trim();
 		if (!q) {
-			pexelsError = 'Enter a search term';
+			stockError = 'Enter a search term';
 			return;
 		}
 
 		const isNewSearch = pageToFetch === null;
 		const targetPage = pageToFetch ?? 1;
-		const searchingVideos = kind === 'videos';
-
-		const seq = ++pexelsSearchSeq;
+		const seq = ++stockSearchSeq;
 
 		if (isNewSearch) {
-			pexelsPage = 1;
-			if (searchingVideos) pexelsVideos = [];
-			else pexelsPhotos = [];
+			stockPage = 1;
+			stockVideos = [];
 		}
 
-		pexelsLoading = true;
-		pexelsError = '';
-		pexelsSearched = true;
+		stockLoading = true;
+		stockError = '';
+		stockSearched = true;
 
 		try {
-			const endpoint = searchingVideos
-				? `/api/pexels/videos?query=${encodeURIComponent(q)}&per_page=10&page=${targetPage}&orientation=portrait`
-				: `/api/pexels/search?query=${encodeURIComponent(q)}&per_page=15&page=${targetPage}`;
+			const endpoint = `/api/pexels/videos?query=${encodeURIComponent(q)}&per_page=10&page=${targetPage}&orientation=portrait`;
 			const res = await fetch(endpoint);
 			const data = await res.json().catch(() => ({}));
-			if (seq !== pexelsSearchSeq) return;
+			if (seq !== stockSearchSeq) return;
 			if (!res.ok) throw new Error(data?.error ?? `Search failed (${res.status})`);
-			lastPexelsQueryForKind[kind] = q;
+			lastStockQueryForKind[kind] = q;
 
-			if (searchingVideos) {
-				const newVideos = (Array.isArray(data.videos) ? data.videos : [])
-					.map((v: any) => ({
-						id: Number(v?.id ?? 0),
-						url: String(v?.url ?? ''),
-						thumb: String(v?.thumb ?? ''),
-						alt: String(v?.alt ?? 'Video'),
-						photographer: String(v?.photographer ?? 'Unknown'),
-						duration: Number(v?.duration ?? 0) || 0,
-					}))
-					.filter((v: PexelsVideo) => v.id && v.url);
+			const newVideos = (Array.isArray(data.videos) ? data.videos : [])
+				.map((v: any) => ({
+					id: Number(v?.id ?? 0),
+					url: String(v?.url ?? ''),
+					thumb: String(v?.thumb ?? ''),
+					alt: String(v?.alt ?? 'Video'),
+					photographer: String(v?.photographer ?? 'Unknown'),
+					duration: Number(v?.duration ?? 0) || 0,
+				}))
+				.filter((v: PexelsVideo) => v.id && v.url);
 
-				if (isNewSearch) {
-					pexelsVideos = newVideos;
-					pexelsPage = 1;
-				} else {
-					pexelsVideos = [...pexelsVideos, ...newVideos];
-					pexelsPage = targetPage;
-				}
-
-				const total = Number(data?.total ?? 0) || 0;
-				const perPage = 10;
-				pexelsTotalPages = Number(data?.totalPages ?? Math.max(1, Math.ceil(total / perPage))) || 1;
-				pexelsHasMore =
-					newVideos.length >= perPage &&
-					(total > 0 ? pexelsPage * perPage < total : newVideos.length >= perPage);
-
-				if (!pexelsVideos.length && isNewSearch) {
-					pexelsError = 'No videos found — try another keyword';
-				}
-			} else {
-				const newPhotos = Array.isArray(data.photos) ? data.photos : [];
-
-				if (isNewSearch) {
-					pexelsPhotos = newPhotos;
-					pexelsPage = 1;
-				} else {
-					pexelsPhotos = [...pexelsPhotos, ...newPhotos];
-					pexelsPage = targetPage;
-				}
-
-				pexelsTotalPages = Number(data?.totalPages ?? 1);
-				pexelsHasMore = pexelsPage < pexelsTotalPages && newPhotos.length > 0;
-
-				if (!pexelsPhotos.length && isNewSearch) {
-					pexelsError = 'No photos found — try another keyword';
-				}
-			}
-		} catch (e: unknown) {
-			if (seq !== pexelsSearchSeq) return;
-			console.error('[Pexels] Search error:', e);
 			if (isNewSearch) {
-				if (searchingVideos) pexelsVideos = [];
-				else pexelsPhotos = [];
-				lastPexelsQueryForKind[kind] = '';
+				stockVideos = newVideos;
+				stockPage = 1;
+			} else {
+				stockVideos = [...stockVideos, ...newVideos];
+				stockPage = targetPage;
 			}
-			pexelsError = e instanceof Error ? e.message : 'Pexels search failed';
-		} finally {
-			if (seq === pexelsSearchSeq) pexelsLoading = false;
-		}
-	}
 
-	async function loadMorePexels() {
-		if (!pexelsHasMore || pexelsLoading) return;
-		await searchPexels(pexelsPage + 1);
-	}
+			const total = Number(data?.total ?? 0) || 0;
+			const perPage = 10;
+			stockTotalPages = Number(data?.totalPages ?? Math.max(1, Math.ceil(total / perPage))) || 1;
+			stockHasMore =
+				newVideos.length >= perPage &&
+				(total > 0 ? stockPage * perPage < total : newVideos.length >= perPage);
 
-	function switchPexelsKind(kind: 'photos' | 'videos') {
-		pexelsKind = kind;
-		pexelsError = '';
-		const q = pexelsQuery.trim();
-		const stale = lastPexelsQueryForKind[kind] !== q;
-		const empty = kind === 'videos' ? pexelsVideos.length === 0 : pexelsPhotos.length === 0;
-		if (q && (empty || stale)) {
-			pexelsPage = 1;
-			pexelsHasMore = true;
-			pexelsTotalPages = 1;
-			void searchPexels(null, kind);
-		}
-	}
-
-	async function applyPexels(photo: PexelsPhoto) {
-		if (!onUseUnsplashBackground) return;
-		pexelsApplyingId = photo.id;
-		pexelsError = '';
-		try {
-			await onUseUnsplashBackground({
-				url: photo.regular,
-				downloadLocation: '',
-				photographer: photo.photographer,
-			});
+			if (!stockVideos.length && isNewSearch) {
+				stockError = 'No videos found. Try another keyword.';
+			}
 		} catch (e: unknown) {
-			pexelsError = e instanceof Error ? e.message : 'Could not apply photo';
+			if (seq !== stockSearchSeq) return;
+			if (isNewSearch) {
+				stockVideos = [];
+				lastStockQueryForKind[kind] = '';
+			}
+			stockError = e instanceof Error ? e.message : 'Stock search failed';
 		} finally {
-			pexelsApplyingId = null;
+			if (seq === stockSearchSeq) stockLoading = false;
 		}
 	}
 
-	async function applyPexelsVideo(video: PexelsVideo) {
+	async function loadMoreStockVideos() {
+		if (!stockHasMore || stockLoading) return;
+		await searchStockVideos(stockPage + 1);
+	}
+
+	function switchStockKind(kind: 'photos' | 'videos') {
+		stockKind = kind;
+		stockError = '';
+		const q = stockQuery.trim();
+		const stale = lastStockQueryForKind[kind] !== q;
+		const empty = kind === 'videos' ? stockVideos.length === 0 : stockPhotos.length === 0;
+		if (q && (empty || stale)) {
+			stockPage = 1;
+			stockHasMore = true;
+			stockTotalPages = 1;
+			if (kind === 'videos') void searchStockVideos(null, kind);
+			else void searchStockPhotos(null);
+		}
+	}
+
+	async function applyStockVideo(video: PexelsVideo) {
 		if (!onUsePexelsVideo) return;
-		pexelsApplyingId = video.id;
-		pexelsError = '';
+		stockApplyingId = String(video.id);
+		stockError = '';
 		try {
 			await onUsePexelsVideo({
 				url: video.url,
@@ -531,9 +444,9 @@
 				duration: video.duration,
 			});
 		} catch (e: unknown) {
-			pexelsError = e instanceof Error ? e.message : 'Could not apply video';
+			stockError = e instanceof Error ? e.message : 'Could not apply video';
 		} finally {
-			pexelsApplyingId = null;
+			stockApplyingId = null;
 		}
 	}
 
@@ -542,12 +455,6 @@
 		const m = Math.floor(s / 60);
 		const r = s % 60;
 		return `${m}:${String(r).padStart(2, '0')}`;
-	}
-
-	function expandPexelsImage(photo: PexelsPhoto, e: MouseEvent) {
-		e.stopPropagation();
-		e.preventDefault();
-		window.open(photo.original || photo.regular, '_blank', 'noopener,noreferrer');
 	}
 </script>
 
@@ -585,10 +492,9 @@
 		</div>
 
 		<Tabs.Root bind:value={tab} class="gap-3">
-			<Tabs.List class="grid h-9 w-full grid-cols-3">
+			<Tabs.List class="grid h-9 w-full grid-cols-2">
 				<Tabs.Trigger value="library" class="text-xs">Library</Tabs.Trigger>
-				<Tabs.Trigger value="unsplash" class="text-xs">Unsplash</Tabs.Trigger>
-				<Tabs.Trigger value="pexels" class="text-xs">Pexels</Tabs.Trigger>
+				<Tabs.Trigger value="stock" class="text-xs">Stock</Tabs.Trigger>
 			</Tabs.List>
 		</Tabs.Root>
 
@@ -632,44 +538,16 @@
 				{/if}
 				Upload
 			</Button>
-		{:else if tab === 'unsplash'}
-			<form
-				class="flex gap-2"
-				onsubmit={(e) => {
-					e.preventDefault();
-					void searchUnsplash();
-				}}
-			>
-				<div class="relative min-w-0 flex-1">
-					<Search
-						class="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2"
-					/>
-					<Input
-						type="search"
-						bind:value={unsplashQuery}
-						placeholder="Search Unsplash…"
-						class="h-9 ps-8"
-						aria-label="Search Unsplash"
-					/>
-				</div>
-				<Button type="submit" size="sm" class="shrink-0" disabled={unsplashLoading}>
-					{#if unsplashLoading}
-						<Loader class="animate-spin" />
-					{:else}
-						Search
-					{/if}
-				</Button>
-			</form>
-		{:else if tab === 'pexels'}
-			<div class="grid grid-cols-2 gap-2" role="group" aria-label="Pexels media type">
+		{:else if tab === 'stock'}
+			<div class="grid grid-cols-2 gap-2" role="group" aria-label="Stock media type">
 				<button
 					type="button"
-					aria-pressed={pexelsKind === 'photos'}
-					onclick={() => switchPexelsKind('photos')}
+					aria-pressed={stockKind === 'photos'}
+					onclick={() => switchStockKind('photos')}
 					class={cn(
 						buttonVariants({ variant: 'outline', size: 'sm' }),
 						'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold rounded-xl border-[#ebebeb]',
-						pexelsKind === 'photos'
+						stockKind === 'photos'
 							? 'border-[#3ecf8e] bg-[#e8faf1] text-[#1a7a4c]'
 							: 'text-muted-foreground',
 					)}
@@ -679,12 +557,12 @@
 				</button>
 				<button
 					type="button"
-					aria-pressed={pexelsKind === 'videos'}
-					onclick={() => switchPexelsKind('videos')}
+					aria-pressed={stockKind === 'videos'}
+					onclick={() => switchStockKind('videos')}
 					class={cn(
 						buttonVariants({ variant: 'outline', size: 'sm' }),
 						'h-auto w-full cursor-pointer gap-1.5 py-2 font-body text-xs font-semibold rounded-xl border-[#ebebeb]',
-						pexelsKind === 'videos'
+						stockKind === 'videos'
 							? 'border-[#3ecf8e] bg-[#e8faf1] text-[#1a7a4c]'
 							: 'text-muted-foreground',
 					)}
@@ -697,7 +575,8 @@
 				class="flex gap-2"
 				onsubmit={(e) => {
 					e.preventDefault();
-					void searchPexels();
+					if (stockKind === 'videos') void searchStockVideos();
+					else void searchStockPhotos();
 				}}
 			>
 				<div class="relative min-w-0 flex-1">
@@ -706,14 +585,14 @@
 					/>
 					<Input
 						type="search"
-						bind:value={pexelsQuery}
-						placeholder={pexelsKind === 'videos' ? 'Search Pexels videos…' : 'Search Pexels photos…'}
+						bind:value={stockQuery}
+						placeholder={stockKind === 'videos' ? 'Search stock videos…' : 'Search stock photos…'}
 						class="h-9 ps-8"
-						aria-label={pexelsKind === 'videos' ? 'Search Pexels videos' : 'Search Pexels photos'}
+						aria-label={stockKind === 'videos' ? 'Search stock videos' : 'Search stock photos'}
 					/>
 				</div>
-				<Button type="submit" size="sm" class="shrink-0" disabled={pexelsLoading}>
-					{#if pexelsLoading}
+				<Button type="submit" size="sm" class="shrink-0" disabled={stockLoading}>
+					{#if stockLoading}
 						<Loader class="animate-spin" />
 					{:else}
 						Search
@@ -734,7 +613,12 @@
 
 	{#if tab === 'library'}
 		{#if error}
-			<p class="assets-error assets-error-top">{error}</p>
+			<div class="assets-error assets-error-top">
+				<p>{error}</p>
+				<button type="button" class="assets-error-retry" onclick={() => void loadAssets()} disabled={loading}>
+					Retry
+				</button>
+			</div>
 		{/if}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
@@ -862,131 +746,45 @@
 				</ul>
 			{/if}
 		</div>
-	{:else if tab === 'unsplash'}
+	{:else if tab === 'stock'}
 		<div class="assets-drop">
-			{#if unsplashLoading && !unsplashPhotos.length}
+			{#if stockLoading && !(stockKind === 'videos' ? stockVideos.length : stockPhotos.length)}
 				<SkeletonGrid count={6} ratio="3/4" />
-			{:else if !unsplashSearched}
-				<div class="assets-empty">
-					<div class="assets-empty-icon"><Search size={18} /></div>
-					<p>Search stock photos</p>
-					<span>Find a photo, then tap it to set as the slide background</span>
-				</div>
-			{:else if !unsplashPhotos.length}
-				<div class="assets-empty">
-					<p>No results</p>
-					<span>Try a different keyword</span>
-				</div>
-			{:else}
-				<ul class="unsplash-grid">
-					{#each unsplashPhotos as photo (photo.id)}
-						<li>
-							<div
-								class="unsplash-card"
-								class:unsplash-card--loading={unsplashApplyingId === photo.id}
-								title={`Photo by ${photo.photographer} on Unsplash`}
-							>
-								<div class="pexels-image-wrapper">
-									<button
-										type="button"
-										class="unsplash-card-action"
-										disabled={unsplashApplyingId === photo.id}
-										onclick={() => void applyUnsplash(photo)}
-									>
-										<img src={photo.small} alt={photo.alt} loading="lazy" />
-									</button>
-									<button
-										type="button"
-										class="pexels-expand-btn"
-										onclick={(e) => expandUnsplashImage(photo, e)}
-										title="View full size"
-										disabled={unsplashApplyingId === photo.id}
-									>
-										<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-											<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
-										</svg>
-									</button>
-								</div>
-								{#if unsplashApplyingId === photo.id}
-									<div class="asset-busy"><Loader size={14} class="animate-spin" /></div>
-								{:else}
-									<span class="unsplash-credit">
-										{photo.photographer}
-										· BG
-									</span>
-								{/if}
-							</div>
-						</li>
-					{/each}
-				</ul>
-				
-				{#if unsplashHasMore}
-					<div class="unsplash-load-more">
-						<button
-							type="button"
-							class="load-more-btn"
-							disabled={unsplashLoading}
-							onclick={() => void loadMoreUnsplash()}
-						>
-							{#if unsplashLoading}
-								<Loader size={14} class="animate-spin" />
-								<span>Loading page {unsplashPage + 1}…</span>
-							{:else}
-								<span>Load More (Page {unsplashPage + 1})</span>
-								<span class="load-more-count">{unsplashPhotos.length} photos • {unsplashPage} of {unsplashTotalPages}</span>
-							{/if}
-						</button>
-					</div>
-				{/if}
-				
-				<p class="unsplash-note">
-					Photos via
-					<a href="https://unsplash.com/?utm_source=carousel_studio&utm_medium=referral" target="_blank" rel="noopener noreferrer">Unsplash</a>
-				</p>
-			{/if}
-		</div>
-		{#if unsplashError}
-			<p class="assets-error">{unsplashError}</p>
-		{/if}
-	{:else if tab === 'pexels'}
-		<div class="assets-drop">
-			{#if pexelsLoading && !(pexelsKind === 'videos' ? pexelsVideos.length : pexelsPhotos.length)}
-				<SkeletonGrid count={6} ratio="3/4" />
-			{:else if !pexelsSearched}
+			{:else if !stockSearched}
 				<div class="assets-empty">
 					<div class="assets-empty-icon">
-						{#if pexelsKind === 'videos'}
+						{#if stockKind === 'videos'}
 							<Film size={18} />
 						{:else}
 							<Search size={18} />
 						{/if}
 					</div>
-					<p>{pexelsKind === 'videos' ? 'Search stock videos' : 'Search stock photos'}</p>
+					<p>{stockKind === 'videos' ? 'Search stock videos' : 'Search stock photos'}</p>
 					<span>
-						{pexelsKind === 'videos'
+						{stockKind === 'videos'
 							? 'Find a clip, then tap it to set as the slide background'
 							: 'Find a photo, then tap it to set as the slide background'}
 					</span>
 				</div>
-			{:else if pexelsKind === 'videos' ? !pexelsVideos.length : !pexelsPhotos.length}
+			{:else if stockKind === 'videos' ? !stockVideos.length : !stockPhotos.length}
 				<div class="assets-empty">
 					<p>No results</p>
 					<span>Try a different keyword</span>
 				</div>
-			{:else if pexelsKind === 'videos'}
+			{:else if stockKind === 'videos'}
 				<ul class="unsplash-grid">
-					{#each pexelsVideos as video (video.id)}
+					{#each stockVideos as video (video.id)}
 						<li>
 							<div
 								class="unsplash-card pexels-card pexels-video-card"
-								class:unsplash-card--loading={pexelsApplyingId === video.id}
-								title={`Video by ${video.photographer} on Pexels`}
+								class:unsplash-card--loading={stockApplyingId === String(video.id)}
+								title={`Video by ${video.photographer}`}
 							>
 								<button
 									type="button"
 									class="unsplash-card-action"
-									disabled={pexelsApplyingId === video.id || !onUsePexelsVideo}
-									onclick={() => void applyPexelsVideo(video)}
+									disabled={stockApplyingId === String(video.id) || !onUsePexelsVideo}
+									onclick={() => void applyStockVideo(video)}
 								>
 									{#if video.url}
 										<!-- svelte-ignore a11y_media_has_caption -->
@@ -1012,7 +810,7 @@
 										{formatDuration(video.duration)}
 									</span>
 								</button>
-								{#if pexelsApplyingId === video.id}
+								{#if stockApplyingId === String(video.id)}
 									<div class="asset-busy"><Loader size={14} class="animate-spin" /></div>
 								{:else}
 									<span class="unsplash-credit">
@@ -1025,65 +823,60 @@
 					{/each}
 				</ul>
 
-				{#if pexelsHasMore}
+				{#if stockHasMore}
 					<div class="unsplash-load-more">
 						<button
 							type="button"
 							class="load-more-btn"
-							disabled={pexelsLoading}
-							onclick={() => void loadMorePexels()}
+							disabled={stockLoading}
+							onclick={() => void loadMoreStockVideos()}
 						>
-							{#if pexelsLoading}
+							{#if stockLoading}
 								<Loader size={14} class="animate-spin" />
-								<span>Loading page {pexelsPage + 1}…</span>
+								<span>Loading page {stockPage + 1}…</span>
 							{:else}
-								<span>Load More (Page {pexelsPage + 1})</span>
-								<span class="load-more-count">{pexelsVideos.length} videos • {pexelsPage} of {pexelsTotalPages}</span>
+								<span>Load more (page {stockPage + 1})</span>
+								<span class="load-more-count">{stockVideos.length} videos • {stockPage} of {stockTotalPages}</span>
 							{/if}
 						</button>
 					</div>
 				{/if}
-
-				<p class="unsplash-note">
-					Videos via
-					<a href="https://www.pexels.com/videos/" target="_blank" rel="noopener noreferrer">Pexels</a>
-				</p>
 			{:else}
 				<ul class="unsplash-grid">
-					{#each pexelsPhotos as photo (photo.id)}
+					{#each stockPhotos as photo (photo.id)}
 						<li>
 							<div
 								class="unsplash-card pexels-card"
-								class:unsplash-card--loading={pexelsApplyingId === photo.id}
-								title={`Photo by ${photo.photographer} on Pexels`}
+								class:unsplash-card--loading={stockApplyingId === photo.id}
+								title={`Photo by ${photo.photographer} on ${photo.source === 'pexels' ? 'Pexels' : 'Unsplash'}`}
 							>
 								<div class="pexels-image-wrapper">
 									<button
 										type="button"
 										class="unsplash-card-action"
-										disabled={pexelsApplyingId === photo.id}
-										onclick={() => void applyPexels(photo)}
+										disabled={stockApplyingId === photo.id}
+										onclick={() => void applyStockPhoto(photo)}
 									>
 										<img src={photo.small} alt={photo.alt} loading="lazy" />
 									</button>
 									<button
 										type="button"
 										class="pexels-expand-btn"
-										onclick={(e) => expandPexelsImage(photo, e)}
+										onclick={(e) => expandStockImage(photo, e)}
 										title="View full size"
-										disabled={pexelsApplyingId === photo.id}
+										disabled={stockApplyingId === photo.id}
 									>
 										<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 											<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
 										</svg>
 									</button>
 								</div>
-								{#if pexelsApplyingId === photo.id}
+								{#if stockApplyingId === photo.id}
 									<div class="asset-busy"><Loader size={14} class="animate-spin" /></div>
 								{:else}
 									<span class="unsplash-credit">
 										{photo.photographer}
-										· BG
+										· {photo.source === 'pexels' ? 'Pexels' : 'Unsplash'}
 									</span>
 								{/if}
 							</div>
@@ -1091,33 +884,30 @@
 					{/each}
 				</ul>
 
-				{#if pexelsHasMore}
+				{#if stockHasMore}
 					<div class="unsplash-load-more">
 						<button
 							type="button"
 							class="load-more-btn"
-							disabled={pexelsLoading}
-							onclick={() => void loadMorePexels()}
+							disabled={stockLoading}
+							onclick={() => void loadMoreStockPhotos()}
 						>
-							{#if pexelsLoading}
+							{#if stockLoading}
 								<Loader size={14} class="animate-spin" />
-								<span>Loading page {pexelsPage + 1}…</span>
+								<span>Loading page {stockPage + 1}…</span>
 							{:else}
-								<span>Load More (Page {pexelsPage + 1})</span>
-								<span class="load-more-count">{pexelsPhotos.length} photos • {pexelsPage} of {pexelsTotalPages}</span>
+								<span>Load more (page {stockPage + 1})</span>
+								<span class="load-more-count">{stockPhotos.length} photos • {stockPage} of {stockTotalPages}</span>
 							{/if}
 						</button>
 					</div>
 				{/if}
 
-				<p class="unsplash-note">
-					Photos via
-					<a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
-				</p>
+				<p class="unsplash-note">Free stock photos via Pexels and Unsplash</p>
 			{/if}
 		</div>
-		{#if pexelsError}
-			<p class="assets-error">{pexelsError}</p>
+		{#if stockError}
+			<p class="assets-error">{stockError}</p>
 		{/if}
 	{/if}
 </aside>
@@ -1571,6 +1361,24 @@
 	}
 	.assets-error-top {
 		padding: 8px 12px 0;
+	}
+	.assets-error-retry {
+		margin-top: 8px;
+		padding: 4px 10px;
+		border: 1px solid rgba(220, 38, 38, 0.35);
+		border-radius: 6px;
+		background: transparent;
+		font-size: 11px;
+		font-weight: 600;
+		color: #dc2626;
+		cursor: pointer;
+	}
+	.assets-error-retry:hover:not(:disabled) {
+		background: rgba(220, 38, 38, 0.06);
+	}
+	.assets-error-retry:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	:global([data-theme='dark']) .assets-sidebar {

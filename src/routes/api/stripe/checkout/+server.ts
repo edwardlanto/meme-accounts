@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { adminClient } from '$lib/server/auth';
+import { PAID_PLAN_IDS } from '$lib/pricing-catalog';
 import {
 	appUrl,
 	getStripe,
@@ -9,7 +10,7 @@ import {
 	type PaidPlan,
 } from '$lib/server/stripe';
 
-const PAID: PaidPlan[] = ['pro', 'agency'];
+const PAID: PaidPlan[] = PAID_PLAN_IDS;
 const INTERVALS: BillingInterval[] = ['month', 'year'];
 
 /**

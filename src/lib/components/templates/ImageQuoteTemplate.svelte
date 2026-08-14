@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
@@ -382,7 +383,7 @@
 								toolbarKind="imageQuoteFooterRight"
 								selected={selectedText === 'imageQuoteFooterRight'}
 								ariaLabel="Footer right"
-								fontFamily="Satoshi"
+								fontFamily={FONT_TEMPLATE_DEFAULT}
 								fontSize={22}
 								onTextChange={onFooterRightChange}
 								onTextSelect={onTextSelect}
@@ -394,7 +395,7 @@
 											font-weight: 800;
 											color: {baseText};
 											letter-spacing: 0.16em;
-											font-family: 'Satoshi', system-ui, sans-serif;
+											font-family: var(--font-display);
 											text-transform: uppercase;
 											line-height: 1.2;
 											text-align: left;

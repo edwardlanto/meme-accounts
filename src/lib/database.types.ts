@@ -9,13 +9,15 @@ export interface Database {
           email: string;
           full_name: string | null;
           avatar_url: string | null;
-          plan: 'free' | 'pro' | 'agency';
+          plan: 'free' | 'hobby' | 'creator' | 'business';
           credits: number;
           stripe_customer_id: string | null;
           stripe_subscription_id: string | null;
           plan_status: 'inactive' | 'active' | 'past_due' | 'canceled' | 'trialing';
           current_period_end: string | null;
           trial_exports_used: number;
+          carousel_tokens_used: number;
+          usage_period_start: string | null;
           marketing_emails: boolean;
           created_at: string;
           updated_at: string;
@@ -29,6 +31,8 @@ export interface Database {
           | 'plan_status'
           | 'current_period_end'
           | 'trial_exports_used'
+          | 'carousel_tokens_used'
+          | 'usage_period_start'
           | 'marketing_emails'
         > & {
           stripe_customer_id?: string | null;
@@ -36,6 +40,8 @@ export interface Database {
           plan_status?: 'inactive' | 'active' | 'past_due' | 'canceled' | 'trialing';
           current_period_end?: string | null;
           trial_exports_used?: number;
+          carousel_tokens_used?: number;
+          usage_period_start?: string | null;
           marketing_emails?: boolean;
         };
         Update: Partial<Database['public']['Tables']['users']['Insert']>;

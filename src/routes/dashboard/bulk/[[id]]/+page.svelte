@@ -301,7 +301,7 @@
 			slides: (show.slides ?? []).map((sl) => {
 				const { mediaLoading: _m, reframeBusy: _r, ...rest } = sl;
 				const mediaUrl = String(rest.mediaUrl ?? '');
-				if (mediaUrl.startsWith('data:') && mediaUrl.length > 180_000) {
+				if (mediaUrl.startsWith('data:')) {
 					return { ...rest, mediaUrl: rest.mediaThumb || '', mediaThumb: rest.mediaThumb };
 				}
 				return rest;

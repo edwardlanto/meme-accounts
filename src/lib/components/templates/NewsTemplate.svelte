@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import { onDestroy, tick } from 'svelte';
 	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection, type HighlightDefaults } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
@@ -804,10 +805,10 @@
 	let subtextSegments = $derived(segmentText(subtextParsed));
 
 	let fontSize = $derived(
-		parsed.plain.length < 60  ? 108
-		: parsed.plain.length < 90  ? 92
-		: parsed.plain.length < 120 ? 78
-		: 66
+		parsed.plain.length < 60  ? 80
+		: parsed.plain.length < 90  ? 72
+		: parsed.plain.length < 120 ? 64
+		: 56
 	);
 
 	// ── Inline text editing ────────────────────────────────────────────────
@@ -2187,7 +2188,7 @@
 							background: transparent;
 							border: 1px dashed rgba(255,255,255,0.28);
 							color: {css.color ?? '#FFFFFF'};
-							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `'Satoshi', system-ui, -apple-system, sans-serif`};
+							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, sans-serif`};
 							font-size: {css.fontSize ?? 36}px;
 							font-weight: {css.fontWeight ?? 600};
 							text-align: {css.align ?? 'left'};
@@ -3178,7 +3179,7 @@
 							<div style="
 								position: absolute;
 								top: -2px; right: 0;
-								font-family: 'Satoshi', sans-serif;
+								font-family: var(--font-display);
 								font-size: 20px;
 								color: rgba(255,255,255,0.4);
 								pointer-events: none;

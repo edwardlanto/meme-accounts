@@ -17,6 +17,9 @@ function errMessage(e: unknown, fallback: string): string {
 }
 
 function migrateHint(message: string): string {
+	if (/upstream connect error|delayed connect error:\s*111|connection refused/i.test(message)) {
+		return 'Database unreachable — your Supabase project may be paused. Open supabase.com/dashboard, restore the project, wait ~2 minutes, then retry.';
+	}
 	if (/studio_assets/i.test(message) && /schema cache|does not exist|PGRST205/i.test(message)) {
 		return 'Asset library table is missing — run supabase/migrations/011_studio_assets.sql in the Supabase SQL editor.';
 	}
