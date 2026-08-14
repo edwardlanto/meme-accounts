@@ -23,6 +23,10 @@
 		profileName?: string;
 		profileHandle?: string;
 		profileAvatar?: string;
+		/** Same circle chrome as Text Carousel / News-style avatar toolbar. */
+		profileAvatarInnerBg?: string;
+		profileAvatarRingColor?: string;
+		profileAvatarRingWidth?: number;
 		videoSrc?: string;
 		/** When `videoSrc` is empty, show this image instead of the template placeholder clip. */
 		videoPoster?: string;
@@ -75,6 +79,9 @@
 		profileName = VIDEO_CREATOR_DEFAULTS.name,
 		profileHandle = VIDEO_CREATOR_DEFAULTS.handle,
 		profileAvatar = '',
+		profileAvatarInnerBg = '',
+		profileAvatarRingColor = '#c9b97a',
+		profileAvatarRingWidth = 5,
 		videoSrc = '',
 		videoPoster = '',
 		w = 1080,
@@ -132,10 +139,13 @@
 	const isHookLayout = $derived(layout === 'hook');
 	const letterboxTopPct = $derived.by(() => {
 		if (filmStripTopPct != null && Number.isFinite(filmStripTopPct)) {
-			return Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripTopPct)));
+			const v = Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripTopPct)));
+			// Creator needs room for avatar + 2-line headline; legacy 26/34% sessions still clip.
+			if (layout === 'creator' && v > 0 && v <= 34) return 40;
+			return v;
 		}
 		if (layout === 'hook') return 26;
-		if (layout === 'creator') return 30;
+		if (layout === 'creator') return 40;
 		if (layout === 'source') return 30;
 		return 0;
 	});
@@ -197,8 +207,8 @@
 	}
 	const avatarInitials = $derived(profileInitials(profileName));
 
-	const creatorAvatarSize = $derived(previewMode ? 34 : 68);
-	const creatorProfileGap = $derived(previewMode ? 10 : 18);
+	const creatorAvatarSize = $derived(previewMode ? 32 : 64);
+	const creatorProfileGap = $derived(previewMode ? 8 : 14);
 	const creatorAvatarOffset = $derived(
 		textOffsets.textCarouselAvatar ??
 			(textOffsets.videoCreatorProfile ? { ...textOffsets.videoCreatorProfile } : { x: 0, y: 0 }),
@@ -207,10 +217,19 @@
 	const creatorHandleOffset = $derived(textOffsets.textCarouselHandle ?? { x: 0, y: 0 });
 	const creatorLetterboxPadding = $derived(
 		previewMode
-			? `16px ${letterboxPadX}px 8px`
-			: `28px ${letterboxPadX}px 16px`,
+			? `8px ${letterboxPadX}px 10px`
+			: `14px ${letterboxPadX}px 18px`,
 	);
-	const creatorLetterboxGap = $derived(previewMode ? 8 : 14);
+	const creatorLetterboxGap = $derived(previewMode ? 4 : 8);
+	const creatorAvatarRingPx = $derived(
+		Math.max(0, Math.min(24, Math.round(Number(profileAvatarRingWidth) || 0))),
+	);
+	const creatorAvatarDiscBg = $derived(
+		String(profileAvatarInnerBg ?? '').trim() || '#111111',
+	);
+	const creatorAvatarRingColorResolved = $derived(
+		String(profileAvatarRingColor ?? '').trim() || '#c9b97a',
+	);
 
 	const DEFAULT_VIDEO = VIDEO_STORY_DEFAULTS.videoUrl;
 
@@ -1266,58 +1285,77 @@
 						onChange={(x, y) => onTextOffsetChange?.('textCarouselAvatar', { x, y })}
 					>
 						{#snippet children()}
+							<!-- Same circle chrome as TextCarouselTemplate (ring + fill from Circle toolbar). -->
 							<div
-								role="button"
-								tabindex="0"
-								data-text-selectable="textCarouselAvatar"
 								style="
 									width: {creatorAvatarSize}px;
 									height: {creatorAvatarSize}px;
 									border-radius: 50%;
-									overflow: hidden;
 									flex-shrink: 0;
-									background: #111;
 									display: flex;
 									align-items: center;
 									justify-content: center;
-									cursor: {interactive ? 'pointer' : 'default'};
-									outline: none;
-									{selectedText === 'textCarouselAvatar'
-										? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);'
-										: ''}
+									padding: {creatorAvatarRingPx}px;
+									box-sizing: border-box;
+									background: {creatorAvatarRingPx > 0
+										? `linear-gradient(135deg, ${creatorAvatarRingColorResolved}, color-mix(in srgb, ${creatorAvatarRingColorResolved} 60%, white))`
+										: 'transparent'};
 								"
-								onclick={(e) => {
-									e.stopPropagation();
-									if (!interactive || !onTextSelect) return;
-									onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
-								}}
-								onkeydown={(e) => {
-									if (!interactive || !onTextSelect) return;
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault();
-										onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
-									}
-								}}
 							>
-								{#if profileAvatar?.trim()}
-									<img
-										src={profileAvatar}
-										alt=""
-										style="width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;"
-									/>
-								{:else}
-									<span
-										style="
-											font-size: {previewMode ? 11 : 20}px;
-											font-weight: 700;
-											color: #fff;
-											letter-spacing: -0.02em;
-											pointer-events: none;
-										"
-									>
-										{avatarInitials}
-									</span>
-								{/if}
+								<div
+									role="button"
+									tabindex="0"
+									data-text-selectable="textCarouselAvatar"
+									style="
+										width: 100%;
+										height: 100%;
+										border-radius: 50%;
+										overflow: hidden;
+										flex-shrink: 0;
+										background: {creatorAvatarDiscBg};
+										display: flex;
+										align-items: center;
+										justify-content: center;
+										cursor: {interactive ? 'pointer' : 'default'};
+										outline: none;
+										box-sizing: border-box;
+										{selectedText === 'textCarouselAvatar'
+											? 'box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.75);'
+											: ''}
+									"
+									onclick={(e) => {
+										e.stopPropagation();
+										if (!interactive || !onTextSelect) return;
+										onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
+									}}
+									onkeydown={(e) => {
+										if (!interactive || !onTextSelect) return;
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											onTextSelect('textCarouselAvatar', e.currentTarget as HTMLElement);
+										}
+									}}
+								>
+									{#if profileAvatar?.trim()}
+										<img
+											src={profileAvatar}
+											alt=""
+											style="width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;"
+										/>
+									{:else}
+										<span
+											style="
+												font-size: {previewMode ? 11 : 20}px;
+												font-weight: 700;
+												color: #fff;
+												letter-spacing: -0.02em;
+												pointer-events: none;
+											"
+										>
+											{avatarInitials}
+										</span>
+									{/if}
+								</div>
 							</div>
 						{/snippet}
 					</DraggableBlock>
@@ -1341,7 +1379,7 @@
 										align-items: center;
 										gap: {previewMode ? 5 : 8}px;
 										flex-wrap: wrap;
-										padding-bottom: {previewMode ? 4 : 8}px;
+										padding-bottom: {previewMode ? 2 : 4}px;
 									"
 								>
 									<CanvasMarkupTextBlock
@@ -1450,7 +1488,8 @@
 						<CanvasMarkupTextBlock
 							value={headline}
 							{interactive}
-							defaultColor="#ffffff"
+							defaultColor={highlightColor}
+							defaultStyle={highlightParseDefaults}
 							selected={selectedText === 'videoStoryHeadline'}
 							toolbarKind="videoStoryHeadline"
 							rows={3}
@@ -1460,7 +1499,7 @@
 							fontSize={creatorFontSize}
 							lineHeight={headlineStyle.lineHeight}
 							fontWeight={headlineStyle.fontWeight}
-							emphasisBold={true}
+							emphasisBold={false}
 							{showToolbar}
 							onTextChange={onHeadlineChange}
 							onTextSelect={onTextSelect}
@@ -1472,8 +1511,8 @@
 										as="div"
 										text={headline}
 										parseHighlights={true}
-										emphasisBold={true}
-										defaultColor="#ffffff"
+										emphasisBold={false}
+										defaultColor={highlightParseDefaults}
 										style="
 											margin: 0;
 											white-space: pre-wrap;

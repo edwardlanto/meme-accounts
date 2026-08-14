@@ -1,6 +1,7 @@
 /**
- * Local developer overrides for built-in Studio templates.
- * Pin a designed look in DEV, then fresh `?template=` opens reuse it.
+ * Local developer overrides for built-in Studio templates (styles / layout / letterbox).
+ * Starter copy + media always come from product defaults (`generated-demo-posts` /
+ * `*_DEFAULTS`) — pins must not invent a second content default.
  * Production builds ignore these (UI + apply are DEV-only).
  */
 import type { TextElementKind, TextStyle, Overlay, TextOverlay } from '$lib/types';

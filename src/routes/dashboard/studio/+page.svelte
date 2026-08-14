@@ -2831,7 +2831,7 @@ import JSZip from 'jszip';
 		];
 	});
 
-	/** Restore the active slide’s starter copy, layout offsets, overlays, and background media for the current template. */
+	/** Restore the active slide to the single product default (`*_DEFAULTS` / generated-demo-posts). */
 	function resetCurrentSlideToDefaults() {
 		const i = activeSlide;
 		const t = activeTemplate;
@@ -2856,23 +2856,36 @@ import JSZip from 'jszip';
 		setSlideTextOverlays(i, [], t);
 		replaceTemplateOffsets(i, t, {});
 
+		forceApplyProductDefaultsForSlide(t, i);
+
+		stylesByTemplateBySlide = {
+			...stylesByTemplateBySlide,
+			[t]: (stylesByTemplateBySlide[t] ?? []).map((m, idx) => (idx === i ? {} : m)),
+		};
+		slideMusic = slideMusic.map((m, idx) => (idx === i ? null : m));
+		musicPickerForSlide = null;
+		closeToolbar();
+	}
+
+	/**
+	 * Force copy + media for one slide to the product default (same source as fresh `?template=`).
+	 * Prefer brand name/handle when the template shows a profile.
+	 */
+	function forceApplyProductDefaultsForSlide(t: TemplateId, i: number) {
+		const n = Math.max(1, slides.length);
+		const padMap = <T,>(arr: T[] | undefined, value: T, fill: (idx: number) => T) =>
+			Array.from({ length: n }, (_, idx) => (idx === i ? value : fill(idx)));
+
 		if (t === 'news') {
 			slides = slides.map((x, idx) => (idx === i ? NEWS_PLACEHOLDER_HEADLINE : x));
+			newsSubtextBySlide = padMap(newsSubtextBySlide, NEWS_DEFAULT_SUBTEXT, (idx) => newsSubtextBySlide[idx] ?? '');
 			source = defaultNewsSource();
 			sourceLabelMode = 'logo';
 			sourceBorderKind = 'none';
-			circleImages = Array.from({ length: slides.length }, (_, idx) =>
-				idx === i ? NEWS_DEFAULT_CIRCLE_IMAGE : (circleImages[idx] ?? ''),
-			);
-			circle2Images = Array.from({ length: slides.length }, (_, idx) =>
-				idx === i ? '' : (circle2Images[idx] ?? ''),
-			);
-			showCircle2BySlide = Array.from({ length: slides.length }, (_, idx) =>
-				idx === i ? false : (showCircle2BySlide[idx] ?? false),
-			);
-			showCircleBySlide = Array.from({ length: slides.length }, (_, idx) =>
-				idx === i ? true : (showCircleBySlide[idx] ?? false),
-			);
+			circleImages = padMap(circleImages, NEWS_DEFAULT_CIRCLE_IMAGE, (idx) => circleImages[idx] ?? '');
+			circle2Images = padMap(circle2Images, '', (idx) => circle2Images[idx] ?? '');
+			showCircle2BySlide = padMap(showCircle2BySlide, false, (idx) => showCircle2BySlide[idx] ?? false);
+			showCircleBySlide = padMap(showCircleBySlide, true, (idx) => showCircleBySlide[idx] ?? false);
 			circleX = NEWS_DEFAULT_LAYOUT.circleX;
 			circleY = NEWS_DEFAULT_LAYOUT.circleY;
 			circleSize = NEWS_DEFAULT_LAYOUT.circleSize;
@@ -2884,11 +2897,14 @@ import JSZip from 'jszip';
 			shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
 			shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
 			shadowCurve = NEWS_DEFAULT_LAYOUT.shadowCurve;
-			cuttingOut = Array.from({ length: slides.length }, (_, idx) =>
-				idx === i ? false : (cuttingOut[idx] ?? false),
-			);
+			cuttingOut = padMap(cuttingOut, false, (idx) => cuttingOut[idx] ?? false);
 			cutoutError = '';
-		} else if (t === 'tweet') {
+			newsSolidBgBySlide = padMap(newsSolidBgBySlide, '', (idx) => newsSolidBgBySlide[idx] ?? '');
+			setSlideVideo(i, NEWS_DEMO_VIDEO, 'news');
+			return;
+		}
+
+		if (t === 'tweet') {
 			tweetTopNameBySlide = tweetTopNameBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topName : x));
 			tweetTopHandleBySlide = tweetTopHandleBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.topHandle : x));
 			tweetBottomNameBySlide = tweetBottomNameBySlide.map((x, idx) => (idx === i ? TWEET_DEFAULTS.bottomName : x));
@@ -2914,26 +2930,44 @@ import JSZip from 'jszip';
 			tweetBottomAvatarLabelBySlide = tweetBottomAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
 			tweetBottomAvatarRingColorBySlide = tweetBottomAvatarRingColorBySlide.map((x, idx) => (idx === i ? '#c9b97a' : x));
 			tweetBottomAvatarRingWidthBySlide = tweetBottomAvatarRingWidthBySlide.map((x, idx) => (idx === i ? 4 : x));
-		} else if (t === 'article') {
+			setSlideImage(i, TWEET_DEFAULTS.topImage, 'tweet');
+			return;
+		}
+
+		if (t === 'article') {
 			articleTextBySlide = articleTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_BODY : x));
 			articleSwipeTextBySlide = articleSwipeTextBySlide.map((x, idx) => (idx === i ? ARTICLE_DEFAULT_SWIPE : x));
 			articleLogoSrcBySlide = articleLogoSrcBySlide.map((x, idx) => (idx === i ? '' : x));
-		} else if (t === 'textCarousel') {
-			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) => (idx === i ? TEXT_CAROUSEL_DEFAULTS.name : x));
-			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) => (idx === i ? TEXT_CAROUSEL_DEFAULTS.handle : x));
-			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) => (idx === i ? TEXT_CAROUSEL_DEFAULTS.body : x));
+			return;
+		}
+
+		if (t === 'textCarousel') {
+			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) =>
+				idx === i ? brandDisplayName || TEXT_CAROUSEL_DEFAULTS.name : x,
+			);
+			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) =>
+				idx === i ? brandHandle || TEXT_CAROUSEL_DEFAULTS.handle : x,
+			);
+			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) =>
+				idx === i ? TEXT_CAROUSEL_DEFAULTS.body : x,
+			);
 			textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, idx) => (idx === i ? '' : x));
 			textCarouselAvatarInnerBgBySlide = textCarouselAvatarInnerBgBySlide.map((x, idx) => (idx === i ? '' : x));
 			textCarouselAvatarLabelBySlide = textCarouselAvatarLabelBySlide.map((x, idx) => (idx === i ? '' : x));
-			textCarouselAvatarRingColorBySlide = textCarouselAvatarRingColorBySlide.map((x, idx) => (idx === i ? '#c9b97a' : x));
+			textCarouselAvatarRingColorBySlide = textCarouselAvatarRingColorBySlide.map((x, idx) =>
+				idx === i ? '#c9b97a' : x,
+			);
 			textCarouselAvatarRingWidthBySlide = textCarouselAvatarRingWidthBySlide.map((x, idx) => (idx === i ? 5 : x));
-		} else if (isWhitePostFamily(t)) {
+			return;
+		}
+
+		if (isWhitePostFamily(t)) {
 			const defaults = t === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS : WHITE_THREAD_DEFAULTS;
 			textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) =>
-				idx === i ? defaults.name : x,
+				idx === i ? brandDisplayName || defaults.name : x,
 			);
 			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) =>
-				idx === i ? defaults.handle : x,
+				idx === i ? brandHandle || defaults.handle : x,
 			);
 			textCarouselTextBySlide = textCarouselTextBySlide.map((x, idx) =>
 				idx === i ? defaults.body : x,
@@ -2947,15 +2981,11 @@ import JSZip from 'jszip';
 			textCarouselAvatarLabelBySlide = textCarouselAvatarLabelBySlide.map((x, idx) =>
 				idx === i ? '' : x,
 			);
-			if (t === 'whiteMedia') {
-				bgImagesByTemplate = {
-					...bgImagesByTemplate,
-					whiteMedia: (bgImagesByTemplate.whiteMedia ?? []).map((x, idx) =>
-						idx === i ? WHITE_MEDIA_DEFAULTS.imageUrl : x,
-					),
-				};
-			}
-		} else if (isBrandStackFamily(t)) {
+			if (t === 'whiteMedia') setSlideImage(i, WHITE_MEDIA_DEFAULTS.imageUrl, 'whiteMedia');
+			return;
+		}
+
+		if (isBrandStackFamily(t)) {
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, idx) =>
 				idx === i ? BRAND_STACK_DEFAULTS.headline : x,
 			);
@@ -2965,16 +2995,17 @@ import JSZip from 'jszip';
 			brandStackBrandBySlide = brandStackBrandBySlide.map((x, idx) =>
 				idx === i ? BRAND_STACK_DEFAULTS.brand : x,
 			);
-			brandStackBottomMediaBySlide = brandStackBottomMediaBySlide.map((x, idx) =>
-				idx === i ? BRAND_STACK_DEFAULTS.bottomMediaUrl : x,
-			);
-			bgVideosByTemplate = {
-				...bgVideosByTemplate,
-				brandStack: (bgVideosByTemplate.brandStack ?? []).map((x, idx) =>
-					idx === i ? BRAND_STACK_DEFAULTS.topVideoUrl : x,
-				),
-			};
-		} else if (isVideoStoryFamily(t)) {
+			setBrandStackBottomMedia(i, BRAND_STACK_DEFAULTS.bottomMediaUrl);
+			setSlideVideo(i, BRAND_STACK_DEFAULTS.topVideoUrl, 'brandStack');
+			return;
+		}
+
+		if (isVideoSplitFamily(t)) {
+			setSlideVideo(i, VIDEO_SPLIT_DEFAULTS.videoUrl, 'videoSplit');
+			return;
+		}
+
+		if (isVideoStoryFamily(t)) {
 			const defaultHeadline =
 				t === 'videoFeature'
 					? VIDEO_FEATURE_DEFAULTS.headline
@@ -2999,21 +3030,12 @@ import JSZip from 'jszip';
 						  t === 'videoFeature'
 						? ''
 						: VIDEO_STORY_DEFAULTS.watermark;
-			const defaultVideo = defaultDemoVideoForTemplate(t);
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, idx) =>
 				idx === i ? defaultHeadline : x,
 			);
 			videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, idx) =>
 				idx === i ? defaultWatermark : x,
 			);
-			bgVideosByTemplate = {
-				...bgVideosByTemplate,
-				[t]: (bgVideosByTemplate[t] ?? []).map((x, idx) => (idx === i ? defaultVideo : x)),
-			};
-			bgImagesByTemplate = {
-				...bgImagesByTemplate,
-				[t]: (bgImagesByTemplate[t] ?? []).map((x, idx) => (idx === i ? '' : x)),
-			};
 			if (t === 'videoCreator' || t === 'videoPost') {
 				const profileDefaults = t === 'videoPost' ? VIDEO_POST_DEFAULTS : VIDEO_CREATOR_DEFAULTS;
 				textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) =>
@@ -3048,7 +3070,11 @@ import JSZip from 'jszip';
 					),
 				};
 			}
-		} else if (t === 'blackText' || t === 'photoTopic' || t === 'photoCaption') {
+			setSlideVideo(i, defaultDemoVideoForTemplate(t), t);
+			return;
+		}
+
+		if (t === 'blackText' || t === 'photoTopic' || t === 'photoCaption') {
 			const defaultHeadline =
 				t === 'photoTopic'
 					? PHOTO_TOPIC_DEFAULTS.headline
@@ -3061,55 +3087,43 @@ import JSZip from 'jszip';
 					: t === 'photoCaption'
 						? PHOTO_CAPTION_DEFAULTS.body
 						: BLACK_TEXT_CAROUSEL_DEFAULTS.body;
-			const defaultImage =
-				t === 'photoTopic'
-					? PHOTO_TOPIC_DEFAULTS.imageUrl
-					: t === 'photoCaption'
-						? PHOTO_CAPTION_DEFAULTS.imageUrl
-						: BLACK_TEXT_BG_DEFAULT;
 			blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((x, idx) =>
 				idx === i ? defaultHeadline : x,
 			);
 			blackTextBodyBySlide = blackTextBodyBySlide.map((x, idx) =>
 				idx === i ? defaultBody : x,
 			);
-			bgImagesByTemplate = {
-				...bgImagesByTemplate,
-				[t]: (bgImagesByTemplate[t] ?? []).map((x, idx) =>
-					idx === i ? defaultImage : x,
-				),
-			};
-		} else if (t === 'imageQuote') {
-			imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, idx) => (idx === i ? IMAGE_QUOTE_DEFAULTS.body : x));
-			imageQuoteFooterLeftBySlide = imageQuoteFooterLeftBySlide.map((x, idx) => (idx === i ? IMAGE_QUOTE_DEFAULTS.footerLeft : x));
-			imageQuoteFooterRightBySlide = imageQuoteFooterRightBySlide.map((x, idx) => (idx === i ? IMAGE_QUOTE_DEFAULTS.footerRight : x));
-			bgImagesByTemplate = {
-				...bgImagesByTemplate,
-				imageQuote: (bgImagesByTemplate.imageQuote ?? []).map((x, idx) =>
-					idx === i ? IMAGE_QUOTE_DEFAULTS.imageUrl : x,
-				),
-			};
+			if (t === 'photoTopic') setSlideImage(i, PHOTO_TOPIC_DEFAULTS.imageUrl, 'photoTopic');
+			else if (t === 'photoCaption') setSlideImage(i, PHOTO_CAPTION_DEFAULTS.imageUrl, 'photoCaption');
+			else writeSlideBgMedia('blackText', i, { image: BLACK_TEXT_BG_DEFAULT, video: '' });
+			return;
+		}
+
+		if (t === 'imageQuote') {
+			imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, idx) =>
+				idx === i ? IMAGE_QUOTE_DEFAULTS.body : x,
+			);
+			imageQuoteFooterLeftBySlide = imageQuoteFooterLeftBySlide.map((x, idx) =>
+				idx === i ? IMAGE_QUOTE_DEFAULTS.footerLeft : x,
+			);
+			imageQuoteFooterRightBySlide = imageQuoteFooterRightBySlide.map((x, idx) =>
+				idx === i ? IMAGE_QUOTE_DEFAULTS.footerRight : x,
+			);
+			const d = FILM_STRIP_DEFAULTS.imageQuote;
 			filmStripTopPctByTemplate = {
 				...filmStripTopPctByTemplate,
 				imageQuote: (filmStripTopPctByTemplate.imageQuote ?? []).map((x, idx) =>
-					idx === i ? FILM_STRIP_DEFAULTS.imageQuote.topPct : x,
+					idx === i ? d.topPct : x,
 				),
 			};
 			filmStripBottomPctByTemplate = {
 				...filmStripBottomPctByTemplate,
 				imageQuote: (filmStripBottomPctByTemplate.imageQuote ?? []).map((x, idx) =>
-					idx === i ? FILM_STRIP_DEFAULTS.imageQuote.bottomPct : x,
+					idx === i ? d.bottomPct : x,
 				),
 			};
+			setSlideImage(i, IMAGE_QUOTE_DEFAULTS.imageUrl, 'imageQuote');
 		}
-
-		stylesByTemplateBySlide = {
-			...stylesByTemplateBySlide,
-			[t]: (stylesByTemplateBySlide[t] ?? []).map((m, idx) => (idx === i ? {} : m)),
-		};
-		slideMusic = slideMusic.map((m, idx) => (idx === i ? null : m));
-		musicPickerForSlide = null;
-		closeToolbar();
 	}
 
 	// Parse starter URL flags. Actual blank/template/clip application runs in the auth `onMount` `.finally`
@@ -7337,22 +7351,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const force = opts?.force === true;
 		if (coerceTemplateId(slideTemplates[0] ?? lastTemplateUsed ?? 'news') !== 'news') return;
 
-		const starter = resolveTemplateOverride('news')?.starter;
-		const demoHeadline =
-			String(starter?.slides?.[0] ?? '').trim() || NEWS_PLACEHOLDER_HEADLINE;
-		const demoSub =
-			String(starter?.newsSubtextBySlide?.[0] ?? '').trim() || NEWS_DEFAULT_SUBTEXT;
-		const demoVid = String(starter?.bgVideos?.[0] ?? '').trim();
-		const demoImg = String(starter?.bgImages?.[0] ?? '').trim();
-		const demoSolid = String(starter?.newsSolidBgBySlide?.[0] ?? '').trim();
+		/* Single product default — `slide-content-defaults` / demo posts, not pinned overrides. */
+		const demoHeadline = NEWS_PLACEHOLDER_HEADLINE;
+		const demoSub = NEWS_DEFAULT_SUBTEXT;
 
 		// Avoid addSlide() here — it moves activeSlide to the newest empty card.
 		lastTemplateUsed = 'news';
-		const targetLen = Math.max(
-			slides.length,
-			starter?.slides?.length || 0,
-			DEFAULT_STUDIO_SLIDE_COUNT,
-		);
+		const targetLen = Math.max(slides.length, DEFAULT_STUDIO_SLIDE_COUNT);
 		const padStr = (arr: string[] | undefined, fill = '') =>
 			Array.from({ length: targetLen }, (_, i) => arr?.[i] ?? fill);
 		const padBool = (arr: boolean[] | undefined, fill = false) =>
@@ -7362,16 +7367,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		slideCount = targetLen;
 
 		slides = Array.from({ length: targetLen }, (_, i) => {
-			const fromStarter = String(starter?.slides?.[i] ?? '').trim();
 			const cur = String(slides[i] ?? '').trim();
-			if (i === 0) return force || !cur ? fromStarter || demoHeadline : cur;
-			return force && fromStarter ? fromStarter : cur;
+			if (i === 0) return force || !cur ? demoHeadline : cur;
+			return force ? '' : cur;
 		});
 		newsSubtextBySlide = Array.from({ length: targetLen }, (_, i) => {
-			const fromStarter = String(starter?.newsSubtextBySlide?.[i] ?? '').trim();
 			const cur = String(newsSubtextBySlide[i] ?? '').trim();
-			if (i === 0) return force || !cur ? fromStarter || demoSub : cur;
-			return force && fromStarter ? fromStarter : String(newsSubtextBySlide[i] ?? '');
+			if (i === 0) return force || !cur ? demoSub : cur;
+			return force ? '' : String(newsSubtextBySlide[i] ?? '');
 		});
 
 		// Stuck inline-edit buffer wins over `slides[]` in the canvas derived — always clear on seed.
@@ -7379,42 +7382,26 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		activeSlide = 0;
 
 		if (force || isPlaceholderNewsSource(source)) {
-			const starterSource = String(starter?.source ?? '').trim();
-			source = starterSource || defaultNewsSource();
+			source = defaultNewsSource();
 		}
-		const starterLogo = String(starter?.sourceLogoSrc ?? '').trim();
-		if (starterLogo && (force || !String(sourceLogoSrc ?? '').trim())) {
-			sourceLogoSrc = starterLogo;
+		if (force) {
 			sourceLabelMode = 'logo';
-		} else if (force) {
-			sourceLabelMode = 'logo';
-		}
-		if (starter?.sourceBorderKind === 'none' || starter?.sourceBorderKind === 'rules' || starter?.sourceBorderKind === 'box') {
-			sourceBorderKind = starter.sourceBorderKind;
-		} else if (force) {
 			sourceBorderKind = 'none';
 		}
-		if (typeof starter?.sourceBorderColor === 'string') sourceBorderColor = starter.sourceBorderColor;
-		const slw = Number(starter?.sourceLogoWidth);
-		if (Number.isFinite(slw) && slw > 0) sourceLogoWidth = Math.round(slw);
 		newsSolidBgBySlide = Array.from({ length: targetLen }, (_, i) =>
-			String(starter?.newsSolidBgBySlide?.[i] ?? (force ? demoSolid : newsSolidBgBySlide[i] ?? '')),
+			force ? '' : String(newsSolidBgBySlide[i] ?? ''),
 		);
-		showCircleBySlide = starter?.showCircleBySlide?.length
-			? padBool(starter.showCircleBySlide, false)
-			: Array.from({ length: targetLen }, (_, i) => i === 0);
+		showCircleBySlide = Array.from({ length: targetLen }, (_, i) => i === 0);
 		{
 			const prevCircles = circleImages;
 			circleImages = Array.from({ length: targetLen }, (_, i) => {
-				const fromStarter = String(starter?.circleImages?.[i] ?? '').trim();
-				if (fromStarter) return fromStarter;
 				const cur = String(prevCircles[i] ?? '').trim();
 				if (!force && cur) return cur;
 				return showCircleBySlide[i] ? NEWS_DEFAULT_CIRCLE_IMAGE : '';
 			});
 		}
-		circle2Images = padStr(starter?.circle2Images ?? circle2Images);
-		showCircle2BySlide = padBool(starter?.showCircle2BySlide ?? showCircle2BySlide);
+		circle2Images = padStr(circle2Images);
+		showCircle2BySlide = padBool(showCircle2BySlide);
 		shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
 		shadowStrength = NEWS_DEFAULT_LAYOUT.shadowStrength;
 		shadowCurve = NEWS_DEFAULT_LAYOUT.shadowCurve;
@@ -7428,13 +7415,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		bgVideosByTemplate = {
 			...bgVideosByTemplate,
 			news: Array.from({ length: targetLen }, (_, i) => {
-				const fromStarter = String(starter?.bgVideos?.[i] ?? '').trim();
 				const v = String(prevVids[i] ?? '').trim();
 				if (v && !force) return v;
-				const img = String(prevImgs[i] ?? starter?.bgImages?.[i] ?? '').trim();
+				const img = String(prevImgs[i] ?? '').trim();
 				if (img && !force) return '';
-				if (fromStarter) return fromStarter;
-				if (String(starter?.bgImages?.[i] ?? demoImg).trim()) return '';
 				return NEWS_DEMO_VIDEO;
 			}),
 		};
@@ -7442,10 +7426,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			...bgImagesByTemplate,
 			news: Array.from({ length: targetLen }, (_, i) => {
 				if (String((bgVideosByTemplate.news ?? [])[i] ?? '').trim()) return '';
-				const fromStarter = String(starter?.bgImages?.[i] ?? '').trim();
 				const img = String(prevImgs[i] ?? '').trim();
-				if (force) return fromStarter || demoImg;
-				return img || fromStarter;
+				if (force) return '';
+				return img;
 			}),
 		};
 		applyNewsSeedBackgroundLayout();
@@ -7681,105 +7664,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			return pad(blackTextHeadlineBySlide);
 		}
 		return pad(slides);
-	}
-
-	function applyStarterSlidesToTemplate(
-		template: TemplateId,
-		values: string[],
-		idxs: number[],
-		force: boolean,
-	) {
-		const write = (i: number, val: string) => {
-			const v = String(val ?? '');
-			// Never wipe primary copy with an empty starter slot (DEV pins often omit per-slide text).
-			if (!v.trim()) return;
-			if (!force) {
-				const cur = readSlidePrimary(template, i);
-				if (cur && !isStockSlidePrimary(template, cur)) return;
-			}
-			if (template === 'news') {
-				slides = slides.map((x, j) => (j === i ? v : x));
-			} else if (isVideoStoryFamily(template) || isBrandStackFamily(template)) {
-				videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, j) => (j === i ? v : x));
-			} else if (template === 'textCarousel' || isWhitePostFamily(template)) {
-				textCarouselTextBySlide = textCarouselTextBySlide.map((x, j) => (j === i ? v : x));
-			} else if (template === 'tweet') {
-				tweetBottomTextBySlide = tweetBottomTextBySlide.map((x, j) => (j === i ? v : x));
-			} else if (template === 'article') {
-				articleTextBySlide = articleTextBySlide.map((x, j) => (j === i ? v : x));
-			} else if (template === 'imageQuote') {
-				imageQuoteTextBySlide = imageQuoteTextBySlide.map((x, j) => (j === i ? v : x));
-			} else if (template === 'blackText' || isPhotoStoryFamily(template)) {
-				blackTextHeadlineBySlide = blackTextHeadlineBySlide.map((x, j) => (j === i ? v : x));
-			} else {
-				slides = slides.map((x, j) => (j === i ? v : x));
-			}
-		};
-		for (const i of idxs) {
-			if (i < 0) continue;
-			const val = String(values[i] ?? '');
-			if (!val.trim()) continue;
-			write(i, val);
-		}
-	}
-
-	function applyStarterContentFromOverride(
-		template: TemplateId,
-		starter: TemplateDevStarterContent | undefined,
-		idxs: number[],
-		force: boolean,
-	) {
-		if (!starter) return;
-		if (Array.isArray(starter.slides) && starter.slides.length) {
-			applyStarterSlidesToTemplate(template, starter.slides, idxs, force);
-		}
-		if (template === 'news' && Array.isArray(starter.newsSubtextBySlide)) {
-			for (const i of idxs) {
-				if (i < 0) continue;
-				const val = String(starter.newsSubtextBySlide[i] ?? '');
-				if (!force && !val.trim()) continue;
-				if (!force) {
-					const cur = String(newsSubtextBySlide[i] ?? '').trim();
-					if (cur && !isStockSlideBody('news', cur)) continue;
-				}
-				newsSubtextBySlide = newsSubtextBySlide.map((x, j) => (j === i ? val : x));
-			}
-		}
-		const hasBg =
-			Array.isArray(starter.bgVideos) ||
-			Array.isArray(starter.bgImages) ||
-			Array.isArray(starter.newsSolidBgBySlide);
-		if (hasBg) {
-			const vids = [...(bgVideosByTemplate[template] ?? [])];
-			const imgs = [...(bgImagesByTemplate[template] ?? [])];
-			const maxIdx = Math.max(0, ...idxs, (starter.bgVideos?.length ?? 0) - 1, (starter.bgImages?.length ?? 0) - 1);
-			while (vids.length <= maxIdx) vids.push('');
-			while (imgs.length <= maxIdx) imgs.push('');
-			for (const i of idxs) {
-				if (i < 0) continue;
-				const occupied = !!String(vids[i] ?? '').trim() || !!String(imgs[i] ?? '').trim();
-				if (starter.bgVideos && i < starter.bgVideos.length) {
-					const sv = String(starter.bgVideos[i] ?? '');
-					if (force) vids[i] = sv;
-					else if (!occupied && sv.trim()) vids[i] = sv;
-				}
-				if (starter.bgImages && i < starter.bgImages.length) {
-					const si = String(starter.bgImages[i] ?? '');
-					if (force) imgs[i] = si;
-					else if (!occupied && !String(vids[i] ?? '').trim() && si.trim()) imgs[i] = si;
-				}
-			}
-			bgVideosByTemplate = { ...bgVideosByTemplate, [template]: vids };
-			bgImagesByTemplate = { ...bgImagesByTemplate, [template]: imgs };
-		}
-		if (template === 'news' && Array.isArray(starter.newsSolidBgBySlide)) {
-			for (const i of idxs) {
-				if (i < 0) continue;
-				const val = String(starter.newsSolidBgBySlide[i] ?? '');
-				if (!force && !val.trim()) continue;
-				newsSolidBgBySlide = newsSolidBgBySlide.map((x, j) => (j === i ? val : x));
-			}
-		}
 	}
 
 	/** Snapshot the current slide’s design tokens for this built-in template (DEV pin). */
@@ -8053,12 +7937,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const newsDoc = template === 'news' ? parseNewsLayoutDocument(ov.newsDocument) : null;
 		if (newsDoc) {
 			applyNewsLayoutDocumentToStudio(newsDoc, { slides: opts?.slides ?? 'all', overlays: true });
-			applyStarterContentFromOverride(
-				template,
-				ov.starter,
-				idxs,
-				opts?.forceStarter === true,
-			);
+			/* Starter copy/media come only from `*_DEFAULTS` / generated-demo-posts — not pins. */
 			return;
 		}
 
@@ -8104,15 +7983,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (layout.circle2Shadow) circle2Shadow = normalizeCircleShadow(layout.circle2Shadow);
 		}
 
-		applyStarterContentFromOverride(
-			template,
-			ov.starter,
-			idxs,
-			opts?.forceStarter === true,
-		);
+		/* Do not apply ov.starter — one product default for copy/media (`*_DEFAULTS`). */
 	}
 
-	/** Seed default copy/media after Templates gallery / `?template=` opens (every starter layout). */
+	/**
+	 * Seed default copy/media after Templates gallery / `?template=` opens.
+	 * Copy + media always come from `*_DEFAULTS` (generated-demo-posts) — one product default.
+	 * Pinned overrides may still apply styles / offsets / letterbox, not starter content.
+	 */
 	function seedFreshTemplateSession(template: TemplateId) {
 		newsHeadlineLive = null;
 		activeSlide = 0;
@@ -10618,11 +10496,29 @@ tweetTopImagePanYBySlide,
 		const nextRows = rows.map((r) => [...r]);
 		while (nextRows.length <= slide) nextRows.push([]);
 		/* Free-form text tags are paragraph-role: never inherit headline [[highlights]]. */
-		const plain = stripMarkup(String(text ?? '').trim());
+		const plain =
+			template === 'blank'
+				? plainBlankOverlayCopy(String(text ?? '').trim())
+				: stripMarkup(String(text ?? '').trim());
 		nextRows[slide] = (nextRows[slide] ?? []).map((o) =>
 			o.id === overlayId ? { ...o, text: plain } : o,
 		);
 		slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: nextRows };
+	}
+
+	/**
+	 * Blank free-form boxes are not News headlines: strip `[[…]]` and soften ALL CAPS
+	 * from the news/generate pipeline so brackets/size-y shouty copy don't land on Blank.
+	 */
+	function plainBlankOverlayCopy(text: string): string {
+		const plain = stripMarkup(String(text ?? '').trim());
+		if (!plain) return '';
+		const letters = plain.replace(/[^A-Za-z]/g, '');
+		if (letters.length < 4) return plain;
+		const upperRatio = letters.replace(/[^A-Z]/g, '').length / letters.length;
+		if (upperRatio < 0.75) return plain;
+		const lower = plain.toLowerCase();
+		return lower.replace(/(^|[.!?]\s+)([a-z])/g, (_, lead: string, ch: string) => lead + ch.toUpperCase());
 	}
 
 	/**
@@ -10638,7 +10534,13 @@ tweetTopImagePanYBySlide,
 		while (rows.length <= slide) rows.push([]);
 		const prev = rows[slide] ?? [];
 		if (!prev.length) return;
-		const content = lines.map((l) => String(l ?? '').trim()).filter(Boolean);
+		const content = lines
+			.map((l) =>
+				template === 'blank'
+					? plainBlankOverlayCopy(String(l ?? ''))
+					: String(l ?? '').trim(),
+			)
+			.filter(Boolean);
 		if (!content.length) {
 			rows[slide] = prev.filter((o) => !isSlideNumberPlaceholder(o.text));
 			slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, [template]: rows };
@@ -10723,7 +10625,9 @@ tweetTopImagePanYBySlide,
 			const prev = blankRows[i] ?? [];
 			if (!prev.length) continue;
 			pushUndo('blank', i);
-			const slideBeat = beats[i] ?? lines[Math.min(i, Math.max(0, lines.length - 1))] ?? hookText;
+			const slideBeat = plainBlankOverlayCopy(
+				beats[i] ?? lines[Math.min(i, Math.max(0, lines.length - 1))] ?? hookText,
+			);
 			const next: TextOverlay[] = [];
 			let boxIdx = 0;
 			for (const o of prev) {
@@ -10732,7 +10636,9 @@ tweetTopImagePanYBySlide,
 				const text =
 					boxIdx === 0
 						? slideBeat
-						: lines[(lineIdx + boxIdx) % Math.max(1, lines.length)] ?? slideBeat;
+						: plainBlankOverlayCopy(
+								lines[(lineIdx + boxIdx) % Math.max(1, lines.length)] ?? slideBeat,
+							);
 				next.push({ ...o, text });
 				boxIdx++;
 			}
@@ -13402,7 +13308,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				!String(backgroundVideo ?? '').trim()
 					? 'Blank'
 					: ''}
-				onSelect={(id) => applyTemplateToAll(id as TemplateId, { skipNewsSeed: true })}
+				onSelect={(id) => setActiveTemplate(id as TemplateId)}
 				onApplyAll={() => applyTemplateToAll(activeTemplate, { skipNewsSeed: true })}
 			/>
 			<ButtonGroup.Root title="Canvas background">
@@ -13908,7 +13814,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							setSlideTextOverlays(paintSlide, o, 'blank');
 						}}
 						onTextSelect={(kind: any, el: any) => onTextSelect(kind as any, el)}
-						parseHighlightMarkup={false}
+						parseHighlightMarkup={true}
 					/>
 				</div>
 			{:else if previewTemplate === 'news'}
@@ -14571,6 +14477,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					profileHandle={textCarouselHandleBySlide[paintSlide] ?? brandHandle}
 					profileAvatar={textCarouselAvatarImageBySlide[paintSlide] ??
 						(previewTemplate === 'videoPost' ? VIDEO_POST_DEFAULTS.avatarUrl : '')}
+					profileAvatarInnerBg={textCarouselAvatarInnerBgBySlide[paintSlide] ?? ''}
+					profileAvatarRingColor={textCarouselAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
+					profileAvatarRingWidth={textCarouselAvatarRingWidthBySlide[paintSlide] ?? defaultTextCarouselRingWidth}
 					videoSrc={canvasBackgroundVideo}
 					videoPoster={
 						canvasBackgroundVideo.trim()
@@ -16622,7 +16531,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	onClose={closeNewsBgToolbar}
 />
 
-<!-- Text carousel profile circle -->
+<!-- Profile circle (Text Carousel, Creator hook, White posts, …) -->
 <TextCarouselAvatarToolbar
 	anchor={selectedText === 'textCarouselAvatar' ? toolbarAnchor : null}
 	avatarSrc={textCarouselAvatarImageBySlide[paintSlide] ?? ''}
@@ -16633,7 +16542,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	defaultRingColor={defaultAvatarRingColor}
 	onImageFile={(dataUrl) => {
 		if (!canvasInteractive) return;
-		pushUndo('textCarousel', paintSlide);
+		pushUndo(previewTemplate, paintSlide);
 		textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, i) =>
 			i === paintSlide ? dataUrl : x,
 		);
@@ -16643,7 +16552,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	}}
 	onClearImage={() => {
 		if (!canvasInteractive) return;
-		pushUndo('textCarousel', paintSlide);
+		pushUndo(previewTemplate, paintSlide);
 		textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, i) => (i === paintSlide ? '' : x));
 		requestAnimationFrame(() => {
 			if (toolbarTarget) toolbarAnchor = toolbarTarget.getBoundingClientRect();
@@ -16651,22 +16560,22 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	}}
 	onInnerBg={(hex) => {
 		if (!canvasInteractive) return;
-		pushUndo('textCarousel', paintSlide);
+		pushUndo(previewTemplate, paintSlide);
 		textCarouselAvatarInnerBgBySlide = textCarouselAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? hex : x));
 	}}
 	onClearInnerBg={() => {
 		if (!canvasInteractive) return;
-		pushUndo('textCarousel', paintSlide);
+		pushUndo(previewTemplate, paintSlide);
 		textCarouselAvatarInnerBgBySlide = textCarouselAvatarInnerBgBySlide.map((x, i) => (i === paintSlide ? '' : x));
 	}}
 	onRingColor={(hex) => {
 		if (!canvasInteractive) return;
-		pushUndo('textCarousel', paintSlide);
+		pushUndo(previewTemplate, paintSlide);
 		textCarouselAvatarRingColorBySlide = textCarouselAvatarRingColorBySlide.map((x, i) => (i === paintSlide ? hex : x));
 	}}
 	onRingWidth={(px) => {
 		if (!canvasInteractive) return;
-		pushUndo('textCarousel', paintSlide);
+		pushUndo(previewTemplate, paintSlide);
 		textCarouselAvatarRingWidthBySlide = textCarouselAvatarRingWidthBySlide.map((x, i) => (i === paintSlide ? px : x));
 	}}
 	onClose={closeToolbar}
