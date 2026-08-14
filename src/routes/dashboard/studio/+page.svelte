@@ -267,6 +267,8 @@ import JSZip from 'jszip';
 	let userId = $state('');
 	let initialTemplateParamApplied = $state(false);
 	let forcedTemplateFromQuery = $state<TemplateId | null>(null);
+	/** Avoid re-seeding the same `?template=` deep link (would wipe per-slide mixes). */
+	let lastSeededTemplateQueryKey = $state<string | null>(null);
 	/** `?blank=1` — skip draft restore and open the Blank canvas template (custom layout; not News). */
 	let forcedBlankFromQuery = $state(false);
 	/** `?template=…` starter links (template carousel / nav) — don’t restore last autosave workspace on top of a “new” session. */
@@ -1757,6 +1759,26 @@ import JSZip from 'jszip';
 		carrySlideExtrasAcrossTemplates(from, to, idx);
 	}
 
+	/**
+	 * Starter deep-links (`?template=creator`) seed the deck once, then release so the user
+	 * can mix templates per slide without the URL / draft hydrate stomping everything.
+	 */
+	function consumeForcedTemplateStarter() {
+		forcedTemplateFromQuery = null;
+		skipLatestWorkspaceDraftRestore = false;
+		if (typeof window === 'undefined') return;
+		try {
+			const u = new URL(window.location.href);
+			if (!u.searchParams.has('template') && !u.searchParams.has('blank')) return;
+			u.searchParams.delete('template');
+			u.searchParams.delete('blank');
+			const qs = u.searchParams.toString();
+			history.replaceState({}, '', u.pathname + (qs ? `?${qs}` : '') + u.hash);
+		} catch {
+			/* ignore */
+		}
+	}
+
 	function setActiveTemplate(t: TemplateId) {
 		commitInlineTextEditsBeforeSave();
 		const idx = activeSlide;
@@ -3214,6 +3236,9 @@ import JSZip from 'jszip';
 		const raw = url.searchParams.get('template')?.trim() ?? '';
 		if (!raw) return;
 		const next = mapQueryParamToTemplateId(raw) ?? 'news';
+		const seedKey = `${next}|saved:${hasSaved}|draft:${hasDraft}`;
+		// Same deep link already applied this session — keep any per-slide template mix.
+		if (lastSeededTemplateQueryKey === seedKey) return;
 		forcedTemplateFromQuery = next;
 		if (!hasSaved && !hasDraft) {
 			skipLatestWorkspaceDraftRestore = true;
@@ -3230,8 +3255,12 @@ import JSZip from 'jszip';
 			applyBlankCanvas();
 			applyTemplateToAll(next, { skipNewsSeed: true });
 			seedFreshTemplateSession(next);
+			lastSeededTemplateQueryKey = seedKey;
+			consumeForcedTemplateStarter();
 		} else {
 			applyTemplateToAll(next);
+			lastSeededTemplateQueryKey = seedKey;
+			consumeForcedTemplateStarter();
 			if (isVideoStoryFamily(next)) {
 				canvasBgDark = true;
 				if (!textColorTouched) textColor = '#FFFFFF';
@@ -6351,8 +6380,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (Array.isArray(s.slideTemplates)) {
 			slideTemplates = (s.slideTemplates as unknown[]).map((t) => coerceTemplateId(t));
 		}
-		// If user came from a starter-template deep link, override any saved draft template.
-		if (forcedTemplateFromQuery) applyTemplateToAll(forcedTemplateFromQuery);
+		// Do not force `?template=` over a restored deck — that wiped per-slide mixes.
+		// Starter deep links seed via `seedFreshTemplateSession` / onMount, then clear.
 		// Back-compat: old drafts stored background media per slide (treat as News background).
 		if (Array.isArray((s as any).backgroundImages)) {
 			const imgs = (s as any).backgroundImages as string[];
@@ -8973,9 +9002,12 @@ tweetTopImagePanYBySlide,
 							applyBlankCanvas();
 						} else if (skipLatestWorkspaceDraftRestore && forcedTemplateFromQuery) {
 							// Fresh session from template carousel / `?template=` — never overlay last autosave.
+							const starter = forcedTemplateFromQuery;
 							applyBlankCanvas();
-							applyTemplateToAll(forcedTemplateFromQuery, { skipNewsSeed: true });
-							seedFreshTemplateSession(forcedTemplateFromQuery);
+							applyTemplateToAll(starter, { skipNewsSeed: true });
+							seedFreshTemplateSession(starter);
+							lastSeededTemplateQueryKey = `${starter}|saved:false|draft:false`;
+							consumeForcedTemplateStarter();
 						}
 						// Do not auto-generate the circle badge here — leave it empty until the user uploads or runs Circle AI.
 					} finally {
@@ -9998,7 +10030,7 @@ tweetTopImagePanYBySlide,
 		/** All templates: freeze offsets / styles / overlay frames across copy replace. */
 		const deckStructureLock = fillExistingDeck ? captureDeckStructureLocks() : [];
 		// Only clear starter deep-link when we are loading into News (News flow “owns” the deck).
-		if (contentTemplate === 'news') forcedTemplateFromQuery = null;
+		if (contentTemplate === 'news') consumeForcedTemplateStarter();
 		if (!fillExistingDeck) {
 			// Reset circle + background to defaults (only when the News flow owns the deck)
 			circleX    = 772;

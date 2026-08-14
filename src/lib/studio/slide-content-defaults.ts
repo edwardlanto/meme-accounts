@@ -160,7 +160,7 @@ export function filmStripDefaultsFor(id: TemplateId): FilmStripPct {
 		case 'videoHook':
 			return { topPct: 26, bottomPct: 10 };
 		case 'videoCreator':
-			return { topPct: 40, bottomPct: 8 };
+			return { topPct: 35, bottomPct: 8 };
 		case 'videoSource':
 			return { topPct: 30, bottomPct: 8 };
 		default:
@@ -175,7 +175,7 @@ export const FILM_STRIP_DEFAULTS: Record<
 > = {
 	imageQuote: { topPct: 0, bottomPct: 37 },
 	videoHook: { topPct: 26, bottomPct: 10 },
-	videoCreator: { topPct: 40, bottomPct: 8 },
+	videoCreator: { topPct: 35, bottomPct: 8 },
 	videoSource: { topPct: 30, bottomPct: 8 },
 };
 

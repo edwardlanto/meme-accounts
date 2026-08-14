@@ -140,12 +140,12 @@
 	const letterboxTopPct = $derived.by(() => {
 		if (filmStripTopPct != null && Number.isFinite(filmStripTopPct)) {
 			const v = Math.max(0, Math.min(FILM_STRIP_MAX_SIDE_PCT, Number(filmStripTopPct)));
-			// Creator needs room for avatar + 2-line headline; legacy 26/34% sessions still clip.
-			if (layout === 'creator' && v > 0 && v <= 34) return 40;
+			// Legacy creator bars: snap to the balanced 35% band (halfway between 30% and 40%).
+			if (layout === 'creator' && v > 0 && v <= 40) return 35;
 			return v;
 		}
 		if (layout === 'hook') return 26;
-		if (layout === 'creator') return 40;
+		if (layout === 'creator') return 35;
 		if (layout === 'source') return 30;
 		return 0;
 	});
@@ -207,8 +207,8 @@
 	}
 	const avatarInitials = $derived(profileInitials(profileName));
 
-	const creatorAvatarSize = $derived(previewMode ? 32 : 64);
-	const creatorProfileGap = $derived(previewMode ? 8 : 14);
+	const creatorAvatarSize = $derived(previewMode ? 33 : 66);
+	const creatorProfileGap = $derived(previewMode ? 9 : 16);
 	const creatorAvatarOffset = $derived(
 		textOffsets.textCarouselAvatar ??
 			(textOffsets.videoCreatorProfile ? { ...textOffsets.videoCreatorProfile } : { x: 0, y: 0 }),
@@ -217,10 +217,10 @@
 	const creatorHandleOffset = $derived(textOffsets.textCarouselHandle ?? { x: 0, y: 0 });
 	const creatorLetterboxPadding = $derived(
 		previewMode
-			? `8px ${letterboxPadX}px 10px`
-			: `14px ${letterboxPadX}px 18px`,
+			? `12px ${letterboxPadX}px 9px`
+			: `21px ${letterboxPadX}px 17px`,
 	);
-	const creatorLetterboxGap = $derived(previewMode ? 4 : 8);
+	const creatorLetterboxGap = $derived(previewMode ? 6 : 11);
 	const creatorAvatarRingPx = $derived(
 		Math.max(0, Math.min(24, Math.round(Number(profileAvatarRingWidth) || 0))),
 	);
@@ -1271,6 +1271,7 @@
 						display: flex;
 						align-items: center;
 						gap: {creatorProfileGap}px;
+						flex-shrink: 0;
 					"
 				>
 					<DraggableBlock
@@ -1485,6 +1486,7 @@
 					onChange={(x, y) => onTextOffsetChange?.('videoStoryHeadline', { x, y })}
 				>
 					{#snippet children()}
+						<div style="flex-shrink: 0; width: 100%;">
 						<CanvasMarkupTextBlock
 							value={headline}
 							{interactive}
@@ -1528,6 +1530,7 @@
 								</div>
 							{/snippet}
 						</CanvasMarkupTextBlock>
+						</div>
 					{/snippet}
 				</DraggableBlock>
 				</div>
