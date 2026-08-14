@@ -45,7 +45,7 @@ export const GENERATED_DEMO_POSTS = {
 		posterUrl: "/templates/demos/video-feature-poster.jpg",
 	},
 	"video-source": {
-		headline: "[[Stop]] building features nobody asked for — the first dollar teaches you more than another month of \"polish.\"",
+		headline: "[[3 DAILY HABITS]] EXPLAIN WHY JAPAN MASTERED [[SUSTAINABLE INNER PEACE.]]",
 		highlightColor: "#39FF14",
 		videoUrl: "/videos/demos/highlight-hook.mp4",
 		posterUrl: "/templates/demos/highlight-hook-poster.jpg",

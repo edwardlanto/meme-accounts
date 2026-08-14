@@ -124,7 +124,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			'X-Title': 'Meme Accounts'
 		},
 		body: JSON.stringify({
-			model: 'anthropic/claude-3.7-sonnet',
+			model: 'anthropic/claude-haiku-4-5',
 			system,
 			messages: [
 				{

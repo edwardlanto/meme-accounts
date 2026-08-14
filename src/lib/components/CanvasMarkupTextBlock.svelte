@@ -8,7 +8,11 @@
 	 */
 	import type { Snippet } from 'svelte';
 	import type { TextElementKind, TypographySnapshot } from '$lib/types';
-	import { plainRangeFromSelection, restorePlainSelection } from '$lib/highlight';
+	import {
+		plainRangeFromSelection,
+		restorePlainSelection,
+		type HighlightDefaults,
+	} from '$lib/highlight';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import {
 		CANVAS_TEXT_BOX_TRIM,
@@ -20,6 +24,8 @@
 		value: string;
 		interactive?: boolean;
 		defaultColor?: string;
+		/** When set, bare `[[phrase]]` uses solid / gradient / pattern defaults while editing. */
+		defaultStyle?: HighlightDefaults;
 		/**
 		 * When true (default), double-click editing uses HighlightEditor so
 		 * weight/size/stroke and `[[…]]` chips match the canvas. Set false only
@@ -56,6 +62,7 @@
 		value,
 		interactive = false,
 		defaultColor = '#F59E0B',
+		defaultStyle,
 		allowHighlightMarkup = true,
 		selected = false,
 		toolbarKind = 'headline',
@@ -427,6 +434,7 @@
 						value={value}
 						{rows}
 						{defaultColor}
+						{defaultStyle}
 						{uppercase}
 						{fontFamily}
 						{fontSize}

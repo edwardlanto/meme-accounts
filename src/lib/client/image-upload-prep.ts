@@ -1,6 +1,6 @@
 /** Resize + compress images in the browser before upload. */
 
-const DEFAULT_MAX_DIM = 2048;
+const DEFAULT_MAX_DIM = 1600;
 const DEFAULT_MAX_BYTES = 2_500_000;
 const DEFAULT_QUALITY = 0.86;
 

@@ -13,7 +13,7 @@
 	let { formats, selectedId, onSelect, className = '' }: Props = $props();
 </script>
 
-<div class={className} aria-label="Canvas format">
+<div class="format-dock {className}" aria-label="Canvas format">
 	<ToggleGroup.Root
 		type="single"
 		variant="outline"
@@ -29,3 +29,11 @@
 		{/each}
 	</ToggleGroup.Root>
 </div>
+
+<style>
+	.format-dock :global([data-slot='toggle-group-item'][data-state='on']) {
+		background: var(--app-accent, #7bf1a8);
+		color: #080808;
+		font-weight: 600;
+	}
+</style>

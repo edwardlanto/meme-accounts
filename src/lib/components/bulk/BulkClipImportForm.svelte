@@ -404,8 +404,6 @@
 					{/if}
 				</div>
 
-				<div class="prompt-bar-divider"></div>
-
 				<div class="prompt-bar-tools">
 					<Popover>
 						<PopoverTrigger class="prompt-chip" disabled={busy} title="Source">
@@ -748,50 +746,14 @@
 	.video-prompt-chrome {
 		width: 100%;
 	}
-	.video-prompt-chrome :global(.prompt-bar) {
-		border-radius: 18px;
-		background: rgba(255, 255, 255, 0.95);
-		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow:
-			0 4px 20px rgba(0, 0, 0, 0.08),
-			0 1px 3px rgba(0, 0, 0, 0.05);
-		backdrop-filter: blur(14px);
-		-webkit-backdrop-filter: blur(14px);
-	}
-	.video-prompt-chrome :global(.prompt-bar-input) {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 14px 16px 10px;
-		min-height: 48px;
-	}
-	.video-prompt-chrome :global(.prompt-bar-field) {
-		flex: 1;
-		min-width: 0;
-		background: transparent;
-		border: none;
-		outline: none;
-		box-shadow: none;
-		font-size: 14px;
-		line-height: 1.35;
-		color: #1a1a1a;
-		font-family: inherit;
-		padding: 0;
-		border-radius: 0;
-	}
-	.video-prompt-chrome :global(.prompt-bar-field::placeholder) {
-		color: #b4b4b4;
-	}
-	.video-prompt-chrome :global(.prompt-bar-field:disabled) {
-		opacity: 0.6;
-	}
+	/* Prompt bar chrome: `$lib/styles/prompt-bar.css` */
 	.video-drop-inline {
 		flex: 1;
 		min-width: 0;
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 0;
+		padding: 0.35rem 0.25rem;
 		border: none;
 		background: transparent;
 		cursor: pointer;
@@ -807,9 +769,9 @@
 	.video-drop-copy {
 		flex: 1;
 		min-width: 0;
-		font-size: 14px;
-		line-height: 1.35;
-		color: #b4b4b4;
+		font-size: 15px;
+		line-height: 1.45;
+		color: #9a9a9a;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -822,81 +784,7 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.video-prompt-chrome :global(.prompt-bar-divider) {
-		height: 1px;
-		margin: 0 14px;
-		background: rgba(10, 10, 10, 0.06);
-	}
-	.video-prompt-chrome :global(.prompt-bar-tools) {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 10px 10px;
-		flex-wrap: wrap;
-	}
-	.video-prompt-chrome :global(.prompt-chip) {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 12px;
-		border: none;
-		border-radius: 10px;
-		background: rgba(10, 10, 10, 0.04);
-		color: rgba(10, 10, 10, 0.72);
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		white-space: nowrap;
-		cursor: pointer;
-		user-select: none;
-		flex-shrink: 0;
-		transition:
-			background-color 140ms ease,
-			color 140ms ease;
-	}
-	.video-prompt-chrome :global(.prompt-chip:hover:not(:disabled)) {
-		background: rgba(10, 10, 10, 0.07);
-		color: #111;
-	}
-	.video-prompt-chrome :global(.prompt-chip:disabled) {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.video-prompt-chrome :global(.prompt-bar-submit) {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		margin-left: auto;
-		border: none;
-		border-radius: 11px;
-		background: #7bf1a8;
-		color: #080808;
-		cursor: pointer;
-		flex-shrink: 0;
-		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
-		transition:
-			background-color 140ms ease,
-			transform 120ms ease;
-	}
-	.video-prompt-chrome :global(.prompt-bar-submit:hover:not(:disabled)) {
-		background: #8ff5b6;
-	}
-	.video-prompt-chrome :global(.prompt-bar-submit:active:not(:disabled)) {
-		transform: scale(0.94);
-	}
-	.video-prompt-chrome :global(.prompt-bar-submit:disabled) {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-	.video-prompt-chrome :global(.prompt-bar-submit svg),
-	.video-prompt-chrome :global(.prompt-bar-submit svg *) {
-		color: #080808 !important;
-		stroke: #080808 !important;
+		padding-top: 0.35rem;
 	}
 	.hidden-input {
 		display: none;

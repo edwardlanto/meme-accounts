@@ -45,6 +45,7 @@ import JSZip from 'jszip';
 	import { clampToCompleteSentences, clampToCompleteWords, fitCopyBudget } from '$lib/studio/fit-copy';
 	import StudioCanvasSkeleton from '$lib/components/studio/StudioCanvasSkeleton.svelte';
 	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
+	import { studioCanvasImageUrl } from '$lib/client/optimize-image-url';
 	import { formatExportError, replaceVideosWithFrameImages, fetchRemoteVideoAsBlobUrl, materializeDomImagesForExport, SAFE_HTML_TO_IMAGE_OPTS } from '$lib/studio/export-capture';
 	import { isVideoFile, objectUrlForVideoFile, playMediaVideo } from '$lib/studio/media-url';
 	import {
@@ -249,7 +250,7 @@ import JSZip from 'jszip';
 	} from '$lib/video-clips/caption-chunking';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
-		Image, Type, Search, Layers, ListOrdered, MessageSquare,
+		Image, Type, Layers, ListOrdered, MessageSquare,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Music, Play, X, Circle, Palette, Trash2, RotateCcw, Wallpaper, ArrowUp, ChevronDown, PanelBottom, User, Users, Heart, Highlighter, History
 	} from 'lucide-svelte';
 
@@ -6091,10 +6092,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const raw = previewTemplate === 'news' ? (newsSubtextBySlide[paintSlide] ?? '') : '';
 		return studioTextHighlightsEnabled ? raw : stripMarkup(raw);
 	});
-	const canvasBackgroundImage = $derived(resolveMediaUrl((bgImagesByTemplate[previewTemplate] ?? [])[paintSlide] ?? ''));
+	const canvasBackgroundImage = $derived(
+		studioCanvasImageUrl(
+			resolveMediaUrl((bgImagesByTemplate[previewTemplate] ?? [])[paintSlide] ?? ''),
+		),
+	);
 	const canvasBackgroundVideo = $derived((bgVideosByTemplate[previewTemplate] ?? [])[paintSlide] ?? '');
 	const canvasBrandStackBottomMedia = $derived(
-		resolveMediaUrl(brandStackBottomMediaBySlide[paintSlide] ?? ''),
+		studioCanvasImageUrl(resolveMediaUrl(brandStackBottomMediaBySlide[paintSlide] ?? '')),
 	);
 	const canvasVideoTrimStart = $derived(videoTrimStartSecBySlide[paintSlide] ?? 0);
 	const canvasVideoTrimEnd = $derived(videoTrimEndSecBySlide[paintSlide] ?? 0);
@@ -6107,8 +6112,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			!!canvasCutout &&
 			!String(canvasBackgroundVideo ?? '').trim(),
 	);
-	const canvasCircleImg = $derived(resolveMediaUrl(circleImages[paintSlide] ?? ''));
-	const canvasCircle2Img = $derived(resolveMediaUrl(circle2Images[paintSlide] ?? ''));
+	const canvasCircleImg = $derived(
+		studioCanvasImageUrl(resolveMediaUrl(circleImages[paintSlide] ?? '')),
+	);
+	const canvasCircle2Img = $derived(
+		studioCanvasImageUrl(resolveMediaUrl(circle2Images[paintSlide] ?? '')),
+	);
 	const canvasShowCircle2 = $derived(showCircle2BySlide[paintSlide] ?? false);
 	const canvasShowPrimaryCircle = $derived(showCircleBySlide[paintSlide] ?? false);
 	const canvasOverlays = $derived((slideOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? []);
@@ -6951,16 +6960,21 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		activeSlide = i;
 	}
 
-	function handleBrandCtaImageUpload(e: Event) {
+	async function handleBrandCtaImageUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
-		const reader = new FileReader();
-		reader.onload = () => {
-			brandCta = { ...brandCta, image: String(reader.result ?? '') };
-			persistBrandCta();
-		};
-		reader.readAsDataURL(file);
 		(e.target as HTMLInputElement).value = '';
+		try {
+			const dataUrl = await prepareImageAsDataUrl(file, {
+				maxDim: 1600,
+				maxBytes: 1_800_000,
+				quality: 0.85,
+			});
+			brandCta = { ...brandCta, image: dataUrl };
+			persistBrandCta();
+		} catch (err) {
+			alert(err instanceof Error ? err.message : 'Image upload failed');
+		}
 	}
 
 	function clearBrandCtaImage() {
@@ -7609,7 +7623,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	) {
 		const write = (i: number, val: string) => {
 			const v = String(val ?? '');
-			if (!force && !v.trim()) return;
+			// Never wipe primary copy with an empty starter slot (DEV pins often omit per-slide text).
+			if (!v.trim()) return;
 			if (!force) {
 				const cur = readSlidePrimary(template, i);
 				if (cur && !isStockSlidePrimary(template, cur)) return;
@@ -7635,7 +7650,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		for (const i of idxs) {
 			if (i < 0) continue;
 			const val = String(values[i] ?? '');
-			if (!force && !val.trim()) continue;
+			if (!val.trim()) continue;
 			write(i, val);
 		}
 	}
@@ -8073,6 +8088,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (!textColorTouched) textColor = '#FFFFFF';
 		}
 		applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
+		// DEV starter slots may omit copy — re-seed stock defaults so filmstrip thumbs aren't empty.
+		for (let i = 0; i < n; i++) {
+			ensureTemplateDefaultsForSlide(template, i);
+		}
+		if (template === 'tweet') {
+			for (let i = 0; i < n; i++) ensureTweetSlideProfileDefaults(i);
+		}
 	}
 
 	async function loadLatestDraft() {
@@ -9509,15 +9531,16 @@ tweetTopImagePanYBySlide,
 		const source = String(rawText || articleSnippet || articleTitle || '').trim();
 		const budget = textCarouselBudgetFromMaxWords(studioBodyMaxWords);
 		const { copyStrings: beats } = await fetchDeckStoryBeats(hookText, rawText, n, {
-			autoHighlight: false,
+			autoHighlight: studioTextHighlightsEnabled,
 		});
+		const beatFor = (i: number) => String(beats[i] ?? (i === 0 ? hookText : source));
+		// Highlights: keep [[…]] from beats — text-carousel-body rewrite strips markup.
 		// Short: put the beat on the card — expanding into "airy paragraphs" fights the word chip.
-		if (budget.maxWordsTotal <= 16) {
+		if (studioTextHighlightsEnabled || budget.maxWordsTotal <= 16) {
 			const bodies = Array.from({ length: n }, (_, i) =>
-				clampFetchedTextCarouselBody(
-					String(beats[i] ?? (i === 0 ? hookText : source)),
-					FETCH_TEXT_CLIP.textCarousel,
-				),
+				studioTextHighlightsEnabled
+					? beatFor(i)
+					: clampFetchedTextCarouselBody(beatFor(i), FETCH_TEXT_CLIP.textCarousel),
 			);
 			applyHeadlineStringsToTemplate(template, bodies);
 			return;
@@ -9531,10 +9554,7 @@ tweetTopImagePanYBySlide,
 					slideCount: n,
 					paragraphCount: budget.paragraphCount,
 				}).catch(() =>
-					clampFetchedTextCarouselBody(
-						String(beats[i] ?? (i === 0 ? hookText : source)),
-						FETCH_TEXT_CLIP.textCarousel,
-					),
+					clampFetchedTextCarouselBody(beatFor(i), FETCH_TEXT_CLIP.textCarousel),
 				),
 			),
 		);
@@ -10100,9 +10120,7 @@ tweetTopImagePanYBySlide,
 					search: newsContentMode === 'news' ? search || undefined : undefined,
 					categories: newsContentMode === 'news' ? category : undefined,
 					limit: 15,
-					autoHighlight:
-						studioTextHighlightsEnabled &&
-						(fillExistingDeck ? hasNewsSlidesInDeck : contentTemplate === 'news'),
+					autoHighlight: studioTextHighlightsEnabled,
 					pick: newsContentMode === 'news' ? 'random' : 'first',
 					syntheticHint: syntheticHintStr || undefined,
 					stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
@@ -10207,14 +10225,12 @@ tweetTopImagePanYBySlide,
 				const shortCopyTargets = targets.filter(
 					(t) => !templateUsesLongBodyCopy(t.template) && t.template !== 'blank',
 				);
-				const variantsNeedHighlights =
-					studioTextHighlightsEnabled && targets.some((t) => t.template === 'news');
 				const wantsTweetReplies = shortCopyTargets.some((t) => t.template === 'tweet');
 
 				// One Hook → content → content arc for the whole deck (works with mixed templates).
 				const { copyStrings, tweetReplies } = await fetchDeckStoryBeats(hookText, rawText, n, {
 					includeReplies: wantsTweetReplies,
-					autoHighlight: variantsNeedHighlights,
+					autoHighlight: studioTextHighlightsEnabled,
 				});
 
 				const sourceForCarousel = String(rawText || articleSnippet || articleTitle || '').trim();
@@ -10222,7 +10238,18 @@ tweetTopImagePanYBySlide,
 				if (longBodyTargets.length) {
 					try {
 						const carouselBudget = textCarouselBudgetFromMaxWords(studioBodyMaxWords);
-						if (carouselBudget.maxWordsTotal <= 16) {
+						// Keep [[…]] from beats when highlights are on — body rewrite strips markup.
+						if (studioTextHighlightsEnabled) {
+							for (const t of longBodyTargets) {
+								longBodyBySlide.set(
+									t.slide,
+									String(
+										copyStrings[t.slide] ??
+											(t.slide === 0 ? hookText : sourceForCarousel),
+									),
+								);
+							}
+						} else if (carouselBudget.maxWordsTotal <= 16) {
 							for (const t of longBodyTargets) {
 								longBodyBySlide.set(
 									t.slide,
@@ -11064,7 +11091,7 @@ tweetTopImagePanYBySlide,
 		try {
 			const { copyStrings, tweetReplies } = await fetchDeckStoryBeats(hookText, rawText, slideCount, {
 				includeReplies: template === 'tweet',
-				autoHighlight: studioTextHighlightsEnabled && template === 'news',
+				autoHighlight: studioTextHighlightsEnabled,
 			});
 			applyHeadlineStringsToTemplate(
 				template,
@@ -12322,9 +12349,10 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
-	function handleCircleUpload(e: Event) {
+	async function handleCircleUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
+		(e.target as HTMLInputElement).value = '';
 		const idx = activeSlide;
 		if (isVideoFile(file)) {
 			const url = objectUrlForVideoFile(file);
@@ -12332,14 +12360,22 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			void waitForCanvasVideoReady();
 			return;
 		}
-		const reader = new FileReader();
-		reader.onload = () => { circleImages = circleImages.map((v, i) => (i === idx ? (reader.result as string) : v)); };
-		reader.readAsDataURL(file);
+		try {
+			const dataUrl = await prepareImageAsDataUrl(file, {
+				maxDim: 900,
+				maxBytes: 900_000,
+				quality: 0.85,
+			});
+			circleImages = circleImages.map((v, i) => (i === idx ? dataUrl : v));
+		} catch (err) {
+			alert(err instanceof Error ? err.message : 'Image upload failed');
+		}
 	}
 
-	function handleCircle2Upload(e: Event) {
+	async function handleCircle2Upload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
+		(e.target as HTMLInputElement).value = '';
 		const idx = activeSlide;
 		if (isVideoFile(file)) {
 			const url = objectUrlForVideoFile(file);
@@ -12348,12 +12384,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			void waitForCanvasVideoReady();
 			return;
 		}
-		const reader = new FileReader();
-		reader.onload = () => {
-			circle2Images = circle2Images.map((v, i) => (i === idx ? (reader.result as string) : v));
+		try {
+			const dataUrl = await prepareImageAsDataUrl(file, {
+				maxDim: 900,
+				maxBytes: 900_000,
+				quality: 0.85,
+			});
+			circle2Images = circle2Images.map((v, i) => (i === idx ? dataUrl : v));
 			showCircle2BySlide = showCircle2BySlide.map((v, i) => (i === idx ? true : v));
-		};
-		reader.readAsDataURL(file);
+		} catch (err) {
+			alert(err instanceof Error ? err.message : 'Image upload failed');
+		}
 	}
 
 	let circle2QuickInput = $state<HTMLInputElement | null>(null);
@@ -12406,7 +12447,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		}
 	}
 
-	function handleNewsBgToolbarMediaChange(e: Event) {
+	async function handleNewsBgToolbarMediaChange(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
@@ -12424,11 +12465,16 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			setSlideVideo(idx, url, t);
 			void waitForCanvasVideoReady();
 		} else {
-			const reader = new FileReader();
-			reader.onload = () => {
-				setSlideImage(idx, reader.result as string, t);
-			};
-			reader.readAsDataURL(file);
+			try {
+				const dataUrl = await prepareImageAsDataUrl(file, {
+					maxDim: 1600,
+					maxBytes: 1_800_000,
+					quality: 0.85,
+				});
+				setSlideImage(idx, dataUrl, t);
+			} catch (err) {
+				alert(err instanceof Error ? err.message : 'Image upload failed');
+			}
 		}
 	}
 
@@ -12454,7 +12500,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 		setSlideOverlays(idx, [...current, newOverlay], activeTemplate);
 	}
 
-	function handleOverlayUpload(e: Event) {
+	async function handleOverlayUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
 		// Reset input so same file can be re-uploaded
@@ -12473,14 +12519,18 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			video.src = src;
 			return;
 		}
-		const reader = new FileReader();
-		reader.onload = () => {
-			const src = reader.result as string;
+		try {
+			const src = await prepareImageAsDataUrl(file, {
+				maxDim: 1600,
+				maxBytes: 1_800_000,
+				quality: 0.85,
+			});
 			const img = new window.Image();
 			img.onload = () => addOverlayAtSize(src, img.naturalWidth, img.naturalHeight);
 			img.src = src;
-		};
-		reader.readAsDataURL(file);
+		} catch (err) {
+			alert(err instanceof Error ? err.message : 'Image upload failed');
+		}
 	}
 
 	// ── Export (PNG for stills, MP4 for video slides) ─────────────────────
@@ -12800,6 +12850,29 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	/** Last signatures we successfully rasterized to the filmstrip (avoids full-deck capture on single-slide edits). */
 	let prevFilmstripSigs: string[] = [];
 
+	/** Same starter copy the canvas templates fall back to when state is empty. */
+	function defaultPrimaryForTemplate(t: TemplateId): string {
+		if (t === 'textCarousel') return TEXT_CAROUSEL_DEFAULTS.body;
+		if (t === 'whiteThread') return WHITE_THREAD_DEFAULTS.body;
+		if (t === 'whiteMedia') return WHITE_MEDIA_DEFAULTS.body;
+		if (t === 'tweet') return TWEET_DEFAULTS.topText;
+		if (t === 'article') return ARTICLE_DEFAULT_BODY;
+		if (t === 'imageQuote') return IMAGE_QUOTE_DEFAULTS.body;
+		if (t === 'blackText') return BLACK_TEXT_CAROUSEL_DEFAULTS.headline;
+		if (t === 'photoTopic') return PHOTO_TOPIC_DEFAULTS.headline;
+		if (t === 'photoCaption') return PHOTO_CAPTION_DEFAULTS.headline;
+		if (t === 'brandStack') return BRAND_STACK_DEFAULTS.headline;
+		if (t === 'videoHook') return VIDEO_HOOK_DEFAULTS.headline;
+		if (t === 'videoCreator') return VIDEO_CREATOR_DEFAULTS.headline;
+		if (t === 'videoText') return VIDEO_TEXT_DEFAULTS.headline;
+		if (t === 'videoSource') return VIDEO_SOURCE_DEFAULTS.headline;
+		if (t === 'videoFeature') return VIDEO_FEATURE_DEFAULTS.headline;
+		if (t === 'videoPost') return VIDEO_POST_DEFAULTS.headline;
+		if (isVideoStoryFamily(t)) return VIDEO_STORY_DEFAULTS.headline;
+		if (t === 'news') return NEWS_PLACEHOLDER_HEADLINE;
+		return '';
+	}
+
 	/** Primary label for filmstrip fallback (blank uses text overlays, not `slides[]`). */
 	function thumbTextForSlide(i: number): string {
 		const t = coerceTemplateId(slideTemplates[i] ?? lastTemplateUsed);
@@ -12826,7 +12899,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 									: t === 'imageQuote'
 										? (imageQuoteTextBySlide[i] ?? '')
 										: (slides[i] ?? '');
-		return String(raw || slides[i] || '')
+		// Match canvas: empty state still renders template defaults — don't treat as empty filmstrip cells.
+		return String(raw || slides[i] || defaultPrimaryForTemplate(t) || '')
 			.replace(/\[\[|\]\]/g, '')
 			.replace(/\s+/g, ' ')
 			.trim();
@@ -13589,12 +13663,17 @@ if (tweetTopImageHeightBySlide.length !== n) {
 								onchange={async (e) => {
 									const file = (e.currentTarget as HTMLInputElement).files?.[0];
 									if (!file) return;
-									sourceLogoSrc = await new Promise<string>((res, rej) => {
-										const fr = new FileReader();
-										fr.onload = () => res(String(fr.result ?? ''));
-										fr.onerror = () => rej(fr.error);
-										fr.readAsDataURL(file);
-									});
+									try {
+										sourceLogoSrc = await prepareImageAsDataUrl(file, {
+											maxDim: 800,
+											maxBytes: 600_000,
+											quality: 0.88,
+										});
+									} catch (err) {
+										alert(err instanceof Error ? err.message : 'Logo upload failed');
+										(e.currentTarget as HTMLInputElement).value = '';
+										return;
+									}
 									(e.currentTarget as HTMLInputElement).value = '';
 									sourceLabelMode = 'logo';
 									applyBrandLogoToProfileAvatars(sourceLogoSrc, true);
@@ -13719,7 +13798,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			{#if editingBrandCta || exportingBrandCta}
 				<BrandCtaTemplate
 					bind:exportRef
-					image={brandCta.image}
+					image={studioCanvasImageUrl(brandCta.image)}
 					headline={brandCta.headline}
 					subline={brandCta.subline}
 					canvasW={CANVAS_W}
@@ -14044,7 +14123,9 @@ showSubjectCutout={canvasShowCutout}
 					bottomAvatarLabel={tweetBottomAvatarLabelBySlide[paintSlide] ?? ''}
 					bottomAvatarRingColor={tweetBottomAvatarRingColorBySlide[paintSlide] ?? defaultAvatarRingColor}
 					bottomAvatarRingWidth={tweetBottomAvatarRingWidthBySlide[paintSlide] ?? defaultTweetAvatarRingWidth}
-topImage={(bgImagesByTemplate.tweet ?? [])[paintSlide] || '/templates/tweet/demo-bg.jpg'}
+topImage={studioCanvasImageUrl(
+						(bgImagesByTemplate.tweet ?? [])[paintSlide] || '/templates/tweet/demo-bg.jpg',
+					)}
 onTopImageChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideImage(paintSlide, v, 'tweet'); }}
 topVideo={(bgVideosByTemplate.tweet ?? [])[paintSlide] ?? ''}
 onTopVideoChange={(v) => { if (!canvasInteractive) return; pushUndo('tweet', paintSlide); setSlideVideo(paintSlide, v, 'tweet'); }}
@@ -14476,11 +14557,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					h={CANVAS_H}
 					scale={previewScale}
 					interactive={canvasInteractive}
-					highlightColor={previewTemplate === 'videoFeature'
-						? VIDEO_FEATURE_DEFAULTS.highlightColor
-						: previewTemplate === 'videoSource'
-							? VIDEO_SOURCE_DEFAULTS.highlightColor
-							: highlightColor}
+					highlightColor={highlightColor}
+					highlightDefaults={studioHighlightDefaults}
 					headlineStyle={previewTemplate === 'videoFeature'
 						? { ...VIDEO_FEATURE_HEADLINE_STYLE, ...canvasVideoStoryHeadlineStyle }
 						: previewTemplate === 'videoPost'
@@ -15013,7 +15091,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 				<div class="filmstrip-row relative z-20 mx-auto flex max-w-full items-end gap-2 px-1 pb-1">
 				<div class="filmstrip-scroll no-scrollbar flex min-w-0 flex-1 items-end gap-2 overflow-x-auto">
 				{#each dndItems as item, i (item.id)}
-					{@const tplate = slideTemplates[item.slideIndex] ?? 'news'}
+					{@const tplate = coerceTemplateId(slideTemplates[item.slideIndex] ?? lastTemplateUsed)}
 					{@const isPlaceholder =
 						tplate === 'blank' ? !item.hasBlankContent : !item.text}
 					{@const hasMusic = !!item.music}
@@ -15059,10 +15137,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						>
 								{#if showThumbSkeleton}
 									<div class="filmstrip-skel absolute inset-0" aria-hidden="true"></div>
-								{:else if isPlaceholder}
-									<div class="absolute inset-0 flex items-center justify-center text-white/15">
-										<span class="text-[10px] font-mono">#{i + 1}</span>
-									</div>
 								{:else if item.vid}
 									<video
 										src={item.vid}
@@ -15084,6 +15158,10 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										class="w-full h-full object-cover"
 										draggable="false"
 									/>
+								{:else if isPlaceholder}
+									<div class="absolute inset-0 flex items-center justify-center text-white/15">
+										<span class="text-[10px] font-mono">#{i + 1}</span>
+									</div>
 								{:else if item.img}
 									<img
 										src={item.img}
@@ -15611,7 +15689,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			<div class="mx-auto w-full max-w-2xl overflow-visible">
 				<div class="prompt-bar">
 
-				<!-- Search input row -->
+				<!-- Message input row -->
 				<div class="prompt-bar-input">
 					{#if userId}
 						<Popover
@@ -15621,11 +15699,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							}}
 						>
 							<PopoverTrigger
-								class="shrink-0 rounded-lg p-1.5 text-[#b0b0b0] hover:bg-black/[0.04] hover:text-[#555] data-[state=open]:bg-black/[0.06] data-[state=open]:text-[#222]"
+								class="prompt-bar-icon-btn"
 								title="Prompt history"
 								aria-label="Prompt history"
 							>
-								<History size={15} />
+								<History size={18} />
 							</PopoverTrigger>
 							<PopoverContent
 								side="top"
@@ -15684,14 +15762,11 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{/if}
 							</PopoverContent>
 						</Popover>
-						<Search size={15} class="shrink-0 text-[#b0b0b0]" />
-					{:else}
-						<Search size={15} class="shrink-0 text-[#b0b0b0]" />
 					{/if}
 					{#if newsContentMode === 'general'}
 						<input
 							bind:value={generalTopicPrompt}
-							placeholder="e.g. Make me a carousel of beds…"
+							placeholder="Message…"
 							onkeydown={(e) => { if (e.key === 'Enter') submitPromptIfReady(); }}
 							class="prompt-bar-field"
 						/>
@@ -15732,16 +15807,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						/>
 					{/if}
 					{#if newsError}
-						<div class="flex items-center gap-1 shrink-0">
+						<div class="flex items-center gap-1 shrink-0 pt-1">
 							<AlertCircle size={11} class="text-red-500 shrink-0" />
 							<span class="text-[11px] font-body text-red-500 max-w-[180px] truncate">{newsError}</span>
 						</div>
 					{/if}
 				</div>
 
-				<div class="prompt-bar-divider"></div>
-
-				<!-- Controls row: Type + Topic + Settings + Submit -->
+				<!-- Controls row -->
 				<div class="prompt-bar-tools">
 
 					<!-- ── Type selector ──────────────────────────────── -->
@@ -16249,7 +16322,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								? 'Type a prompt to generate'
 								: 'Load & Fill'}
 						aria-disabled={promptSubmitDisabled}
-						class="prompt-bar-submit size-9 shrink-0 rounded-full"
+						class="prompt-bar-submit size-8 shrink-0 rounded-full border-0 bg-[#7bf1a8] text-[#080808] hover:bg-[#8ff5b6] disabled:bg-black/20 disabled:text-white"
 					>
 						{#if fetchingNews || studioGenerating}
 							<Loader class="animate-spin" />
@@ -16805,124 +16878,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		border-color: var(--sl-border) !important;
 	}
 
-	/* — Prompt bar: kill ALL focus rings/outlines on the bare inputs — */
-	:global(.prompt-bar input),
-	:global(.prompt-bar input:focus),
-	:global(.prompt-bar input:focus-visible) {
-		outline: none !important;
-		box-shadow: none !important;
-		border: none !important;
-		background-color: transparent !important;
-		accent-color: transparent;
-	}
-
-	:global(.prompt-bar) {
-		border-radius: 18px;
-		background: rgba(255, 255, 255, 0.9);
-		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
-		backdrop-filter: blur(14px);
-		-webkit-backdrop-filter: blur(14px);
-	}
-
-	:global(.prompt-bar-input) {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 14px 16px 10px;
-	}
-
-	:global(.prompt-bar-field) {
-		flex: 1;
-		min-width: 0;
-		background: transparent;
-		border: none;
-		outline: none;
-		font-size: 14px;
-		line-height: 1.35;
-		color: #1a1a1a;
-		font-family: inherit;
-	}
-
-	:global(.prompt-bar-field::placeholder) {
-		color: #b4b4b4;
-	}
-
-	:global(.prompt-bar-divider) {
-		height: 1px;
-		margin: 0 14px;
-		background: rgba(10, 10, 10, 0.06);
-	}
-
-	:global(.prompt-bar-tools) {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 10px 10px;
-		flex-wrap: wrap;
-	}
-
-	:global(.prompt-chip) {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 12px;
-		border: none;
-		border-radius: 10px;
-		background: rgba(10, 10, 10, 0.04);
-		color: rgba(10, 10, 10, 0.72);
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		white-space: nowrap;
-		cursor: pointer;
-		user-select: none;
-		flex-shrink: 0;
-		transition: background-color 140ms ease, color 140ms ease;
-	}
-
-	:global(.prompt-chip:hover) {
-		background: rgba(10, 10, 10, 0.07);
-		color: #111;
-	}
-
-	:global(.prompt-bar-submit) {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		margin-left: auto;
-		border: none;
-		border-radius: 11px;
-		background: #7bf1a8;
-		color: #080808;
-		cursor: pointer;
-		flex-shrink: 0;
-		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
-		transition: background-color 140ms ease, transform 120ms ease;
-	}
-
-	:global(.prompt-bar-submit:hover:not(:disabled)) {
-		background: #8ff5b6;
-	}
-
-	:global(.prompt-bar-submit:active:not(:disabled)) {
-		transform: scale(0.94);
-	}
-
-	:global(.prompt-bar-submit:disabled) {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	:global(.prompt-bar-submit svg),
-	:global(.prompt-bar-submit svg *) {
-		color: #080808 !important;
-		stroke: #080808 !important;
-	}
+	/* Prompt bar styles live in `$lib/styles/prompt-bar.css` (ChatGPT-style shell). */
 
 	/* — Headings / chips that use header label styling — */
 	:root:not([data-theme="dark"]) .studio-left :global(label) {

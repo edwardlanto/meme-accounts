@@ -1,3 +1,8 @@
+/** Studio canvas is ≤1080 CSS px — fetch ~1.5× for retina, never multi‑thousand originals. */
+export const STUDIO_CANVAS_IMAGE_W = 1620;
+/** Library / Carousels card thumbs (CSS ~200–280px). */
+export const LIBRARY_CARD_IMAGE_W = 640;
+
 /**
  * Rewrite common stock CDN URLs to a target display width (saves bandwidth on
  * filmstrip thumbs and bulk previews). Unknown hosts are returned unchanged.
@@ -6,6 +11,8 @@ export function optimizeImageUrl(url: string, widthPx: number): string {
 	const raw = String(url ?? '').trim();
 	if (!raw || !Number.isFinite(widthPx) || widthPx <= 0) return raw;
 	if (raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+	// Local static / relative paths can't be resized via query params.
+	if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
 
 	const w = Math.max(64, Math.min(2048, Math.round(widthPx)));
 
@@ -28,8 +35,21 @@ export function optimizeImageUrl(url: string, widthPx: number): string {
 			return u.toString();
 		}
 
-		// Cloudflare Images / generic w= query used elsewhere in the app
-		if (u.searchParams.has('w') || u.searchParams.has('width')) {
+		// Cloudflare Images delivery / imgix-style (safe to resize via query)
+		if (host.includes('imagedelivery.net') || host.includes('imgix.net')) {
+			u.searchParams.set('w', String(w));
+			u.searchParams.set('fit', 'max');
+			return u.toString();
+		}
+
+		// Already sized via w=/width= (e.g. some proxies) — clamp to target.
+		// Skip signed object stores (R2/S3) where mutating the query breaks the signature.
+		const looksSigned =
+			u.searchParams.has('X-Amz-Signature') ||
+			u.searchParams.has('X-Amz-Credential') ||
+			u.searchParams.has('Signature') ||
+			u.searchParams.has('X-Amz-Algorithm');
+		if (!looksSigned && (u.searchParams.has('w') || u.searchParams.has('width'))) {
 			if (u.searchParams.has('w')) u.searchParams.set('w', String(w));
 			if (u.searchParams.has('width')) u.searchParams.set('width', String(w));
 			return u.toString();
@@ -39,6 +59,16 @@ export function optimizeImageUrl(url: string, widthPx: number): string {
 	}
 
 	return raw;
+}
+
+/** Cap remote images for the live Studio canvas (export still rasterizes at canvas size). */
+export function studioCanvasImageUrl(url: string): string {
+	return optimizeImageUrl(url, STUDIO_CANVAS_IMAGE_W);
+}
+
+/** Cap remote images for Carousels / library card previews. */
+export function libraryCardImageUrl(url: string): string {
+	return optimizeImageUrl(url, LIBRARY_CARD_IMAGE_W);
 }
 
 /** Preload an image URL; resolves when decoded (or on error). */

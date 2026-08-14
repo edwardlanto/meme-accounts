@@ -191,7 +191,7 @@ const POSTS = [
 		orientation: 'portrait',
 		fields: {
 			headline:
-				'[[Stop]] building features nobody asked for — the first dollar teaches you more than another month of "polish."',
+				'[[Stop]] building features2 nobody asked for — the first dollar teaches you more than another month of "polish."',
 			highlightColor: '#39FF14',
 			videoUrl: '/videos/demos/highlight-hook.mp4',
 			posterUrl: '/templates/demos/highlight-hook-poster.jpg',

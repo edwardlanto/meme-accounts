@@ -11,7 +11,7 @@
 	 *   [[pattern(name): WORD]]   → image/pattern fill on the text
 	 *   [[marker(#hex): WORD]]  → solid background behind phrase
 	 */
-	import { parseHighlightMarkup, segmentText } from '$lib/highlight';
+	import { parseHighlightMarkup, segmentText, type HighlightDefaults } from '$lib/highlight';
 	import { TEXT_BG_CHIP_BOX_CSS } from '$lib/textStyleCss';
 	import {
 		CLIPPED_TEXT_SHADOW_WRAP_CSS,
@@ -21,7 +21,8 @@
 
 	interface Props {
 		text: string;
-		defaultColor?: string;
+		/** Solid hex or full Studio defaults (pattern / gradient for bare `[[phrase]]`). */
+		defaultColor?: string | HighlightDefaults;
 		/** If false, `[[...]]` is shown as plain text (no accent spans). Default true. */
 		parseHighlights?: boolean;
 		/**

@@ -5,7 +5,7 @@
 	import DraggableMediaFrame from '$lib/components/DraggableMediaFrame.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
 	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
-	import { stripMarkup } from '$lib/highlight';
+	import { stripMarkup, type HighlightDefaults } from '$lib/highlight';
 	import {
 		FILM_STRIP_MAX_SIDE_PCT,
 		VIDEO_CREATOR_DEFAULTS,
@@ -33,6 +33,8 @@
 		exportRef?: HTMLElement | null;
 		selectedText?: TextElementKind | null;
 		highlightColor?: string;
+		/** Studio brand defaults for bare `[[phrase]]` (pattern / gradient / solid). */
+		highlightDefaults?: HighlightDefaults;
 		headlineStyle?: TextStyle;
 		watermarkStyle?: TextStyle;
 		bodyStyle?: TextStyle;
@@ -82,6 +84,7 @@
 		exportRef = $bindable(null),
 		selectedText = null,
 		highlightColor = '#F5A623',
+		highlightDefaults,
 		headlineStyle = {},
 		watermarkStyle = {},
 		bodyStyle = {},
@@ -108,6 +111,10 @@
 		bgColor = '#000000',
 		onBackgroundDblClick,
 	}: Props = $props();
+
+	const highlightParseDefaults = $derived(
+		highlightDefaults ?? { color: highlightColor },
+	);
 
 	const canvasFill = $derived((bgColor || '#000000').trim() || '#000000');
 	const isLightCanvas = $derived.by(() => {
@@ -465,6 +472,7 @@
 					value={headline}
 					{interactive}
 					defaultColor={highlightColor}
+					defaultStyle={highlightParseDefaults}
 					selected={selectedText === 'videoStoryHeadline'}
 					toolbarKind="videoStoryHeadline"
 					rows={isHookLayout ? 2 : 4}
@@ -504,7 +512,7 @@
 									text={headline}
 									parseHighlights={true}
 									emphasisBold={isHookLayout}
-									defaultColor={highlightColor}
+									defaultColor={highlightParseDefaults}
 									style="
 										margin: 0;
 										white-space: pre-wrap;
@@ -531,7 +539,7 @@
 									text={headline}
 									parseHighlights={true}
 									emphasisBold={isHookLayout}
-									defaultColor={highlightColor}
+									defaultColor={highlightParseDefaults}
 									style="
 										margin: 0;
 										white-space: {isHookLayout ? 'normal' : 'pre-wrap'};
@@ -728,6 +736,7 @@
 								value={headline}
 								{interactive}
 								defaultColor={highlightColor}
+								defaultStyle={highlightParseDefaults}
 								selected={selectedText === 'videoStoryHeadline'}
 								toolbarKind="videoStoryHeadline"
 								rows={4}
@@ -746,7 +755,7 @@
 											as="div"
 											text={headline}
 											parseHighlights={true}
-											defaultColor={highlightColor}
+											defaultColor={highlightParseDefaults}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
@@ -777,6 +786,7 @@
 								value={body}
 								{interactive}
 								defaultColor={highlightColor}
+								defaultStyle={highlightParseDefaults}
 								selected={selectedText === 'blackTextBody'}
 								toolbarKind="blackTextBody"
 								rows={6}
@@ -795,7 +805,7 @@
 											as="div"
 											text={body}
 											parseHighlights={true}
-											defaultColor={highlightColor}
+											defaultColor={highlightParseDefaults}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
@@ -883,6 +893,7 @@
 								value={headline}
 								{interactive}
 								defaultColor={highlightColor}
+								defaultStyle={highlightParseDefaults}
 								selected={selectedText === 'videoStoryHeadline'}
 								toolbarKind="videoStoryHeadline"
 								rows={6}
@@ -901,7 +912,7 @@
 											as="div"
 											text={headline}
 											parseHighlights={true}
-											defaultColor={highlightColor}
+											defaultColor={highlightParseDefaults}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
@@ -977,6 +988,7 @@
 								value={headline}
 								{interactive}
 								defaultColor={highlightColor}
+								defaultStyle={highlightParseDefaults}
 								selected={selectedText === 'videoStoryHeadline'}
 								toolbarKind="videoStoryHeadline"
 								rows={6}
@@ -1011,7 +1023,7 @@
 											as="div"
 											text={headline}
 											parseHighlights={true}
-											defaultColor={highlightColor}
+											defaultColor={highlightParseDefaults}
 											style="
 												margin: 0;
 												padding: 0;

@@ -1,0 +1,190 @@
+/* Shared ChatGPT-style prompt shell — Studio / Bulk / Clips.
+   Keeps product colors (lime submit #7bf1a8) and existing chip/submit classes. */
+
+.prompt-bar {
+	display: flex;
+	flex-direction: column;
+	border-radius: 28px;
+	padding: 0.35rem;
+	background: #ffffff;
+	border: 1px solid rgba(0, 0, 0, 0.12);
+	box-shadow:
+		0 0 0 0 transparent,
+		0 0 0 0 transparent,
+		0 9px 9px 0 rgba(0, 0, 0, 0.01),
+		0 2px 5px 0 rgba(0, 0, 0, 0.06);
+	cursor: text;
+}
+
+.prompt-bar:focus-within {
+	border-color: rgba(0, 0, 0, 0.16);
+	box-shadow:
+		0 0 0 0 transparent,
+		0 0 0 0 transparent,
+		0 9px 9px 0 rgba(0, 0, 0, 0.01),
+		0 2px 5px 0 rgba(0, 0, 0, 0.08);
+}
+
+.prompt-bar input,
+.prompt-bar input:focus,
+.prompt-bar input:focus-visible,
+.prompt-bar textarea,
+.prompt-bar textarea:focus,
+.prompt-bar textarea:focus-visible {
+	outline: none !important;
+	box-shadow: none !important;
+	border: none !important;
+	background-color: transparent !important;
+	accent-color: transparent;
+}
+
+.prompt-bar-input {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+	padding: 0.65rem 0.75rem 0.35rem;
+	min-height: 3rem;
+}
+
+.prompt-bar-field {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: none;
+	outline: none;
+	font-size: 15px;
+	line-height: 1.45;
+	color: #1a1a1a;
+	font-family: inherit;
+	padding: 0.35rem 0.25rem;
+	resize: none;
+}
+
+.prompt-bar-field::placeholder {
+	color: #9a9a9a;
+}
+
+.prompt-bar-field:disabled {
+	opacity: 0.6;
+}
+
+/* Legacy divider — hidden in the ChatGPT layout */
+.prompt-bar-divider {
+	display: none;
+}
+
+.prompt-bar-tools {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0.15rem 0.35rem 0.35rem;
+	flex-wrap: wrap;
+}
+
+.prompt-bar-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	border-radius: 9999px;
+	border: none;
+	background: rgba(10, 10, 10, 0.04);
+	color: #555;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition: background-color 140ms ease, color 140ms ease;
+}
+
+.prompt-bar-icon-btn:hover:not(:disabled) {
+	background: rgba(10, 10, 10, 0.07);
+	color: #111;
+}
+
+.prompt-bar-icon-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.prompt-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding: 0 12px;
+	border: none;
+	border-radius: 9999px;
+	background: rgba(10, 10, 10, 0.04);
+	color: rgba(10, 10, 10, 0.72);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	cursor: pointer;
+	user-select: none;
+	flex-shrink: 0;
+	transition: background-color 140ms ease, color 140ms ease;
+}
+
+.prompt-chip:hover:not(:disabled) {
+	background: rgba(10, 10, 10, 0.07);
+	color: #111;
+}
+
+.prompt-chip:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.prompt-chip--on {
+	background: rgba(123, 241, 168, 0.35);
+	color: #080808;
+}
+
+.prompt-bar-submit {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	margin-left: auto;
+	border: none;
+	border-radius: 9999px;
+	background: #7bf1a8;
+	color: #080808;
+	cursor: pointer;
+	flex-shrink: 0;
+	box-shadow: none;
+	transition:
+		background-color 140ms ease,
+		transform 120ms ease,
+		opacity 140ms ease;
+}
+
+.prompt-bar-submit:hover:not(:disabled) {
+	background: #8ff5b6;
+}
+
+.prompt-bar-submit:active:not(:disabled) {
+	transform: scale(0.94);
+}
+
+.prompt-bar-submit:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+	background: rgba(10, 10, 10, 0.18);
+	color: #fff;
+}
+
+.prompt-bar-submit svg,
+.prompt-bar-submit svg * {
+	color: inherit !important;
+	stroke: currentColor !important;
+}
+
+.prompt-bar-submit:disabled svg,
+.prompt-bar-submit:disabled svg * {
+	color: #fff !important;
+	stroke: #fff !important;
+}

@@ -99,7 +99,6 @@
 		Volume2,
 		VolumeX,
 		Highlighter,
-		Search,
 		Users,
 		Palette,
 		Heart,
@@ -2118,16 +2117,15 @@
 							}}
 						>
 							{#snippet historyTrigger({ props }: { props: Record<string, unknown> })}
-								<Button
+								<button
 									{...props}
-									variant="ghost"
-									size="icon-sm"
-									class="shrink-0 text-muted-foreground"
+									type="button"
+									class="prompt-bar-icon-btn"
 									title="Prompt history"
 									aria-label="Prompt history"
 								>
-									<History />
-								</Button>
+									<History size={18} />
+								</button>
 							{/snippet}
 							<PopoverTrigger child={historyTrigger} />
 							<PopoverContent
@@ -2187,13 +2185,10 @@
 								{/if}
 							</PopoverContent>
 						</Popover>
-						<Search size={15} class="shrink-0 text-[#b0b0b0]" />
-					{:else}
-						<Search size={15} class="shrink-0 text-[#b0b0b0]" />
 					{/if}
 					<input
 						bind:value={topic}
-						placeholder="e.g. Make me carousels about regenerative medicine…"
+						placeholder="Message…"
 						onkeydown={(e) => {
 							if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
 								e.preventDefault();
@@ -2203,15 +2198,13 @@
 						class="prompt-bar-field"
 					/>
 					{#if generateError}
-						<div class="flex items-center gap-1 shrink-0">
+						<div class="flex items-center gap-1 shrink-0 pt-1">
 							<span class="text-[11px] font-body text-red-500 max-w-[180px] truncate" title={generateError}
 								>{generateError}</span
 							>
 						</div>
 					{/if}
 				</div>
-
-				<div class="prompt-bar-divider"></div>
 
 				<div class="prompt-bar-tools">
 					<Popover>
@@ -3070,114 +3063,7 @@
 		max-width: 52rem;
 		margin: 0 auto;
 	}
-	.bulk-prompt-chrome :global(.prompt-bar) {
-		border-radius: 18px;
-		background: rgba(255, 255, 255, 0.95);
-		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow:
-			0 4px 20px rgba(0, 0, 0, 0.08),
-			0 1px 3px rgba(0, 0, 0, 0.05);
-		backdrop-filter: blur(14px);
-		-webkit-backdrop-filter: blur(14px);
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-input) {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 14px 16px 10px;
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-field) {
-		flex: 1;
-		min-width: 0;
-		background: transparent;
-		border: none;
-		outline: none;
-		box-shadow: none;
-		font-size: 14px;
-		line-height: 1.35;
-		color: #1a1a1a;
-		font-family: inherit;
-		padding: 0;
-		border-radius: 0;
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-field::placeholder) {
-		color: #b4b4b4;
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-divider) {
-		height: 1px;
-		margin: 0 14px;
-		background: rgba(10, 10, 10, 0.06);
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-tools) {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 10px 10px;
-		flex-wrap: wrap;
-	}
-	.bulk-prompt-chrome :global(.prompt-chip) {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 12px;
-		border: none;
-		border-radius: 10px;
-		background: rgba(10, 10, 10, 0.04);
-		color: rgba(10, 10, 10, 0.72);
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		white-space: nowrap;
-		cursor: pointer;
-		user-select: none;
-		flex-shrink: 0;
-		transition:
-			background-color 140ms ease,
-			color 140ms ease;
-	}
-	.bulk-prompt-chrome :global(.prompt-chip:hover) {
-		background: rgba(10, 10, 10, 0.07);
-		color: #111;
-	}
-	.bulk-prompt-chrome :global(.prompt-chip--on) {
-		background: rgba(123, 241, 168, 0.35);
-		color: #080808;
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-submit) {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		margin-left: auto;
-		border: none;
-		border-radius: 11px;
-		background: #7bf1a8;
-		color: #080808;
-		cursor: pointer;
-		flex-shrink: 0;
-		box-shadow: inset 0 0 0 1px rgba(8, 8, 8, 0.06);
-		transition:
-			background-color 140ms ease,
-			transform 120ms ease;
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-submit:hover:not(:disabled)) {
-		background: #8ff5b6;
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-submit:active:not(:disabled)) {
-		transform: scale(0.94);
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-submit:disabled) {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-	.bulk-prompt-chrome :global(.prompt-bar-submit svg),
-	.bulk-prompt-chrome :global(.prompt-bar-submit svg *) {
-		color: #080808 !important;
-		stroke: #080808 !important;
-	}
+	/* Prompt bar chrome: `$lib/styles/prompt-bar.css` */
 	.field {
 		display: flex;
 		flex-direction: column;

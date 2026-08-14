@@ -8,7 +8,7 @@ const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const ANTHROPIC_MESSAGES_API = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 /** Direct Anthropic Messages API — Brand Carousel when `CLAUDE_API_KEY` is set (unchanged default). */
-const ANTHROPIC_CAROUSEL_MODEL = 'claude-sonnet-4-5';
+const ANTHROPIC_CAROUSEL_MODEL = 'claude-haiku-4-5';
 
 /** Brand carousel system prompt: main spec + slide arc strategy. */
 const CAROUSEL_PROMPT_FILES = import.meta.glob(
@@ -258,7 +258,7 @@ Output the **complete** HTML document now. First line must be \`<!DOCTYPE html>\
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
-				model: 'anthropic/claude-3.7-sonnet',
+				model: 'anthropic/claude-haiku-4-5',
 				max_tokens: 16000,
 				system: systemPrompt,
 				messages: [{ role: 'user', content: openRouterUserContent }],
@@ -280,7 +280,7 @@ Output the **complete** HTML document now. First line must be \`<!DOCTYPE html>\
 		return json({
 			html,
 			provider: 'openrouter',
-			model: 'anthropic/claude-3.7-sonnet',
+			model: 'anthropic/claude-haiku-4-5',
 			falFilled: slotPass.falFilled,
 			...(slotPass.falWarnings.length ? { falWarnings: slotPass.falWarnings } : {}),
 		});

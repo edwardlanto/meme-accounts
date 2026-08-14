@@ -446,6 +446,7 @@
 				}
 				bodyStyle={template === 'videoFeature' ? { ...VIDEO_FEATURE_BODY_STYLE } : undefined}
 				highlightColor={resolvedHighlightColor}
+				highlightDefaults={resolvedHighlightDefaults}
 				w={CANVAS_W}
 				h={CANVAS_H}
 				{scale}

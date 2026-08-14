@@ -6,6 +6,7 @@
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import StarterTemplateGrid from '$lib/components/templates/StarterTemplateGrid.svelte';
+	import { libraryCardImageUrl } from '$lib/client/optimize-image-url';
 
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
@@ -24,12 +25,12 @@
 
 	function savedPreview(row: SavedRow): string {
 		const signed = savedThumbs[row.id];
-		if (signed) return signed;
+		if (signed) return libraryCardImageUrl(signed);
 		const s = row.state;
 		const draft = String(s?.draftPreviewUrl ?? '').trim();
-		if (draft.startsWith('http://') || draft.startsWith('https://')) return draft;
+		if (draft.startsWith('http://') || draft.startsWith('https://')) return libraryCardImageUrl(draft);
 		const tpl = String(s?.templatePreviewUrl ?? '').trim();
-		if (tpl.startsWith('http://') || tpl.startsWith('https://')) return tpl;
+		if (tpl.startsWith('http://') || tpl.startsWith('https://')) return libraryCardImageUrl(tpl);
 		return '';
 	}
 

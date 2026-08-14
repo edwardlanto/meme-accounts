@@ -19,6 +19,7 @@
 	} from '$lib/studio/bulk-workspace';
 	import { type BulkSlide } from '$lib/studio/bulk-to-studio';
 	import BulkLibraryCover from '$lib/components/bulk/BulkLibraryCover.svelte';
+	import { libraryCardImageUrl } from '$lib/client/optimize-image-url';
 	import {
 		ImagePlus,
 		Plus,
@@ -515,7 +516,7 @@
 			headline,
 			textColor,
 			bgSolid,
-			heroUrl,
+			heroUrl: heroUrl ? libraryCardImageUrl(heroUrl) : '',
 			slideCount,
 			slideHints,
 			filmLight,
@@ -1143,15 +1144,15 @@
 		const id = String(row.id ?? '').trim();
 		if (id && brokenSavedThumbIds[id]) return { url: '', fullSlideRaster: false };
 		const signed = studioSavedTemplateThumbById[id];
-		if (signed) return { url: signed, fullSlideRaster: true };
+		if (signed) return { url: libraryCardImageUrl(signed), fullSlideRaster: true };
 		const s = row.state as Record<string, unknown> | undefined;
 		const draftPreviewUrl = String(s?.draftPreviewUrl ?? '').trim();
 		if (draftPreviewUrl.startsWith('http://') || draftPreviewUrl.startsWith('https://')) {
-			return { url: draftPreviewUrl, fullSlideRaster: true };
+			return { url: libraryCardImageUrl(draftPreviewUrl), fullSlideRaster: true };
 		}
 		const templatePreviewUrl = String(s?.templatePreviewUrl ?? '').trim();
 		if (templatePreviewUrl.startsWith('http://') || templatePreviewUrl.startsWith('https://')) {
-			return { url: templatePreviewUrl, fullSlideRaster: false };
+			return { url: libraryCardImageUrl(templatePreviewUrl), fullSlideRaster: false };
 		}
 		return { url: '', fullSlideRaster: false };
 	}
