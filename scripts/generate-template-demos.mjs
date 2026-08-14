@@ -205,7 +205,7 @@ const POSTS = [
 		orientation: 'portrait',
 		fields: {
 			headline: 'POV: you finally deleted the roadmap and asked one customer what hurts',
-			videoUrl: '/videos/demos/neon-city.mp4',
+			videoUrl: '/templates/demos/video-text-poster.mp4',
 			posterUrl: '/templates/demos/video-text-poster.jpg',
 		},
 	},

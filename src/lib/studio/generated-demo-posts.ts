@@ -51,8 +51,8 @@ export const GENERATED_DEMO_POSTS = {
 		posterUrl: "/templates/demos/highlight-hook-poster.jpg",
 	},
 	"video-text": {
-		headline: "POV: you finally deleted the roadmap and asked one customer what hurts",
-		videoUrl: "/videos/demos/neon-city.mp4",
+		headline: "STOP SCROLLING. MOST THINK [[AEROSPACE BREAKTHROUGHS]] START WITH [[MASSIVE ROCKETS.]]",
+		videoUrl: "/templates/demos/video-text-poster.mp4",
 		posterUrl: "/templates/demos/video-text-poster.jpg",
 	},
 	"video-creator": {

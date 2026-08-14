@@ -1,5 +1,6 @@
 import { STUDIO_TEMPLATES, type TemplateId } from './template-ids';
 import { GENERATED_DEMO_POSTS as D } from './generated-demo-posts';
+import { TEXT_ON_VIDEO_SHADOW } from '$lib/textStyleCss';
 
 /** Demo headline when opening News (real story fetch replaces this). */
 export const NEWS_PLACEHOLDER_HEADLINE = D.news.headline;
@@ -312,7 +313,7 @@ export const VIDEO_POST_HEADLINE_STYLE = {
 	align: 'left' as const,
 } as const;
 
-/** Full-bleed video with centered outlined white text (Text on video template). */
+/** Full-bleed video with centered white text (Text on video / POV template). */
 export const VIDEO_TEXT_DEFAULTS = {
 	videoUrl: D['video-text'].videoUrl,
 	watermark: '',
@@ -326,6 +327,8 @@ export const VIDEO_TEXT_HEADLINE_STYLE = {
 	fontFamily: 'Satoshi',
 	fontSize: 64,
 	align: 'center' as const,
+	/** Same as SH → Strong — editable via the floating toolbar. */
+	textShadow: TEXT_ON_VIDEO_SHADOW,
 } as const;
 
 /**

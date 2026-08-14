@@ -27,7 +27,6 @@ import JSZip from 'jszip';
 	import StudioImageStickers from '$lib/components/studio/StudioImageStickers.svelte';
 	import StudioAssetsSidebar from '$lib/components/studio/StudioAssetsSidebar.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
-	import TemplateDevOverride from '$lib/components/TemplateDevOverride.svelte';
 	import {
 		isTemplateDevToolsEnabled,
 		loadEnabledTemplateDevOverride,
@@ -323,6 +322,8 @@ import JSZip from 'jszip';
 	let stockMediaKind = $state<StockMediaKind>('photo');
 	/** Pushed into the assets sidebar search when Generate runs. */
 	let assetsSidebarSeedQuery = $state('');
+	/** Increments on each Generate seed so the sidebar re-runs even for the same query. */
+	let assetsSidebarSeedNonce = $state(0);
 	/** Whether to generate/pull images at all (when off, only text is generated). */
 	let newsGenerateImages = $state(true);
 	type NewsCopyLength = 'default' | 'standard' | 'short';
@@ -563,9 +564,32 @@ import JSZip from 'jszip';
 		return 'editorial photo';
 	}
 
-	function seedAssetsSidebarSearch(query = studioStockQuery()) {
+	/** Match applyStockUrlsToSlides — video templates always prefer Pexels video. */
+	function preferStockVideoForTemplate(template: TemplateId): boolean {
+		return (
+			templateUsesStockVideo(template) ||
+			((template === 'news' || template === 'blank' || template === 'tweet') &&
+				stockMediaKind === 'video')
+		);
+	}
+
+	/** Explicit kind last pushed into the assets sidebar (set on Generate). */
+	let assetsSidebarSeedPexelsKind = $state<'photos' | 'videos'>('photos');
+
+	function seedAssetsSidebarSearch(
+		query = studioStockQuery(),
+		opts?: { preferVideo?: boolean },
+	) {
 		const q = String(query ?? '').trim();
-		if (q) assetsSidebarSeedQuery = q;
+		if (!q) return;
+		const preferVideo = opts?.preferVideo ?? preferStockVideoForTemplate(previewTemplate);
+		assetsSidebarSeedQuery = q;
+		assetsSidebarSeedPexelsKind = preferVideo ? 'videos' : 'photos';
+		/* Bump so the sidebar re-fills even when the query string is unchanged. */
+		assetsSidebarSeedNonce += 1;
+		if (preferVideo && stockMediaKind !== 'video') {
+			stockMediaKind = 'video';
+		}
 	}
 
 	let stockPool: StockPick[] = [];
@@ -577,12 +601,9 @@ import JSZip from 'jszip';
 		slideIdxs: number[],
 		query: string,
 	) {
-		seedAssetsSidebarSearch(query);
 		const q = query.trim() || 'editorial photo';
-		const preferVideo =
-			templateUsesStockVideo(template) ||
-			((template === 'news' || template === 'blank' || template === 'tweet') &&
-				stockMediaKind === 'video');
+		const preferVideo = preferStockVideoForTemplate(template);
+		seedAssetsSidebarSearch(query, { preferVideo });
 		const poolKey = `${q}::${preferVideo ? 'video' : 'photo'}`;
 		if (stockPoolKey !== poolKey || stockPool.length < slideIdxs.length) {
 			stockPool = preferVideo
@@ -2954,27 +2975,64 @@ import JSZip from 'jszip';
 				),
 			};
 		} else if (isVideoStoryFamily(t)) {
+			const defaultHeadline =
+				t === 'videoFeature'
+					? VIDEO_FEATURE_DEFAULTS.headline
+					: t === 'videoPost'
+						? VIDEO_POST_DEFAULTS.headline
+						: t === 'videoSource'
+							? VIDEO_SOURCE_DEFAULTS.headline
+							: t === 'videoText'
+								? VIDEO_TEXT_DEFAULTS.headline
+								: t === 'videoCreator'
+									? VIDEO_CREATOR_DEFAULTS.headline
+									: t === 'videoHook'
+										? VIDEO_HOOK_DEFAULTS.headline
+										: VIDEO_STORY_DEFAULTS.headline;
+			const defaultWatermark =
+				t === 'videoSource'
+					? VIDEO_SOURCE_DEFAULTS.watermark
+					: t === 'videoHook' ||
+						  t === 'videoCreator' ||
+						  t === 'videoPost' ||
+						  t === 'videoText' ||
+						  t === 'videoFeature'
+						? ''
+						: VIDEO_STORY_DEFAULTS.watermark;
+			const defaultVideo = defaultDemoVideoForTemplate(t);
 			videoStoryHeadlineBySlide = videoStoryHeadlineBySlide.map((x, idx) =>
-				idx === i ? VIDEO_STORY_DEFAULTS.headline : x,
+				idx === i ? defaultHeadline : x,
 			);
 			videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, idx) =>
-				idx === i ? VIDEO_STORY_DEFAULTS.watermark : x,
+				idx === i ? defaultWatermark : x,
 			);
-			const patchVideo = (arr: string[] | undefined) =>
-				(arr ?? []).map((x, idx) => (idx === i ? VIDEO_STORY_DEFAULTS.videoUrl : x));
 			bgVideosByTemplate = {
 				...bgVideosByTemplate,
-				videoStory: patchVideo(bgVideosByTemplate.videoStory),
-				videoFit: patchVideo(bgVideosByTemplate.videoFit),
-				videoSplit: patchVideo(bgVideosByTemplate.videoSplit),
-				videoBlur: patchVideo(bgVideosByTemplate.videoBlur),
-				videoHook: patchVideo(bgVideosByTemplate.videoHook),
-				videoCreator: patchVideo(bgVideosByTemplate.videoCreator),
-				videoText: patchVideo(bgVideosByTemplate.videoText),
-				videoSource: patchVideo(bgVideosByTemplate.videoSource),
-				videoFeature: patchVideo(bgVideosByTemplate.videoFeature),
-				videoPost: patchVideo(bgVideosByTemplate.videoPost),
+				[t]: (bgVideosByTemplate[t] ?? []).map((x, idx) => (idx === i ? defaultVideo : x)),
 			};
+			bgImagesByTemplate = {
+				...bgImagesByTemplate,
+				[t]: (bgImagesByTemplate[t] ?? []).map((x, idx) => (idx === i ? '' : x)),
+			};
+			if (t === 'videoCreator' || t === 'videoPost') {
+				const profileDefaults = t === 'videoPost' ? VIDEO_POST_DEFAULTS : VIDEO_CREATOR_DEFAULTS;
+				textCarouselNameBySlide = textCarouselNameBySlide.map((x, idx) =>
+					idx === i ? brandDisplayName || profileDefaults.name : x,
+				);
+				textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, idx) =>
+					idx === i ? brandHandle || profileDefaults.handle : x,
+				);
+				if (t === 'videoPost') {
+					textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, idx) =>
+						idx === i ? VIDEO_POST_DEFAULTS.avatarUrl : x,
+					);
+				}
+			}
+			if (t === 'videoFeature') {
+				blackTextBodyBySlide = blackTextBodyBySlide.map((x, idx) =>
+					idx === i ? VIDEO_FEATURE_DEFAULTS.body : x,
+				);
+			}
 			if (supportsFilmStrip(t)) {
 				const d = filmStripDefaultsFor(t);
 				filmStripTopPctByTemplate = {
@@ -4508,7 +4566,9 @@ import JSZip from 'jszip';
 		videoBlur: emptySlides(() => ({})),
 		videoHook: emptySlides(() => ({})),
 		videoCreator: emptySlides(() => ({})),
-		videoText: emptySlides(() => ({})),
+		videoText: emptySlides(() => ({
+			videoStoryHeadline: { textShadow: VIDEO_TEXT_HEADLINE_STYLE.textShadow },
+		})),
 		videoSource: emptySlides(() => ({})),
 		videoFeature: emptySlides(() => ({})),
 		videoPost: emptySlides(() => ({})),
@@ -5191,7 +5251,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	});
 
 	const toolbarFloatingStyle = $derived.by(() => {
-		const base = getActiveStyleForSelection() ?? {};
+		let base = getActiveStyleForSelection() ?? {};
+		/* POV defaults live in VIDEO_TEXT_HEADLINE_STYLE — surface them in SH so Strong
+		   matches the canvas when the slide style map is still empty / partial. */
+		if (
+			previewTemplate === 'videoText' &&
+			(selectedText === 'videoStoryHeadline' || selectedText === null)
+		) {
+			base = { ...VIDEO_TEXT_HEADLINE_STYLE, ...base };
+		}
 		const paint = toolbarSelectionPaint;
 		if (paint?.markerBg) {
 			return { ...base, bgColor: paint.markerBg };
@@ -13738,21 +13806,6 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				class:is-measured={studioSizeTransitions}
 				class:is-ready={studioRevealReady}
 			>
-				{#if isTemplateDevToolsEnabled()}
-					<div class="absolute left-2 top-2 z-[80]">
-						<TemplateDevOverride
-							templateId={previewTemplate}
-							templateLabel={templateDockTabs.find((t) => t.id === previewTemplate)?.label ?? previewTemplate}
-							onPin={pinCurrentTemplateDesign}
-							onApply={() => applyTemplateDevOverride(previewTemplate, { slides: 'all' })}
-							onSaveTemplate={() =>
-								saveStudioTemplateNamed(
-									`Template · ${templateDockTabs.find((t) => t.id === previewTemplate)?.label ?? 'Studio'}`,
-								)
-							}
-						/>
-					</div>
-				{/if}
 				<!-- Clip any absolutely-positioned template layers so they don't sit over the toolbar -->
 				<div
 					style="height: {previewDisplayH}px; background: var(--app-surface-2); border: 1px solid var(--app-border);"
@@ -15064,12 +15117,19 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						blankTextOverlays.length > 0 ||
 						blankImageOverlays.length > 0 ||
 						!!String(newsSolidBgBySlide[i] ?? '').trim());
+				const vid = String((bgVideosByTemplate[t] ?? [])[i] ?? '').trim();
+				const img = String((bgImagesByTemplate[t] ?? [])[i] ?? '').trim();
+				const poster =
+					img ||
+					(vid ? defaultDemoPosterForTemplate(t) : '') ||
+					'';
 				return {
 					id,
 					slideIndex: i,
 					text: thumbText,
-					img: (bgImagesByTemplate[t] ?? [])[i] ?? '',
-					vid: (bgVideosByTemplate[t] ?? [])[i] ?? '',
+					img,
+					vid,
+					poster,
 					music: slideMusic[i] ?? null,
 					loading:
 						!!((generatingImagesByTemplate[t] ?? [])[i]) ||
@@ -15108,7 +15168,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						filmstripLoading ||
 						filmstripGenerateBusy ||
 						item.loading ||
-						(!isPlaceholder && !item.vid && !rasterThumb && filmstripPreviewInFlight)}
+						(!isPlaceholder && !rasterThumb && filmstripPreviewInFlight)}
 					{@const sortable = useSortable({
 						id: item.id,
 						get index() { return i; },
@@ -15137,20 +15197,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						>
 								{#if showThumbSkeleton}
 									<div class="filmstrip-skel absolute inset-0" aria-hidden="true"></div>
-								{:else if item.vid}
-									<video
-										src={item.vid}
-										class="absolute inset-0 h-full w-full object-cover pointer-events-none"
-										autoplay
-										muted
-										loop
-										playsinline
-										disablepictureinpicture
-										aria-hidden="true"
-										onloadeddata={(e) => {
-											void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
-										}}
-									></video>
 								{:else if rasterThumb}
 									<img
 										src={rasterThumb}
@@ -15162,6 +15208,13 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									<div class="absolute inset-0 flex items-center justify-center text-white/15">
 										<span class="text-[10px] font-mono">#{i + 1}</span>
 									</div>
+								{:else if item.poster}
+									<img
+										src={item.poster}
+										alt=""
+										class="w-full h-full object-cover"
+										draggable="false"
+									/>
 								{:else if item.img}
 									<img
 										src={item.img}
@@ -15170,6 +15223,26 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 										style="opacity: {thumbImgOpacity};"
 										draggable="false"
 									/>
+								{:else if item.vid}
+									<!-- Still frame only — never autoplay demo clips in the filmstrip. -->
+									<video
+										src={item.vid}
+										class="absolute inset-0 h-full w-full object-cover pointer-events-none"
+										muted
+										playsinline
+										preload="metadata"
+										disablepictureinpicture
+										aria-hidden="true"
+										onloadeddata={(e) => {
+											const el = e.currentTarget as HTMLVideoElement;
+											try {
+												el.pause();
+												el.currentTime = 0.05;
+											} catch {
+												/* ignore */
+											}
+										}}
+									></video>
 								{:else}
 									<div
 										class="absolute inset-0"
@@ -15180,7 +15253,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									></div>
 								{/if}
 
-								{#if !showThumbSkeleton && !isPlaceholder && !rasterThumb && !item.vid}
+								{#if !showThumbSkeleton && !isPlaceholder && !rasterThumb && !item.vid && !item.poster}
 									<div
 										class="absolute inset-0 flex items-end p-1.5 bg-gradient-to-t to-transparent {tplate === 'tweet' && item.img
 											? 'from-black/55 via-black/20'
@@ -15195,7 +15268,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									</div>
 								{/if}
 
-								{#if isVideo && !showThumbSkeleton && !item.vid}
+								{#if isVideo && !showThumbSkeleton}
 									<div
 										class="absolute top-0.5 left-0.5 flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-cyan-400/30"
 										title={hasMusic ? `Video · ${item.music?.name}` : 'Video'}
@@ -16350,7 +16423,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		<StudioAssetsSidebar
 			{userId}
 			seedQuery={assetsSidebarSeedQuery}
-			seedPexelsKind={stockMediaKind === 'photo' ? 'photos' : 'videos'}
+			seedNonce={assetsSidebarSeedNonce}
+			seedPexelsKind={assetsSidebarSeedPexelsKind}
 			bind:collapsed={assetsCollapsed}
 			onUseAsBackground={(ref) => void applyAssetAsBackground(ref)}
 			onUseAsBottomBackground={

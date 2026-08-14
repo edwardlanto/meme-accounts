@@ -48,6 +48,7 @@
 		userId = '',
 		collapsed = $bindable(false),
 		seedQuery = '',
+		seedNonce = 0,
 		seedPexelsKind = 'videos',
 		onUseAsBackground,
 		onUseAsBottomBackground,
@@ -59,6 +60,8 @@
 		collapsed?: boolean;
 		/** When Generate runs, fill Unsplash + Pexels search with this query and run both. */
 		seedQuery?: string;
+		/** Bumps on each Generate so the same query can re-seed the fields. */
+		seedNonce?: number;
 		/** Prefer photos or videos when seeding Pexels from Generate. */
 		seedPexelsKind?: 'photos' | 'videos';
 		onUseAsBackground?: (r2Ref: string) => void | Promise<void>;
@@ -112,7 +115,7 @@
 	let pexelsPage = $state(1);
 	let pexelsHasMore = $state(true);
 	let pexelsTotalPages = $state(1);
-	let lastSeededQuery = '';
+	let lastSeedKey = '';
 	let pexelsSearchSeq = 0;
 	let lastPexelsQueryForKind: { photos: string; videos: string } = { photos: '', videos: '' };
 
@@ -131,15 +134,26 @@
 
 	$effect(() => {
 		const q = String(seedQuery ?? '').trim();
-		if (!q || q === lastSeededQuery) return;
-		lastSeededQuery = q;
+		const kind = seedPexelsKind === 'photos' ? 'photos' : 'videos';
+		const nonce = Number(seedNonce) || 0;
+		if (!q) return;
+		const key = `${q}::${kind}::${nonce}`;
+		if (key === lastSeedKey) return;
+		lastSeedKey = key;
+
 		unsplashQuery = q;
 		pexelsQuery = q;
-		const kind = seedPexelsKind === 'photos' ? 'photos' : 'videos';
 		pexelsKind = kind;
-		if (tab === 'library') tab = 'pexels';
-		void searchUnsplash();
-		void searchPexels(null, kind);
+		/* Always open Pexels on Generate — do not leave the user on Unsplash. */
+		tab = 'pexels';
+		if (collapsed) collapsed = false;
+
+		if (kind === 'videos') {
+			void searchPexels(null, 'videos');
+		} else {
+			void searchUnsplash();
+			void searchPexels(null, 'photos');
+		}
 	});
 
 	$effect(() => {

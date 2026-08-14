@@ -185,24 +185,6 @@
 		if (!w) return 'Source:';
 		return /^source\s*:/i.test(w) ? w : `Source: ${w}`;
 	});
-	/** Crisp black outline so white text stays readable on any footage. */
-	const textOnVideoStroke = $derived(
-		previewMode
-			? `
-				-webkit-text-stroke: 1.5px #000;
-				paint-order: stroke fill;
-				text-shadow:
-					-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
-					0 2px 10px rgba(0,0,0,0.45);
-			`
-			: `
-				-webkit-text-stroke: 3px #000;
-				paint-order: stroke fill;
-				text-shadow:
-					-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
-					0 4px 18px rgba(0,0,0,0.5);
-			`,
-	);
 
 	function profileInitials(n: string) {
 		return n
@@ -325,6 +307,8 @@
 	}
 
 	const headlineCss = $derived(hlCss(headlineStyle, 46, 600));
+	/** POV / text-on-video — normal TextStyle pipeline (SH presets), not a hardcoded stroke. */
+	const textOnVideoCss = $derived(hlCss(headlineStyle, textOnVideoFontSize, 800));
 	const watermarkCss = $derived(
 		hlCss(watermarkStyle, 22, 600, `'Satoshi', ui-sans-serif, system-ui, sans-serif`, WATERMARK_INK),
 	);
@@ -955,7 +939,7 @@
 				></div>
 			</div>
 		{:else if layout === 'text'}
-			<!-- Text on video: full-bleed cover + centered outlined white text -->
+			<!-- Text on video: full-bleed cover + centered white text (SH Strong by default) -->
 			<div style="position: absolute; inset: 0; z-index: 0;">
 				{@render draggableMedia('cover')}
 			</div>
@@ -1005,18 +989,11 @@
 									<div
 										data-canvas-paint-root
 										style="
-											text-align: {headlineStyle.align ?? 'center'};
 											width: 100%;
 											margin: 0;
 											white-space: pre-wrap;
 											word-break: break-word;
-											line-height: {headlineStyle.lineHeight ?? 1.15};
-											letter-spacing: -0.03em;
-											color: {headlineStyle.color ?? '#ffffff'};
-											font-weight: {headlineStyle.fontWeight ?? 800};
-											font-family: '{headlineStyle.fontFamily ?? 'Satoshi'}', ui-sans-serif, system-ui, sans-serif;
-											font-size: {textOnVideoFontSize}px;
-											{textOnVideoStroke}
+											{textOnVideoCss}
 										"
 									>
 										<HighlightedText
@@ -1033,8 +1010,6 @@
 												line-height: inherit;
 												white-space: inherit;
 												word-break: inherit;
-												-webkit-text-stroke: inherit;
-												paint-order: inherit;
 												text-shadow: inherit;
 											"
 										/>

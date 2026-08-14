@@ -894,8 +894,8 @@
 				</a>
 			</div>
 
-			<div class="settings-card settings-card--danger">
-				<h2 class="card-title card-title--danger">Danger Zone</h2>
+			<div class="settings-card">
+				<h2 class="card-title">Danger Zone</h2>
 				<p class="card-desc">
 					Permanently delete your account, drafts, uploaded media, and connected data. We purge
 					files stored for your account and cancel active Stripe subscriptions when possible. This cannot be undone.
@@ -905,7 +905,7 @@
 						type="button"
 						variant="outline"
 						size="sm"
-						class="border-red-300 text-red-700 hover:bg-red-50"
+						class="danger-delete-btn self-start w-auto"
 						onclick={() => { showDeleteConfirm = true; deleteErr = ''; }}
 					>
 						<AlertTriangle />
@@ -929,7 +929,8 @@
 						<Button
 							type="button"
 							size="sm"
-							class="bg-red-600 text-white hover:bg-red-700"
+							variant="destructive"
+							class="self-start w-auto"
 							disabled={deleteBusy}
 							onclick={deleteAccount}
 						>
@@ -939,6 +940,7 @@
 							type="button"
 							variant="outline"
 							size="sm"
+							class="self-start w-auto"
 							disabled={deleteBusy}
 							onclick={() => { showDeleteConfirm = false; deleteConfirm = ''; deleteErr = ''; }}
 						>
@@ -990,7 +992,7 @@
 				<div class="hl-card-head">
 					<div>
 						<h2 class="card-title">Highlight</h2>
-						<p class="card-desc">Paint for <span class="mono">[[word]]</span> accents in Studio and Bulk.</p>
+						<p class="card-desc">Accent color for <span class="mono">[[word]]</span> spans in Studio and Bulk.</p>
 					</div>
 					<label class="hl-toggle" class:hl-toggle-on={textHighlightsEnabled}>
 						<span class="hl-toggle-state" aria-hidden="true">{textHighlightsEnabled ? 'On' : 'Off'}</span>
@@ -1019,55 +1021,66 @@
 							INTO OPENAI
 						</p>
 					</div>
-					<div class="hl-swatches" role="listbox" aria-label="Highlight color">
-						{#each HIGHLIGHT_SOLID_PRESETS as c (c)}
-							<button
-								type="button"
-								role="option"
-								aria-selected={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
-								class="hl-swatch"
-								class:hl-swatch--on={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
-								style="background: {c};"
-								title={c}
-								onclick={() => persistHighlightColor(c)}
-							></button>
-						{/each}
-						<label class="hl-custom">
-							<span class="sr-only">Custom highlight color</span>
-							<input
-								type="color"
-								value={highlightColor}
-								oninput={(e) => persistHighlightColor((e.currentTarget as HTMLInputElement).value)}
-							/>
-						</label>
-					</div>
-					<div class="hl-swatches" role="listbox" aria-label="Highlight gradient">
-						{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to] (`${from}-${to}`)}
-							<button
-								type="button"
-								role="option"
-								aria-selected={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
-								class="hl-swatch hl-swatch--grad"
-								class:hl-swatch--on={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
-								style="background: linear-gradient(90deg, {from}, {to});"
-								title="{from} → {to}"
-								onclick={() => persistHighlightGradient(from, to)}
-							></button>
-						{/each}
-					</div>
-					<div class="hl-swatches hl-swatches--patterns" role="listbox" aria-label="Highlight pattern">
-						{#each AVAILABLE_PATTERNS as pat (pat.name)}
-							<button
-								type="button"
-								role="option"
-								aria-selected={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
-								class="hl-swatch hl-swatch--pattern"
-								class:hl-swatch--on={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
-								style="background-image: url('{pat.url}'); background-size: cover; background-position: center;"
-								title={pat.label}
-								onclick={() => persistHighlightPattern(pat.name)}
-							></button>
-						{/each}
+					<div class="hl-palette">
+						<div class="hl-group">
+							<span class="hl-group-label">Solid</span>
+							<div class="hl-swatches" role="listbox" aria-label="Highlight color">
+								{#each HIGHLIGHT_SOLID_PRESETS as c (c)}
+									<button
+										type="button"
+										role="option"
+										aria-selected={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
+										class="hl-swatch"
+										class:hl-swatch--on={highlightStyleKind === 'solid' && highlightColor.toUpperCase() === c.toUpperCase()}
+										style="background: {c};"
+										title={c}
+										onclick={() => persistHighlightColor(c)}
+									></button>
+								{/each}
+								<label class="hl-custom" title="Custom color">
+									<span class="sr-only">Custom highlight color</span>
+									<input
+										type="color"
+										value={highlightColor}
+										oninput={(e) => persistHighlightColor((e.currentTarget as HTMLInputElement).value)}
+									/>
+								</label>
+							</div>
+						</div>
+						<div class="hl-group">
+							<span class="hl-group-label">Gradient</span>
+							<div class="hl-swatches" role="listbox" aria-label="Highlight gradient">
+								{#each HIGHLIGHT_GRADIENT_PRESETS as [from, to] (`${from}-${to}`)}
+									<button
+										type="button"
+										role="option"
+										aria-selected={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
+										class="hl-swatch hl-swatch--grad"
+										class:hl-swatch--on={highlightStyleKind === 'gradient' && highlightColor.toUpperCase() === from.toUpperCase()}
+										style="background: linear-gradient(135deg, {from}, {to});"
+										title="{from} → {to}"
+										onclick={() => persistHighlightGradient(from, to)}
+									></button>
+								{/each}
+							</div>
+						</div>
+						<div class="hl-group">
+							<span class="hl-group-label">Texture</span>
+							<div class="hl-swatches" role="listbox" aria-label="Highlight pattern">
+								{#each AVAILABLE_PATTERNS as pat (pat.name)}
+									<button
+										type="button"
+										role="option"
+										aria-selected={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
+										class="hl-swatch hl-swatch--pattern"
+										class:hl-swatch--on={highlightStyleKind === 'pattern' && highlightPattern === pat.name}
+										style="background-image: url('{pat.url}'); background-size: cover; background-position: center;"
+										title={pat.label}
+										onclick={() => persistHighlightPattern(pat.name)}
+									></button>
+								{/each}
+							</div>
+						</div>
 					</div>
 				{/if}
 				{#if highlightNote}
@@ -1590,10 +1603,6 @@
 		flex-direction: column;
 		gap: 16px;
 	}
-	.settings-card--danger {
-		border-color: rgba(185, 28, 28, 0.16);
-		background: #fff8f7;
-	}
 	.settings-card--info {
 		background: var(--ap-soft);
 	}
@@ -1606,9 +1615,20 @@
 		color: var(--ap-text);
 		margin: 0;
 	}
-	.card-title--danger { color: #b42318; }
 	.card-desc  { font-size: 13.5px; line-height: 1.55; color: var(--ap-text-2); margin: 0; max-width: 62ch; }
 	.card-note  { font-size: 12.5px; color: var(--ap-text-2); padding: 10px 12px; border-radius: 12px; background: var(--ap-soft); border: 1px solid var(--ap-line); }
+
+	/* Danger delete — hug content (settings-card is column flex + stretch). */
+	:global(.danger-delete-btn) {
+		align-self: flex-start !important;
+		width: auto !important;
+		color: #b42318;
+		border-color: color-mix(in srgb, #b42318 28%, var(--ap-line));
+	}
+	:global(.danger-delete-btn:hover) {
+		background: color-mix(in srgb, #b42318 6%, var(--ap-bg));
+		color: #912018;
+	}
 
 	/* ── Profile ───────────────────────────────────────────────── */
 	.profile-row { display: flex; align-items: center; gap: 1rem; }
@@ -1649,54 +1669,60 @@
 		justify-content: space-between;
 		gap: 16px;
 	}
-	.hl-card-head .card-desc { margin-top: 4px; }
+	.hl-card-head .card-desc { margin-top: 6px; }
 	.hl-toggle {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
 		flex-shrink: 0;
-		padding: 6px 10px;
+		padding: 5px 8px 5px 12px;
 		border-radius: 999px;
 		border: 1px solid var(--ap-line);
 		background: var(--ap-soft);
 		cursor: pointer;
 		user-select: none;
+		transition: border-color 0.15s ease, background 0.15s ease;
 	}
 	.hl-toggle-on {
-		border-color: color-mix(in srgb, var(--ap-text) 18%, transparent);
-		background: color-mix(in srgb, var(--ap-text) 6%, transparent);
+		border-color: color-mix(in srgb, var(--ap-text) 16%, var(--ap-line));
+		background: color-mix(in srgb, var(--ap-text) 5%, var(--ap-bg));
 	}
 	.hl-toggle-state {
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: var(--ap-text-2);
+		color: var(--ap-text-3);
 	}
 	.hl-toggle-on .hl-toggle-state { color: var(--ap-text); }
 
 	.hl-preview {
-		border-radius: 16px;
-		background: #111214;
-		padding: 18px 20px;
+		position: relative;
+		border-radius: 14px;
+		background:
+			radial-gradient(120% 80% at 12% 0%, color-mix(in srgb, var(--hl) 18%, transparent), transparent 55%),
+			#0e0f12;
+		padding: 16px 18px 18px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 10px;
+		overflow: hidden;
 	}
 	.hl-preview-kicker {
 		font-size: 10px;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.38);
+		color: rgba(255, 255, 255, 0.4);
 	}
 	.hl-preview-line {
 		margin: 0;
-		font-size: 15px;
+		font-family: 'Satoshi', sans-serif;
+		font-size: 16px;
 		font-weight: 800;
-		letter-spacing: -0.02em;
-		line-height: 1.25;
-		color: #fff;
+		letter-spacing: -0.025em;
+		line-height: 1.3;
+		color: rgba(255, 255, 255, 0.92);
 		text-transform: uppercase;
 	}
 	.hl-preview-line em {
@@ -1711,8 +1737,24 @@
 		background-clip: text;
 		-webkit-text-fill-color: transparent;
 	}
-	.hl-swatches--patterns {
-		margin-top: 10px;
+
+	.hl-palette {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		padding-top: 2px;
+	}
+	.hl-group {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.hl-group-label {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ap-text-3);
 	}
 	.hl-swatches {
 		display: flex;
@@ -1721,64 +1763,59 @@
 		gap: 8px;
 	}
 	.hl-swatch {
-		width: 28px;
-		height: 28px;
+		width: 30px;
+		height: 30px;
 		border-radius: 999px;
-		border: 2px solid transparent;
-		box-shadow: inset 0 0 0 1px rgba(15, 15, 16, 0.12);
+		border: none;
+		box-shadow: inset 0 0 0 1px rgba(15, 15, 16, 0.1);
 		cursor: pointer;
 		padding: 0;
 		transition: transform 0.15s ease, box-shadow 0.15s ease;
 	}
-	.hl-swatch:hover { transform: scale(1.08); }
+	.hl-swatch:hover { transform: scale(1.06); }
 	.hl-swatch--on {
-		box-shadow: 0 0 0 2px var(--ap-bg), 0 0 0 4px #111214;
+		box-shadow:
+			0 0 0 2px var(--ap-bg),
+			0 0 0 3.5px var(--ap-text);
 	}
 	.hl-swatch--grad {
-		width: 40px;
+		width: 44px;
+		border-radius: 999px;
+	}
+	.hl-swatch--pattern {
+		background-color: #1a1a1c;
 	}
 	.hl-custom {
-		width: 28px;
-		height: 28px;
+		width: 30px;
+		height: 30px;
 		border-radius: 999px;
 		overflow: hidden;
 		border: 1px dashed var(--ap-line-2);
+		background:
+			conic-gradient(from 90deg, #f43f5e, #f59e0b, #22c55e, #3b82f6, #a855f7, #f43f5e);
 		cursor: pointer;
+		position: relative;
+		flex-shrink: 0;
+	}
+	.hl-custom::after {
+		content: '';
+		position: absolute;
+		inset: 4px;
+		border-radius: 999px;
+		background: var(--ap-bg);
+		pointer-events: none;
 	}
 	.hl-custom input {
-		width: 140%;
-		height: 140%;
-		margin: -20%;
+		position: absolute;
+		inset: 0;
+		opacity: 0;
 		cursor: pointer;
-		border: 0;
+		width: 100%;
+		height: 100%;
+		border: none;
 		padding: 0;
-		background: none;
+		z-index: 1;
 	}
-	.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
-	.form-input {
-		padding: 0.55rem 0.85rem; border-radius: 9px;
-		background: var(--panel-bg-2); border: 1px solid var(--panel-border);
-		color: var(--t-strong); font-size: 0.8125rem;
-		font-family: 'Satoshi', sans-serif; outline: none; width: 100%;
-	}
-	.input-copy-wrap { position: relative; }
-	.input-copy-wrap .form-input { padding-right: 2.5rem; }
-	.copy-btn {
-		position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
-		padding: 0.25rem; border: none; background: transparent;
-		color: var(--t-muted); cursor: pointer; transition: color 0.15s; border-radius: 4px;
-	}
-	.copy-btn:hover { color: var(--t-strong); }
-
-	.pref-list { display: flex; flex-direction: column; gap: 0; }
-	.pref-row {
-		display: flex; align-items: center; justify-content: space-between;
-		padding: 0.85rem 0; border-bottom: 1px solid var(--panel-border); gap: 1rem;
-	}
-	.pref-row:last-child { border-bottom: none; }
-	.pref-label { font-size: 0.875rem; color: var(--t-strong); font-weight: 500; margin: 0 0 0.2rem; }
-	.pref-sub   { font-size: 0.75rem; color: var(--t-muted); margin: 0; }
-	.pref-value { font-size: 0.75rem; font-family: 'Satoshi', sans-serif; color: var(--t); white-space: nowrap; }
 
 	.btn-danger {
 		display: inline-flex; align-items: center; gap: 0.4rem;

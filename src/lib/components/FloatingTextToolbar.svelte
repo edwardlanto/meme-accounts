@@ -188,7 +188,8 @@
 	}
 
 	function pickTextShadow(value: string | undefined) {
-		onChange({ textShadow: value });
+		/* Empty string clears and sticks through template-default merges (unlike undefined). */
+		onChange({ textShadow: value ?? '' });
 		shadowPickerOpen = false;
 	}
 

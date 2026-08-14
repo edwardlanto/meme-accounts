@@ -22,8 +22,22 @@ export const TEXT_SHADOW_PRESETS: TextShadowPreset[] = [
 	{ id: 'hard', label: 'Hard drop', value: '0 4px 0 rgba(0,0,0,0.85)' },
 	{ id: 'glow-light', label: 'Glow light', value: '0 0 14px rgba(255,255,255,0.65)' },
 	{ id: 'glow-dark', label: 'Glow dark', value: '0 0 18px rgba(0,0,0,0.75)' },
-	{ id: 'outline', label: 'Outline', value: '2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000' },
+	/**
+	 * Hard halo + soft drop — same look POV used to hardcode with -webkit-text-stroke.
+	 * Customers can pick this (or clear it) from the SH toolbar on any template.
+	 */
+	{
+		id: 'outline',
+		label: 'Outline',
+		value:
+			'-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, -2px 0 0 #000, 2px 0 0 #000, 0 -2px 0 #000, 0 2px 0 #000, 0 4px 18px rgba(0,0,0,0.5)',
+	},
 ];
+
+/** Default shadow for text-on-video / POV starters (matches Strong preset). */
+export const TEXT_ON_VIDEO_SHADOW =
+	TEXT_SHADOW_PRESETS.find((p) => p.id === 'strong')?.value ??
+	'0 2px 4px rgba(0,0,0,0.95), 0 6px 20px rgba(0,0,0,0.55)';
 
 /** Split a CSS shadow list on top-level commas (`rgba()` commas stay intact). */
 export function splitCssShadowList(value: string): string[] {
