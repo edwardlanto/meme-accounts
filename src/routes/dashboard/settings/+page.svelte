@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabase';
 	import { goto, invalidateAll } from '$app/navigation';
+	import { passwordResetRedirectTo } from '$lib/auth-modal';
 	import { PLAN_CATALOG } from '$lib/pricing-catalog';
 	import {
 		DEFAULT_BRAND_KIT,
@@ -336,7 +337,7 @@
 		accountErr = '';
 		accountMsg = '';
 		const { error } = await supabase.auth.resetPasswordForEmail(email, {
-			redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent('/dashboard/settings?pw=1')}`,
+			redirectTo: passwordResetRedirectTo(location.origin),
 		});
 		resetBusy = false;
 		if (error) {

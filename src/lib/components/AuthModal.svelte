@@ -20,14 +20,12 @@
 	let loading = $state(false);
 	let error = $state('');
 	let success = $state(false);
-	let resetSent = $state(false);
 
 	onMount(() => subscribeAuthModal((s) => {
 		modal = s;
 		if (s.open) {
 			error = s.bannerError || '';
 			success = false;
-			resetSent = false;
 		}
 	}));
 
@@ -43,7 +41,6 @@
 	function switchMode(mode: AuthMode) {
 		error = '';
 		success = false;
-		resetSent = false;
 		setAuthModalMode(mode);
 	}
 
@@ -107,24 +104,9 @@
 		});
 	}
 
-	async function forgotPassword() {
-		const e = email.trim();
-		if (!e) {
-			error = 'Enter your email above, then tap Forgot password.';
-			return;
-		}
-		loading = true;
-		error = '';
-		const { error: err } = await supabase.auth.resetPasswordForEmail(e, {
-			redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent('/dashboard/settings?pw=1')}`,
-		});
-		loading = false;
-		if (err) {
-			error = err.message;
-			return;
-		}
-		resetSent = true;
-	}
+	const forgotHref = $derived(
+		`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`,
+	);
 </script>
 
 {#if modal.open}
@@ -167,9 +149,6 @@
 						<AlertCircle size={14} />
 						<span>{error}</span>
 					</div>
-				{/if}
-				{#if resetSent}
-					<div class="ok-toast" role="status">Password reset link sent. Check your inbox.</div>
 				{/if}
 
 				<form
@@ -251,9 +230,7 @@
 
 				{#if modal.mode === 'login'}
 					<p class="footer-line">
-						<button type="button" class="text-btn" onclick={forgotPassword} disabled={loading}>
-							Forgot password
-						</button>
+						<a class="text-btn" href={forgotHref} onclick={closeAuthModal}>Forgot password</a>
 					</p>
 					<p class="footer-line">
 						Don't have an account?

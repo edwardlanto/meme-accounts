@@ -6,13 +6,16 @@
 	import { Button } from '$lib/components/ui/button';
 	import {
 		SectionHeader,
+		SectionEyebrow,
 		PhoneMarquee,
 		FeatureTile,
 		BentoMediaCard,
 		StepCard,
-		ProofCard,
+		ProofShowcase,
 		PricingSection,
+		UseCaseShowcase,
 	} from '$lib/components/marketing';
+	import type { ProofItem, UseCaseItem } from '$lib/components/marketing';
 	import { initReveal } from '$lib/marketing/reveal';
 	import type { HomeMarqueeSlide } from '$lib/marketing/home-marquee-slides';
 
@@ -50,6 +53,39 @@
 		},
 	];
 
+	const useCaseShowcase: UseCaseItem[] = [
+		{
+			id: 'news',
+			title: 'News & local brands',
+			description:
+				'Paste a headline or URL — AI drafts the carousel, generates on-brand images, and wraps it in News Studio chrome. Build a city page or niche news brand that funnels attention back to what you sell.',
+			ctaLabel: 'Explore News Studio',
+			href: '/dashboard/studio?template=news',
+			image: '/templates/demos/news.jpg',
+			accent: '#fbbf24',
+		},
+		{
+			id: 'faceless',
+			title: 'Faceless reels',
+			description:
+				'Creator hooks, POV text, and Highlight clips on stock footage — type auto-fits the layout and [[keywords]] pop in your brand color. No camera, no CapCut rabbit holes.',
+			ctaLabel: 'Explore video templates',
+			href: '/dashboard/studio?template=creator',
+			image: '/templates/demos/video-creator-poster.jpg',
+			accent: '#e879f9',
+		},
+		{
+			id: 'bulk',
+			title: 'Bulk concept testing',
+			description:
+				'Spin up a week of meme posts in one pass — mix templates, stock media, and AI images, then refine winners in Studio before you launch or scale spend.',
+			ctaLabel: 'Try bulk studio',
+			href: '/dashboard/bulk',
+			image: '/placeholders/home/feat-carousels.png',
+			accent: '#7bf1a8',
+		},
+	];
+
 	const workflowSteps = [
 		{
 			badge: '30+ NICHES',
@@ -77,30 +113,82 @@
 		},
 	];
 
-	const proofPosts = [
+	const proofPosts: ProofItem[] = [
 		{
-			title: 'Breaking headline → full news carousel in one pass',
+			id: 'news',
+			layout: 'featured',
+			tag: 'News Studio',
+			metric: 'AI images + auto highlights',
+			title: 'Headline in → full news carousel out',
+			description:
+				'Fal-generated images, auto-sized type, and [[keyword]] highlights on every slide. Drop a URL or topic and export a feed-ready carousel.',
 			format: 'News Studio',
+			platform: 'Instagram · Facebook',
+			image: '/templates/demos/news.jpg',
+			href: '/dashboard/studio?template=news',
+		},
+		{
+			id: 'creator',
+			layout: 'side',
+			tag: 'Creator hook',
+			metric: 'Stock video built in',
+			title: 'Profile row + bold hook above a letterboxed clip',
+			description:
+				'Verified badge, two-line headline with [[emphasis]], and Pexels stock footage — text auto-fits the letterbox band.',
+			format: 'Creator hook',
+			platform: 'TikTok · Reels',
+			image: '/templates/demos/video-creator-poster.jpg',
+			href: '/dashboard/studio?template=creator',
+		},
+		{
+			id: 'highlight',
+			layout: 'side',
+			tag: 'Highlight',
+			metric: 'Neon keyword pop',
+			title: 'One highlighted word over a full-width clip',
+			description:
+				'Hook copy up top, one [[keyword]] in brand color, stock or uploaded video below — sized for vertical feeds.',
+			format: 'Highlight',
+			platform: 'Reels · TikTok',
+			image: '/templates/demos/highlight-hook-poster.jpg',
+			href: '/dashboard/studio?template=highlight',
+		},
+		{
+			id: 'text',
+			layout: 'tile',
+			tag: 'Text carousel',
+			title: 'Dark branded slides for meme & niche pages',
+			description:
+				'Profile header, long-form story beats, auto-fit type — finance threads, local lore, or hot takes.',
+			format: 'Text carousel',
 			platform: 'Instagram',
-			image: '/placeholders/home/feat-news-studio.png',
+			image: '/placeholders/carousel/text-cover.png',
+			href: '/dashboard/studio?template=text',
 		},
 		{
-			title: 'Faceless reel with captions, no camera required',
-			format: 'Video Story',
+			id: 'pov',
+			layout: 'tile',
+			tag: 'Text on video',
+			title: 'POV copy on full-bleed stock clip',
+			description:
+				'Centered outlined text with shadow presets, 10M+ stock videos, and type that scales to your aspect ratio.',
+			format: 'Text on video',
 			platform: 'TikTok',
-			image: '/placeholders/home/feat-viral-hooks.png',
+			image: '/templates/demos/video-text-poster.jpg',
+			href: '/dashboard/studio?template=pov',
 		},
 		{
-			title: 'Build a local news brand for your city',
-			format: 'News → Post',
-			platform: 'Facebook',
-			image: '/placeholders/carousel/tweet-cover.png',
-		},
-		{
-			title: 'One topic → a week of posts from bulk studio',
-			format: 'Bulk export',
+			id: 'bulk',
+			layout: 'tile',
+			tag: 'Bulk studio',
+			metric: '7 posts / run',
+			title: 'One topic → a week of meme posts',
+			description:
+				'Batch-generate concepts across templates, then polish winners in Studio and export PNG or MP4.',
+			format: 'Bulk studio',
 			platform: 'Multi-platform',
 			image: '/placeholders/home/feat-carousels.png',
+			href: '/dashboard/bulk',
 		},
 	];
 
@@ -275,11 +363,29 @@
 		</div>
 	</section>
 
-	<!-- §02 Studio bento -->
+	<!-- §02 Use cases -->
+	<section id="use-cases" class="marketing-section">
+		<div class="marketing-container mk-usecase-section">
+			<div class="mk-usecase-section-head mk-reveal">
+				<div>
+					<SectionEyebrow index="02" label="Use cases" />
+					<h2 class="mk-section-title">Built for how<br />creators actually ship.</h2>
+				</div>
+				<p class="mk-section-desc">
+					Pick a workflow — news carousels, faceless reels, or bulk runs. Type auto-fits your canvas,
+					keywords highlight automatically, and AI images sit alongside stock photos and video.
+				</p>
+			</div>
+
+			<UseCaseShowcase items={useCaseShowcase} class="mk-reveal" style="--mk-delay: 0.08s" />
+		</div>
+	</section>
+
+	<!-- §03 Studio bento -->
 	<section id="studio" class="marketing-section marketing-section--soft">
 		<div class="marketing-container">
 			<SectionHeader
-				index="02"
+				index="03"
 				label="The studio"
 				title="Every part of the post,<br />on one canvas."
 				description="News, templates, captions, stock media. All composable. All editable. No Canva rabbit holes required."
@@ -328,11 +434,11 @@
 		</div>
 	</section>
 
-	<!-- §02.5 Workflow -->
+	<!-- §04 Workflow -->
 	<section id="workflow" class="marketing-section">
 		<div class="marketing-container">
 			<SectionHeader
-				index="02.5"
+				index="04"
 				label="Workflow"
 				title="Workflows to go viral."
 				description="From niche to exported post in four steps. Build an audience before launching a product."
@@ -351,55 +457,25 @@
 		</div>
 	</section>
 
-	<!-- §03 Proof (dark) -->
+	<!-- §05 Proof (dark) -->
 	<section id="proof" class="marketing-section marketing-section--dark">
 		<div class="marketing-container">
 			<SectionHeader
-				index="03"
+				index="05"
 				label="Proof"
 				title="Evidence,<br />not inventory."
-				description="Shippable formats you can build today: news carousels, faceless reels, local brands, and bulk runs. Not a template graveyard."
+				description="Every card opens a real Meme Accounts template — News Studio, Creator hook, Highlight, Text carousel, POV video, and Bulk. Same layouts you edit in Studio."
 			/>
 
-			<div class="mk-bento-proof">
-				<ProofCard
-					title={proofPosts[0].title}
-					format={proofPosts[0].format}
-					platform={proofPosts[0].platform}
-					image={proofPosts[0].image}
-					class="mk-bento-proof-wide-left"
-				/>
-				<ProofCard
-					title={proofPosts[1].title}
-					format={proofPosts[1].format}
-					platform={proofPosts[1].platform}
-					image={proofPosts[1].image}
-					delay="0.08s"
-				/>
-				<ProofCard
-					title={proofPosts[2].title}
-					format={proofPosts[2].format}
-					platform={proofPosts[2].platform}
-					image={proofPosts[2].image}
-					delay="0.12s"
-				/>
-				<ProofCard
-					title={proofPosts[3].title}
-					format={proofPosts[3].format}
-					platform={proofPosts[3].platform}
-					image={proofPosts[3].image}
-					class="mk-bento-proof-wide-right"
-					delay="0.16s"
-				/>
-			</div>
+			<ProofShowcase items={proofPosts} />
 		</div>
 	</section>
 
-	<!-- §04 Pricing -->
+	<!-- §06 Pricing -->
 	<section id="pricing" class="marketing-section">
 		<div class="marketing-container">
 			<SectionHeader
-				index="04"
+				index="06"
 				label="Plans"
 				title="Pick a plan.<br />Ship more posts."
 				description="Start free. Upgrade when unlimited carousels, news-to-post, and faceless reels earn their keep."

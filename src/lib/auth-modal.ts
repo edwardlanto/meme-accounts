@@ -23,6 +23,11 @@ export function authModalHref(mode: AuthMode, next?: string | null): string {
 	return `/?${params.toString()}`;
 }
 
+/** PKCE recovery link lands on `/auth/callback`, then `/reset-password`. */
+export function passwordResetRedirectTo(origin: string): string {
+	return `${origin.replace(/\/+$/, '')}/auth/callback?next=${encodeURIComponent('/reset-password')}`;
+}
+
 type Listener = (s: AuthModalState) => void;
 
 let state: AuthModalState = {
