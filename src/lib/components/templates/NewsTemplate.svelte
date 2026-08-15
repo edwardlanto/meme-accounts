@@ -277,7 +277,7 @@
 		bgFitMode = $bindable<'cover' | 'contain'>('cover'),
 		bgContainMagnify = $bindable(100),
 		textPanelOffsetY = $bindable(0),
-		shadowHeight = $bindable(92),
+		shadowHeight = $bindable(48),
 		shadowStrength = $bindable(1),
 		shadowCurve = $bindable<BottomShadowCurve>('news'),
 		gridImage = '',
@@ -2057,8 +2057,8 @@
 			></div>
 		{/if}
 
-		<!-- Gradient overlay — below text (z≈60) so copy always overlaps the letterbox/shadow. -->
-		<div style="position: absolute; inset: 0; z-index: 36; pointer-events: none;
+		<!-- Bottom letterbox shadow — above bg/circle/cutout (z≈48), below stickers (z≈55) + text (z≈60). -->
+		<div style="position: absolute; inset: 0; z-index: 52; pointer-events: none;
 			background: {shadowGradient};"></div>
 
 		<!-- ── Grid overlay (tiled texture) ───────────────────────────────── -->
@@ -2692,7 +2692,7 @@
 			<!-- Cutout must pan + zoom identically to the background (it was
 			     derived from the same pixels). Mirror the zoom/pan math above. -->
 			<!-- Above circle badge (z≈45) so the subject overlaps the ring;
-			     below the text stack (z≈60) so headlines always overlap letterbox/shadow. -->
+			     below bottom shadow (z≈52) so letterbox stays visible over the cutout. -->
 			<div style="position: absolute; inset: 0; overflow: hidden; z-index: 48; pointer-events: none;">
 				{#if bgFitMode === 'contain'}
 					<div

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { FONT_TEMPLATE_DEFAULT, FONT_UI_STACK } from '$lib/fonts/brand-fonts';
 	import { supabase } from '$lib/supabase';
+	import { fetchDraftLibraryRows } from '$lib/studio/draft-library';
 	import { onMount, tick, untrack } from 'svelte';
 	import { goto, afterNavigate } from '$app/navigation';
 import { toPng } from 'html-to-image';
@@ -1030,14 +1031,23 @@ import JSZip from 'jszip';
 		// Only fills when the target field is empty.
 		if (t === 'news') {
 			if (!String(slides[idx] ?? '').trim()) {
-				slides = slides.map((x, i) => (i === idx ? NEWS_PLACEHOLDER_HEADLINE : x));
+				const beat =
+					fallbackStoryBeats(NEWS_PLACEHOLDER_HEADLINE, NEWS_DEFAULT_SUBTEXT, Math.max(idx + 1, slides.length))[
+						idx
+					] ?? NEWS_PLACEHOLDER_HEADLINE;
+				slides = slides.map((x, i) => (i === idx ? beat : x));
 			}
 			while (newsSubtextBySlide.length <= idx) {
 				newsSubtextBySlide = [...newsSubtextBySlide, ''];
 			}
 			if (!String(newsSubtextBySlide[idx] ?? '').trim()) {
+				const subs = distributeNewsSubtextAcrossSlides(
+					NEWS_DEFAULT_SUBTEXT,
+					slides,
+					Math.max(idx + 1, slides.length),
+				);
 				newsSubtextBySlide = newsSubtextBySlide.map((x, i) =>
-					i === idx ? NEWS_DEFAULT_SUBTEXT : x,
+					i === idx ? (subs[idx] ?? NEWS_DEFAULT_SUBTEXT) : x,
 				);
 			}
 			if (isPlaceholderNewsSource(source)) source = defaultNewsSource();
@@ -4078,7 +4088,7 @@ import JSZip from 'jszip';
 	let shadowCurve = $state<BottomShadowCurve>(NEWS_DEFAULT_LAYOUT.shadowCurve);
 	let shadowAutoFit = $state(true);
 
-	/** Keep the News vignette at the Hook-depth floor after generate / layout restore. */
+	/** Keep the News vignette at the default floor after generate / layout restore. */
 	function ensureNewsShadowCoverage() {
 		if (shadowStrength <= 0 || shadowHeight < NEWS_DEFAULT_LAYOUT.shadowHeight) {
 			shadowHeight = NEWS_DEFAULT_LAYOUT.shadowHeight;
@@ -6786,14 +6796,35 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (typeof s.textColor === 'string') textColor = s.textColor;
 		// Intentionally do NOT restore `exportedSlides` (huge data URLs) from drafts.
 
-		// Empty hook copy + white solid fill (common in partial saves) reads as a "broken" blank canvas.
+		// Empty News copy (common in partial saves) reads as a "broken" blank canvas / empty filmstrip.
 		if (
 			!forcedBlankFromQuery &&
 			slides.length > 0 &&
 			coerceTemplateId(slideTemplates[0]) === 'news' &&
-			!String(slides[0] ?? '').trim()
+			slides.some((row, i) => coerceTemplateId(slideTemplates[i] ?? 'news') === 'news' && !String(row ?? '').trim())
 		) {
-			slides = slides.map((row, i) => (i === 0 ? NEWS_PLACEHOLDER_HEADLINE : row));
+			const n = slides.length;
+			const starterHeadlines = fallbackStoryBeats(
+				NEWS_PLACEHOLDER_HEADLINE,
+				NEWS_DEFAULT_SUBTEXT,
+				n,
+			);
+			slides = slides.map((row, i) =>
+				coerceTemplateId(slideTemplates[i] ?? 'news') === 'news' && !String(row ?? '').trim()
+					? (starterHeadlines[i] ?? NEWS_PLACEHOLDER_HEADLINE)
+					: row,
+			);
+			const starterSubs = distributeNewsSubtextAcrossSlides(
+				NEWS_DEFAULT_SUBTEXT,
+				slides,
+				n,
+			);
+			newsSubtextBySlide = Array.from({ length: n }, (_, i) => {
+				const cur = String(newsSubtextBySlide[i] ?? '').trim();
+				if (cur) return cur;
+				if (coerceTemplateId(slideTemplates[i] ?? 'news') !== 'news') return cur;
+				return starterSubs[i] ?? NEWS_DEFAULT_SUBTEXT;
+			});
 		}
 
 		// Generating flags are ephemeral UI state — never restore from drafts.
@@ -6835,7 +6866,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (force || isPlaceholderNewsSource(source)) source = next;
 	}
 
-	/** Brand logo → Text Carousel / white-post / video-post avatar disc. */
+	/** Brand avatar (or logo fallback) → Text Carousel / white-post / video-post avatar disc. */
 	function applyBrandLogoToProfileAvatars(logoRaw: string, force = false) {
 		const logo = String(logoRaw ?? '').trim();
 		if (!logo) return;
@@ -6847,6 +6878,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		});
 		const changed = next.some((v, i) => v !== (textCarouselAvatarImageBySlide[i] ?? ''));
 		if (changed) textCarouselAvatarImageBySlide = next;
+
+		const nextTweet = Array.from({ length: n }, (_, i) => {
+			const cur = String(tweetTopAvatarImageBySlide[i] ?? '').trim();
+			if (force || !cur) return logo;
+			return cur;
+		});
+		const tweetChanged = nextTweet.some((v, i) => v !== (tweetTopAvatarImageBySlide[i] ?? ''));
+		if (tweetChanged) tweetTopAvatarImageBySlide = nextTweet;
 	}
 
 	/** Push News logo chrome onto every slide from brand kit values. */
@@ -6865,6 +6904,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	function applyNewsSourceChromeFromKit(kit: {
 		displayName?: string;
 		logoUrl?: string;
+		avatarUrl?: string;
 		sourceLabelMode?: 'text' | 'logo';
 		sourceLogoWidth?: number;
 		sourceBorderKind?: 'none' | 'rules' | 'box';
@@ -6885,8 +6925,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			sourceLogoSrc = String(kit.logoUrl).trim();
 			if (sourceLogoSrc) {
 				sourceLabelMode = 'logo';
-				applyBrandLogoToProfileAvatars(sourceLogoSrc, false);
+				void ensureR2Resolved(sourceLogoSrc);
 			}
+		}
+		const avatar = String(kit.avatarUrl ?? '').trim() || String(kit.logoUrl ?? '').trim();
+		if (avatar) {
+			applyBrandLogoToProfileAvatars(avatar, false);
+			void ensureR2Resolved(avatar);
 		}
 		const w = Number(kit.sourceLogoWidth);
 		if (Number.isFinite(w) && w > 0) sourceLogoWidth = Math.round(Math.max(80, Math.min(400, w)));
@@ -7442,15 +7487,18 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		slideTemplates = Array.from({ length: targetLen }, () => 'news');
 		slideCount = targetLen;
 
+		/* Every filmstrip cell needs copy — Hook-only seeds left Slide 2+ looking blank. */
+		const starterHeadlines = fallbackStoryBeats(demoHeadline, demoSub, targetLen);
 		slides = Array.from({ length: targetLen }, (_, i) => {
 			const cur = String(slides[i] ?? '').trim();
-			if (i === 0) return force || !cur ? demoHeadline : cur;
-			return force ? '' : cur;
+			if (!force && cur) return cur;
+			return starterHeadlines[i] ?? demoHeadline;
 		});
+		const starterSubs = distributeNewsSubtextAcrossSlides(demoSub, slides, targetLen);
 		newsSubtextBySlide = Array.from({ length: targetLen }, (_, i) => {
 			const cur = String(newsSubtextBySlide[i] ?? '').trim();
-			if (i === 0) return force || !cur ? demoSub : cur;
-			return force ? '' : String(newsSubtextBySlide[i] ?? '');
+			if (!force && cur) return cur;
+			return starterSubs[i] ?? (i === 0 ? demoSub : starterSubs[0] ?? demoSub);
 		});
 
 		// Stuck inline-edit buffer wins over `slides[]` in the canvas derived — always clear on seed.
@@ -8223,6 +8271,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			circle2Images,
 			subjectCutouts,
 			slideOverlaysByTemplate,
+			extraUrls: [sourceLogoSrc, brandCta?.image ?? ''],
 		});
 	}
 
@@ -8230,21 +8279,18 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		{ id: string; name: string; updatedAt: string }[]
 	> {
 		if (!userId) return [];
-		const { data, error } = await (supabase as any)
-			.from('drafts')
-			.select('id,updated_at,state')
-			.eq('user_id', userId)
-			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
-			.order('updated_at', { ascending: false })
-			.limit(40);
-		if (error) throw new Error(error.message ?? 'Could not load templates');
-		return ((data ?? []) as { id: string; updated_at?: string; state?: Record<string, unknown> }[]).map(
-			(row) => ({
+		const data = await fetchDraftLibraryRows(supabase, {
+			userId,
+			kind: STUDIO_SAVED_TEMPLATE_KIND,
+			limit: 40,
+		});
+		return data
+			.map((row) => ({
 				id: String(row.id ?? ''),
 				name: String(row.state?._templateName ?? '').trim() || 'Untitled template',
 				updatedAt: String(row.updated_at ?? ''),
-			}),
-		).filter((row) => row.id);
+			}))
+			.filter((row) => row.id);
 	}
 
 	async function saveStudioTemplateNamed(
@@ -12968,7 +13014,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			t === 'news' && i === activeSlide && newsHeadlineLive !== null
 				? newsHeadlineLive.length
 				: (slides[i] ?? '').length;
-		return `${t}:${imgLen}:${vidLen}:${newsLiveLen}:${(tweetTopTextBySlide[i] ?? '').length}:${(tweetTopAvatarImageBySlide[i] ?? '').length}:${(tweetBottomAvatarImageBySlide[i] ?? '').length}:${(articleTextBySlide[i] ?? '').length}:${(textCarouselTextBySlide[i] ?? '').length}:${(imageQuoteTextBySlide[i] ?? '').length}:${(videoStoryHeadlineBySlide[i] ?? '').length}:${(blackTextHeadlineBySlide[i] ?? '').length}:${(blackTextBodyBySlide[i] ?? '').length}:${filmStripTopPctByTemplate[t]?.[i] ?? filmStripDefaultsFor(t).topPct}:${filmStripBottomPctByTemplate[t]?.[i] ?? filmStripDefaultsFor(t).bottomPct}`;
+		const newsSubLen = t === 'news' ? String(newsSubtextBySlide[i] ?? '').length : 0;
+		return `${t}:${imgLen}:${vidLen}:${newsLiveLen}:${newsSubLen}:${(tweetTopTextBySlide[i] ?? '').length}:${(tweetTopAvatarImageBySlide[i] ?? '').length}:${(tweetBottomAvatarImageBySlide[i] ?? '').length}:${(articleTextBySlide[i] ?? '').length}:${(textCarouselTextBySlide[i] ?? '').length}:${(imageQuoteTextBySlide[i] ?? '').length}:${(videoStoryHeadlineBySlide[i] ?? '').length}:${(blackTextHeadlineBySlide[i] ?? '').length}:${(blackTextBodyBySlide[i] ?? '').length}:${filmStripTopPctByTemplate[t]?.[i] ?? filmStripDefaultsFor(t).topPct}:${filmStripBottomPctByTemplate[t]?.[i] ?? filmStripDefaultsFor(t).bottomPct}`;
 	}
 
 	function syncFilmstripSigCacheAfterCapture() {

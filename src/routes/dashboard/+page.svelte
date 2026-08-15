@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { supabase } from '$lib/supabase';
+	import { fetchDraftLibraryRows } from '$lib/studio/draft-library';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
@@ -220,25 +221,21 @@
 		}
 		userId = user.id;
 
-		const [draftRes, savedTplRes] = await Promise.all([
-			(supabase as any)
-				.from('drafts')
-				.select('id,updated_at,created_at,state')
-				.eq('user_id', user.id)
-				.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND)
-				.order('updated_at', { ascending: false })
-				.limit(8),
-			(supabase as any)
-				.from('drafts')
-				.select('id,updated_at,state')
-				.eq('user_id', user.id)
-				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
-				.order('updated_at', { ascending: false })
-				.limit(12),
+		const [recentCarouselsRows, savedTplRows] = await Promise.all([
+			fetchDraftLibraryRows(supabase, {
+				userId: user.id,
+				kind: STUDIO_WORKSPACE_DRAFT_KIND,
+				limit: 8,
+			}),
+			fetchDraftLibraryRows(supabase, {
+				userId: user.id,
+				kind: STUDIO_SAVED_TEMPLATE_KIND,
+				limit: 12,
+			}),
 		]);
 
-		recentCarousels = draftRes.data ?? [];
-		studioSavedTemplates = savedTplRes.data ?? [];
+		recentCarousels = recentCarouselsRows;
+		studioSavedTemplates = savedTplRows;
 		await Promise.all([hydrateRecentCarouselThumbs(), hydrateSavedTemplateThumbs()]);
 		loading = false;
 	});

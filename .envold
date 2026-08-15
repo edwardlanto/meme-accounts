@@ -1,7 +1,7 @@
-PUBLIC_SUPABASE_URL=https://tklwoamidankxlrvffha.supabase.co
-PUBLIC_SUPABASE_ANON_KEY=sb_publishable_WkWZ2XIJ9BOO7Qd4nAEtMw_0u4HhmfI
-SUPABASE_URL=https://tklwoamidankxlrvffha.supabase.co
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrbHdvYW1pZGFua3hscnZmZmhhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjUxMjkyMCwiZXhwIjoyMDkyMDg4OTIwfQ.eezV17Kxhurtd_yluSCbAm6_EZVjAp7fuQnWv5DwB6I
+PUBLIC_SUPABASE_URL=https://xrtsnoalbfaayecochcm.supabase.co
+PUBLIC_SUPABASE_ANON_KEY=sb_publishable_ClmeIEb2_cOSrj6AzKXi9w_1cuW-G4Z
+SUPABASE_URL=https://xrtsnoalbfaayecochcm.supabase.co
+SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpsZ2pub2J6aHZiYnFib2lvZXZjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjY3OTIzOSwiZXhwIjoyMTAyMjU1MjM5fQ.pEYkFpcH_iUZlWRBwqHCuW9X4QwhOUR5fcRfqhh4GT4
 APIFY_API_TOKEN=apify_api_Sja5oOgJEK7OjIO2SxtsbpcS9t3SUc27eHWX
 OPENROUTER_API_KEY="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"
 FIRECRAWL_API_KEY="fc-c74fabd072b540eaa3c454966ec01d80"
@@ -34,9 +34,28 @@ VIDEO_STORAGE=r2
 VIDEO_MAX_HEIGHT=720
 VIDEO_CRF=28
 
-SUPABASE_DATABASE_PASSWORD="8DcaNVkvUjxNF9lm"
+# Whisper captions — small.en is free, accurate, and fast on Apple Silicon
+WHISPER_MODEL=small.en
+WHISPER_MODELS_DIR=/Users/hello/.cache/whisper-cpp
 
-Meme Account Social Poster
+SUPABASE_DB_PASSWORD="fkbmeNUKRGIC3MtK"
 
-http://localhost:3000/api/auth/callback/google
-https://xrtsnoalbfaayecochcm.supabase.co/auth/v1/callback
+UNSPLASH_APPLICATION_ID="918713"
+UNSPLASH_ACCESS_KEY="fzYyfOz0koQl37SnPu5ZWShOse_nrJOXBJO3mOnKdyI"
+UNSPLASH_SECRET_KEY="60simqIgyiwVPUn3xOHNE8iQm1QtRCqCO5olOU-rFBY"
+PEXELS_API_KEY="o1oWXwKMfD4w86VPtpSbdR2FJN2wHUVXgf73HzRGmXfTlc9LhWoNXD4R"
+
+# Stripe — https://dashboard.stripe.com/apikeys
+# Create Products + recurring Prices for Pro/Agency (monthly + yearly), paste price IDs below.
+# Webhook endpoint: POST {PUBLIC_APP_URL}/api/stripe/webhook
+# Events: checkout.session.completed, customer.subscription.updated,
+#         customer.subscription.deleted, invoice.paid, invoice.payment_failed
+STRIPE_SECRET_KEY=sk_test_51U3DMwBnKlpjLhC1T01s2dl5ZRLO82frJpNwha6FhwYVMHSqudGLQqCpF5Gcn6P6DvLUQCEQC1wfq61XByxiRqVL00MnErFOY8
+STRIPE_WEBHOOK_ENDPOINT=
+STRIPE_WEBHOOK_SECRET=
+PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51U3DMwBnKlpjLhC1FdKrFOSBxNGHZbB5ZLDvMkliPTeuBh995vzcoW10AuwyGX5swUL7shOJcvi1TWrmb04qPUln00DZkGjeOD
+STRIPE_PRICE_PRO_MONTHLY=price_1U3kmxBnKlpjLhC1cFXya1iz
+STRIPE_PRICE_PRO_YEARLY=price_1U3kmxBnKlpjLhC1ZgLVxNqO
+STRIPE_PRICE_AGENCY_MONTHLY=price_1U3kmxBnKlpjLhC14Rldjhz3
+STRIPE_PRICE_AGENCY_YEARLY=price_1U3kmxBnKlpjLhC16B3FXiot
+SUPABASE_DB_PASSWORD="fkbmeNUKRGIC3MtK"

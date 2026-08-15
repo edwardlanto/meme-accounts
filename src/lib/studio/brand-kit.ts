@@ -11,9 +11,13 @@ import {
 	type BrandCtaSettings,
 } from './brand-cta';
 import { supabase } from '$lib/supabase';
+import { r2SignRead, r2UploadBlob } from '$lib/r2Client';
+import { isR2Ref, r2KeyFromRef } from './r2-media-resolve';
 
 export type BrandKitSettings = {
 	logoUrl: string;
+	/** Profile disc on Text Carousel / Creator / Tweet slides. Optional. */
+	avatarUrl: string;
 	primaryColor: string;
 	accentColor: string;
 	textColor: string;
@@ -62,6 +66,7 @@ export type BrandKitSettings = {
 
 export const DEFAULT_BRAND_KIT: BrandKitSettings = {
 	logoUrl: '',
+	avatarUrl: '',
 	primaryColor: '#E8C547',
 	accentColor: '#95B8F6',
 	textColor: '#ffffff',
@@ -118,6 +123,7 @@ function normalizeKit(parsed: Partial<BrandKitSettings> | null | undefined, ctaF
 	const fontSize = Number(parsed?.captionFontSize);
 	return {
 		logoUrl: String(parsed?.logoUrl ?? ''),
+		avatarUrl: String(parsed?.avatarUrl ?? ''),
 		primaryColor: String(parsed?.primaryColor ?? DEFAULT_BRAND_KIT.primaryColor),
 		accentColor: String(parsed?.accentColor ?? DEFAULT_BRAND_KIT.accentColor),
 		textColor: String(parsed?.textColor ?? DEFAULT_BRAND_KIT.textColor),
@@ -205,17 +211,95 @@ export function loadBrandKit(userId: string): BrandKitSettings {
 const remotePersistTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const remotePersistInFlight = new Map<string, Promise<void>>();
 
+function isDataImageUrl(u: string): boolean {
+	return u.startsWith('data:image/');
+}
+
+function extFromImageMime(mime: string): string {
+	const m = String(mime ?? '').toLowerCase();
+	if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+	if (m.includes('webp')) return 'webp';
+	if (m.includes('gif')) return 'gif';
+	return 'png';
+}
+
+async function blobFromDataUrl(dataUrl: string): Promise<{ blob: Blob; ext: string }> {
+	const blob = await (await fetch(dataUrl)).blob();
+	return { blob, ext: extFromImageMime(blob.type) };
+}
+
+/** Keep `r2:` / https in Postgres — never persist `data:` or `blob:` pixels. */
+async function toStoredBrandUrl(
+	userId: string,
+	slot: 'logo' | 'cta' | 'avatar',
+	current: string,
+	previousStored: string,
+): Promise<string> {
+	const cur = String(current ?? '').trim();
+	const prev = String(previousStored ?? '').trim();
+	if (isDataImageUrl(cur)) {
+		if (typeof window === 'undefined') return isR2Ref(prev) ? prev : '';
+		try {
+			const { blob, ext } = await blobFromDataUrl(cur);
+			const key = `${userId}/brand/${slot}.${ext}`;
+			await r2UploadBlob({ key, blob, filename: `${slot}.${ext}` });
+			return `r2:${key}`;
+		} catch (e) {
+			console.warn('[brand-kit] media upload failed', e);
+			return isR2Ref(prev) ? prev : '';
+		}
+	}
+	if (isR2Ref(cur)) return cur;
+	if (cur.startsWith('blob:')) return isR2Ref(prev) ? prev : '';
+	// Signed R2 URLs expire — keep the canonical key already in the DB.
+	if (isR2Ref(prev)) return prev;
+	if (cur.startsWith('http://') || cur.startsWith('https://')) return cur;
+	return '';
+}
+
+async function resolveBrandMediaUrl(stored: string): Promise<string> {
+	const s = String(stored ?? '').trim();
+	if (!isR2Ref(s)) return s;
+	const key = r2KeyFromRef(s);
+	if (!key) return '';
+	try {
+		const { url } = await r2SignRead({ key });
+		return String(url ?? '').trim() || s;
+	} catch {
+		return s;
+	}
+}
+
+export async function resolveBrandKitMedia(kit: BrandKitSettings): Promise<BrandKitSettings> {
+	const logoUrl = await resolveBrandMediaUrl(kit.logoUrl);
+	const avatarUrl = await resolveBrandMediaUrl(kit.avatarUrl);
+	const image = await resolveBrandMediaUrl(kit.cta.image);
+	return { ...kit, logoUrl, avatarUrl, cta: { ...kit.cta, image } };
+}
+
+function kitHasEmbeddedMedia(kit: BrandKitSettings): boolean {
+	return (
+		isDataImageUrl(kit.logoUrl.trim()) ||
+		isDataImageUrl(kit.avatarUrl.trim()) ||
+		isDataImageUrl(kit.cta.image.trim())
+	);
+}
+
 /** Upsert brand kit into `drafts` (kind = studio_brand_kit). */
-export async function persistBrandKitRemote(userId: string, settings: BrandKitSettings): Promise<void> {
+export async function persistBrandKitRemote(
+	userId: string,
+	settings: BrandKitSettings,
+): Promise<BrandKitSettings | void> {
 	if (!userId) return;
-	const kit = normalizeKit(settings, settings.cta ?? DEFAULT_BRAND_CTA);
 	const pending = remotePersistInFlight.get(userId);
 	if (pending) await pending.catch(() => {});
 
+	let storedKit: BrandKitSettings | undefined;
 	const run = (async () => {
+		const incoming = normalizeKit(settings, settings.cta ?? DEFAULT_BRAND_CTA);
 		const { data: existing, error: findErr } = await (supabase as any)
 			.from('drafts')
-			.select('id')
+			.select('id,state')
 			.eq('user_id', userId)
 			.eq('kind', STUDIO_BRAND_KIT_KIND)
 			.limit(1)
@@ -224,10 +308,36 @@ export async function persistBrandKitRemote(userId: string, settings: BrandKitSe
 			console.warn('[brand-kit] remote find failed', findErr.message);
 			return;
 		}
+		const prev = (existing?.state ?? {}) as Partial<BrandKitSettings>;
+		const logoUrl = await toStoredBrandUrl(
+			userId,
+			'logo',
+			incoming.logoUrl,
+			String(prev.logoUrl ?? ''),
+		);
+		const avatarUrl = await toStoredBrandUrl(
+			userId,
+			'avatar',
+			incoming.avatarUrl,
+			String(prev.avatarUrl ?? ''),
+		);
+		const ctaImage = await toStoredBrandUrl(
+			userId,
+			'cta',
+			incoming.cta.image,
+			String(prev.cta?.image ?? ''),
+		);
+		storedKit = {
+			...incoming,
+			logoUrl,
+			avatarUrl,
+			cta: { ...incoming.cta, image: ctaImage },
+		};
+
 		if (existing?.id) {
 			const { error } = await (supabase as any)
 				.from('drafts')
-				.update({ state: kit })
+				.update({ state: storedKit })
 				.eq('id', existing.id)
 				.eq('user_id', userId)
 				.eq('kind', STUDIO_BRAND_KIT_KIND);
@@ -237,7 +347,7 @@ export async function persistBrandKitRemote(userId: string, settings: BrandKitSe
 		const { error } = await (supabase as any).from('drafts').insert({
 			user_id: userId,
 			kind: STUDIO_BRAND_KIT_KIND,
-			state: kit,
+			state: storedKit,
 		});
 		if (error) console.warn('[brand-kit] remote insert failed', error.message);
 	})();
@@ -245,6 +355,11 @@ export async function persistBrandKitRemote(userId: string, settings: BrandKitSe
 	remotePersistInFlight.set(userId, run);
 	try {
 		await run;
+		if (!storedKit) return;
+		const display = await resolveBrandKitMedia(storedKit);
+		writeLocalBrandKit(userId, display);
+		emitBrandKitUpdated(display);
+		return display;
 	} finally {
 		if (remotePersistInFlight.get(userId) === run) remotePersistInFlight.delete(userId);
 	}
@@ -305,13 +420,18 @@ export async function hydrateBrandKit(userId: string): Promise<BrandKitSettings>
 				headline: String(raw.cta?.headline ?? local.cta.headline),
 				subline: String(raw.cta?.subline ?? local.cta.subline),
 			});
-			writeLocalBrandKit(userId, remote);
-			emitBrandKitUpdated(remote);
-			return remote;
+			if (kitHasEmbeddedMedia(remote) && typeof window !== 'undefined') {
+				const migrated = await persistBrandKitRemote(userId, remote);
+				if (migrated) return migrated;
+			}
+			const display = await resolveBrandKitMedia(remote);
+			writeLocalBrandKit(userId, display);
+			emitBrandKitUpdated(display);
+			return display;
 		}
 		// First time: seed DB from whatever is already in localStorage.
-		await persistBrandKitRemote(userId, local);
-		return local;
+		const seeded = await persistBrandKitRemote(userId, local);
+		return seeded ?? local;
 	} catch (e) {
 		console.warn('[brand-kit] hydrate error', e);
 		return local;

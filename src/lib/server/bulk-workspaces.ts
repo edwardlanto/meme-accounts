@@ -1,5 +1,5 @@
 import { adminClient } from '$lib/server/auth';
-import type { BulkShow } from '$lib/studio/bulk-to-studio';
+import { defaultRowCaptions, type BulkShow, type BulkSlide } from '$lib/studio/bulk-to-studio';
 
 export type BulkWorkspaceRow = {
 	id: string;
@@ -27,10 +27,65 @@ function firstThumb(shows: BulkShow[]): string | null {
 	for (const show of shows ?? []) {
 		for (const sl of show.slides ?? []) {
 			const t = String(sl.mediaThumb || sl.mediaUrl || '').trim();
-			if (t && !t.startsWith('blob:') && t.length < 2000) return t;
+			if (t && !t.startsWith('blob:') && !t.startsWith('data:') && t.length < 2000) return t;
 		}
 	}
 	return null;
+}
+
+function stripEmbeddedSlideMedia(slide: BulkSlide): BulkSlide {
+	const mediaUrl = String(slide.mediaUrl ?? '').trim();
+	const mediaThumb = String(slide.mediaThumb ?? '').trim();
+	const dropUrl = mediaUrl.startsWith('data:') || mediaUrl.startsWith('blob:');
+	const dropThumb = mediaThumb.startsWith('data:') || mediaThumb.startsWith('blob:');
+	return {
+		...slide,
+		mediaUrl: dropUrl ? (dropThumb ? undefined : mediaThumb || undefined) : mediaUrl || undefined,
+		mediaThumb: dropThumb ? undefined : mediaThumb || undefined,
+	};
+}
+
+function stripEmbeddedShowsMedia(shows: BulkShow[]): BulkShow[] {
+	return shows.map((show) => ({
+		...show,
+		slides: (show.slides ?? []).map(stripEmbeddedSlideMedia),
+	}));
+}
+
+function libraryShowsToShows(cards: unknown): BulkShow[] {
+	if (!Array.isArray(cards)) return [];
+	return cards.map((raw) => {
+		const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+		const cover = (c.coverSlide && typeof c.coverSlide === 'object' ? c.coverSlide : null) as
+			| BulkSlide
+			| null;
+		const thumb = String(c.thumb ?? '').trim();
+		const slide: BulkSlide = cover
+			? {
+					...cover,
+					id: String(cover.id || c.id || 'cover'),
+					template: cover.template,
+					headline: String(cover.headline ?? c.headline ?? ''),
+					body: String(cover.body ?? ''),
+					captions: cover.captions ?? defaultRowCaptions({ enabled: false }),
+				}
+			: {
+					id: 'cover',
+					template: (String(c.template ?? 'news') as BulkSlide['template']) || 'news',
+					headline: String(c.headline ?? ''),
+					body: '',
+					captions: defaultRowCaptions({ enabled: false }),
+					mediaThumb: thumb || undefined,
+					mediaUrl: thumb || undefined,
+				};
+		return {
+			id: String(c.id ?? ''),
+			title: String(c.title ?? 'Untitled'),
+			fromVideoClips: c.fromVideoClips === true,
+			activeSlideId: slide.id,
+			slides: [slide],
+		};
+	});
 }
 
 function titleFromShows(shows: BulkShow[], topic?: string): string {
@@ -40,6 +95,10 @@ function titleFromShows(shows: BulkShow[], topic?: string): string {
 	return (first || 'Bulk slideshow').slice(0, 120);
 }
 
+function viewMissing(message: string): boolean {
+	return /schema cache|does not exist|PGRST205/i.test(message);
+}
+
 export async function saveBulkWorkspaceRow(
 	userId: string,
 	payload: BulkWorkspacePayload,
@@ -47,7 +106,7 @@ export async function saveBulkWorkspaceRow(
 ): Promise<string | null> {
 	try {
 		const admin = adminClient();
-		const shows = Array.isArray(payload.shows) ? payload.shows : [];
+		const shows = stripEmbeddedShowsMedia(Array.isArray(payload.shows) ? payload.shows : []);
 		const row = {
 			user_id: userId,
 			title: titleFromShows(shows, payload.title ?? payload.topic),
@@ -88,6 +147,25 @@ export async function saveBulkWorkspaceRow(
 export async function listBulkWorkspaces(userId: string, limit = 24): Promise<BulkWorkspaceRow[]> {
 	try {
 		const admin = adminClient();
+		const slim = await admin
+			.from('bulk_workspaces_library')
+			.select(
+				'id,user_id,title,topic,thumbnail_url,clip_project_id,selected_show_id,created_at,updated_at,library_shows',
+			)
+			.eq('user_id', userId)
+			.order('updated_at', { ascending: false })
+			.limit(limit);
+		if (slim.error) {
+			if (!viewMissing(String(slim.error.message ?? ''))) {
+				console.warn('[bulk_workspaces] library view:', slim.error.message);
+			}
+		} else {
+			return ((slim.data ?? []) as Array<BulkWorkspaceRow & { library_shows?: unknown }>).map((r) => ({
+				...r,
+				shows: libraryShowsToShows(r.library_shows),
+			}));
+		}
+
 		const { data, error } = await admin
 			.from('bulk_workspaces')
 			.select('*')

@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { Trash2 } from 'lucide-svelte';
 	import { supabase } from '$lib/supabase';
+	import { fetchDraftLibraryRows } from '$lib/studio/draft-library';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import StarterTemplateGrid from '$lib/components/templates/StarterTemplateGrid.svelte';
@@ -103,18 +104,11 @@
 				return;
 			}
 			userId = user.id;
-			const { data, error } = await (supabase as any)
-				.from('drafts')
-				.select('id,updated_at,state')
-				.eq('user_id', user.id)
-				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
-				.order('updated_at', { ascending: false })
-				.limit(40);
-			if (error) {
-				savedLoading = false;
-				return;
-			}
-			savedTemplates = (data ?? []) as SavedRow[];
+			savedTemplates = await fetchDraftLibraryRows(supabase, {
+				userId: user.id,
+				kind: STUDIO_SAVED_TEMPLATE_KIND,
+				limit: 40,
+			});
 			await hydrateThumbs(user.id, savedTemplates);
 			savedLoading = false;
 		})();

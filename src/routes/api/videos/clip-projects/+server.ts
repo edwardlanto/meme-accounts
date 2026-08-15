@@ -97,7 +97,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 				topic: topicHint,
 				summary: p.summary,
 				updatedAt: p.updated_at,
-				hasBulkShows: bulkShows.length > 0,
+				hasBulkShows: bulkShows.length > 0 || p.has_bulk_shows === true,
 				url: `/dashboard/bulk?project=${encodeURIComponent(p.id)}`,
 				shows,
 			};

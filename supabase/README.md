@@ -15,7 +15,7 @@ supabase/
 2. Run each file **in order** (000 → 001 → ...)
 3. Each file is safe to re-run (uses `if not exists` / `on conflict do nothing`)
 
-Latest: `011_studio_assets.sql` — persistent custom image library for News Studio.
+Latest: `019_library_list_views.sql` — slim library views for drafts / bulk / clip projects (list pages skip full JSON).
 
 ## Adding a new migration
 

@@ -25,7 +25,7 @@ export const BOTTOM_SHADOW_PRESETS: BottomShadowPreset[] = [
 	{ id: 'soft', label: 'Soft', height: 44, strength: 0.62, curve: 'soft' },
 	{ id: 'natural', label: 'Natural', height: 58, strength: 0.88, curve: 'natural' },
 	{ id: 'editorial', label: 'Editorial', height: 64, strength: 0.9, curve: 'editorial' },
-	{ id: 'news', label: 'News', height: 92, strength: 1, curve: 'news' },
+	{ id: 'news', label: 'News', height: 48, strength: 1, curve: 'news' },
 	{ id: 'cinematic', label: 'Cinematic', height: 78, strength: 1, curve: 'cinematic' },
 	{ id: 'deep', label: 'Deep', height: 86, strength: 1, curve: 'cinematic' },
 	{ id: 'full', label: 'Full', height: 100, strength: 1, curve: 'news' },
@@ -127,16 +127,17 @@ export function bottomShadowHeightForTextStack(
 	info: { topPct: number; heightPct: number },
 	opts?: { padAbove?: number; padBelow?: number; min?: number; max?: number },
 ): number {
-	const padAbove = opts?.padAbove ?? 12;
-	const padBelow = opts?.padBelow ?? 8;
-	/** Floor high enough that short body slides still match the Hook vignette. */
-	const min = opts?.min ?? 92;
-	const max = opts?.max ?? 98;
+	/** Small pad so the fade starts just above the headline, not near the circle. */
+	const padAbove = opts?.padAbove ?? 4;
+	const padBelow = opts?.padBelow ?? 6;
+	/** Floor matches the News default — short slides stay readable without a tall vignette. */
+	const min = opts?.min ?? 48;
+	const max = opts?.max ?? 82;
 
 	const top = Math.max(0, Math.min(100, info.topPct));
 	const height = Math.max(0, Math.min(100, info.heightPct));
 	const fadeStart = Math.max(0, top - padAbove);
-	const tallBoost = Math.max(0, height - 26) * 0.28;
+	const tallBoost = Math.max(0, height - 26) * 0.12;
 	const textBottomPad = Math.max(0, top + height + padBelow - 100);
 
 	let cover = 100 - fadeStart + tallBoost + textBottomPad;

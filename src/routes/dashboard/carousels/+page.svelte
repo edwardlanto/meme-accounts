@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { supabase } from '$lib/supabase';
+	import { fetchDraftLibraryRows } from '$lib/studio/draft-library';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { stripMarkup } from '$lib/highlight';
@@ -912,37 +913,47 @@
 			}
 			userId = user.id;
 
-			const [carouselRes, draftRes, savedTplRes, bulkRes] = await Promise.all([
-				(supabase as any).from('carousels').select('*').order('updated_at', { ascending: false }),
-				(supabase as any)
-					.from('drafts')
-					.select('id,updated_at,state')
-					.eq('user_id', user.id)
-					.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND)
-					.order('updated_at', { ascending: false })
-					.limit(40),
-				(supabase as any)
-					.from('drafts')
-					.select('id,updated_at,state')
-					.eq('user_id', user.id)
-					.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
-					.order('updated_at', { ascending: false })
-					.limit(48),
-				fetch('/api/bulk/workspaces')
-					.then(async (res) =>
-						res.ok
-							? ((await res.json()) as { workspaces?: BulkWorkspaceCard[] })
-							: { workspaces: [] as BulkWorkspaceCard[] },
-					)
-					.catch(() => ({ workspaces: [] as BulkWorkspaceCard[] })),
-			]);
+			const hadServerLibrary =
+				studioDrafts.length > 0 ||
+				studioSavedTemplates.length > 0 ||
+				bulkWorkspaces.length > 0 ||
+				carousels.length > 0;
 
-			carousels = carouselRes.data ?? [];
-			studioDrafts = draftRes.data ?? [];
-			studioSavedTemplates = savedTplRes.data ?? [];
-			if (Array.isArray(bulkRes.workspaces) && bulkRes.workspaces.length) {
-				bulkWorkspaces = bulkRes.workspaces;
+			if (!hadServerLibrary) {
+				const [carouselRes, drafts, saved, bulkRes] = await Promise.all([
+					(supabase as any)
+						.from('carousels')
+						.select(
+							'id,title,status,thumbnail_url,updated_at,created_at,scheduled_at,published_at,slides',
+						)
+						.order('updated_at', { ascending: false }),
+					fetchDraftLibraryRows(supabase, {
+						userId: user.id,
+						kind: STUDIO_WORKSPACE_DRAFT_KIND,
+						limit: 40,
+					}),
+					fetchDraftLibraryRows(supabase, {
+						userId: user.id,
+						kind: STUDIO_SAVED_TEMPLATE_KIND,
+						limit: 48,
+					}),
+					fetch('/api/bulk/workspaces')
+						.then(async (res) =>
+							res.ok
+								? ((await res.json()) as { workspaces?: BulkWorkspaceCard[] })
+								: { workspaces: [] as BulkWorkspaceCard[] },
+						)
+						.catch(() => ({ workspaces: [] as BulkWorkspaceCard[] })),
+				]);
+
+				carousels = carouselRes.data ?? [];
+				studioDrafts = drafts;
+				studioSavedTemplates = saved;
+				if (Array.isArray(bulkRes.workspaces) && bulkRes.workspaces.length) {
+					bulkWorkspaces = bulkRes.workspaces;
+				}
 			}
+
 			libraryHydratedFromClient = true;
 			loading = false;
 

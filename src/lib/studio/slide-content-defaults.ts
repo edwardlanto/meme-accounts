@@ -32,7 +32,8 @@ export const NEWS_DEFAULT_LAYOUT = {
 	bgFitMode: 'cover' as const,
 	bgContainMagnify: 140,
 	textPanelOffsetY: 0,
-	shadowHeight: 70,
+	/** Keep the letterbox just above the text stack — not climbing toward the circle. */
+	shadowHeight: 48,
 	shadowStrength: 1,
 	/** Match classic News punch (same stops as the pre-curve vignette). */
 	shadowCurve: 'news' as const,

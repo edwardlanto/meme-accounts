@@ -203,7 +203,8 @@ export function inferNewsRecipe(
 ): NewsLayoutRecipe {
 	if (!offsetsAreDefault(offsets)) return 'custom';
 	const base = NEWS_DEFAULT_LAYOUT;
-	const tightShadow = layout.shadowHeight > 0 && layout.shadowHeight <= 48;
+	/** Below the product default — “tight-stack” recipe uses 40. */
+	const tightShadow = layout.shadowHeight > 0 && layout.shadowHeight <= 40;
 	const airyShadow = layout.shadowHeight >= 100;
 	const panelUp = layout.textPanelOffsetY < -20;
 	if (layout.sourceLabelMode === 'logo' && panelUp) return 'logo-above';

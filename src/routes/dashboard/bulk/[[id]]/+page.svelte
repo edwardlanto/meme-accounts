@@ -6,6 +6,7 @@
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase';
 	import {
+		BRAND_KIT_UPDATED_EVENT,
 		DEFAULT_BRAND_KIT,
 		hydrateBrandKit,
 		loadBrandKit,
@@ -301,10 +302,14 @@
 			slides: (show.slides ?? []).map((sl) => {
 				const { mediaLoading: _m, reframeBusy: _r, ...rest } = sl;
 				const mediaUrl = String(rest.mediaUrl ?? '');
-				if (mediaUrl.startsWith('data:')) {
-					return { ...rest, mediaUrl: rest.mediaThumb || '', mediaThumb: rest.mediaThumb };
-				}
-				return rest;
+				const mediaThumb = String(rest.mediaThumb ?? '');
+				const dropUrl = mediaUrl.startsWith('data:') || mediaUrl.startsWith('blob:');
+				const dropThumb = mediaThumb.startsWith('data:') || mediaThumb.startsWith('blob:');
+				return {
+					...rest,
+					mediaUrl: dropUrl ? (dropThumb ? undefined : mediaThumb || undefined) : rest.mediaUrl,
+					mediaThumb: dropThumb ? undefined : rest.mediaThumb,
+				};
 			}),
 		}));
 	}
@@ -495,6 +500,12 @@
 	}
 
 	onMount(async () => {
+		const onBrandKit = (e: Event) => {
+			const kit = (e as CustomEvent<BrandKitSettings>).detail;
+			if (kit) brandKit = kit;
+		};
+		window.addEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+
 		if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
 			history.scrollRestoration = 'manual';
 		}
@@ -510,7 +521,7 @@
 			} = await supabase.auth.getUser();
 			if (!user) {
 				goto('/login');
-				return;
+				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 			}
 			userId = user.id;
 			brandKit = await hydrateBrandKit(user.id);
@@ -549,7 +560,7 @@
 				touchBulkWorkspaceSession(user.id);
 				void persistBulkWorkspace();
 				await finishWorkspaceHydrate({ skeletonCount: shows.length, resumeUrl: true });
-				return;
+				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 			}
 
 			const pendingImport = takeClipImportResult();
@@ -557,7 +568,7 @@
 				onClipImportComplete(pendingImport);
 				touchBulkWorkspaceSession(user.id);
 				await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
-				return;
+				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 			}
 
 			const projectParam = $page.url.searchParams.get('project');
@@ -565,7 +576,7 @@
 				await loadClipProject(projectParam);
 				touchBulkWorkspaceSession(user.id);
 				await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
-				return;
+				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 			}
 
 			const from = $page.url.searchParams.get('from');
@@ -593,7 +604,7 @@
 				touchBulkWorkspaceSession(user.id);
 				void persistBulkWorkspace();
 				await finishWorkspaceHydrate({ skeletonCount: newShows.length, resumeUrl: true });
-				return;
+				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 			}
 
 			const saved = loadBulkWorkspace(user.id);
@@ -609,7 +620,7 @@
 				if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
 				touchBulkWorkspaceSession(user.id);
 				await finishWorkspaceHydrate({ skeletonCount: saved.shows.length, resumeUrl: true });
-				return;
+				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 			}
 
 			if (saved?.shows?.length) {
@@ -646,6 +657,8 @@
 				await finishWorkspaceHydrate({ skeletonCount: Math.max(1, shows.length) });
 			}
 		}
+
+		return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 	});
 
 	function scheduleBulkWorkspaceSave() {
@@ -653,7 +666,7 @@
 		if (workspaceSaveTimer) clearTimeout(workspaceSaveTimer);
 		workspaceSaveTimer = setTimeout(() => {
 			void persistBulkWorkspace();
-		}, 700);
+		}, 5000);
 	}
 
 	async function persistBulkWorkspace() {

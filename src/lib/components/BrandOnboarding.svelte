@@ -3,7 +3,7 @@
 	 * First-run identity sheet — username, handle, and logo for brand kit.
 	 */
 	import { onMount } from 'svelte';
-	import { ImagePlus, X } from 'lucide-svelte';
+	import { ImagePlus, UserRound, X } from 'lucide-svelte';
 	import {
 		hydrateBrandKit,
 		loadBrandKit,
@@ -23,33 +23,45 @@
 	let name = $state('');
 	let handle = $state('');
 	let logoUrl = $state('');
+	let avatarUrl = $state('');
 	let logoInput = $state<HTMLInputElement | null>(null);
+	let avatarInput = $state<HTMLInputElement | null>(null);
 	let error = $state('');
+	let saving = $state(false);
 
-	const canSave = $derived(name.trim().length >= 2);
+	const handleBare = $derived(handle.trim().replace(/^@+/, ''));
+	const canSave = $derived(
+		name.trim().length >= 2 && handleBare.length >= 2 && logoUrl.trim().length > 0 && !saving,
+	);
 
 	onMount(() => {
 		if (!userId) return;
 		void (async () => {
 			const kit = await hydrateBrandKit(userId);
 			if (kit.onboardingComplete) return;
-			if (kit.displayName.trim().length >= 2) {
+			const hasRequired =
+				kit.displayName.trim().length >= 2 &&
+				normalizeBrandHandle(kit.handle).replace(/^@+/, '').length >= 2 &&
+				String(kit.logoUrl ?? '').trim().length > 0;
+			if (hasRequired) {
 				saveBrandKit(userId, { ...kit, onboardingComplete: true });
 				return;
 			}
 			name = kit.displayName;
 			handle = kit.handle;
 			logoUrl = String(kit.logoUrl ?? '').trim();
+			avatarUrl = String(kit.avatarUrl ?? '').trim();
 			open = true;
 		})();
 	});
 
-	function onLogoPicked(e: Event) {
-		const input = e.currentTarget as HTMLInputElement;
-		const file = input.files?.[0] ?? null;
-		input.value = '';
+	function readImageFile(
+		file: File | null,
+		onOk: (dataUrl: string) => void,
+		emptyMsg: string,
+	) {
 		if (!file || !file.type.startsWith('image/')) {
-			error = 'Choose an image file for your logo.';
+			error = emptyMsg;
 			return;
 		}
 		error = '';
@@ -57,41 +69,62 @@
 		reader.onload = () => {
 			const next = typeof reader.result === 'string' ? reader.result : '';
 			if (!next.startsWith('data:image/')) {
-				error = 'Could not read that logo — try a PNG or JPG.';
+				error = 'Could not read that image — try a PNG or JPG.';
 				return;
 			}
-			logoUrl = next;
+			onOk(next);
 		};
 		reader.onerror = () => {
-			error = 'Could not read that logo — try again.';
+			error = 'Could not read that image — try again.';
 		};
 		reader.readAsDataURL(file);
 	}
 
-	function clearLogo() {
-		logoUrl = '';
+	function onLogoPicked(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		input.value = '';
+		readImageFile(file, (next) => (logoUrl = next), 'Choose an image file for your logo.');
+	}
+
+	function onAvatarPicked(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		input.value = '';
+		readImageFile(file, (next) => (avatarUrl = next), 'Choose an image file for your avatar.');
 	}
 
 	function submit() {
 		const displayName = name.trim();
+		const nextHandle = normalizeBrandHandle(handle);
+		const nextLogo = logoUrl.trim();
 		if (displayName.length < 2) {
 			error = 'Add a username — it shows on Text Carousel and Creator slides.';
 			return;
 		}
+		if (nextHandle.replace(/^@+/, '').length < 2) {
+			error = 'Add a handle — it shows under your name on profile slides.';
+			return;
+		}
+		if (!nextLogo) {
+			error = 'Upload a logo — it appears on News slides.';
+			return;
+		}
 		error = '';
-		const nextHandle = normalizeBrandHandle(handle);
-		const nextLogo = logoUrl.trim();
+		saving = true;
 		const kit = loadBrandKit(userId);
 		const saved: BrandKitSettings = {
 			...kit,
 			displayName,
 			handle: nextHandle,
 			logoUrl: nextLogo,
-			sourceLabelMode: nextLogo ? 'logo' : kit.sourceLabelMode,
+			avatarUrl: avatarUrl.trim(),
+			sourceLabelMode: 'logo',
 			onboardingComplete: true,
 		};
 		saveBrandKit(userId, saved);
 		open = false;
+		saving = false;
 		onComplete?.(saved);
 	}
 </script>
@@ -110,7 +143,7 @@
 					submit();
 				}}
 			>
-				<label class="ob-label" for="ob-name">Username</label>
+				<label class="ob-label" for="ob-name">Username <span class="ob-req">Required</span></label>
 				<input
 					id="ob-name"
 					class="ob-input"
@@ -119,8 +152,10 @@
 					placeholder="MEME ACCOUNTS"
 					autocomplete="nickname"
 					maxlength={48}
+					required
+					aria-required="true"
 				/>
-				<label class="ob-label" for="ob-handle">Handle</label>
+				<label class="ob-label" for="ob-handle">Handle <span class="ob-req">Required</span></label>
 				<input
 					id="ob-handle"
 					class="ob-input"
@@ -129,9 +164,11 @@
 					placeholder="@memeaccounts"
 					autocomplete="username"
 					maxlength={48}
+					required
+					aria-required="true"
 				/>
 
-				<p class="ob-label" id="ob-logo-label">Logo</p>
+				<p class="ob-label" id="ob-logo-label">Logo <span class="ob-req">Required</span></p>
 				<input
 					bind:this={logoInput}
 					type="file"
@@ -147,24 +184,56 @@
 							<button type="button" class="ob-logo-btn" onclick={() => logoInput?.click()}>
 								Replace
 							</button>
-							<button type="button" class="ob-logo-btn is-quiet" onclick={clearLogo}>
+							<button type="button" class="ob-logo-btn is-quiet" onclick={() => (logoUrl = '')}>
 								<X size={14} strokeWidth={2.2} />
 								Remove
 							</button>
 						</div>
 					</div>
 				{:else}
-					<button
-						type="button"
-						class="ob-logo-drop"
-						onclick={() => logoInput?.click()}
-					>
+					<button type="button" class="ob-logo-drop" onclick={() => logoInput?.click()}>
 						<span class="ob-logo-icon" aria-hidden="true">
 							<ImagePlus size={18} strokeWidth={2} />
 						</span>
 						<span class="ob-logo-copy">
 							<span class="ob-logo-title">Upload logo</span>
 							<span class="ob-logo-sub">PNG or JPG · used on News slides</span>
+						</span>
+					</button>
+				{/if}
+
+				<p class="ob-label" id="ob-avatar-label">
+					Avatar <span class="ob-opt">Optional</span>
+				</p>
+				<input
+					bind:this={avatarInput}
+					type="file"
+					accept="image/*"
+					class="sr-only"
+					aria-labelledby="ob-avatar-label"
+					onchange={onAvatarPicked}
+				/>
+				{#if avatarUrl}
+					<div class="ob-logo-row">
+						<img class="ob-logo-preview is-round" src={avatarUrl} alt="Avatar preview" />
+						<div class="ob-logo-actions">
+							<button type="button" class="ob-logo-btn" onclick={() => avatarInput?.click()}>
+								Replace
+							</button>
+							<button type="button" class="ob-logo-btn is-quiet" onclick={() => (avatarUrl = '')}>
+								<X size={14} strokeWidth={2.2} />
+								Remove
+							</button>
+						</div>
+					</div>
+				{:else}
+					<button type="button" class="ob-logo-drop" onclick={() => avatarInput?.click()}>
+						<span class="ob-logo-icon is-round" aria-hidden="true">
+							<UserRound size={18} strokeWidth={2} />
+						</span>
+						<span class="ob-logo-copy">
+							<span class="ob-logo-title">Upload avatar</span>
+							<span class="ob-logo-sub">Circle photo on Text Carousel and Creator slides</span>
 						</span>
 					</button>
 				{/if}
@@ -196,6 +265,8 @@
 	.ob-sheet {
 		position: relative;
 		width: min(440px, 100%);
+		max-height: min(92vh, 820px);
+		overflow: auto;
 		padding: 28px 28px 24px;
 		border-radius: 20px;
 		background: #f7f4ee;
@@ -230,6 +301,20 @@
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: rgba(20, 18, 15, 0.5);
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.ob-req {
+		letter-spacing: 0.08em;
+		color: #8a6a1a;
+		font-weight: 700;
+	}
+	.ob-opt {
+		letter-spacing: 0.08em;
+		color: rgba(20, 18, 15, 0.38);
+		font-weight: 700;
 	}
 	.ob-input {
 		margin: 0 0 14px;
@@ -275,6 +360,9 @@
 		color: #0f0f10;
 		flex-shrink: 0;
 	}
+	.ob-logo-icon.is-round {
+		border-radius: 999px;
+	}
 	.ob-logo-copy {
 		display: flex;
 		flex-direction: column;
@@ -306,6 +394,10 @@
 		object-fit: contain;
 		background: #111110;
 		flex-shrink: 0;
+	}
+	.ob-logo-preview.is-round {
+		border-radius: 999px;
+		object-fit: cover;
 	}
 	.ob-logo-actions {
 		display: flex;

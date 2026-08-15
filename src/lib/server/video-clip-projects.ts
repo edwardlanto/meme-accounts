@@ -14,6 +14,8 @@ export type VideoClipProjectRow = {
 	bulk_shows: unknown | null;
 	created_at: string;
 	updated_at: string;
+	/** Present on slim library rows when full `bulk_shows` was omitted. */
+	has_bulk_shows?: boolean;
 };
 
 export type VideoClipProjectPayload = {
@@ -78,9 +80,37 @@ export async function saveVideoClipProject(
 	}
 }
 
+function viewMissing(message: string): boolean {
+	return /schema cache|does not exist|PGRST205/i.test(message);
+}
+
 export async function listVideoClipProjects(userId: string, limit = 12): Promise<VideoClipProjectRow[]> {
 	try {
 		const admin = adminClient();
+		const slim = await admin
+			.from('video_clip_projects_library')
+			.select(
+				'id,user_id,title,thumbnail_url,summary,updated_at,created_at,source,clips,has_bulk_shows',
+			)
+			.eq('user_id', userId)
+			.order('updated_at', { ascending: false })
+			.limit(limit);
+		if (slim.error) {
+			if (!viewMissing(String(slim.error.message ?? ''))) {
+				console.warn('[video_clip_projects] library view:', slim.error.message);
+			}
+		} else {
+			return ((slim.data ?? []) as Array<VideoClipProjectRow & { has_bulk_shows?: boolean }>).map(
+				(r) => ({
+					...r,
+					demo: false,
+					model: '',
+					bulk_shows: null,
+					has_bulk_shows: r.has_bulk_shows === true,
+				}),
+			);
+		}
+
 		const { data, error } = await admin
 			.from('video_clip_projects')
 			.select('*')

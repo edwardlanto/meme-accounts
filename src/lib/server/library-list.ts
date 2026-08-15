@@ -2,6 +2,7 @@ import { adminClient } from '$lib/server/auth';
 import { listBulkWorkspaces } from '$lib/server/bulk-workspaces';
 import { listVideoClipProjects } from '$lib/server/video-clip-projects';
 import { slimBulkCoverSlide, type BulkShow } from '$lib/studio/bulk-to-studio';
+import { fetchDraftLibraryRows } from '$lib/studio/draft-library';
 import type { VideoClip } from '$lib/video-clips/types';
 
 const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
@@ -134,7 +135,7 @@ export function mapClipProjectRows(rows: Awaited<ReturnType<typeof listVideoClip
 			topic: topicHint,
 			summary: p.summary,
 			updatedAt: p.updated_at,
-			hasBulkShows: bulkShows.length > 0,
+			hasBulkShows: bulkShows.length > 0 || p.has_bulk_shows === true,
 			url: `/dashboard/bulk?project=${encodeURIComponent(p.id)}`,
 			shows,
 		};
@@ -151,37 +152,31 @@ export async function loadCarouselLibrary(userId: string) {
 	};
 
 	try {
-		const [carouselsRes, draftsRes, savedRes, bulkRows] = await Promise.all([
+		const [carouselsRes, studioDrafts, studioSavedTemplates, bulkRows] = await Promise.all([
 			admin
 				.from('carousels')
-				.select('*')
+				.select('id,title,status,thumbnail_url,updated_at,created_at,scheduled_at,published_at,slides')
 				.eq('user_id', userId)
 				.order('updated_at', { ascending: false }),
-			admin
-				.from('drafts')
-				.select('id,updated_at,state')
-				.eq('user_id', userId)
-				.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND)
-				.order('updated_at', { ascending: false })
-				.limit(40),
-			admin
-				.from('drafts')
-				.select('id,updated_at,state')
-				.eq('user_id', userId)
-				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
-				.order('updated_at', { ascending: false })
-				.limit(48),
+			fetchDraftLibraryRows(admin, {
+				userId,
+				kind: STUDIO_WORKSPACE_DRAFT_KIND,
+				limit: 40,
+			}),
+			fetchDraftLibraryRows(admin, {
+				userId,
+				kind: STUDIO_SAVED_TEMPLATE_KIND,
+				limit: 48,
+			}),
 			listBulkWorkspaces(userId, 48).catch(() => []),
 		]);
 
 		if (carouselsRes.error) console.warn('[library] carousels:', carouselsRes.error.message);
-		if (draftsRes.error) console.warn('[library] studio drafts:', draftsRes.error.message);
-		if (savedRes.error) console.warn('[library] saved templates:', savedRes.error.message);
 
 		return {
 			carousels: carouselsRes.data ?? [],
-			studioDrafts: draftsRes.data ?? [],
-			studioSavedTemplates: savedRes.data ?? [],
+			studioDrafts,
+			studioSavedTemplates,
 			bulkWorkspaces: mapBulkWorkspaceRows(Array.isArray(bulkRows) ? bulkRows : []),
 		};
 	} catch (e) {

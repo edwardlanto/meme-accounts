@@ -75,6 +75,8 @@ export type StudioR2PrefetchMedia = {
 	subjectCutouts: string[];
 	/** Per-template per-slide rows of sticker overlays — only `.src` is inspected. */
 	slideOverlaysByTemplate: Record<string, Array<Array<{ src?: unknown }>> | undefined>;
+	/** Brand logo / CTA / other standalone refs. */
+	extraUrls?: string[];
 };
 
 /**
@@ -106,5 +108,8 @@ export async function prefetchAllR2RefsInStudioMedia(
 				if (isR2Ref(src)) await ensureR2Resolved(src);
 			}
 		}
+	}
+	for (const u of media.extraUrls ?? []) {
+		if (isR2Ref(u)) await ensureR2Resolved(u);
 	}
 }
