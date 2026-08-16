@@ -17,6 +17,7 @@ export interface Database {
           current_period_end: string | null;
           trial_exports_used: number;
           carousel_tokens_used: number;
+          ai_images_used: number;
           usage_period_start: string | null;
           marketing_emails: boolean;
           created_at: string;
@@ -32,6 +33,7 @@ export interface Database {
           | 'current_period_end'
           | 'trial_exports_used'
           | 'carousel_tokens_used'
+          | 'ai_images_used'
           | 'usage_period_start'
           | 'marketing_emails'
         > & {
@@ -41,6 +43,7 @@ export interface Database {
           current_period_end?: string | null;
           trial_exports_used?: number;
           carousel_tokens_used?: number;
+          ai_images_used?: number;
           usage_period_start?: string | null;
           marketing_emails?: boolean;
         };

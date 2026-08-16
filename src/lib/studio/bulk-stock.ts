@@ -529,27 +529,53 @@ export async function fetchStockMediaPool(query: string, limit = 24): Promise<St
 
 /**
  * Resolve stock for one template + copy. Returns null for text-only templates.
+ * `preferredKind` mirrors Studio’s Stock photos / Stock videos chip.
  */
 export async function resolveStockForTemplate(
 	template: TemplateId,
 	headline: string,
 	body: string,
 	topicHint = '',
+	opts?: { preferredKind?: 'photo' | 'video' },
 ): Promise<StockPick | null> {
 	if (!templateUsesStockMedia(template)) return null;
-	const preferVideo = templateUsesStockVideo(template);
+	const preferred = opts?.preferredKind;
+	const wantVideo =
+		preferred === 'video'
+			? true
+			: preferred === 'photo'
+				? false
+				: templateUsesStockVideo(template);
 	const plan = await resolveStockSearchQueries({
 		topic: topicHint,
-		kind: preferVideo ? 'video' : 'photo',
+		kind: wantVideo ? 'video' : 'photo',
 		slides: [{ headline, body }],
 	});
-	const query =
-		plan.query || stockQueryFromSlide(headline, body, topicHint) || 'editorial photo';
-	if (preferVideo) {
-		const video = await fetchStockVideo(query);
-		if (video) return video;
+	const fallbackQ =
+		stockQueryFromSlide(headline, body, topicHint) ||
+		String(topicHint ?? '').trim() ||
+		'editorial photo';
+	const query = plan.query || fallbackQ;
+	const tryQueries = [
+		query,
+		...plan.queries,
+		String(topicHint ?? '').trim(),
+		fallbackQ,
+	].filter((q, i, arr) => q && arr.indexOf(q) === i);
+
+	if (wantVideo) {
+		for (const q of tryQueries) {
+			const video = await fetchStockVideo(q);
+			if (video) return video;
+		}
+		// Video preferred but unavailable — still try photos for image-capable templates.
+		if (!templateUsesStockImage(template)) return null;
 	}
-	return fetchStockImage(query);
+	for (const q of tryQueries) {
+		const photo = await fetchStockImage(q);
+		if (photo) return photo;
+	}
+	return null;
 }
 
 /** Run stock picks with limited concurrency (keeps Unsplash/Pexels happy). */

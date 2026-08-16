@@ -12,11 +12,11 @@ export const NEWS_DEFAULT_SUBTEXT =
 		? D.news.body
 		: 'The largest AI check ever written - and the market treated it like a Tuesday. SoftBank is all-in on the next decade of compute.';
 
-/** Last-resort News source if the user has no username yet. Prefer brand `displayName`. */
-export const NEWS_DEFAULT_SOURCE = 'YOUR NAME';
+/** News source byline — empty by default (no “YOUR NAME” placeholder). Prefer brand `displayName`. */
+export const NEWS_DEFAULT_SOURCE = '';
 
-/** Optional News source logo asset. */
-export const NEWS_DEFAULT_SOURCE_LOGO = '/logo/meme-accounts-logo.webp';
+/** Optional News source logo asset — none by default; brand kit supplies the mark. */
+export const NEWS_DEFAULT_SOURCE_LOGO = '';
 
 /** Default News badge / canvas geometry (matches initial studio state). */
 export const NEWS_DEFAULT_LAYOUT = {

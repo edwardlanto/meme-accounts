@@ -22,7 +22,6 @@
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
 		BRAND_STACK_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
-		NEWS_DEFAULT_SOURCE,
 		NEWS_HEADLINE_STYLE,
 		NEWS_SUBTEXT_STYLE,
 		PHOTO_CAPTION_DEFAULTS,
@@ -91,6 +90,8 @@
 		textHighlightsEnabled?: boolean;
 		/** Optional News source logo when slide is in logo mode. */
 		sourceLogoSrc?: string;
+		/** Optional News text byline when no logo (brand display name). Empty = hide source. */
+		sourceLabel?: string;
 		/** Brand-kit highlight paint for bare `[[phrase]]` (Settings → Branding). */
 		highlightColor?: string;
 		highlightDefaults?: HighlightDefaults;
@@ -103,6 +104,7 @@
 		preferThumb = false,
 		textHighlightsEnabled = true,
 		sourceLogoSrc = '',
+		sourceLabel = '',
 		highlightColor = DEFAULT_BRAND_KIT.highlightColor,
 		highlightDefaults,
 	}: Props = $props();
@@ -482,7 +484,7 @@
 			<NewsTemplate
 				text={newsTemplateText}
 				subtext={maybeStrip(body)}
-				source={NEWS_DEFAULT_SOURCE}
+				source={String(sourceLabel ?? '').trim()}
 				sourceLogoSrc={String(sourceLogoSrc ?? '').trim()}
 				sourceLabelMode={String(sourceLogoSrc ?? '').trim() ? 'logo' : 'text'}
 				sourceLogoWidth={160}

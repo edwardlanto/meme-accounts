@@ -35,6 +35,7 @@
 		BULK_STYLES,
 		audiencePromptText,
 		type BulkEmotionId,
+		type BulkStyleId,
 		type BulkClipHandoff,
 		type BulkClipHandoffItem,
 		defaultRowCaptions,
@@ -105,7 +106,11 @@
 		Heart,
 		History,
 		Rows3,
+		Wallpaper,
+		Play,
+		Ban,
 	} from 'lucide-svelte';
+	import type { StockMediaKind } from '$lib/studio/compose-prefs';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import {
 		AVAILABLE_PATTERNS,
@@ -125,6 +130,8 @@
 		removePromptHistoryEntry,
 		type StudioPromptHistoryEntry,
 	} from '$lib/studio/prompt-history';
+	import { refreshUsageStatus } from '$lib/usage-client';
+	import { PLAN_CATALOG } from '$lib/pricing-catalog';
 
 	type SlidePopoverKind = 'intel' | 'reframe' | 'captions';
 
@@ -152,13 +159,15 @@
 	let topic = $state('');
 	let audienceId = $state<string>('');
 	let audience = $state('');
-	let style = $state<'bold' | 'editorial' | 'minimal'>('bold');
+	let style = $state<BulkStyleId>('bold');
 	let emotion = $state<BulkEmotionId>('inspiring');
 	/** Number of separate slideshows / ideas */
 	let ideaCount = $state(1);
 	/** Slides inside each slideshow */
 	let slidesPerShow = $state(1);
-	let autoStock = $state(true);
+	/** Off | Stock photos | Stock videos — matches Studio media chip. */
+	type BulkStockMode = 'off' | StockMediaKind;
+	let stockMediaMode = $state<BulkStockMode>('photo');
 	let stockFilling = $state(false);
 	let stockNote = $state('');
 	let generating = $state(false);
@@ -166,8 +175,36 @@
 	let promptHistory = $state<StudioPromptHistoryEntry[]>([]);
 	let promptHistoryOpen = $state(false);
 
+	let usageCanGenerate = $state<boolean | null>(null);
+	let usageRemaining = $state<number | null>(null);
+	let usageUsed = $state(0);
+	let usageLimit = $state<number | null>(5);
+	let usageUpgradeOpen = $state(false);
+	let usageUpgradeMessage = $state('');
+
+	const usageBlocked = $derived(usageCanGenerate === false);
+	const maxIdeasAllowed = $derived(
+		usageRemaining == null ? 8 : Math.max(0, Math.min(8, usageRemaining)),
+	);
 	const promptReady = $derived(topic.trim().length > 0);
-	const promptSubmitDisabled = $derived(!promptReady || generating);
+	const promptSubmitDisabled = $derived(
+		generating || (!usageBlocked && (!promptReady || ideaCount < 1 || maxIdeasAllowed < 1)),
+	);
+
+	$effect(() => {
+		if (maxIdeasAllowed >= 1 && ideaCount > maxIdeasAllowed) {
+			ideaCount = maxIdeasAllowed;
+		}
+	});
+
+	const autoStock = $derived(stockMediaMode !== 'off');
+	const stockChipLabel = $derived(
+		stockMediaMode === 'video'
+			? 'Stock videos'
+			: stockMediaMode === 'photo'
+				? 'Stock photos'
+				: 'No stock',
+	);
 
 	const audienceChipLabel = $derived(
 		audienceId === 'custom'
@@ -176,6 +213,35 @@
 	);
 	const styleChipLabel = $derived(BULK_STYLES.find((s) => s.id === style)?.label ?? 'Style');
 	const emotionChipLabel = $derived(BULK_EMOTIONS.find((e) => e.id === emotion)?.label ?? 'Emotion');
+
+	async function refreshBulkUsage() {
+		try {
+			const s = await refreshUsageStatus();
+			if (!s.signedIn) {
+				usageCanGenerate = false;
+				return;
+			}
+			usageCanGenerate = s.canGenerate !== false;
+			usageRemaining = s.remaining ?? null;
+			usageUsed = typeof s.used === 'number' ? s.used : usageUsed;
+			usageLimit = s.limit === undefined ? usageLimit : s.limit;
+			if (usageRemaining != null && ideaCount > usageRemaining) {
+				ideaCount = Math.max(1, usageRemaining);
+			}
+		} catch {
+			/* keep last known */
+		}
+	}
+
+	function openUsageUpgrade(message?: string) {
+		usageUpgradeMessage =
+			message ||
+			(usageLimit != null
+				? `You've used ${usageUsed}/${usageLimit} carousel${usageLimit === 1 ? '' : 's'} this month. Upgrade for more.`
+				: 'Carousel limit reached. Upgrade for more.');
+		usageUpgradeOpen = true;
+		usageCanGenerate = false;
+	}
 
 	function refreshPromptHistory() {
 		if (!userId) {
@@ -191,7 +257,16 @@
 	}
 
 	function submitBulkPrompt() {
+		if (usageBlocked) {
+			openUsageUpgrade();
+			return;
+		}
 		if (promptSubmitDisabled) return;
+		if (maxIdeasAllowed < 1) {
+			openUsageUpgrade();
+			return;
+		}
+		if (ideaCount > maxIdeasAllowed) ideaCount = maxIdeasAllowed;
 		void generateIdeas();
 	}
 	/** Empty until hydrate so we never flash a blank starter show. */
@@ -507,13 +582,19 @@
 		}
 	}
 
-	onMount(async () => {
+	// Separate, synchronous onMount: only a sync callback's return value is
+	// treated by Svelte as a cleanup/destroy function. The hydration work below
+	// is async, so it cannot also own this listener's teardown.
+	onMount(() => {
 		const onBrandKit = (e: Event) => {
 			const kit = (e as CustomEvent<BrandKitSettings>).detail;
 			if (kit) brandKit = kit;
 		};
 		window.addEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+		return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+	});
 
+	onMount(async () => {
 		if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
 			history.scrollRestoration = 'manual';
 		}
@@ -529,9 +610,10 @@
 			} = await supabase.auth.getUser();
 			if (!user) {
 				goto('/login');
-				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+				return;
 			}
 			userId = user.id;
+			void refreshBulkUsage();
 			brandKit = await hydrateBrandKit(user.id);
 			const caps = captionDefaultsFromKit(brandKit);
 			const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
@@ -568,7 +650,7 @@
 				touchBulkWorkspaceSession(user.id);
 				void persistBulkWorkspace();
 				await finishWorkspaceHydrate({ skeletonCount: shows.length, resumeUrl: true });
-				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+				return;
 			}
 
 			const pendingImport = takeClipImportResult();
@@ -576,7 +658,7 @@
 				onClipImportComplete(pendingImport);
 				touchBulkWorkspaceSession(user.id);
 				await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
-				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+				return;
 			}
 
 			const projectParam = $page.url.searchParams.get('project');
@@ -584,7 +666,7 @@
 				await loadClipProject(projectParam);
 				touchBulkWorkspaceSession(user.id);
 				await finishWorkspaceHydrate({ skeletonCount: shows.length || 2, resumeUrl: true });
-				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+				return;
 			}
 
 			const from = $page.url.searchParams.get('from');
@@ -612,7 +694,7 @@
 				touchBulkWorkspaceSession(user.id);
 				void persistBulkWorkspace();
 				await finishWorkspaceHydrate({ skeletonCount: newShows.length, resumeUrl: true });
-				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+				return;
 			}
 
 			const saved = loadBulkWorkspace(user.id);
@@ -628,7 +710,7 @@
 				if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
 				touchBulkWorkspaceSession(user.id);
 				await finishWorkspaceHydrate({ skeletonCount: saved.shows.length, resumeUrl: true });
-				return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+				return;
 			}
 
 			if (saved?.shows?.length) {
@@ -666,7 +748,6 @@
 			}
 		}
 
-		return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 	});
 
 	function scheduleBulkWorkspaceSave() {
@@ -1254,6 +1335,12 @@
 
 	async function fillStockForShows(showIds?: string[], opts?: { force?: boolean }) {
 		const force = opts?.force === true;
+		if (stockMediaMode === 'off') {
+			stockNote = 'Stock is off — pick Stock photos or Stock videos';
+			setTimeout(() => (stockNote = ''), 2500);
+			return;
+		}
+		const preferredKind = stockMediaMode;
 		const targetShows = shows.filter((s) => !showIds || showIds.includes(s.id));
 		const targets: { showId: string; slideId: string; slide: BulkSlide; showTitle: string }[] = [];
 		for (const show of targetShows) {
@@ -1289,22 +1376,40 @@
 					slide.headline || showTitle,
 					slide.body,
 					[topicHint, showTitle].filter(Boolean).join(' '),
+					{ preferredKind },
 				);
-				updateSlide(showId, slideId, {
-					mediaLoading: false,
-					mediaUrl: pick?.url ?? slide.mediaUrl ?? '',
-					mediaKind: pick?.kind ?? slide.mediaKind ?? null,
-					mediaThumb: pick?.thumb ?? slide.mediaThumb ?? '',
-				});
-				return { ok: !!pick?.url, error: pick?.url ? '' : 'no match' };
-			} catch (e: unknown) {
-				updateSlide(showId, slideId, { mediaLoading: false });
 				return {
+					showId,
+					slideId,
+					ok: !!pick?.url,
+					error: pick?.url ? '' : 'no match',
+					patch: {
+						mediaLoading: false,
+						mediaUrl: pick?.url ?? '',
+						mediaKind: pick?.kind ?? null,
+						mediaThumb: pick?.thumb ?? '',
+					} satisfies Partial<BulkSlide>,
+				};
+			} catch (e: unknown) {
+				return {
+					showId,
+					slideId,
 					ok: false,
 					error: e instanceof Error ? e.message : 'stock failed',
+					patch: { mediaLoading: false } satisfies Partial<BulkSlide>,
 				};
 			}
 		});
+
+		// Apply all patches in one write so concurrent fills don't clobber each other.
+		const bySlide = new Map(results.map((r) => [`${r.showId}:${r.slideId}`, r.patch]));
+		shows = shows.map((s) => ({
+			...s,
+			slides: s.slides.map((sl) => {
+				const patch = bySlide.get(`${s.id}:${sl.id}`);
+				return patch ? { ...sl, ...patch } : sl;
+			}),
+		}));
 
 		stockFilling = false;
 		const filled = results.filter((r) => r.ok).length;
@@ -1327,6 +1432,11 @@
 		const show = shows.find((s) => s.id === showId);
 		const slide = show?.slides.find((s) => s.id === slideId);
 		if (!show || !slide || !templateUsesStockMedia(slide.template)) return;
+		if (stockMediaMode === 'off') {
+			stockNote = 'Stock is off';
+			setTimeout(() => (stockNote = ''), 2000);
+			return;
+		}
 		updateSlide(showId, slideId, { mediaLoading: true });
 		try {
 			const pick = await resolveStockForTemplate(
@@ -1334,6 +1444,7 @@
 				slide.headline || show.title,
 				slide.body,
 				[topic.trim(), show.title].filter(Boolean).join(' '),
+				{ preferredKind: stockMediaMode },
 			);
 			updateSlide(showId, slideId, {
 				mediaLoading: false,
@@ -1355,6 +1466,15 @@
 	async function generateIdeas() {
 		const t = topic.trim();
 		if (!t || generating) return;
+		if (usageBlocked || maxIdeasAllowed < 1) {
+			openUsageUpgrade();
+			return;
+		}
+		const decksWanted = Math.min(ideaCount, maxIdeasAllowed);
+		if (decksWanted < 1) {
+			openUsageUpgrade();
+			return;
+		}
 		generating = true;
 		generateError = '';
 		try {
@@ -1362,7 +1482,7 @@
 				promptHistory = pushPromptHistory(userId, {
 					query: t,
 					mode: 'general',
-					title: `${ideaCount} idea${ideaCount === 1 ? '' : 's'} · ${slidesPerShow} slides`,
+					title: `${decksWanted} idea${decksWanted === 1 ? '' : 's'} · ${slidesPerShow} slides`,
 				});
 			}
 			const res = await fetch('/api/generate-slides', {
@@ -1372,7 +1492,7 @@
 					topic: t,
 					style,
 					slideCount: slidesPerShow,
-					deckCount: ideaCount,
+					deckCount: decksWanted,
 					imageCount: 0,
 					audience: audiencePromptText(audienceId, audience) || 'general audience',
 					emotion: emotion || undefined,
@@ -1380,7 +1500,39 @@
 				}),
 			});
 			const data = await res.json();
+			if (res.status === 402 || data?.code === 'LIMIT_REACHED') {
+				if (data?.usage && typeof data.usage === 'object') {
+					const u = data.usage as {
+						canGenerate?: boolean;
+						remaining?: number | null;
+						used?: number;
+						limit?: number | null;
+					};
+					if (typeof u.canGenerate === 'boolean') usageCanGenerate = u.canGenerate;
+					if (u.remaining !== undefined) usageRemaining = u.remaining;
+					if (typeof u.used === 'number') usageUsed = u.used;
+					if (u.limit !== undefined) usageLimit = u.limit;
+				} else {
+					usageCanGenerate = false;
+				}
+				openUsageUpgrade(typeof data?.error === 'string' ? data.error : undefined);
+				return;
+			}
 			if (!res.ok) throw new Error(data?.error || `Generate failed (${res.status})`);
+			if (data.usage && typeof data.usage === 'object') {
+				const u = data.usage as {
+					canGenerate?: boolean;
+					remaining?: number | null;
+					used?: number;
+					limit?: number | null;
+				};
+				if (typeof u.canGenerate === 'boolean') usageCanGenerate = u.canGenerate;
+				if (u.remaining !== undefined) usageRemaining = u.remaining;
+				if (typeof u.used === 'number') usageUsed = u.used;
+				if (u.limit !== undefined) usageLimit = u.limit;
+			} else {
+				void refreshBulkUsage();
+			}
 
 			const caps = captionDefaultsFromKit(brandKit);
 			const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
@@ -1614,11 +1766,6 @@
 <svelte:window onkeydown={onGenerateKeydown} />
 
 <div class="bulk dash-page" class:bulk--prompt-compose={promptCompose}>
-	<header class="bulk-header page-hero" class:bulk-header--compose={promptCompose}>
-		<div class="bulk-header-text page-hero-text">
-			<h1 class="dash-page-title">Bulk</h1>
-		</div>
-	</header>
 
 	{#if !promptCompose}
 	<section
@@ -1642,40 +1789,41 @@
 			</span>
 			<div class="rows-toolbar-actions">
 				<Popover>
-					{#snippet highlightsTrigger({ props }: { props: Record<string, unknown> })}
-						<Button
-							{...props}
-							variant="outline"
-							size="sm"
-							title={wordHighlightsOn
-								? `Highlights on — ${highlightStyleKind === 'solid' ? highlightColor : highlightStyleKind}`
-								: 'Highlights off — tap to turn on'}
-							aria-label="Highlights"
-							aria-pressed={wordHighlightsOn}
-							class={wordHighlightsOn ? '' : 'opacity-70'}
-						>
-							<span
-								class="bulk-hl-swatch"
-								class:bulk-hl-swatch--off={!wordHighlightsOn}
-								style={
-									!wordHighlightsOn
-										? ''
-										: highlightStyleKind === 'gradient'
-											? `background: linear-gradient(90deg, ${highlightGradientFrom}, ${highlightGradientTo});`
-											: highlightStyleKind === 'pattern'
-												? `background-image: url('${AVAILABLE_PATTERNS.find((p) => p.name === highlightPattern)?.url ?? ''}'); background-size: cover;`
-												: `background: ${highlightColor};`
-								}
-								aria-hidden="true"
-							></span>
-							<Highlighter data-icon="inline-start" />
-							Highlights
-							{#if wordHighlightsOn}
-								<span class="bulk-hl-on-dot" aria-hidden="true"></span>
-							{/if}
-						</Button>
-					{/snippet}
-					<PopoverTrigger child={highlightsTrigger} />
+					<PopoverTrigger>
+						{#snippet child({ props }: { props: Record<string, unknown> })}
+							<Button
+								{...props}
+								variant="outline"
+								size="sm"
+								title={wordHighlightsOn
+									? `Highlights on. ${highlightStyleKind === 'solid' ? highlightColor : highlightStyleKind}`
+									: 'Highlights off. Tap to turn on'}
+								aria-label="Highlights"
+								aria-pressed={wordHighlightsOn}
+								class={wordHighlightsOn ? '' : 'opacity-70'}
+							>
+								<span
+									class="bulk-hl-swatch"
+									class:bulk-hl-swatch--off={!wordHighlightsOn}
+									style={
+										!wordHighlightsOn
+											? ''
+											: highlightStyleKind === 'gradient'
+												? `background: linear-gradient(90deg, ${highlightGradientFrom}, ${highlightGradientTo});`
+												: highlightStyleKind === 'pattern'
+													? `background-image: url('${AVAILABLE_PATTERNS.find((p) => p.name === highlightPattern)?.url ?? ''}'); background-size: cover;`
+													: `background: ${highlightColor};`
+									}
+									aria-hidden="true"
+								></span>
+								<Highlighter data-icon="inline-start" />
+								Highlights
+								{#if wordHighlightsOn}
+									<span class="bulk-hl-on-dot" aria-hidden="true"></span>
+								{/if}
+							</Button>
+						{/snippet}
+					</PopoverTrigger>
 					<PopoverContent
 						side="bottom"
 						sideOffset={10}
@@ -1846,6 +1994,7 @@
 									loadingSlideIds={show.slides.filter((s) => s.mediaLoading).map((s) => s.id)}
 									textHighlightsEnabled={wordHighlightsOn}
 									sourceLogoSrc={brandKit.logoUrl || undefined}
+									sourceLabel={brandKit.displayName || undefined}
 									highlightColor={brandHighlightColor}
 									highlightDefaults={brandHighlightDefaults}
 									onselect={(slideId) => selectSlide(show.id, slideId)}
@@ -1875,6 +2024,7 @@
 												mediaFetching={!!sl.mediaLoading}
 												textHighlightsEnabled={wordHighlightsOn}
 												sourceLogoSrc={brandKit.logoUrl || undefined}
+												sourceLabel={brandKit.displayName || undefined}
 												highlightColor={brandHighlightColor}
 												highlightDefaults={brandHighlightDefaults}
 											/>
@@ -2159,20 +2309,21 @@
 								if (o) refreshPromptHistory();
 							}}
 						>
-							{#snippet historyTrigger({ props }: { props: Record<string, unknown> })}
-								<button
-									{...props}
-									type="button"
-									class="prompt-bar-icon-btn"
-									title="Prompt history"
-									aria-label="Prompt history"
-								>
-									<History size={18} />
-								</button>
-							{/snippet}
-							<PopoverTrigger child={historyTrigger} />
+							<PopoverTrigger>
+								{#snippet child({ props }: { props: Record<string, unknown> })}
+									<button
+										{...props}
+										type="button"
+										class="prompt-bar-icon-btn"
+										title="Prompt history"
+										aria-label="Prompt history"
+									>
+										<History size={18} />
+									</button>
+								{/snippet}
+							</PopoverTrigger>
 							<PopoverContent
-								side="bottom"
+								side="top"
 								sideOffset={10}
 								align="start"
 								portalProps={{ to: 'body' }}
@@ -2257,7 +2408,7 @@
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
 						<PopoverContent
-							side="bottom"
+							side="top"
 							sideOffset={10}
 							align="start"
 							avoidCollisions={false}
@@ -2301,7 +2452,7 @@
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
 						<PopoverContent
-							side="bottom"
+							side="top"
 							sideOffset={10}
 							align="start"
 							avoidCollisions={false}
@@ -2332,7 +2483,7 @@
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
 						<PopoverContent
-							side="bottom"
+							side="top"
 							sideOffset={10}
 							align="start"
 							avoidCollisions={false}
@@ -2365,7 +2516,7 @@
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
 						<PopoverContent
-							side="bottom"
+							side="top"
 							sideOffset={10}
 							align="start"
 							avoidCollisions={false}
@@ -2379,16 +2530,34 @@
 								{#each [1, 2, 3, 4, 5, 6, 7, 8] as n}
 									<button
 										type="button"
-										onclick={() => (ideaCount = n)}
+										disabled={n > maxIdeasAllowed}
+										onclick={() => {
+											if (n <= maxIdeasAllowed) ideaCount = n;
+										}}
+										title={n > maxIdeasAllowed
+											? usageLimit != null
+												? `Only ${maxIdeasAllowed} carousel${maxIdeasAllowed === 1 ? '' : 's'} left this month`
+												: 'Not enough carousel tokens'
+											: undefined}
 										class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
 											{ideaCount === n
 												? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
-												: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
+												: n > maxIdeasAllowed
+													? 'bg-[#f5f5f5] text-[#ccc] cursor-not-allowed'
+													: 'bg-[#f5f5f5] text-[#555] hover:bg-[#ececec]'}"
 									>
 										{n}
 									</button>
 								{/each}
 							</div>
+							{#if usageLimit != null}
+								<p class="mt-2 px-1 text-[10px] leading-snug text-[#999]">
+									{usageUsed}/{usageLimit} carousels used this month
+									{#if usageRemaining != null}
+										· {usageRemaining} left
+									{/if}
+								</p>
+							{/if}
 						</PopoverContent>
 					</Popover>
 
@@ -2399,7 +2568,7 @@
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
 						<PopoverContent
-							side="bottom"
+							side="top"
 							sideOffset={10}
 							align="start"
 							avoidCollisions={false}
@@ -2426,22 +2595,100 @@
 						</PopoverContent>
 					</Popover>
 
-					<button
-						type="button"
-						class="prompt-chip"
-						class:prompt-chip--on={autoStock}
-						title="Automatically fill Unsplash/Pexels media on image & video templates after generate"
-						onclick={() => (autoStock = !autoStock)}
-					>
-						<Image size={11} class="shrink-0" />
-						Auto stock
-					</button>
+					<Popover>
+						<PopoverTrigger
+							class="prompt-chip max-w-[11.5rem] {autoStock ? 'prompt-chip--on' : ''}"
+							title="Where slide media comes from"
+						>
+							{#if stockMediaMode === 'video'}
+								<Play size={11} class="shrink-0" />
+							{:else if stockMediaMode === 'photo'}
+								<Wallpaper size={11} class="shrink-0" />
+							{:else}
+								<Ban size={11} class="shrink-0" />
+							{/if}
+							<span class="truncate">{stockChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-64 gap-0 rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Media source
+							</p>
+							<button
+								type="button"
+								onclick={() => (stockMediaMode = 'photo')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{stockMediaMode === 'photo'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Wallpaper size={13} class="mt-0.5 shrink-0" />
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Stock photos</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]"
+										>Pexels / Unsplash stills for image templates</span
+									>
+								</span>
+								{#if stockMediaMode === 'photo'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (stockMediaMode = 'video')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{stockMediaMode === 'video'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Play size={13} class="mt-0.5 shrink-0" />
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Stock videos</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]"
+										>Pexels clips; falls back to photos when needed</span
+									>
+								</span>
+								{#if stockMediaMode === 'video'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (stockMediaMode = 'off')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{stockMediaMode === 'off'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<Ban size={13} class="mt-0.5 shrink-0" />
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">No stock</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]"
+										>Skip auto-fill after generate</span
+									>
+								</span>
+								{#if stockMediaMode === 'off'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+						</PopoverContent>
+					</Popover>
 
 					<button
 						type="button"
-						class="prompt-bar-submit"
+						class="prompt-bar-submit {usageBlocked ? 'opacity-50' : ''}"
 						disabled={promptSubmitDisabled}
-						aria-label={generating ? 'Generating' : 'Generate'}
+						title={usageBlocked
+							? usageUpgradeMessage || 'Carousel limit reached — upgrade for more'
+							: undefined}
+						aria-label={usageBlocked ? 'Limit reached' : generating ? 'Generating' : 'Generate'}
 						onclick={() => submitBulkPrompt()}
 					>
 						{#if generating}
@@ -2711,13 +2958,46 @@
 			{/if}
 		</BulkPopover>
 	{/if}
+
+	{#if usageUpgradeOpen}
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div
+			class="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 p-4"
+			role="presentation"
+			onclick={() => (usageUpgradeOpen = false)}
+		>
+			<div
+				class="w-full max-w-md rounded-2xl border border-black/10 bg-white p-6 shadow-xl text-[#111]"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="bulk-usage-upgrade-title"
+				onclick={(e) => e.stopPropagation()}
+			>
+				<h2 id="bulk-usage-upgrade-title" class="text-lg font-semibold tracking-tight">
+					Carousel limit reached
+				</h2>
+				<p class="mt-2 text-sm leading-relaxed text-[#555]">
+					{usageUpgradeMessage}
+				</p>
+				<p class="mt-3 text-xs leading-relaxed text-[#888]">
+					Free: 5/mo · Hobby (${PLAN_CATALOG.hobby.monthly}/mo): 30 · Creator (${PLAN_CATALOG.creator.monthly}/mo): 100
+				</p>
+				<div class="mt-5 flex flex-wrap gap-2">
+					<Button href="/pricing" size="sm">View plans</Button>
+					<Button type="button" variant="outline" size="sm" onclick={() => (usageUpgradeOpen = false)}>
+						Close
+					</Button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
 	.bulk {
 		--bulk-border: color-mix(in oklab, var(--app-border) 65%, transparent);
 		--bulk-preview-width: 252px;
-		--bulk-prompt-dock-pad: 7.5rem;
+		--bulk-prompt-dock-pad: 8.5rem;
 		color: var(--app-text);
 		background: #fff;
 		padding-bottom: var(--bulk-prompt-dock-pad);
@@ -3117,7 +3397,8 @@
 		padding: 0;
 		background: transparent;
 		pointer-events: none;
-		bottom: max(1.15rem, env(safe-area-inset-bottom, 0px));
+		/* Keep above the overflow-hidden dashboard inset + room for upward popovers */
+		bottom: max(1.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem));
 		transform: translate3d(-50%, 0, 0);
 		will-change: bottom, transform;
 	}
@@ -3131,7 +3412,7 @@
 		transform: translate3d(-50%, 50%, 0);
 	}
 	.bulk-prompt-chrome--docked {
-		bottom: max(1.15rem, env(safe-area-inset-bottom, 0px));
+		bottom: max(1.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem));
 		transform: translate3d(-50%, 0, 0);
 	}
 	.bulk-prompt-shell {

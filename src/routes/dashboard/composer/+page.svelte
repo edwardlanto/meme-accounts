@@ -77,7 +77,7 @@
 	let brandNewsSource = $state('');
 
 	function blankNews(): NewsData {
-		return { text:'YOUR HEADLINE WILL APPEAR HERE', source: brandNewsSource || 'YOUR NAME', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:0, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
+		return { text:'YOUR HEADLINE WILL APPEAR HERE', source: brandNewsSource || '', backgroundImage:'', backgroundVideo:'', circleImage:'', showCircle:true, circleX:772, circleY:52, circleSize:256, bgOffsetX:0, bgOffsetY:50, textPanelOffsetY:0, highlightColor:'#F5A623', textColor:'#FFFFFF', highlightMode:'solid', overlays:[], generatingImage:false, generatingCircle:false };
 	}
 function blankImageQuote(): ImageQuoteData {
 	return {

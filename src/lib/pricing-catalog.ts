@@ -11,6 +11,7 @@ export const PLAN_CATALOG = {
 		carouselsPerMonth: PLAN_ENTITLEMENTS.free.carouselsPerMonth!,
 		features: [
 			'5 carousels / month',
+			'Stock images only (no AI)',
 			'1 caption style',
 			'3 competitor tracks',
 			'Basic canvas editor',
@@ -21,11 +22,12 @@ export const PLAN_CATALOG = {
 		id: 'hobby' as const,
 		name: 'Hobby',
 		tagline: 'For creators posting a few times a week.',
-		monthly: 12,
-		yearly: 99,
+		monthly: 15,
+		yearly: 124,
 		carouselsPerMonth: PLAN_ENTITLEMENTS.hobby.carouselsPerMonth!,
 		features: [
 			'30 carousels / month',
+			'50 AI images / month',
 			'5 caption styles',
 			'AI script writer',
 			'10 competitor tracks',
@@ -41,6 +43,7 @@ export const PLAN_CATALOG = {
 		carouselsPerMonth: PLAN_ENTITLEMENTS.creator.carouselsPerMonth!,
 		features: [
 			'100 carousels / month',
+			'120 AI images / month',
 			'All caption styles',
 			'No watermark',
 			'25 competitor tracks',
@@ -56,6 +59,7 @@ export const PLAN_CATALOG = {
 		carouselsPerMonth: null,
 		features: [
 			'Unlimited carousels',
+			'400 AI images / month',
 			'Everything in Creator',
 			'Team workspace',
 			'API access',

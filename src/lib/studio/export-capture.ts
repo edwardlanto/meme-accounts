@@ -195,8 +195,9 @@ async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
 }
 
 /**
- * Rewrite every `<img>` under `root` to a data URL so html-to-image never hits
- * cross-origin / cacheBust / blob fetch failures. Returns a restore function.
+ * Rewrite every `<img>` (and inline `background-image` urls) under `root` to a
+ * data URL so html-to-image never hits cross-origin / cacheBust / blob fetch
+ * failures. Returns a restore function.
  */
 export async function materializeDomImagesForExport(
 	root: HTMLElement,
@@ -205,24 +206,26 @@ export async function materializeDomImagesForExport(
 	const imgs = Array.from(root.querySelectorAll('img'));
 	const restores: Array<() => void> = [];
 
+	const rewriteUrl = async (src: string): Promise<string> => {
+		const raw = String(src ?? '').trim();
+		if (!raw || raw.startsWith('data:')) return raw;
+		try {
+			if (raw.startsWith('blob:')) return (await blobUrlToDataUrl(raw)) || '';
+			return (await toSafeUrl(raw)) || '';
+		} catch {
+			return '';
+		}
+	};
+
 	for (const img of imgs) {
 		const prevAttr = img.getAttribute('src');
 		const src = String(img.currentSrc || img.src || prevAttr || '').trim();
 		if (!src || src.startsWith('data:')) continue;
 
-		let safe = '';
-		try {
-			if (src.startsWith('blob:')) {
-				safe = await blobUrlToDataUrl(src);
-			} else {
-				safe = await toSafeUrl(src);
-			}
-		} catch {
-			safe = '';
-		}
+		let safe = await rewriteUrl(src);
 		if (!safe || safe === src) {
 			// Still remote / unresolved — force a paint-safe pixel so embedImages won't reject.
-			if (/^https?:/i.test(src) || src.startsWith('blob:')) {
+			if (/^https?:/i.test(src) || src.startsWith('blob:') || isLikelyRemoteMediaUrl(src)) {
 				img.setAttribute('src', TRANSPARENT_PIXEL);
 				img.removeAttribute('srcset');
 				restores.push(() => {
@@ -238,6 +241,37 @@ export async function materializeDomImagesForExport(
 		restores.push(() => {
 			if (prevAttr != null) img.setAttribute('src', prevAttr);
 			else img.removeAttribute('src');
+		});
+	}
+
+	// CSS background-image: url(...) — same CORS taint risk as <img>.
+	const bgEls = Array.from(root.querySelectorAll<HTMLElement>('*')).filter((el) => {
+		const bg = el.style?.backgroundImage || '';
+		return /url\(/i.test(bg);
+	});
+	for (const el of bgEls) {
+		const prev = el.style.backgroundImage;
+		const urls = [...prev.matchAll(/url\((['"]?)([^'")]+)\1\)/gi)].map((m) => m[2]?.trim() ?? '');
+		if (!urls.length) continue;
+		let next = prev;
+		let changed = false;
+		for (const u of urls) {
+			if (!u || u.startsWith('data:') || u.startsWith('linear-gradient')) continue;
+			const safe = await rewriteUrl(u);
+			const replacement =
+				safe && safe !== u
+					? safe
+					: /^https?:/i.test(u) || u.startsWith('blob:')
+						? TRANSPARENT_PIXEL
+						: '';
+			if (!replacement) continue;
+			next = next.replace(u, replacement);
+			changed = true;
+		}
+		if (!changed) continue;
+		el.style.backgroundImage = next;
+		restores.push(() => {
+			el.style.backgroundImage = prev;
 		});
 	}
 
@@ -259,6 +293,15 @@ export async function materializeDomImagesForExport(
 	return () => {
 		for (const restore of restores.reverse()) restore();
 	};
+}
+
+function isLikelyRemoteMediaUrl(src: string): boolean {
+	return (
+		src.startsWith('r2:') ||
+		src.startsWith('//') ||
+		/^https?:/i.test(src) ||
+		src.includes('X-Amz-Signature')
+	);
 }
 
 /**

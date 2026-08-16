@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer';
 import { fal } from '@fal-ai/client';
 import type { RequestHandler } from './$types';
 import { assertPublicHttpsUrl, parseJsonBody, vertexBodySchema } from '$lib/server/request-security';
+import { canConsumeAiImages, consumeAiImages } from '$lib/server/usage';
 
 /** Cheap text-to-image — Nano Banana 2 Lite */
 const T2I_ENDPOINT = 'google/nano-banana-2-lite';
@@ -131,6 +132,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		return json({ dataUrl: cache.get(cacheKey), cached: true });
 	}
 
+	const imageGate = await canConsumeAiImages(user.id, 1);
+	if (!imageGate.ok) {
+		return json(
+			{
+				error: imageGate.error,
+				code: imageGate.code,
+				usage: imageGate.status,
+			},
+			{ status: 402 },
+		);
+	}
+
 	const fullPrompt = isEdit
 		? `${String(prompt).trim()}${context ? ` Context: ${context}` : ''}`
 		: `Editorial news photograph: ${String(prompt).trim()}.
@@ -175,7 +188,19 @@ Photojournalistic, natural light, no text overlays, Instagram-ready (${aspectRat
 			const dataUrl = await urlToDataUrl(imageUrl);
 			if (!skipCache) cacheSet(cacheKey, dataUrl);
 
-			return json({ dataUrl, model });
+			const billed = await consumeAiImages(user.id, 1);
+			if (!billed.ok) {
+				return json(
+					{
+						error: billed.error,
+						code: billed.code,
+						usage: billed.status,
+					},
+					{ status: 402 },
+				);
+			}
+
+			return json({ dataUrl, model, usage: billed.status });
 		} catch (err: unknown) {
 			lastErr = err instanceof Error ? err.message : String(err);
 			console.warn(`[api/vertex] Fal attempt ${attempt + 1}/${maxAttempts}:`, lastErr);

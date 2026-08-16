@@ -63,14 +63,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	if (!env.OPENROUTER_API_KEY) {
 		if (decksWanted > 1) {
-			await consumeCarouselTokens(user.id, decksWanted);
+			const billed = await consumeCarouselTokens(user.id, decksWanted);
 			return json({
 				decks: getDemoDecks(decksWanted, slideCount, imageCount, wantHighlights),
 				demo: true,
+				usage: billed.ok ? billed.status : undefined,
 			});
 		}
-		await consumeCarouselTokens(user.id, decksWanted);
-		return json({ slides: getDemoSlides(slideCount, imageCount, wantHighlights), demo: true });
+		const billed = await consumeCarouselTokens(user.id, decksWanted);
+		return json({
+			slides: getDemoSlides(slideCount, imageCount, wantHighlights),
+			demo: true,
+			usage: billed.ok ? billed.status : undefined,
+		});
 	}
 
 	const prompt =
@@ -158,8 +163,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		if (wantHighlights) {
 			decks = await highlightDeckNewsHeadlines(decks);
 		}
-		await consumeCarouselTokens(user.id, decksWanted);
-		return json({ decks });
+		const billed = await consumeCarouselTokens(user.id, decksWanted);
+		return json({ decks, usage: billed.ok ? billed.status : undefined });
 	}
 
 	let slides: GeneratedSlide[] = (
@@ -174,8 +179,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (wantHighlights) {
 		slides = await highlightNewsHeadlines(slides);
 	}
-	await consumeCarouselTokens(user.id, decksWanted);
-	return json({ slides });
+	const billed = await consumeCarouselTokens(user.id, decksWanted);
+	return json({ slides, usage: billed.ok ? billed.status : undefined });
 	} catch (err: any) {
 		console.error('[generate-slides]', err.message);
 		return json({ error: err.message }, { status: 500 });

@@ -51,7 +51,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		href: '/dashboard/studio?template=news',
 		previewBg: '/placeholders/carousel/news-cover.png',
 		previewText: 'YOUR HEADLINE WILL APPEAR HERE',
-		previewSource: 'YOUR NAME',
+		previewSource: '',
 		badge: 'News',
 		badgeColor: 'text-amber-400',
 	},

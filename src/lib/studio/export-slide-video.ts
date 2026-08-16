@@ -98,15 +98,32 @@ function withVideoHoles<T>(
 	fn: () => Promise<T>,
 ): Promise<T> {
 	const placeholders: HTMLElement[] = [];
-	const prevVis: string[] = [];
-	const prevPoster: Array<string | null> = [];
+	const prev: Array<{
+		video: HTMLVideoElement;
+		vis: string;
+		poster: string | null;
+		srcAttr: string | null;
+		srcProp: string;
+	}> = [];
 	for (const video of videos) {
 		const host = video.parentElement;
 		if (!host) continue;
-		prevVis.push(video.style.visibility);
-		prevPoster.push(video.getAttribute('poster'));
-		// Poster URLs are often remote CDN — leave them on and html-to-image taints the canvas.
+		prev.push({
+			video,
+			vis: video.style.visibility,
+			poster: video.getAttribute('poster'),
+			srcAttr: video.getAttribute('src'),
+			srcProp: String(video.currentSrc || video.src || ''),
+		});
+		// Drop media + poster so html-to-image cannot embed a cross-origin frame
+		// (visibility:hidden alone is not enough for saved R2 / CDN clips).
 		video.removeAttribute('poster');
+		video.removeAttribute('src');
+		try {
+			video.load();
+		} catch {
+			/* ignore */
+		}
 		video.style.visibility = 'hidden';
 		const placeholder = document.createElement('div');
 		placeholder.setAttribute('data-export-chroma', '1');
@@ -117,12 +134,22 @@ function withVideoHoles<T>(
 	}
 	return fn().finally(() => {
 		for (const ph of placeholders) ph.remove();
-		videos.forEach((video, i) => {
-			if (prevVis[i] !== undefined) video.style.visibility = prevVis[i]!;
-			const poster = prevPoster[i];
-			if (poster != null && poster !== '') video.setAttribute('poster', poster);
+		for (const p of prev) {
+			const { video } = p;
+			video.style.visibility = p.vis;
+			if (p.poster != null && p.poster !== '') video.setAttribute('poster', p.poster);
 			else video.removeAttribute('poster');
-		});
+			if (p.srcAttr != null && p.srcAttr !== '') {
+				video.setAttribute('src', p.srcAttr);
+			} else if (p.srcProp) {
+				video.src = p.srcProp;
+			}
+			try {
+				video.load();
+			} catch {
+				/* ignore */
+			}
+		}
 	});
 }
 
@@ -259,6 +286,8 @@ export async function captureSlideOverlayWithVideoHole(opts: {
 		pixelRatio: 1,
 		backgroundColor,
 		style: { transform: 'scale(1)', transformOrigin: 'top left' },
+		// Belt-and-suspenders: never serialize <video> into the overlay PNG.
+		filter: (node: HTMLElement) => node.tagName !== 'VIDEO',
 		...SAFE_HTML_TO_IMAGE_OPTS,
 	} as Parameters<typeof toPng>[1];
 

@@ -53,6 +53,10 @@ export const load: PageServerLoad = async ({ parent }) => {
 		usage: {
 			...usage,
 			remaining: usage.isPaid && usage.limit === null ? null : usage.remaining,
+			aiImagesUsed: usage.aiImagesUsed,
+			aiImagesLimit: usage.aiImagesLimit,
+			aiImagesRemaining: usage.aiImagesRemaining,
+			canGenerateAiImage: usage.canGenerateAiImage,
 		},
 		profile: {
 			fullName:

@@ -16,6 +16,8 @@
 		textHighlightsEnabled?: boolean;
 		/** News source logo URL from brand kit */
 		sourceLogoSrc?: string;
+		/** News text byline when no logo (brand display name) */
+		sourceLabel?: string;
 		highlightColor?: string;
 		highlightDefaults?: HighlightDefaults;
 	};
@@ -28,6 +30,7 @@
 		loadingSlideIds = [],
 		textHighlightsEnabled = true,
 		sourceLogoSrc,
+		sourceLabel,
 		highlightColor,
 		highlightDefaults,
 	}: Props = $props();
@@ -291,6 +294,7 @@
 								mediaFetching={true}
 								{textHighlightsEnabled}
 								{sourceLogoSrc}
+								{sourceLabel}
 								{highlightColor}
 								{highlightDefaults}
 							/>
@@ -303,6 +307,7 @@
 								width={previewWidth}
 								{textHighlightsEnabled}
 								{sourceLogoSrc}
+								{sourceLabel}
 								{highlightColor}
 								{highlightDefaults}
 							/>

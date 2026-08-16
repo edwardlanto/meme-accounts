@@ -16,7 +16,6 @@
 		shiftCaptionImportTimes,
 	} from '$lib/video-clips/clip-template-copy';
 	import {
-		NEWS_DEFAULT_SOURCE,
 		TWEET_DEFAULTS,
 		VIDEO_STORY_DEFAULTS,
 		VIDEO_HOOK_HEADLINE_STYLE,
@@ -180,7 +179,7 @@
 					{#if t.id === 'news'}
 						<NewsTemplate
 							text={copy.newsHeadline}
-							source={copy.newsSource || NEWS_DEFAULT_SOURCE}
+							source={copy.newsSource || ''}
 							backgroundImage={hasVideo ? '' : thumb}
 							backgroundVideo={videoSrc}
 							{...videoProps}
@@ -362,7 +361,7 @@
 					{:else}
 						<NewsTemplate
 							text={copy.newsHeadline}
-							source={copy.newsSource || NEWS_DEFAULT_SOURCE}
+							source={copy.newsSource || ''}
 							backgroundImage={hasVideo ? '' : thumb}
 							backgroundVideo={videoSrc}
 							{...videoProps}

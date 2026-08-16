@@ -70,6 +70,10 @@
 		remaining: number | null;
 		plan: string;
 		periodStart: string;
+		aiImagesUsed: number;
+		aiImagesLimit: number | null;
+		aiImagesRemaining: number | null;
+		canGenerateAiImage: boolean;
 	};
 
 	const billing = $derived(data.billing as BillingInfo | null);
@@ -918,6 +922,13 @@
 							</div>
 							<div class="pref-value">{usage.used} / {usage.limit ?? 5}</div>
 						</div>
+						<div class="pref-row">
+							<div>
+								<p class="pref-label">AI images this month</p>
+								<p class="pref-sub">Stock only on Free</p>
+							</div>
+							<div class="pref-value">0 / 0</div>
+						</div>
 					{:else if usage?.isPaid && usage.limit !== null}
 						<div class="pref-row">
 							<div>
@@ -926,6 +937,19 @@
 							</div>
 							<div class="pref-value">{usage.used} / {usage.limit}</div>
 						</div>
+						<div class="pref-row">
+							<div>
+								<p class="pref-label">AI images this month</p>
+								<p class="pref-sub">{billing?.planName ?? 'Paid'} plan allowance</p>
+							</div>
+							<div class="pref-value">
+								{#if usage.aiImagesLimit != null}
+									{usage.aiImagesUsed} / {usage.aiImagesLimit}
+								{:else}
+									{usage.aiImagesUsed} used
+								{/if}
+							</div>
+						</div>
 					{:else if usage?.isPaid && usage.limit === null}
 						<div class="pref-row">
 							<div>
@@ -933,6 +957,19 @@
 								<p class="pref-sub">Unlimited on {billing?.planName ?? 'Business'}</p>
 							</div>
 							<div class="pref-value">{usage.used} used</div>
+						</div>
+						<div class="pref-row">
+							<div>
+								<p class="pref-label">AI images this month</p>
+								<p class="pref-sub">{billing?.planName ?? 'Business'} plan allowance</p>
+							</div>
+							<div class="pref-value">
+								{#if usage.aiImagesLimit != null}
+									{usage.aiImagesUsed} / {usage.aiImagesLimit}
+								{:else}
+									{usage.aiImagesUsed} used
+								{/if}
+							</div>
 						</div>
 					{/if}
 				</div>
@@ -1327,34 +1364,53 @@
 
 					{#if usage && !usage.isPaid}
 						<div class="trial-banner">
-							<p class="trial-title">Carousel tokens this month</p>
+							<p class="trial-title">Usage this month</p>
 							<p class="trial-sub">
-								{usage.used} of {usage.limit ?? 5} carousel{usage.limit === 1 ? '' : 's'} generated.
+								Carousels: {usage.used} of {usage.limit ?? 5}
 								{#if (usage.remaining ?? 0) === 0}
-									Upgrade to Creator (${PLAN_CATALOG.creator.monthly}/mo) for 100 carousels/month.
+									— limit reached. Upgrade for more.
 								{:else}
-									{usage.remaining} remaining on the Free plan.
+									· {usage.remaining} remaining.
 								{/if}
+							</p>
+							<p class="trial-sub" style="margin-top:0.35rem">
+								AI images: not included on Free (stock photos only). Hobby includes 50/mo.
 							</p>
 						</div>
 					{:else if usage?.isPaid && usage.limit !== null}
 						<div class="trial-banner">
-							<p class="trial-title">Carousel usage this month</p>
+							<p class="trial-title">Usage this month</p>
 							<p class="trial-sub">
-								{usage.used} of {usage.limit} carousels used · {usage.remaining} remaining
+								Carousels: {usage.used} of {usage.limit} · {usage.remaining} remaining
 								{#if billing.planStatus === 'trialing'}
 									· on trial
-								{/if}.
+								{/if}
+							</p>
+							<p class="trial-sub" style="margin-top:0.35rem">
+								{#if usage.aiImagesLimit === 0}
+									AI images: not included on this plan.
+								{:else if usage.aiImagesLimit != null}
+									AI images: {usage.aiImagesUsed} of {usage.aiImagesLimit} · {usage.aiImagesRemaining} remaining
+								{:else}
+									AI images: {usage.aiImagesUsed} used · unlimited
+								{/if}
 							</p>
 						</div>
 					{:else if usage?.isPaid && usage.limit === null}
 						<div class="trial-banner">
-							<p class="trial-title">Carousel usage this month</p>
+							<p class="trial-title">Usage this month</p>
 							<p class="trial-sub">
-								{usage.used} generated · unlimited on {billing.planName}
+								Carousels: {usage.used} generated · unlimited on {billing.planName}
 								{#if billing.planStatus === 'trialing'}
 									(trial)
-								{/if}.
+								{/if}
+							</p>
+							<p class="trial-sub" style="margin-top:0.35rem">
+								{#if usage.aiImagesLimit != null}
+									AI images: {usage.aiImagesUsed} of {usage.aiImagesLimit} · {usage.aiImagesRemaining} remaining
+								{:else}
+									AI images: {usage.aiImagesUsed} used · unlimited
+								{/if}
 							</p>
 						</div>
 					{/if}

@@ -4052,7 +4052,7 @@ import JSZip from 'jszip';
 		await tick();
 	}
 
-	/** Rewrite remote https video backgrounds to same-origin blob URLs for canvas export. */
+	/** Rewrite remote / R2 video backgrounds to same-origin blob URLs for canvas export. */
 	async function materializeRemoteVideosForExport() {
 		const next: Record<TemplateId, string[]> = { ...bgVideosByTemplate } as Record<TemplateId, string[]>;
 		for (const key of Object.keys(next) as TemplateId[]) {
@@ -4061,12 +4061,17 @@ import JSZip from 'jszip';
 				const cur = String(row[i] ?? '').trim();
 				if (!cur) continue;
 				if (cur.startsWith('blob:') || cur.startsWith('data:')) continue;
-				if (!(cur.startsWith('http://') || cur.startsWith('https://'))) continue;
+				let remote = cur;
+				if (isR2Ref(cur)) {
+					await ensureR2Resolved(cur);
+					remote = resolveMediaUrl(cur);
+				}
+				if (!(remote.startsWith('http://') || remote.startsWith('https://'))) continue;
 				try {
-					const blobUrl = await fetchRemoteVideoAsBlobUrl(cur);
+					const blobUrl = await fetchRemoteVideoAsBlobUrl(remote);
 					row[i] = blobUrl;
 				} catch (e) {
-					console.warn('[studio] could not materialize video for export', cur, e);
+					console.warn('[studio] could not materialize video for export', remote, e);
 					throw new Error(
 						e instanceof Error
 							? e.message
@@ -4151,6 +4156,7 @@ import JSZip from 'jszip';
 				pixelRatio: opts.pixelRatio ?? 1,
 				backgroundColor: opts.backgroundColor,
 				style: { transform: 'scale(1)', transformOrigin: 'top left' },
+				filter: (n: HTMLElement) => n.tagName !== 'VIDEO',
 				...SAFE_HTML_TO_IMAGE_OPTS,
 			} as any);
 		} finally {

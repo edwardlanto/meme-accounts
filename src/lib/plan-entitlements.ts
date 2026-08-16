@@ -20,6 +20,8 @@ export function normalizePlanId(plan: string | null | undefined): PlanId {
 export type PlanEntitlements = {
 	/** Carousels (AI generate-slides decks) allowed per calendar month. `null` = unlimited. */
 	carouselsPerMonth: number | null;
+	/** Fal / Vertex AI images per calendar month. `null` = unlimited. Free = 0 (stock only). */
+	aiImagesPerMonth: number | null;
 	captionStyles: number | 'all';
 	watermark: boolean;
 	competitorTracks: number | null;
@@ -28,24 +30,28 @@ export type PlanEntitlements = {
 export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	free: {
 		carouselsPerMonth: 5,
+		aiImagesPerMonth: 0,
 		captionStyles: 1,
 		watermark: true,
 		competitorTracks: 3,
 	},
 	hobby: {
 		carouselsPerMonth: 30,
+		aiImagesPerMonth: 50,
 		captionStyles: 5,
 		watermark: true,
 		competitorTracks: 10,
 	},
 	creator: {
 		carouselsPerMonth: 100,
+		aiImagesPerMonth: 120,
 		captionStyles: 'all',
 		watermark: false,
 		competitorTracks: 25,
 	},
 	business: {
 		carouselsPerMonth: null,
+		aiImagesPerMonth: 400,
 		captionStyles: 'all',
 		watermark: false,
 		competitorTracks: null,
@@ -54,6 +60,10 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 
 export function carouselLimitForPlan(plan: string | null | undefined): number | null {
 	return PLAN_ENTITLEMENTS[normalizePlanId(plan)].carouselsPerMonth;
+}
+
+export function aiImageLimitForPlan(plan: string | null | undefined): number | null {
+	return PLAN_ENTITLEMENTS[normalizePlanId(plan)].aiImagesPerMonth;
 }
 
 export function isPaidPlanActive(

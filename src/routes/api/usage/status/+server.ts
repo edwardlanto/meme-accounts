@@ -11,6 +11,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 			limit: 5,
 			remaining: 5,
 			canGenerate: false,
+			aiImagesUsed: 0,
+			aiImagesLimit: 0,
+			aiImagesRemaining: 0,
+			canGenerateAiImage: false,
 		});
 	}
 
@@ -26,5 +30,9 @@ export const GET: RequestHandler = async ({ locals }) => {
 		remaining: status.isPaid && status.limit === null ? null : status.remaining,
 		plan: status.plan,
 		periodStart: status.periodStart,
+		aiImagesUsed: status.aiImagesUsed,
+		aiImagesLimit: status.aiImagesLimit,
+		aiImagesRemaining: status.aiImagesRemaining,
+		canGenerateAiImage: status.canGenerateAiImage,
 	});
 };
