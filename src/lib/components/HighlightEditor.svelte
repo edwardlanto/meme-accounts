@@ -16,12 +16,15 @@
 		AVAILABLE_PATTERNS,
 		restorePlainSelection,
 		normalizeHighlightDefaults,
+		applyHighlightEmphasisToElement,
+		normalizeHighlightBaseWeight,
 		type HighlightSpec,
 		type HighlightDefaults,
 	} from '$lib/highlight';
 	import { tick } from 'svelte';
 	import type { TypographySnapshot } from '$lib/types';
 	import { textShadowToDropFilter } from '$lib/textStyleCss';
+	import { canvasFontFamilyStack } from '$lib/fonts';
 
 	interface Props {
 		value: string;
@@ -105,6 +108,18 @@
 	const resolvedFontWeight = $derived.by(() => {
 		if (liveFontWeight != null && Number.isFinite(liveFontWeight)) return String(liveFontWeight);
 		return typographySnapshot?.fontWeight ?? 'inherit';
+	});
+
+	const emphasisBaseWeight = $derived.by(() => {
+		if (liveFontWeight != null && Number.isFinite(liveFontWeight)) return liveFontWeight;
+		return normalizeHighlightBaseWeight(typographySnapshot?.fontWeight);
+	});
+
+	/** Live family with Impact→Anton stack when the prop is a bare family name. */
+	const resolvedFontFamilyStack = $derived.by(() => {
+		if (!fontFamily) return null;
+		if (fontFamily.includes("'") || fontFamily.includes(',')) return fontFamily;
+		return canvasFontFamilyStack(fontFamily);
 	});
 
 	let editorEl: HTMLDivElement | null = $state(null);
@@ -217,6 +232,17 @@
 		span.style.padding = '0';
 		span.style.borderRadius = '0';
 
+		const applyWeight = () => {
+			if (emphasisBold) {
+				applyHighlightEmphasisToElement(span, emphasisBaseWeight);
+			} else {
+				span.style.fontWeight = 'inherit';
+				span.style.removeProperty('font-synthesis');
+				span.style.removeProperty('-webkit-text-stroke');
+				span.style.removeProperty('paint-order');
+			}
+		};
+
 		if (s.markerBg) {
 			span.style.background = s.markerBg;
 			span.style.boxDecorationBreak = 'clone';
@@ -224,6 +250,7 @@
 			span.style.padding = '0.08em 0.16em';
 			span.style.borderRadius = '0.12em';
 			span.style.color = 'inherit';
+			applyWeight();
 			return;
 		}
 
@@ -247,17 +274,18 @@
 			fill.style.textShadow = 'none';
 			fill.style.filter = 'none';
 			fill.style.display = 'inline';
-			span.appendChild(fill);
-		} else {
-			// Regular color highlight: show colored text (matches template rendering).
-			// Creator-hook emphasis: bold weight, keep surrounding ink (not a color chip).
-			span.style.background = 'transparent';
 			if (emphasisBold) {
-				span.style.color = 'inherit';
-				span.style.fontWeight = '700';
+				applyHighlightEmphasisToElement(fill, emphasisBaseWeight);
 			} else {
-				span.style.color = s.color ?? defaultColor;
+				fill.style.fontWeight = 'inherit';
 			}
+			span.appendChild(fill);
+			applyWeight();
+		} else {
+			// Color highlight, or creator-hook emphasisBold (weight bump, keep surrounding ink).
+			span.style.background = 'transparent';
+			span.style.color = emphasisBold ? 'inherit' : (s.color ?? defaultColor);
+			applyWeight();
 		}
 	}
 
@@ -344,6 +372,7 @@
 		if (!editorEl) return;
 		void parseDefaults;
 		void emphasisBold;
+		void emphasisBaseWeight;
 		// Never replace innerHTML while the user is typing — avoids flicker on Enter when
 		// `value`/other deps churn before props catch up (or round-trip markup differs).
 		if (editorContainsFocus()) {
@@ -627,11 +656,7 @@
 					? `
 						line-height: ${resolvedLineHeight};
 						font-weight: ${resolvedFontWeight};
-						font-family: ${fontFamily
-							? fontFamily.includes("'") || fontFamily.includes(',')
-								? fontFamily
-								: `'${fontFamily}', sans-serif`
-							: typographySnapshot.fontFamily};
+						font-family: ${resolvedFontFamilyStack ?? typographySnapshot.fontFamily};
 						/* Live toolbar size wins over the enter-edit snapshot so +/- works while editing. */
 						font-size: ${fontSize != null && Number.isFinite(fontSize) ? `${fontSize}px` : typographySnapshot.fontSize};
 						letter-spacing: ${typographySnapshot.letterSpacing};
@@ -646,7 +671,7 @@
 					: `
 						line-height: ${resolvedLineHeight};
 						font-weight: ${resolvedFontWeight};
-						${fontFamily ? `font-family: ${fontFamily};` : ''}
+						${resolvedFontFamilyStack ? `font-family: ${resolvedFontFamilyStack};` : ''}
 						${fontSize != null && Number.isFinite(fontSize) ? `font-size: ${fontSize}px;` : ''}
 					`}
 				{uppercase && !typographySnapshot?.textTransform ? 'text-transform: uppercase;' : ''}
@@ -658,18 +683,14 @@
 				style="
 					{typographySnapshot
 						? `
-							font-family: ${fontFamily
-								? fontFamily.includes("'") || fontFamily.includes(',')
-									? fontFamily
-									: `'${fontFamily}', sans-serif`
-								: typographySnapshot.fontFamily};
+							font-family: ${resolvedFontFamilyStack ?? typographySnapshot.fontFamily};
 							font-size: ${fontSize != null && Number.isFinite(fontSize) ? `${fontSize}px` : typographySnapshot.fontSize};
 							font-weight: ${resolvedFontWeight};
 							line-height: ${resolvedLineHeight};
 							letter-spacing: ${typographySnapshot.letterSpacing};
 						`
 						: `
-							${fontFamily ? `font-family: ${fontFamily};` : ''}
+							${resolvedFontFamilyStack ? `font-family: ${resolvedFontFamilyStack};` : ''}
 							${fontSize != null && Number.isFinite(fontSize) ? `font-size: ${fontSize}px;` : ''}
 						`}
 				"
@@ -679,10 +700,6 @@
 </div>
 
 <style>
-	.hl-editor :global(span[data-hl]) {
-		/* Color highlights keep the block weight; emphasisBold sets inline font-weight. */
-		font-weight: inherit;
-	}
 	.hl-editor {
 		cursor: text;
 		user-select: text;

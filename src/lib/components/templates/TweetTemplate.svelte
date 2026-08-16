@@ -13,6 +13,8 @@ interface TweetProps {
 	topName?: string;
 	topHandle?: string;
 	topAvatar?: string;
+	/** Prefer photo vs initials when both are available. */
+	topAvatarMode?: 'text' | 'image';
 	/** Solid fill inside top profile circle when no photo (empty = tweet card surface). */
 	topAvatarInnerBg?: string;
 	/** Override letters in top circle; empty → initials from name. */
@@ -49,6 +51,7 @@ interface TweetProps {
 	bottomName?: string;
 	bottomHandle?: string;
 	bottomAvatar?: string;
+	bottomAvatarMode?: 'text' | 'image';
 	bottomAvatarInnerBg?: string;
 	bottomAvatarLabel?: string;
 	bottomAvatarRingColor?: string;
@@ -105,6 +108,7 @@ let {
 	topName      = 'Chef 👨‍🍳',
 	topHandle    = '@chefsevenn',
 	topAvatar    = '',
+	topAvatarMode = 'text' as 'text' | 'image',
 	topAvatarInnerBg = '',
 	topAvatarLabel = '',
 	topAvatarRingColor = '#c9b97a',
@@ -124,6 +128,7 @@ let {
 	bottomName   = 'Mo Mohler',
 	bottomHandle = '@MoMohler',
 	bottomAvatar = '',
+	bottomAvatarMode = 'text' as 'text' | 'image',
 	bottomAvatarInnerBg = '',
 	bottomAvatarLabel = '',
 	bottomAvatarRingColor = '#c9b97a',
@@ -398,6 +403,8 @@ let {
 	);
 	const topDiscText = $derived((topAvatarLabel && topAvatarLabel.trim()) || initials(topNameDisplay));
 	const bottomDiscText = $derived((bottomAvatarLabel && bottomAvatarLabel.trim()) || initials(bottomNameDisplay));
+	const showTopAvatarImage = $derived(topAvatarMode !== 'text' && !!topAvatar?.trim());
+	const showBottomAvatarImage = $derived(bottomAvatarMode !== 'text' && !!bottomAvatar?.trim());
 
 	function topDiscInk() {
 		const custom = !!(topAvatarInnerBg && topAvatarInnerBg.trim());
@@ -516,7 +523,7 @@ let {
 									pointer-events:none;
 								"
 							>
-								{#if topAvatar?.trim()}
+								{#if showTopAvatarImage}
 									<img src={topAvatar} alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />
 								{:else}
 									<span style="color:{topDiscInk()};font-size:28px;font-weight:700;letter-spacing:-0.5px;">{topDiscText}</span>
@@ -643,6 +650,7 @@ let {
 										text={topText}
 										defaultColor={tweetHighlightDefault}
 										parseHighlights={true}
+										baseFontWeight={tweetStyles.tweetTopText?.fontWeight ?? 400}
 									/>
 								</p>
 							{/snippet}
@@ -882,7 +890,7 @@ let {
 									pointer-events:none;
 								"
 							>
-								{#if bottomAvatar?.trim()}
+								{#if showBottomAvatarImage}
 									<img src={bottomAvatar} alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />
 								{:else}
 									<span style="color:{bottomDiscInk()};font-size:26px;font-weight:700;">{bottomDiscText}</span>
@@ -1006,6 +1014,7 @@ let {
 									text={bottomText}
 									defaultColor={tweetHighlightDefault}
 									parseHighlights={true}
+									baseFontWeight={tweetStyles.tweetBottomText?.fontWeight ?? 400}
 								/>
 							</p>
 						{/snippet}

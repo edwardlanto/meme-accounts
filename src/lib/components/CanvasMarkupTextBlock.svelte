@@ -19,6 +19,7 @@
 		CANVAS_TEXT_FOCUS_RING,
 	} from '$lib/studio/canvas-text-chrome';
 	import { textShadowToDropFilter } from '$lib/textStyleCss';
+	import { canvasFontFamilyStack } from '$lib/fonts';
 
 	interface Props {
 		value: string;
@@ -172,7 +173,11 @@
 
 	function typographyCss(snap: TypographySnapshot | null, fallbackFamily?: string, fallbackSize?: number): string {
 		const familyCss = fallbackFamily
-			? `font-family: ${fallbackFamily.includes("'") || fallbackFamily.includes(',') ? fallbackFamily : `'${fallbackFamily}', sans-serif`};`
+			? `font-family: ${
+					fallbackFamily.includes("'") || fallbackFamily.includes(',')
+						? fallbackFamily
+						: canvasFontFamilyStack(fallbackFamily)
+				};`
 			: '';
 		const sizeCss =
 			fallbackSize != null && Number.isFinite(fallbackSize) ? `font-size: ${fallbackSize}px;` : '';

@@ -234,7 +234,7 @@
 			<div class="ftb-div h-6 w-px shrink-0" role="separator"></div>
 			<button
 				type="button"
-				class="ftb-btn ftb-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
+				class="ftb-btn ftb-danger flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
 				title="Delete background"
 				aria-label="Delete background"
 				onpointerdown={(e) => {
@@ -244,7 +244,7 @@
 					onClose();
 				}}
 			>
-				<Trash2 size={13} />
+				<Trash2 size={13} class="text-red-600" />
 			</button>
 		{/if}
 	</div>
@@ -280,10 +280,24 @@
 	.ftb-muted {
 		color: var(--app-text-2);
 	}
+	.ftb-danger {
+		color: #dc2626;
+	}
+	.ftb-btn.ftb-danger:hover {
+		background: color-mix(in oklab, #dc2626 10%, transparent);
+		color: #b91c1c;
+	}
 	:root[data-theme='dark'] .ftb-strong {
 		color: rgba(255, 255, 255, 0.92);
 	}
 	:root[data-theme='dark'] .ftb-muted {
 		color: rgba(255, 255, 255, 0.55);
+	}
+	:root[data-theme='dark'] .ftb-danger {
+		color: #f87171;
+	}
+	:root[data-theme='dark'] .ftb-btn.ftb-danger:hover {
+		background: rgba(248, 113, 113, 0.12);
+		color: #fca5a5;
 	}
 </style>

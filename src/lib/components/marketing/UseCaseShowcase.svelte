@@ -9,7 +9,10 @@
 		ctaLabel: string;
 		href: string;
 		image: string;
+		/** Optional looping preview video (shown instead of the still when set). */
+		video?: string;
 		accent?: string;
+		features?: string[];
 	};
 
 	let {
@@ -23,13 +26,34 @@
 	} = $props();
 
 	let active = $state(0);
+	let previewFrameEl = $state<HTMLDivElement | null>(null);
 
 	const activeItem = $derived(items[active] ?? items[0]);
+
+	const defaultFeatures = [
+		'Auto-fit text to your canvas size',
+		'Auto-highlight keywords in brand color',
+		'AI image generation + 10M+ stock photos & videos',
+	];
 
 	function select(i: number) {
 		if (i === active) return;
 		active = i;
 	}
+
+	/** Keep the active preview video playing when the tab changes. */
+	$effect(() => {
+		void active;
+		const root = previewFrameEl;
+		if (!root) return;
+		for (const v of root.querySelectorAll('video')) {
+			if (v.classList.contains('is-visible')) {
+				void v.play().catch(() => {});
+			} else {
+				v.pause();
+			}
+		}
+	});
 
 	function onKeydown(e: KeyboardEvent, i: number) {
 		if (e.key === 'Enter' || e.key === ' ') {
@@ -76,9 +100,9 @@
 			<div class="mk-usecase-panel-inner" class:is-visible={active === i} aria-hidden={active !== i}>
 				<p class="mk-usecase-desc">{item.description}</p>
 				<ul class="mk-usecase-features">
-					<li>Auto-fit text to your canvas size</li>
-					<li>Auto-highlight keywords in brand color</li>
-					<li>AI image generation + 10M+ stock photos &amp; videos</li>
+					{#each (item.features?.length ? item.features : defaultFeatures) as feat}
+						<li>{feat}</li>
+					{/each}
 				</ul>
 				<Button href={item.href} variant="outline" size="marketing" class="mk-usecase-cta">
 					{item.ctaLabel}
@@ -90,18 +114,35 @@
 
 	<div class="mk-usecase-preview" aria-live="polite">
 		<div
-			class="mk-usecase-preview-frame"
+			class="mk-usecase-preview-stage"
 			style="--mk-usecase-accent: {activeItem.accent ?? '#7bf1a8'}"
 		>
-			{#each items as item, i (item.id)}
-				<img
-					src={item.image}
-					alt=""
-					loading={i === 0 ? 'eager' : 'lazy'}
-					class="mk-usecase-preview-img"
-					class:is-visible={active === i}
-				/>
-			{/each}
+			<div class="mk-usecase-preview-frame" bind:this={previewFrameEl}>
+				{#each items as item, i (item.id)}
+					{#if item.video}
+						<video
+							src={item.video}
+							poster={item.image}
+							class="mk-usecase-preview-img"
+							class:is-visible={active === i}
+							muted
+							loop
+							playsinline
+							autoplay={active === i}
+							preload={i === 0 || active === i ? 'auto' : 'metadata'}
+							aria-hidden="true"
+						></video>
+					{:else}
+						<img
+							src={item.image}
+							alt=""
+							loading={i === 0 ? 'eager' : 'lazy'}
+							class="mk-usecase-preview-img"
+							class:is-visible={active === i}
+						/>
+					{/if}
+				{/each}
+			</div>
 		</div>
 	</div>
 </div>

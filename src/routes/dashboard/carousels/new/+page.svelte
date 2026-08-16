@@ -28,7 +28,7 @@
 	let uploadEl: HTMLInputElement;
 
 	// ── Step 3: Style ─────────────────────────────────────────────────────
-	let style = $state<'bold' | 'editorial' | 'minimal'>('bold');
+	let style = $state<'bold' | 'editorial' | 'minimal' | 'first-person'>('bold');
 	let slideCount = $state(8);
 	let brandColor = $state('#7bf1a8');
 	let brandName = $state('Your Brand');
@@ -37,6 +37,7 @@
 		{ id: 'bold',     label: 'Bold & Punchy',  desc: 'High energy. Short hits. Emoji-forward.' },
 		{ id: 'editorial',label: 'Magazine',       desc: 'Elegant rhythm. Reads like great writing.' },
 		{ id: 'minimal',  label: 'Clean Pro',      desc: 'Structured. Business-ready. Clear.' },
+		{ id: 'first-person', label: 'First Person', desc: 'I/we voice. Personal, direct, conversational.' },
 	] as const;
 
 	const slideCounts = [5, 8, 10, 12];

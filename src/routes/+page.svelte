@@ -61,18 +61,23 @@
 				'Paste a headline or URL — AI drafts the carousel, generates on-brand images, and wraps it in News Studio chrome. Build a city page or niche news brand that funnels attention back to what you sell.',
 			ctaLabel: 'Explore News Studio',
 			href: '/dashboard/studio?template=news',
-			image: '/templates/demos/news.jpg',
+			image: '/placeholders/home/home-news.png',
 			accent: '#fbbf24',
 		},
 		{
-			id: 'faceless',
-			title: 'Faceless reels',
+			id: 'local-business',
+			title: 'Local Business Attraction',
 			description:
-				'Creator hooks, POV text, and Highlight clips on stock footage — type auto-fits the layout and [[keywords]] pop in your brand color. No camera, no CapCut rabbit holes.',
-			ctaLabel: 'Explore video templates',
-			href: '/dashboard/studio?template=creator',
-			image: '/templates/demos/video-creator-poster.jpg',
-			accent: '#e879f9',
+				'Help local businesses, realtors, clinics, and shops find nearby customers. Turn city and neighborhood news into carousels that put your offer in front of people already paying attention locally.',
+			ctaLabel: 'Build a local news page',
+			href: '/dashboard/studio?template=news',
+			image: '/placeholders/home/local-businsses.png',
+			accent: '#34d399',
+			features: [
+				'Surface local news that your customers already care about',
+				'Position your business next to the stories that drive foot traffic',
+				'Ideal for realtors, restaurants, gyms, and neighborhood brands',
+			],
 		},
 		{
 			id: 'bulk',
@@ -82,7 +87,8 @@
 			ctaLabel: 'Try bulk studio',
 			href: '/dashboard/bulk',
 			image: '/placeholders/home/feat-carousels.png',
-			accent: '#7bf1a8',
+			video: '/placeholders/home/steps-demo.mp4',
+			accent: '#fb923c',
 		},
 	];
 
@@ -372,8 +378,8 @@
 					<h2 class="mk-section-title">Built for how<br />creators actually ship.</h2>
 				</div>
 				<p class="mk-section-desc">
-					Pick a workflow — news carousels, faceless reels, or bulk runs. Type auto-fits your canvas,
-					keywords highlight automatically, and AI images sit alongside stock photos and video.
+					Pick a workflow — news carousels, local business attraction, or bulk runs. Type auto-fits your
+					canvas, keywords highlight automatically, and AI images sit alongside stock photos and video.
 				</p>
 			</div>
 

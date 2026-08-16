@@ -1182,9 +1182,12 @@
 		background: #f3f3f3;
 		color: #333;
 	}
+	.icon-btn--danger {
+		color: #dc2626;
+	}
 	.icon-btn--danger:hover {
 		background: #fef2f2;
-		color: #dc2626;
+		color: #b91c1c;
 	}
 	.icon-btn:disabled {
 		opacity: 0.45;

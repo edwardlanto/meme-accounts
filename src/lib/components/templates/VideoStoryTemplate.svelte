@@ -24,6 +24,8 @@
 		profileName?: string;
 		profileHandle?: string;
 		profileAvatar?: string;
+		/** Prefer photo vs initials when both are available. */
+		profileAvatarMode?: 'text' | 'image';
 		/** Same circle chrome as Text Carousel / News-style avatar toolbar. */
 		profileAvatarInnerBg?: string;
 		profileAvatarRingColor?: string;
@@ -80,6 +82,7 @@
 		profileName = VIDEO_CREATOR_DEFAULTS.name,
 		profileHandle = VIDEO_CREATOR_DEFAULTS.handle,
 		profileAvatar = '',
+		profileAvatarMode = 'text' as 'text' | 'image',
 		profileAvatarInnerBg = '',
 		profileAvatarRingColor = '#c9b97a',
 		profileAvatarRingWidth = 5,
@@ -231,6 +234,9 @@
 	const creatorAvatarRingColorResolved = $derived(
 		String(profileAvatarRingColor ?? '').trim() || '#c9b97a',
 	);
+	const showProfileAvatarImage = $derived(
+		profileAvatarMode !== 'text' && !!String(profileAvatar ?? '').trim(),
+	);
 
 	const DEFAULT_VIDEO = VIDEO_STORY_DEFAULTS.videoUrl;
 
@@ -238,6 +244,12 @@
 	const posterSrc = $derived((videoPoster && videoPoster.trim()) || '');
 	// Prefer explicit video; fall back to demo clip unless the user set a still/poster only.
 	const resolvedVideo = $derived(trimmedVideo || (!posterSrc ? DEFAULT_VIDEO : ''));
+	/** When remote/signed video fails to decode, fall back to poster still instead of a black frame. */
+	let videoPlaybackFailed = $state(false);
+	$effect(() => {
+		resolvedVideo;
+		videoPlaybackFailed = false;
+	});
 
 	let storyVideoEl = $state<HTMLVideoElement | null>(null);
 	let lastDuration = 0;
@@ -372,18 +384,22 @@
 </script>
 
 {#snippet mediaLayer(objectFit: 'cover' | 'contain', extraStyle = '')}
-	{#if resolvedVideo}
+	{#if resolvedVideo && !videoPlaybackFailed}
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video
 			class="video-story-player"
 			src={resolvedVideo}
 			poster={posterSrc || undefined}
+			data-studio-bg-video
 			autoplay
 			loop
 			playsinline
 			muted={videoMuted}
 			onloadedmetadata={onStoryVideoMeta}
 			ontimeupdate={onStoryVideoTimeUpdate}
+			onerror={() => {
+				videoPlaybackFailed = true;
+			}}
 			style="
 				position: absolute;
 				inset: 0;
@@ -517,6 +533,7 @@
 									parseHighlights={true}
 									emphasisBold={isHookLayout}
 									defaultColor={highlightParseDefaults}
+									baseFontWeight={700}
 									style="
 										margin: 0;
 										white-space: pre-wrap;
@@ -544,6 +561,7 @@
 									parseHighlights={true}
 									emphasisBold={isHookLayout}
 									defaultColor={highlightParseDefaults}
+									baseFontWeight={headlineStyle.fontWeight ?? (isHookLayout ? 400 : 600)}
 									style="
 										margin: 0;
 										white-space: {isHookLayout ? 'normal' : 'pre-wrap'};
@@ -760,6 +778,7 @@
 											text={headline}
 											parseHighlights={true}
 											defaultColor={highlightParseDefaults}
+											baseFontWeight={headlineStyle.fontWeight ?? 700}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
@@ -810,6 +829,7 @@
 											text={body}
 											parseHighlights={true}
 											defaultColor={highlightParseDefaults}
+											baseFontWeight={bodyStyle.fontWeight ?? 500}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
@@ -917,6 +937,7 @@
 											text={headline}
 											parseHighlights={true}
 											defaultColor={highlightParseDefaults}
+											baseFontWeight={headlineStyle.fontWeight ?? 400}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
@@ -1021,6 +1042,7 @@
 											text={headline}
 											parseHighlights={true}
 											defaultColor={highlightParseDefaults}
+											baseFontWeight={headlineStyle.fontWeight ?? 800}
 											style="
 												margin: 0;
 												padding: 0;
@@ -1081,7 +1103,7 @@
 									justify-content: center;
 								"
 							>
-								{#if profileAvatar?.trim()}
+								{#if showProfileAvatarImage}
 									<img
 										src={profileAvatar.trim()}
 										alt=""
@@ -1195,6 +1217,7 @@
 										text={headline?.trim() ?? ''}
 										parseHighlights={true}
 										defaultColor="#ffffff"
+										baseFontWeight={headlineStyle.fontWeight ?? 600}
 										style="
 											margin: 0;
 											white-space: pre-wrap;
@@ -1338,7 +1361,7 @@
 										}
 									}}
 								>
-									{#if profileAvatar?.trim()}
+									{#if showProfileAvatarImage}
 										<img
 											src={profileAvatar}
 											alt=""
@@ -1516,6 +1539,7 @@
 										parseHighlights={true}
 										emphasisBold={false}
 										defaultColor={highlightParseDefaults}
+										baseFontWeight={headlineStyle.fontWeight ?? 400}
 										style="
 											margin: 0;
 											white-space: pre-wrap;
@@ -1647,17 +1671,21 @@
 			-->
 			{@const blurBar = previewMode ? 6 : 18}
 			<div style="position: absolute; inset: 0; z-index: 0; overflow: hidden; background: #0a0a0a;">
-				{#if resolvedVideo}
+				{#if resolvedVideo && !videoPlaybackFailed}
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
 						bind:this={blurBgVideoEl}
 						src={resolvedVideo}
 						poster={posterSrc || undefined}
+						data-studio-bg-video
 						autoplay
 						loop
 						playsinline
 						muted
 						aria-hidden="true"
+						onerror={() => {
+							videoPlaybackFailed = true;
+						}}
 						style="
 							position: absolute;
 							inset: -18%;

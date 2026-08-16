@@ -98,6 +98,9 @@
 	/** Multi-select for Studio drafts (bulk delete). */
 	let selectedDraftIds = $state<string[]>([]);
 	let bulkDeletingDrafts = $state(false);
+	/** Multi-select for Saved from Studio templates. */
+	let selectedSavedIds = $state<string[]>([]);
+	let bulkDeletingSaved = $state(false);
 	/** Multi-select for YouTube clip cards (keys from clipShowCards). */
 	let selectedClipKeys = $state<string[]>([]);
 	let bulkDeletingClips = $state(false);
@@ -425,6 +428,15 @@
 			const u = String((s as Record<string, unknown>).draftPreviewUrl ?? '').trim();
 			return u.startsWith('http://') || u.startsWith('https://') ? u : '';
 		})();
+		const libraryCoverUrl = (() => {
+			const u = String((s as Record<string, unknown>).coverImageUrl ?? '').trim();
+			return isUsableThumbUrl(u) ? u : '';
+		})();
+		const hasCapturedRaster = !!(
+			String((s as Record<string, unknown>).draftPreviewKey ?? '').trim() ||
+			String((s as Record<string, unknown>).draftPreviewPath ?? '').trim() ||
+			String((s as Record<string, unknown>).draftPreviewUrl ?? '').trim()
+		);
 
 		const thumbFallback = () => {
 			const demo = defaultThumbForTemplate(tpl as TemplateId);
@@ -460,7 +472,7 @@
 		let heroUrl = '';
 
 		if (tpl === 'news') {
-			heroUrl = storagePreviewHero || pickHero('news') || thumbFallback();
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero('news') || thumbFallback();
 			const solid = String(strArr(s.newsSolidBgBySlide)[0] ?? '').trim();
 			bgSolid = solid || (heroUrl ? '#0a0a0a' : '#ffffff');
 			const tc = String(s.textColor ?? '').trim();
@@ -470,40 +482,40 @@
 		} else if (tpl === 'tweet') {
 			bgSolid = '#ffffff';
 			textColor = '#0a0a0a';
-			heroUrl = storagePreviewHero || pickHero('tweet') || thumbFallback();
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero('tweet') || thumbFallback();
 		} else if (tpl === 'blackText') {
 			bgSolid = '#000000';
 			textColor = '#e5e5e5';
-			heroUrl = storagePreviewHero || pickHero('blackText');
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero('blackText');
 		} else if (tpl === 'textCarousel' || tpl === 'whiteThread') {
 			bgSolid = tpl === 'whiteThread' ? '#ffffff' : '#0a0a0a';
 			textColor = tpl === 'whiteThread' ? '#0a0a0a' : '#f5f5f5';
-			heroUrl = storagePreviewHero;
+			heroUrl = storagePreviewHero || libraryCoverUrl;
 		} else if (tpl === 'whiteMedia') {
 			bgSolid = '#ffffff';
 			textColor = '#0a0a0a';
-			heroUrl = storagePreviewHero || pickHero('whiteMedia') || thumbFallback();
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero('whiteMedia') || thumbFallback();
 		} else if (isVideoStoryFamily(tpl) || isBrandStackFamily(tpl)) {
 			bgSolid = '#0a0a0a';
 			textColor = '#fafafa';
-			heroUrl = storagePreviewHero || pickHero(tpl) || thumbFallback();
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero(tpl) || thumbFallback();
 		} else if (tpl === 'imageQuote') {
 			bgSolid = '#0f172a';
 			textColor = '#fafafa';
-			heroUrl = storagePreviewHero || pickHero('imageQuote') || thumbFallback();
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero('imageQuote') || thumbFallback();
 		} else if (tpl === 'photoTopic' || tpl === 'photoCaption') {
 			bgSolid = '#0a0a0a';
 			textColor = '#fafafa';
-			heroUrl = storagePreviewHero || pickHero(tpl) || thumbFallback();
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero(tpl) || thumbFallback();
 		} else if (tpl === 'article') {
 			bgSolid = '#fafafa';
 			textColor = '#0a0a0a';
-			heroUrl = storagePreviewHero || pickHero('article');
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero('article');
 		} else {
-			heroUrl = storagePreviewHero || pickHero(tpl) || thumbFallback();
+			heroUrl = storagePreviewHero || libraryCoverUrl || pickHero(tpl) || thumbFallback();
 		}
 
-		const fullSlideRaster = !!storagePreviewHero;
+		const fullSlideRaster = !!(storagePreviewHero && hasCapturedRaster);
 		const filmLight =
 			!fullSlideRaster &&
 			(tpl === 'tweet' ||
@@ -593,6 +605,74 @@
 			selectedDraftIds = [];
 		} finally {
 			bulkDeletingDrafts = false;
+		}
+	}
+
+	const allSavedSelected = $derived(
+		studioSavedTemplates.length > 0 && selectedSavedIds.length === studioSavedTemplates.length,
+	);
+
+	function toggleSavedSelected(id: string) {
+		if (selectedSavedIds.includes(id)) {
+			selectedSavedIds = selectedSavedIds.filter((x) => x !== id);
+		} else {
+			selectedSavedIds = [...selectedSavedIds, id];
+		}
+	}
+
+	function toggleSelectAllSaved() {
+		if (allSavedSelected) selectedSavedIds = [];
+		else selectedSavedIds = studioSavedTemplates.map((d) => d.id);
+	}
+
+	async function deleteStudioSavedTemplate(id: string, opts?: { skipConfirm?: boolean }) {
+		if (!opts?.skipConfirm && !confirm('Delete this saved carousel? This cannot be undone.')) {
+			return;
+		}
+		try {
+			const row = studioSavedTemplates.find((x) => x.id === id);
+			const s = row?.state as Record<string, unknown> | undefined;
+			const key =
+				String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+			if (key) await r2DeleteObject({ key });
+		} catch {
+			/* ignore */
+		}
+		const { error } = await (supabase as any)
+			.from('drafts')
+			.delete()
+			.eq('id', id)
+			.eq('user_id', userId)
+			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
+		if (error) {
+			if (!opts?.skipConfirm) alert(error.message ?? 'Could not delete');
+			return;
+		}
+		studioSavedTemplates = studioSavedTemplates.filter((x) => x.id !== id);
+		selectedSavedIds = selectedSavedIds.filter((x) => x !== id);
+		const next = { ...studioSavedTemplateThumbById };
+		delete next[id];
+		studioSavedTemplateThumbById = next;
+	}
+
+	async function deleteSelectedSavedTemplates() {
+		const ids = [...selectedSavedIds];
+		if (!ids.length) return;
+		if (
+			!confirm(
+				`Delete ${ids.length} saved carousel${ids.length === 1 ? '' : 's'}? This cannot be undone.`,
+			)
+		) {
+			return;
+		}
+		bulkDeletingSaved = true;
+		try {
+			for (const id of ids) {
+				await deleteStudioSavedTemplate(id, { skipConfirm: true });
+			}
+			selectedSavedIds = [];
+		} finally {
+			bulkDeletingSaved = false;
 		}
 	}
 
@@ -1168,33 +1248,6 @@
 		return { url: '', fullSlideRaster: false };
 	}
 
-	async function deleteStudioSavedTemplate(id: string) {
-		if (!confirm('Delete this saved carousel? This cannot be undone.')) return;
-		try {
-			const row = studioSavedTemplates.find((x) => x.id === id);
-			const s = row?.state as Record<string, unknown> | undefined;
-			const key =
-				String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
-			if (key) await r2DeleteObject({ key });
-		} catch {
-			// ignore
-		}
-		const { error } = await (supabase as any)
-			.from('drafts')
-			.delete()
-			.eq('id', id)
-			.eq('user_id', userId)
-			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
-		if (error) {
-			alert(error.message ?? 'Could not delete');
-			return;
-		}
-		studioSavedTemplates = studioSavedTemplates.filter((x) => x.id !== id);
-		const next = { ...studioSavedTemplateThumbById };
-		delete next[id];
-		studioSavedTemplateThumbById = next;
-	}
-
 	async function hydrateStudioDraftThumbs() {
 		const rows = studioDrafts;
 		if (!userId || !rows.length) {
@@ -1207,10 +1260,10 @@
 				const id = String(row.id ?? '').trim();
 				if (!id) return;
 				const s = row.state as Record<string, unknown> | undefined;
-				// Only sign real preview keys — inventing `${userId}/${id}.png` yields 404 URLs
-				// that show as broken-image icons on every card.
 				const key =
-					String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+					String(s?.draftPreviewKey ?? '').trim() ||
+					String(s?.draftPreviewPath ?? '').trim() ||
+					String(s?.coverImageKey ?? '').trim();
 				if (!key) return;
 				try {
 					const { url } = await r2SignRead({ key });
@@ -1299,8 +1352,8 @@
 				</Empty.Media>
 				<Empty.Title>No carousels yet</Empty.Title>
 				<Empty.Description>
-					Studio drafts, Bulk posts, and saved Studio templates all land here. Generate in Bulk or
-					edit in Studio, then Save draft / Save template. YouTube clips live on Clips.
+					Bulk posts and saved Studio templates land here. Generate in Bulk or edit in Studio, then
+					Save template. YouTube clips live on Clips.
 				</Empty.Description>
 			</Empty.Header>
 			<Empty.Content class="flex flex-wrap justify-center gap-2">
@@ -1319,9 +1372,10 @@
 			<div class="studio-drafts-head">
 				<div class="studio-drafts-head-row">
 					<div>
-						<h2 class="studio-drafts-title">Studio drafts</h2>
+						<h2 class="studio-drafts-title">Leftover Studio drafts</h2>
 						<p class="studio-drafts-sub">
-							Saved from Studio with Save draft. Open to edit, or select several to delete.
+							Old autosaves (no longer created). Select and delete — these are separate from
+							Saved from Studio.
 						</p>
 					</div>
 					<div class="draft-select-bar">
@@ -1545,15 +1599,60 @@
 	{#if studioSavedTemplates.length > 0}
 		<section class="studio-drafts-block reveal" style="--d:0.06s">
 			<div class="studio-drafts-head">
-				<h2 class="studio-drafts-title">Saved from Studio</h2>
-				<p class="studio-drafts-sub">
-					Carousels you saved with Save template. Thumbnails show the first slide when available.
-				</p>
+				<div class="studio-drafts-head-row">
+					<div>
+						<h2 class="studio-drafts-title">Saved from Studio</h2>
+						<p class="studio-drafts-sub">
+							Carousels you saved with Save template. Thumbnails show the first slide when
+							available.
+						</p>
+					</div>
+					<div class="draft-select-bar">
+						<Button type="button" variant="outline" size="sm" onclick={toggleSelectAllSaved}>
+							<span
+								class="draft-select-box"
+								class:draft-select-box--on={allSavedSelected}
+								aria-hidden="true"
+							></span>
+							{allSavedSelected ? 'Deselect all' : 'Select all'}
+						</Button>
+						{#if selectedSavedIds.length > 0}
+							<Button
+								type="button"
+								variant="destructive"
+								size="sm"
+								disabled={bulkDeletingSaved}
+								onclick={() => void deleteSelectedSavedTemplates()}
+							>
+								{#if bulkDeletingSaved}
+									<Loader class="animate-spin" />
+								{:else}
+									<Trash2 />
+								{/if}
+								Delete {selectedSavedIds.length}
+							</Button>
+						{/if}
+					</div>
+				</div>
 			</div>
 			<div class="saved-templates-grid">
 				{#each studioSavedTemplates as row, i (row.id)}
 					{@const pv = studioSavedTemplatePreviewUrl(row)}
-					<div class="saved-template-tile reveal group" style="--d:{0.1 + i * 0.03}s">
+					{@const isSelected = selectedSavedIds.includes(row.id)}
+					<div
+						class="saved-template-tile reveal group"
+						class:saved-template-tile--selected={isSelected}
+						style="--d:{0.1 + i * 0.03}s"
+					>
+						<label class="draft-check saved-template-check">
+							<input
+								type="checkbox"
+								checked={isSelected}
+								onchange={() => toggleSavedSelected(row.id)}
+								onclick={(e) => e.stopPropagation()}
+							/>
+							<span class="sr-only">Select saved carousel</span>
+						</label>
 						<a
 							class="saved-template-link"
 							href="/dashboard/studio?saved={row.id}"
@@ -1568,6 +1667,9 @@
 									referrerpolicy="no-referrer"
 									loading="lazy"
 									draggable="false"
+									onerror={() => {
+										brokenSavedThumbIds = { ...brokenSavedThumbIds, [row.id]: true };
+									}}
 								/>
 							{:else}
 								<div class="saved-template-empty">
@@ -1956,6 +2058,13 @@
 		transform: translateY(-3px);
 		border-color: var(--panel-border-hover);
 		box-shadow: var(--shadow-pop);
+	}
+	.saved-template-tile--selected {
+		border-color: color-mix(in oklab, var(--color-violet, #7c3aed) 55%, var(--panel-border));
+		box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-violet, #7c3aed) 35%, transparent);
+	}
+	.saved-template-check {
+		z-index: 3;
 	}
 	.saved-template-link {
 		display: block;

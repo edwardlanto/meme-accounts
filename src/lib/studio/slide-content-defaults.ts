@@ -32,11 +32,13 @@ export const NEWS_DEFAULT_LAYOUT = {
 	bgFitMode: 'cover' as const,
 	bgContainMagnify: 140,
 	textPanelOffsetY: 0,
-	/** Keep the letterbox just above the text stack — not climbing toward the circle. */
-	shadowHeight: 48,
+	/** Floor before autofit; autofit lifts this so the fade clears above the headline. */
+	shadowHeight: 56,
 	shadowStrength: 1,
 	/** Match classic News punch (same stops as the pre-curve vignette). */
 	shadowCurve: 'news' as const,
+	/** Letterbox ink — tintable from Studio Shadow popover. */
+	shadowColor: '#000000',
 };
 
 /** Default circular badge photo when News shows the circle with no upload yet. */

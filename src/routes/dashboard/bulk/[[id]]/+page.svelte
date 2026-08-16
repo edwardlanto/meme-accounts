@@ -224,6 +224,10 @@
 	let workspaceAutosaveReady = $state(false);
 
 	const stackLoading = $derived(!workspaceHydrated || !workspaceRevealReady || generating);
+	/** Empty compose: bar centered. Generating / has ideas: dock to bottom. */
+	const promptCompose = $derived(!generating && !showsHaveContent(shows));
+	/** Skip the dock/compose transition on first paint (resume shouldn't fly from center). */
+	let promptChromeMotion = $state(false);
 
 	const currentReframeKey = $derived(
 		reframeSettingsKey({
@@ -362,6 +366,10 @@
 			// Enable autosave after the hydrate assignment wave settles
 			setTimeout(() => {
 				workspaceAutosaveReady = true;
+				/* Next frame: allow compose↔dock transitions (not the initial layout). */
+				requestAnimationFrame(() => {
+					promptChromeMotion = true;
+				});
 			}, 80);
 		});
 		if (opts?.resumeUrl && typeof window !== 'undefined') {
@@ -1605,14 +1613,19 @@
 
 <svelte:window onkeydown={onGenerateKeydown} />
 
-<div class="bulk dash-page">
-	<header class="bulk-header page-hero">
+<div class="bulk dash-page" class:bulk--prompt-compose={promptCompose}>
+	<header class="bulk-header page-hero" class:bulk-header--compose={promptCompose}>
 		<div class="bulk-header-text page-hero-text">
 			<h1 class="dash-page-title">Bulk</h1>
 		</div>
 	</header>
 
-	<section class="stack-wrap" aria-label="Slideshow stack">
+	{#if !promptCompose}
+	<section
+		class="stack-wrap"
+		aria-label="Slideshow stack"
+		in:fly={{ y: 28, duration: 520, opacity: 0 }}
+	>
 		<div class="rows-toolbar">
 			<span class="rows-count"
 				><Layers size={14} />
@@ -1634,22 +1647,32 @@
 							{...props}
 							variant="outline"
 							size="sm"
-							title="Word highlights — accent color for [[…]] markup"
+							title={wordHighlightsOn
+								? `Highlights on — ${highlightStyleKind === 'solid' ? highlightColor : highlightStyleKind}`
+								: 'Highlights off — tap to turn on'}
 							aria-label="Highlights"
+							aria-pressed={wordHighlightsOn}
+							class={wordHighlightsOn ? '' : 'opacity-70'}
 						>
 							<span
 								class="bulk-hl-swatch"
+								class:bulk-hl-swatch--off={!wordHighlightsOn}
 								style={
-									highlightStyleKind === 'gradient'
-										? `background: linear-gradient(90deg, ${highlightGradientFrom}, ${highlightGradientTo});`
-										: highlightStyleKind === 'pattern'
-											? `background-image: url('${AVAILABLE_PATTERNS.find((p) => p.name === highlightPattern)?.url ?? ''}'); background-size: cover;`
-											: `background: ${highlightColor};`
+									!wordHighlightsOn
+										? ''
+										: highlightStyleKind === 'gradient'
+											? `background: linear-gradient(90deg, ${highlightGradientFrom}, ${highlightGradientTo});`
+											: highlightStyleKind === 'pattern'
+												? `background-image: url('${AVAILABLE_PATTERNS.find((p) => p.name === highlightPattern)?.url ?? ''}'); background-size: cover;`
+												: `background: ${highlightColor};`
 								}
 								aria-hidden="true"
 							></span>
 							<Highlighter data-icon="inline-start" />
 							Highlights
+							{#if wordHighlightsOn}
+								<span class="bulk-hl-on-dot" aria-hidden="true"></span>
+							{/if}
 						</Button>
 					{/snippet}
 					<PopoverTrigger child={highlightsTrigger} />
@@ -2117,8 +2140,15 @@
 			{/if}
 		</ul>
 	</section>
+	{/if}
 
-	<section class="bulk-prompt-chrome" aria-label="Generate ideas">
+	<section
+		class="bulk-prompt-chrome"
+		class:bulk-prompt-chrome--compose={promptCompose}
+		class:bulk-prompt-chrome--docked={!promptCompose}
+		class:bulk-prompt-chrome--motion={promptChromeMotion}
+		aria-label="Generate ideas"
+	>
 		<div class="bulk-prompt-shell">
 			<div class="prompt-bar">
 				<div class="prompt-bar-input">
@@ -2687,8 +2717,15 @@
 	.bulk {
 		--bulk-border: color-mix(in oklab, var(--app-border) 65%, transparent);
 		--bulk-preview-width: 252px;
+		--bulk-prompt-dock-pad: 7.5rem;
 		color: var(--app-text);
 		background: #fff;
+		padding-bottom: var(--bulk-prompt-dock-pad);
+		transition: padding-bottom 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	.bulk--prompt-compose {
+		padding-bottom: 0;
+		min-height: calc(100dvh - 5.5rem);
 	}
 	.bulk-header {
 		display: flex;
@@ -2696,6 +2733,14 @@
 		justify-content: space-between;
 		gap: 1rem;
 		margin-bottom: 1rem;
+		transition:
+			opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+			transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	.bulk--prompt-compose .bulk-header,
+	.bulk-header--compose {
+		opacity: 0.45;
+		pointer-events: none;
 	}
 	.bulk-header h1 {
 		margin: 0 0 0.25rem;
@@ -3064,17 +3109,47 @@
 		margin-top: 0.85rem;
 	}
 	.bulk-prompt-chrome {
-		position: sticky;
-		bottom: 0;
-		z-index: 30;
-		margin: 1.25rem 0 0;
-		padding: 0.85rem 0 0.35rem;
-		background: linear-gradient(to top, #fff 55%, rgba(255, 255, 255, 0.92) 78%, transparent);
+		position: fixed;
+		left: 50%;
+		z-index: 40;
+		width: min(52rem, calc(100vw - 1.75rem));
+		margin: 0;
+		padding: 0;
+		background: transparent;
+		pointer-events: none;
+		bottom: max(1.15rem, env(safe-area-inset-bottom, 0px));
+		transform: translate3d(-50%, 0, 0);
+		will-change: bottom, transform;
+	}
+	.bulk-prompt-chrome--motion {
+		transition:
+			bottom 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+			transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	.bulk-prompt-chrome--compose {
+		bottom: 50%;
+		transform: translate3d(-50%, 50%, 0);
+	}
+	.bulk-prompt-chrome--docked {
+		bottom: max(1.15rem, env(safe-area-inset-bottom, 0px));
+		transform: translate3d(-50%, 0, 0);
 	}
 	.bulk-prompt-shell {
 		width: 100%;
-		max-width: 52rem;
-		margin: 0 auto;
+		pointer-events: auto;
+		filter: drop-shadow(0 14px 32px rgba(0, 0, 0, 0.07));
+		transition: filter 0.45s ease;
+	}
+	.bulk-prompt-chrome--compose .bulk-prompt-shell {
+		filter: drop-shadow(0 22px 48px rgba(0, 0, 0, 0.12));
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.bulk,
+		.bulk-header,
+		.bulk-prompt-chrome--motion,
+		.bulk-prompt-shell {
+			transition: none !important;
+		}
 	}
 	/* Prompt bar chrome: `$lib/styles/prompt-bar.css` */
 	.field {
@@ -3155,6 +3230,31 @@
 		border-radius: 999px;
 		flex-shrink: 0;
 		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+	}
+	.bulk-hl-swatch--off {
+		background: transparent !important;
+		background-image: none !important;
+		box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.28);
+		position: relative;
+	}
+	.bulk-hl-swatch--off::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: 13px;
+		height: 1.5px;
+		background: rgba(0, 0, 0, 0.35);
+		transform: translate(-50%, -50%) rotate(-45deg);
+		border-radius: 1px;
+	}
+	.bulk-hl-on-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 999px;
+		flex-shrink: 0;
+		background: #22c55e;
+		box-shadow: 0 0 0 1.5px rgba(34, 197, 94, 0.25);
 	}
 	.history-badge {
 		display: inline-flex;

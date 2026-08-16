@@ -8,6 +8,11 @@
 import type { Overlay, TextElementKind, TextOverlay, TextStyle } from '$lib/types';
 import type { CircleShadow } from './circle-shadow';
 import { DEFAULT_CIRCLE_SHADOW, normalizeCircleShadow } from './circle-shadow';
+import {
+	normalizeBottomShadowColor,
+	normalizeBottomShadowCurve,
+	type BottomShadowCurve,
+} from './bottom-shadow';
 import { NEWS_DEFAULT_LAYOUT } from './slide-content-defaults';
 
 export const NEWS_LAYOUT_DOCUMENT_KIND = 'news_layout' as const;
@@ -50,6 +55,9 @@ export type NewsLayoutGeometry = {
 	textPanelOffsetY: number;
 	shadowHeight: number;
 	shadowStrength: number;
+	shadowCurve: BottomShadowCurve;
+	shadowColor: string;
+	shadowAutoFit: boolean;
 	circleBorderColor: string;
 	circle2BorderColor: string;
 	circleShadow: CircleShadow;
@@ -130,6 +138,7 @@ export function defaultNewsPresent(): NewsPresent {
 export function defaultNewsLayoutGeometry(): NewsLayoutGeometry {
 	return {
 		...NEWS_DEFAULT_LAYOUT,
+		shadowAutoFit: true,
 		circleBorderColor: '#ffffff',
 		circle2BorderColor: '#ffffff',
 		circleShadow: { ...DEFAULT_CIRCLE_SHADOW },
@@ -246,6 +255,16 @@ export function normalizeNewsLayoutGeometry(
 		textPanelOffsetY: Number(partial.textPanelOffsetY) || 0,
 		shadowHeight: Math.max(0, Number(partial.shadowHeight) || 0),
 		shadowStrength: Math.max(0, Number(partial.shadowStrength) || 0),
+		shadowCurve: normalizeBottomShadowCurve(
+			(partial as { shadowCurve?: unknown }).shadowCurve ?? NEWS_DEFAULT_LAYOUT.shadowCurve,
+		),
+		shadowColor: normalizeBottomShadowColor(
+			(partial as { shadowColor?: unknown }).shadowColor ?? NEWS_DEFAULT_LAYOUT.shadowColor,
+		),
+		shadowAutoFit:
+			typeof (partial as { shadowAutoFit?: unknown }).shadowAutoFit === 'boolean'
+				? !!(partial as { shadowAutoFit: boolean }).shadowAutoFit
+				: true,
 		circleBorderColor: String(partial.circleBorderColor ?? base.circleBorderColor),
 		circle2BorderColor: String(partial.circle2BorderColor ?? base.circle2BorderColor),
 		circleShadow: normalizeCircleShadow(partial.circleShadow ?? base.circleShadow),

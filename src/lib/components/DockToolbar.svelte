@@ -7,6 +7,8 @@
 		label: string;
 		onClick?: (e?: MouseEvent) => void;
 		disabled?: boolean;
+		/** Red destructive styling (e.g. delete). */
+		danger?: boolean;
 	};
 
 	type Props = {
@@ -29,8 +31,9 @@
 			title={item.label}
 			disabled={!!item.disabled}
 			onclick={(e) => item.onClick?.(e)}
+			class={item.danger ? 'text-red-600 hover:text-red-600' : undefined}
 		>
-			<item.icon />
+			<item.icon class={item.danger ? 'text-red-600' : undefined} />
 		</Button>
 	{/each}
 </ButtonGroup.Root>

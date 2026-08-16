@@ -264,7 +264,7 @@ function defaultImageQuote(): ImageQuoteData {
 				const art = pool[Math.floor(Math.random() * pool.length)] ?? MOCK_NEWS[0];
 				articleTitle = art.title; articleUrl = art.url;
 				slides[activeIdx].news.text = art.title;
-				slides[activeIdx].news.source = brandNewsSource || sourceLabels[newsCategory] ?? art.source;
+				slides[activeIdx].news.source = brandNewsSource || (sourceLabels[newsCategory] ?? art.source);
 				slides[activeIdx].news.backgroundImage = art.image_url;
 				slides[activeIdx].news.backgroundVideo = '';
 			} else {
@@ -273,7 +273,7 @@ function defaultImageQuote(): ImageQuoteData {
 				if (!res.ok) throw new Error(data.error ?? 'Failed to fetch news');
 				articleTitle = data.title ?? ''; articleUrl = data.url ?? '';
 				slides[activeIdx].news.text = data.text ?? data.title ?? '';
-				slides[activeIdx].news.source = brandNewsSource || sourceLabels[newsCategory] ?? 'News';
+				slides[activeIdx].news.source = brandNewsSource || (sourceLabels[newsCategory] ?? 'News');
 				slides[activeIdx].news.backgroundImage = data.imageUrl ?? '';
 				slides[activeIdx].news.backgroundVideo = '';
 			}

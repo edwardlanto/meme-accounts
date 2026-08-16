@@ -63,13 +63,26 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const rlKey = user ? `user:${user.id}:${kind}` : `ip:${ip}:${kind}`;
 		const rl = checkRateLimit(rlKey, max, windowMs);
 		if (!rl.ok) {
-			return new Response(JSON.stringify({ error: 'Too many requests' }), {
+			return new Response(JSON.stringify({ error: 'Too many requests', code: 'rate_limited' }), {
 				status: 429,
 				headers: {
 					'Content-Type': 'application/json',
 					'Retry-After': String(rl.retryAfterSec),
 				},
 			});
+		}
+		// Unauthenticated callers get a tighter AI cap (auth still required on most AI routes).
+		if (kind === 'ai' && !user) {
+			const anon = checkRateLimit(`ip:${ip}:aiAnon`, 6, 60_000);
+			if (!anon.ok) {
+				return new Response(JSON.stringify({ error: 'Too many requests', code: 'rate_limited' }), {
+					status: 429,
+					headers: {
+						'Content-Type': 'application/json',
+						'Retry-After': String(anon.retryAfterSec),
+					},
+				});
+			}
 		}
 	}
 

@@ -11,6 +11,7 @@
 		GOOGLE_FONTS,
 		CATEGORY_LABELS,
 		loadGoogleFont,
+		canvasFontFamilyStack,
 		type FontCategory,
 	} from '$lib/fonts';
 	import { TEXT_PAD_DEFAULT, TEXT_PAD_MAX, TEXT_PAD_MIN, TEXT_SHADOW_PRESETS } from '$lib/textStyleCss';
@@ -95,6 +96,25 @@
 	const hlGradientOn = $derived(
 		!!activeHighlight && activeHighlight.styleKind === 'gradient',
 	);
+
+	/** True when the current selection (or brand default) has an active highlight paint. */
+	const highlightArmed = $derived(hlSolidOn || hlPatternOn || hlGradientOn);
+
+	const highlightTriggerSwatch = $derived.by(() => {
+		if (!activeHighlight) return '';
+		if (activeHighlight.styleKind === 'gradient') {
+			const from = String(activeHighlight.gradientFrom ?? '').trim();
+			const to = String(activeHighlight.gradientTo ?? '').trim();
+			if (from && to) return `background: linear-gradient(90deg, ${from}, ${to});`;
+		}
+		if (activeHighlight.styleKind === 'pattern') {
+			const name = String(activeHighlight.pattern ?? '').trim();
+			const url = AVAILABLE_PATTERNS.find((p) => p.name === name)?.url ?? '';
+			if (url) return `background-image: url('${url}'); background-size: cover; background-position: center;`;
+		}
+		const c = String(activeHighlight.color ?? '').trim();
+		return c ? `background: ${c};` : '';
+	});
 
 	function sameHex(a: string | undefined, b: string | undefined): boolean {
 		return String(a ?? '').trim().toUpperCase() === String(b ?? '').trim().toUpperCase();
@@ -385,11 +405,11 @@
 					e.stopPropagation();
 					onDelete();
 				}}
-				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted mx-auto"
+				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-danger mx-auto"
 				title="Delete"
 				aria-label="Delete"
 			>
-				<Trash2 size={13} />
+				<Trash2 size={13} class="text-red-600" />
 			</button>
 		{:else}
 		<!-- Font family -->
@@ -406,7 +426,7 @@
 				<Type size={13} class="ftb-muted" />
 				<span
 					class="ftb-strong flex-1 truncate text-left text-xs"
-					style="font-family: '{style.fontFamily ?? FONT_TEMPLATE_DEFAULT}', sans-serif;"
+					style="font-family: {canvasFontFamilyStack(style.fontFamily ?? FONT_TEMPLATE_DEFAULT)};"
 				>
 					{style.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 				</span>
@@ -435,10 +455,14 @@
 								<button
 									type="button"
 									onmouseenter={() => void loadGoogleFont(f.family)}
-									onclick={() => pickFont(f.family)}
+									onpointerdown={(e) => {
+										/* Apply on pointerdown — Bits popover can unmount before click fires. */
+										e.preventDefault();
+										pickFont(f.family);
+									}}
 									class="ftb-row flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors
 										{style.fontFamily === f.family ? 'ftb-row-on' : ''}"
-									style="font-family: '{f.family}', sans-serif;"
+									style="font-family: {canvasFontFamilyStack(f.family)};"
 								>
 									<span>{f.family}</span>
 									{#if style.fontFamily === f.family}
@@ -911,9 +935,15 @@
 				}}
 			>
 				<PopoverTrigger
-					class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn ftb-strong"
+					class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn ftb-strong {highlightArmed
+						? 'ftb-hl-armed'
+						: ''}"
 					title={hasRangeSelection ? 'Highlight selected words' : 'Highlight this text'}
+					aria-pressed={highlightArmed}
 				>
+					{#if highlightTriggerSwatch}
+						<span class="ftb-hl-swatch" style={highlightTriggerSwatch} aria-hidden="true"></span>
+					{/if}
 					<Highlighter size={14} />
 					<ChevronDown size={11} class="ftb-muted" />
 				</PopoverTrigger>
@@ -1001,11 +1031,11 @@
 					e.stopPropagation();
 					onDelete();
 				}}
-				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-muted"
+				class="w-9 h-9 shrink-0 rounded-lg transition-colors flex items-center justify-center ftb-btn ftb-danger"
 				title="Delete"
 				aria-label="Delete"
 			>
-				<Trash2 size={13} />
+				<Trash2 size={13} class="text-red-600" />
 			</button>
 		{/if}
 		{/if}
@@ -1030,8 +1060,12 @@
 
 	.ftb-strong { color: var(--app-text); }
 	.ftb-muted { color: var(--app-text-2); }
+	.ftb-danger { color: #dc2626; }
+	.ftb-btn.ftb-danger:hover { background: color-mix(in oklab, #dc2626 10%, transparent); color: #b91c1c; }
 	:root[data-theme="dark"] .ftb-strong { color: rgba(255,255,255,0.92); }
 	:root[data-theme="dark"] .ftb-muted { color: rgba(255,255,255,0.55); }
+	:root[data-theme="dark"] .ftb-danger { color: #f87171; }
+	:root[data-theme="dark"] .ftb-btn.ftb-danger:hover { background: rgba(248,113,113,0.12); color: #fca5a5; }
 
 	.ftb-on {
 		background: color-mix(in oklab, var(--app-text) 8%, transparent);
@@ -1079,4 +1113,21 @@
 
 	.ftb-chip { border-color: color-mix(in oklab, var(--app-text) 20%, transparent); }
 	:root[data-theme="dark"] .ftb-chip { border-color: rgba(255,255,255,0.20); }
+
+	.ftb-hl-swatch {
+		width: 10px;
+		height: 10px;
+		border-radius: 999px;
+		flex-shrink: 0;
+		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+	}
+	:root[data-theme='dark'] .ftb-hl-swatch {
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+	}
+	:global(.ftb-hl-armed) {
+		background: color-mix(in oklab, var(--app-text) 7%, transparent);
+	}
+	:root[data-theme='dark'] :global(.ftb-hl-armed) {
+		background: rgba(255, 255, 255, 0.08);
+	}
 </style>

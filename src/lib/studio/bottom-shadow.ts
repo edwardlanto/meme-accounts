@@ -10,6 +10,12 @@ export type BottomShadowPreset = {
 	curve: BottomShadowCurve;
 };
 
+export type BottomShadowColorSwatch = {
+	id: string;
+	label: string;
+	hex: string;
+};
+
 export const BOTTOM_SHADOW_CURVES: { id: BottomShadowCurve; label: string; hint: string }[] = [
 	{ id: 'natural', label: 'Natural', hint: 'Long, smooth fade — best for headlines' },
 	{ id: 'editorial', label: 'Editorial', hint: 'Gentle lift with soft mid-tones' },
@@ -25,15 +31,49 @@ export const BOTTOM_SHADOW_PRESETS: BottomShadowPreset[] = [
 	{ id: 'soft', label: 'Soft', height: 44, strength: 0.62, curve: 'soft' },
 	{ id: 'natural', label: 'Natural', height: 58, strength: 0.88, curve: 'natural' },
 	{ id: 'editorial', label: 'Editorial', height: 64, strength: 0.9, curve: 'editorial' },
-	{ id: 'news', label: 'News', height: 48, strength: 1, curve: 'news' },
+	{ id: 'news', label: 'News', height: 56, strength: 1, curve: 'news' },
 	{ id: 'cinematic', label: 'Cinematic', height: 78, strength: 1, curve: 'cinematic' },
 	{ id: 'deep', label: 'Deep', height: 86, strength: 1, curve: 'cinematic' },
 	{ id: 'full', label: 'Full', height: 100, strength: 1, curve: 'news' },
 ];
 
+/** Curated letterbox tints — shown as mini fade previews in Studio. */
+export const BOTTOM_SHADOW_COLORS: BottomShadowColorSwatch[] = [
+	{ id: 'ink', label: 'Ink', hex: '#000000' },
+	{ id: 'slate', label: 'Slate', hex: '#1a2332' },
+	{ id: 'navy', label: 'Navy', hex: '#0b1f3a' },
+	{ id: 'forest', label: 'Moss', hex: '#102418' },
+	{ id: 'wine', label: 'Wine', hex: '#2a1218' },
+	{ id: 'cocoa', label: 'Cocoa', hex: '#2a1c14' },
+	{ id: 'indigo', label: 'Indigo', hex: '#18144a' },
+	{ id: 'dusk', label: 'Dusk', hex: '#2e1a3a' },
+];
+
 export function normalizeBottomShadowCurve(raw: unknown): BottomShadowCurve {
 	const id = String(raw ?? '').trim().toLowerCase();
 	return BOTTOM_SHADOW_CURVES.some((c) => c.id === id) ? (id as BottomShadowCurve) : 'news';
+}
+
+export function normalizeBottomShadowColor(raw: unknown): string {
+	const s = String(raw ?? '').trim();
+	if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+	if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+		const a = s[1]!;
+		const b = s[2]!;
+		const c = s[3]!;
+		return `#${a}${a}${b}${b}${c}${c}`.toLowerCase();
+	}
+	return '#000000';
+}
+
+function shadowRgba(hex: string, alpha: number): string {
+	const n = normalizeBottomShadowColor(hex);
+	const r = Number.parseInt(n.slice(1, 3), 16);
+	const g = Number.parseInt(n.slice(3, 5), 16);
+	const b = Number.parseInt(n.slice(5, 7), 16);
+	const a = Math.max(0, Math.min(1, alpha));
+	if (![r, g, b].every(Number.isFinite)) return `rgba(0,0,0,${a.toFixed(3)})`;
+	return `rgba(${r},${g},${b},${a.toFixed(3)})`;
 }
 
 /**
@@ -56,9 +96,11 @@ export function buildBottomShadowGradient(
 	heightPct: number,
 	strength: number,
 	curve: BottomShadowCurve = 'news',
+	color = '#000000',
 ): string {
 	const sh = Math.max(0, Math.min(100, heightPct));
 	const str = Math.max(0, Math.min(1, strength));
+	const tint = normalizeBottomShadowColor(color);
 	if (sh <= 0 || str <= 0) {
 		return 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 100%)';
 	}
@@ -66,9 +108,9 @@ export function buildBottomShadowGradient(
 	const { fadePct, solidPct } = splitBottomShadowBands(sh);
 	const clear = 100 - sh;
 	const fadeEnd = clear + fadePct;
-	const a = (mult: number) => `rgba(0,0,0,${(mult * str).toFixed(3)})`;
+	const a = (mult: number) => shadowRgba(tint, mult * str);
 	const at = (offset: number) => `${(clear + fadePct * offset).toFixed(2)}%`;
-	/** Hold full black through the solid floor (and to the bottom edge). */
+	/** Hold full tint through the solid floor (and to the bottom edge). */
 	const solidTail =
 		solidPct > 0.5
 			? `, ${a(1)} ${fadeEnd.toFixed(2)}%, ${a(1)} 100%`
@@ -127,12 +169,16 @@ export function bottomShadowHeightForTextStack(
 	info: { topPct: number; heightPct: number },
 	opts?: { padAbove?: number; padBelow?: number; min?: number; max?: number },
 ): number {
-	/** Small pad so the fade starts just above the headline, not near the circle. */
-	const padAbove = opts?.padAbove ?? 4;
+	/**
+	 * Pad must clear the soft top of the fade, not just the geometric start.
+	 * News/natural curves stay ~transparent for the first ~40% of the fade band,
+	 * so ~22% above the headline puts solid-enough black behind the first line.
+	 */
+	const padAbove = opts?.padAbove ?? 22;
 	const padBelow = opts?.padBelow ?? 6;
 	/** Floor matches the News default — short slides stay readable without a tall vignette. */
-	const min = opts?.min ?? 48;
-	const max = opts?.max ?? 82;
+	const min = opts?.min ?? 56;
+	const max = opts?.max ?? 88;
 
 	const top = Math.max(0, Math.min(100, info.topPct));
 	const height = Math.max(0, Math.min(100, info.heightPct));

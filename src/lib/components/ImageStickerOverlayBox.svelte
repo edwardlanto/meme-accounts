@@ -551,12 +551,12 @@
 			<Button
 				variant="ghost"
 				size="icon"
-				class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full"
+				class="text-red-600 hover:text-red-700 h-11 w-11 shrink-0 rounded-full"
 				onclick={onDelete}
 				title="Delete overlay"
 				aria-label="Delete overlay"
 			>
-				<Trash2 size={20} class="text-destructive" strokeWidth={2} />
+				<Trash2 size={20} class="!text-red-600" strokeWidth={2} />
 			</Button>
 		</PopoverContent>
 	{/if}

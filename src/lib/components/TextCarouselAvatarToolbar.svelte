@@ -1,14 +1,19 @@
 <script lang="ts">
-	import { ImagePlus, X, Palette, Trash2, Circle } from 'lucide-svelte';
+	import { ImagePlus, Type, X, Palette, Trash2, Circle } from 'lucide-svelte';
+
+	type AvatarDisplayMode = 'text' | 'image';
 
 	type Props = {
 		anchor: DOMRect | null;
 		avatarSrc: string;
+		/** Explicit disc mode — text initials vs photo. */
+		mode?: AvatarDisplayMode;
 		innerBg: string;
 		defaultInnerBg: string;
 		ringColor: string;
 		ringWidth: number;
 		defaultRingColor?: string;
+		onModeChange?: (mode: AvatarDisplayMode) => void;
 		onImageFile: (dataUrl: string) => void;
 		onClearImage: () => void;
 		onInnerBg: (hex: string) => void;
@@ -21,11 +26,13 @@
 	let {
 		anchor,
 		avatarSrc,
+		mode = 'text',
 		innerBg,
 		defaultInnerBg,
 		ringColor,
 		ringWidth,
 		defaultRingColor = '#c9b97a',
+		onModeChange,
 		onImageFile,
 		onClearImage,
 		onInnerBg,
@@ -37,8 +44,8 @@
 
 	let fileInput = $state<HTMLInputElement | null>(null);
 
-	/** Horizontal toolbar — image, fill, ring controls. */
-	const TOOLBAR_W = 520;
+	/** Horizontal toolbar — mode, image, fill, ring controls. */
+	const TOOLBAR_W = 560;
 	const TOOLBAR_H = 44;
 
 	const pos = $derived.by(() => {
@@ -51,13 +58,28 @@
 		return { top, left, show: true };
 	});
 
+	const resolvedMode = $derived.by((): AvatarDisplayMode => {
+		if (mode === 'image' || mode === 'text') return mode;
+		return avatarSrc.trim() ? 'image' : 'text';
+	});
+
+	function setMode(next: AvatarDisplayMode) {
+		onModeChange?.(next);
+		if (next === 'image' && !avatarSrc.trim()) {
+			queueMicrotask(() => fileInput?.click());
+		}
+	}
+
 	function handleFile(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const f = input.files?.[0];
 		input.value = '';
 		if (!f || !f.type.startsWith('image/')) return;
 		const r = new FileReader();
-		r.onload = () => onImageFile(String(r.result ?? ''));
+		r.onload = () => {
+			onImageFile(String(r.result ?? ''));
+			onModeChange?.('image');
+		};
 		r.readAsDataURL(f);
 	}
 
@@ -104,6 +126,38 @@
 
 		<div class="w-px h-6 shrink-0 avatar-tb-div"></div>
 
+		<div
+			class="avatar-tb-seg inline-flex h-9 shrink-0 items-center rounded-lg p-0.5"
+			role="group"
+			aria-label="Circle source"
+			title="Show initials or a photo in the circle"
+		>
+			<button
+				type="button"
+				class="avatar-tb-seg-btn inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors {resolvedMode === 'text'
+					? 'avatar-tb-on'
+					: ''}"
+				onclick={() => setMode('text')}
+				aria-pressed={resolvedMode === 'text'}
+			>
+				<Type size={13} class="shrink-0" />
+				<span>Text</span>
+			</button>
+			<button
+				type="button"
+				class="avatar-tb-seg-btn inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors {resolvedMode === 'image'
+					? 'avatar-tb-on'
+					: ''}"
+				onclick={() => setMode('image')}
+				aria-pressed={resolvedMode === 'image'}
+			>
+				<ImagePlus size={13} class="shrink-0" />
+				<span>Image</span>
+			</button>
+		</div>
+
+		<div class="w-px h-6 shrink-0 avatar-tb-div"></div>
+
 		<input bind:this={fileInput} type="file" accept="image/*" class="hidden" onchange={handleFile} />
 		<button
 			type="button"
@@ -112,17 +166,20 @@
 			title={avatarSrc.trim() ? 'Replace circle image' : 'Upload circle image'}
 		>
 			<ImagePlus size={14} class="avatar-tb-muted shrink-0" />
-			<span class="hidden sm:inline">{avatarSrc.trim() ? 'Replace' : 'Image'}</span>
+			<span class="hidden sm:inline">{avatarSrc.trim() ? 'Replace' : 'Upload'}</span>
 		</button>
 		{#if avatarSrc.trim()}
 			<button
 				type="button"
 				class="avatar-tb-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
-				onclick={() => onClearImage()}
+				onclick={() => {
+					onClearImage();
+					onModeChange?.('text');
+				}}
 				title="Remove image"
 				aria-label="Remove circle image"
 			>
-				<Trash2 size={13} class="avatar-tb-muted" />
+				<Trash2 size={13} class="text-red-600" />
 			</button>
 		{/if}
 
@@ -220,6 +277,20 @@
 	}
 	:root[data-theme='dark'] .avatar-tb-btn:hover {
 		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.avatar-tb-seg {
+		background: color-mix(in oklab, var(--app-text) 6%, transparent);
+	}
+	:root[data-theme='dark'] .avatar-tb-seg {
+		background: rgba(255, 255, 255, 0.06);
+	}
+
+	.avatar-tb-seg-btn {
+		color: var(--app-text-2);
+	}
+	.avatar-tb-seg-btn:hover {
+		color: var(--app-text);
 	}
 
 	.avatar-tb-on {

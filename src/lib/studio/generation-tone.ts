@@ -3,19 +3,22 @@
 const STYLE_PROMPTS: Record<string, string> = {
 	bold: 'High-energy bold: short punchy bursts, strong verbs, strategic emojis. Action-first.',
 	editorial:
-		'Magazine-quality editorial: elegant rhythm, thoughtful pacing. Reads like a great article.',
+		'Magazine-quality editorial: elegant rhythm, thoughtful pacing. Still name the topic — elegance is not an excuse for off-topic metaphor.',
 	minimal:
 		'Clean and professional: structured, credible, business-appropriate. Clear hierarchy.',
+	'first-person':
+		'First-person voice: write as I/we. Personal, direct, conversational — lived experience and opinions, not third-person news speak.',
 };
 
 const EMOTION_PROMPTS: Record<string, string> = {
-	curious: 'Lean into curiosity gaps and open loops. Make them need the next slide.',
+	curious: 'Lean into curiosity gaps and open loops. Make them need the next slide — about this topic.',
 	urgent: 'Time pressure and stakes. Short sentences. Immediate action.',
 	hopeful: 'Optimistic, forward-looking, possibility without fluff.',
 	shocking: 'Surprising claims backed by concrete specifics. Stop the scroll.',
 	calm: 'Steady, reassuring, clear. No hype. Trust over drama.',
 	witty: 'Smart humor, light wordplay. Never mean-spirited.',
-	inspiring: 'Uplifting, agency, "you can do this" energy with specific proof.',
+	inspiring:
+		'Uplifting, agency, "you can do this" energy with specific proof ABOUT THE TOPIC. Do not wander into a pretty unrelated scene.',
 };
 
 export function generationStylePrompt(style: string | undefined): string {

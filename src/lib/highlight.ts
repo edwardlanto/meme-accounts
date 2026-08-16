@@ -30,6 +30,59 @@ export function normalizeHighlightPatternName(
 	return getPatternImage(name) ? name : fallback;
 }
 
+/** Clamp a CSS font-weight to the 100–900 axis (default 700 when unknown). */
+export function normalizeHighlightBaseWeight(baseWeight?: number | string | null): number {
+	const n = typeof baseWeight === 'string' ? Number.parseFloat(baseWeight) : Number(baseWeight);
+	if (!Number.isFinite(n)) return 700;
+	return Math.max(100, Math.min(900, Math.round(n)));
+}
+
+/**
+ * Heavier weight for `[[…]]` highlight spans relative to the surrounding block.
+ * Caps at 900; when the block is already ≥800, callers should also apply the
+ * stroke/synthesis extras from `highlightEmphasisCss`.
+ */
+export function resolveHighlightEmphasisWeight(baseWeight?: number | string | null): number {
+	const base = normalizeHighlightBaseWeight(baseWeight);
+	return Math.min(900, Math.max(700, base + 200));
+}
+
+/**
+ * Inline CSS so highlighted phrases read heavier than the parent line.
+ * When the parent is already heavy (≥800), adds a light stroke so Plus Jakarta
+ * (max ~800) and 900-weight blocks still show a visible bump.
+ */
+export function highlightEmphasisCss(baseWeight?: number | string | null): string {
+	const base = normalizeHighlightBaseWeight(baseWeight);
+	const w = resolveHighlightEmphasisWeight(base);
+	const bits = [`font-weight: ${w};`, 'font-style: inherit;', 'text-decoration: inherit;'];
+	if (base >= 800) {
+		bits.push('font-synthesis: weight;');
+		bits.push('-webkit-text-stroke: 0.35px currentColor;');
+		bits.push('paint-order: stroke fill;');
+	}
+	return bits.join(' ');
+}
+
+/** Apply the same emphasis rules to a live DOM node (HighlightEditor). */
+export function applyHighlightEmphasisToElement(
+	el: HTMLElement,
+	baseWeight?: number | string | null,
+): void {
+	const base = normalizeHighlightBaseWeight(baseWeight);
+	const w = resolveHighlightEmphasisWeight(base);
+	el.style.fontWeight = String(w);
+	if (base >= 800) {
+		el.style.fontSynthesis = 'weight';
+		el.style.setProperty('-webkit-text-stroke', '0.35px currentColor');
+		el.style.setProperty('paint-order', 'stroke fill');
+	} else {
+		el.style.removeProperty('font-synthesis');
+		el.style.removeProperty('-webkit-text-stroke');
+		el.style.removeProperty('paint-order');
+	}
+}
+
 /** Solid swatches shared by Studio settings + floating highlight toolbar. */
 export const HIGHLIGHT_SOLID_PRESETS = [
 	'#08EBFF',

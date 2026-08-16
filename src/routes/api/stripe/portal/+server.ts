@@ -44,9 +44,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		return json({ ok: false, error: e?.message ?? 'Stripe not configured' }, { status: 503 });
 	}
 
+	const origin = new URL(request.url).origin;
 	const params: Parameters<typeof stripe.billingPortal.sessions.create>[0] = {
 		customer: profile.stripe_customer_id,
-		return_url: appUrl('/dashboard/settings?tab=billing'),
+		return_url: appUrl('/dashboard/settings?tab=billing', origin),
 	};
 
 	if (flow === 'cancel' && profile.stripe_subscription_id) {

@@ -3,10 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { analyzeBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
+import { assessUserTopicSafety, withCopySafetyRules } from '$lib/server/ai-copy-safety';
+import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const heavy = enforceAiHeavyRateLimit(user.id);
+	if (!heavy.ok) return rateLimitedJson(heavy.retryAfterSec);
 
 	const parsed = await parseJsonBody(request, analyzeBodySchema, 8192);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
@@ -30,7 +35,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const hookBlock = sandboxUserPlaintext('HOOK', String(post.hook ?? 'N/A'), 400);
 	const captionBlock = sandboxUserPlaintext('CAPTION', (post.caption ?? '').slice(0, 500), 500);
 
-	const prompt = `You are a viral content strategist. Analyze this Instagram post and provide a concise breakdown.
+	const topicSafety = assessUserTopicSafety(String(post.hook ?? ''), String(post.caption ?? ''));
+	if (!topicSafety.ok) {
+		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
+	}
+
+	const prompt = withCopySafetyRules(`You are a viral content strategist. Analyze this Instagram post and provide a concise breakdown.
 
 Creator handle (metadata only): @${handle.replace(/[^\w.]/g, '_')}
 ${niche}
@@ -51,7 +61,7 @@ Respond with a JSON object (no markdown) with these exact keys:
   "why_it_went_viral": "The core reason this performed well (2-3 sentences)",
   "remix_hooks": ["Hook variation 1", "Hook variation 2", "Hook variation 3"],
   "target_audience": "Who this resonates with most"
-}`;
+}`);
 
 	if (!env.OPENROUTER_API_KEY) {
 		// Demo analysis
@@ -80,7 +90,7 @@ Respond with a JSON object (no markdown) with these exact keys:
 			'X-Title': 'Meme Accounts',
 		},
 		body: JSON.stringify({
-			model: 'google/gemini-3.7-flash',
+			model: 'anthropic/claude-sonnet-4.5',
 			messages: [{ role: 'user', content: prompt }],
 			temperature: 0.7,
 			max_tokens: 800,

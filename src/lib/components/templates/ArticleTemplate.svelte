@@ -212,6 +212,7 @@
 									text={normalizedText}
 									parseHighlights={true}
 									defaultColor={accentColor}
+									baseFontWeight={articleStyles.articleBody?.fontWeight ?? headlineStyle.fontWeight ?? 400}
 									style="
 										font-size: {articleStyles.articleBody?.fontSize ?? headlineStyle.fontSize ?? 46}px;
 										font-weight: 400;

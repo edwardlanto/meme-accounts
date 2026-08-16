@@ -19,9 +19,10 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Empty from '$lib/components/ui/empty/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import { coerceTemplateId, type TemplateId } from '$lib/studio/template-ids';
+	import { defaultThumbForTemplate } from '$lib/studio/slide-content-defaults';
+	import { libraryCardImageUrl } from '$lib/client/optimize-image-url';
 
-	/** Must match `DRAFT_KIND` in `dashboard/studio/+page.svelte`. */
-	const STUDIO_WORKSPACE_DRAFT_KIND = 'news_studio';
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
 
@@ -29,25 +30,17 @@
 
 	let loading = $state(true);
 	let userId = $state('');
-	let recentCarousels = $state<DraftRow[]>([]);
-	let recentCarouselThumbById = $state<Record<string, string>>({});
 	let studioSavedTemplates = $state<DraftRow[]>([]);
 	let studioSavedTemplateThumbById = $state<Record<string, string>>({});
+	let brokenSavedThumbIds = $state<Record<string, boolean>>({});
 
 	const primaryCards = [
 		{ href: '/dashboard/templates', icon: LayoutTemplate, label: 'Templates', sub: 'Layouts & starters' },
-		{ href: '/dashboard/carousels', icon: ImagePlus, label: 'Carousels', sub: 'Studio drafts & Bulk posts' },
+		{ href: '/dashboard/carousels', icon: ImagePlus, label: 'Carousels', sub: 'Saved templates & Bulk posts' },
 		{ href: '/dashboard/clips', icon: Clapperboard, label: 'Clips', sub: 'YouTube clip stacks' },
 		{ href: '/dashboard/bulk', icon: Rows3, label: 'Bulk', sub: 'Edit slideshows + clips' },
 		{ href: '/dashboard/videos', icon: Video, label: 'Videos', sub: 'Paste link → find clips' },
 	] as const;
-
-	function stripMarkup(s: string): string {
-		return String(s ?? '')
-			.replace(/<\/?[^>]+>/g, '')
-			.replace(/\*\*|__/g, '')
-			.replace(/[*_]/g, '');
-	}
 
 	function timeAgo(dateStr: string): string {
 		const d = new Date(dateStr);
@@ -58,22 +51,6 @@
 		const h = Math.floor(m / 60);
 		if (h < 24) return `${h}h ago`;
 		return `${Math.floor(h / 24)}d ago`;
-	}
-
-	function carouselTitle(d: DraftRow): string {
-		const slides = d.state?.slides;
-		if (Array.isArray(slides) && slides.length) {
-			const t = stripMarkup(String(slides[0] ?? ''))
-				.trim()
-				.replace(/\s+/g, ' ');
-			if (t) return t.length > 64 ? `${t.slice(0, 61)}…` : t;
-		}
-		const src = d.state?.source;
-		if (typeof src === 'string' && src.trim()) {
-			const t = src.trim();
-			return t.length > 64 ? `${t.slice(0, 61)}…` : t;
-		}
-		return 'Untitled carousel';
 	}
 
 	function studioSavedTemplateName(row: DraftRow): string {
@@ -92,27 +69,6 @@
 		}
 	}
 
-	async function hydrateRecentCarouselThumbs() {
-		const rows = recentCarousels;
-		if (!userId || !rows.length) {
-			recentCarouselThumbById = {};
-			return;
-		}
-		const next: Record<string, string> = {};
-		await Promise.all(
-			rows.map(async (row) => {
-				const id = String(row.id ?? '').trim();
-				if (!id) return;
-				const s = row.state;
-				const key =
-					String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
-				const url = await signPreviewKey(key);
-				if (url) next[id] = url;
-			}),
-		);
-		recentCarouselThumbById = next;
-	}
-
 	async function hydrateSavedTemplateThumbs() {
 		const rows = studioSavedTemplates;
 		if (!userId || !rows.length) {
@@ -125,32 +81,65 @@
 				const id = String(row.id ?? '').trim();
 				if (!id) return;
 				const s = row.state;
-				const key =
-					String(s?.draftPreviewKey ?? '').trim() ||
-					String(s?.draftPreviewPath ?? '').trim() ||
-					`${userId}/templates/${id}.png`;
+				const previewKey =
+					String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+				const coverKey = String(s?.coverImageKey ?? '').trim();
+				const key = previewKey || coverKey;
+				if (!key) return;
 				const url = await signPreviewKey(key);
 				if (url) next[id] = url;
 			}),
 		);
 		studioSavedTemplateThumbById = next;
+		brokenSavedThumbIds = {};
 	}
 
 	function draftPreviewUrl(
 		row: DraftRow,
 		signedMap: Record<string, string>,
+		brokenMap: Record<string, boolean>,
 	): { url: string; fullSlideRaster: boolean } {
 		const id = String(row.id ?? '').trim();
+		if (id && brokenMap[id]) {
+			return draftPreviewFallback(row);
+		}
 		const signed = signedMap[id];
-		if (signed) return { url: signed, fullSlideRaster: true };
+		if (signed) {
+			const s = row.state;
+			const previewKey =
+				String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
+			return {
+				url: libraryCardImageUrl(signed),
+				fullSlideRaster: !!previewKey,
+			};
+		}
 		const s = row.state;
 		const draftPreviewUrl = String(s?.draftPreviewUrl ?? '').trim();
 		if (draftPreviewUrl.startsWith('http://') || draftPreviewUrl.startsWith('https://')) {
-			return { url: draftPreviewUrl, fullSlideRaster: true };
+			return { url: libraryCardImageUrl(draftPreviewUrl), fullSlideRaster: true };
 		}
 		const templatePreviewUrl = String(s?.templatePreviewUrl ?? '').trim();
 		if (templatePreviewUrl.startsWith('http://') || templatePreviewUrl.startsWith('https://')) {
-			return { url: templatePreviewUrl, fullSlideRaster: false };
+			return { url: libraryCardImageUrl(templatePreviewUrl), fullSlideRaster: false };
+		}
+		const coverImageUrl = String(s?.coverImageUrl ?? '').trim();
+		if (
+			coverImageUrl.startsWith('http://') ||
+			coverImageUrl.startsWith('https://') ||
+			coverImageUrl.startsWith('/')
+		) {
+			return { url: libraryCardImageUrl(coverImageUrl), fullSlideRaster: false };
+		}
+		return draftPreviewFallback(row);
+	}
+
+	function draftPreviewFallback(row: DraftRow): { url: string; fullSlideRaster: boolean } {
+		const s = row.state;
+		const templates = Array.isArray(s?.slideTemplates) ? s.slideTemplates : [];
+		const tpl = coerceTemplateId(templates[0] ?? 'news') as TemplateId;
+		const demo = String(defaultThumbForTemplate(tpl) ?? '').trim();
+		if (demo.startsWith('http://') || demo.startsWith('https://') || demo.startsWith('/')) {
+			return { url: libraryCardImageUrl(demo), fullSlideRaster: false };
 		}
 		return { url: '', fullSlideRaster: false };
 	}
@@ -161,12 +150,10 @@
 			const row = studioSavedTemplates.find((x) => x.id === id);
 			const s = row?.state;
 			const key =
-				String(s?.draftPreviewKey ?? '').trim() ||
-				String(s?.draftPreviewPath ?? '').trim() ||
-				`${userId}/templates/${id}.png`;
+				String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
 			if (key) await r2DeleteObject({ key });
 		} catch {
-			// ignore
+			/* ignore */
 		}
 		const { error } = await (supabase as any)
 			.from('drafts')
@@ -184,33 +171,6 @@
 		studioSavedTemplateThumbById = next;
 	}
 
-	async function deleteRecentCarousel(id: string) {
-		if (!confirm('Delete this carousel draft? This cannot be undone.')) return;
-		try {
-			const row = recentCarousels.find((x) => x.id === id);
-			const s = row?.state;
-			const key =
-				String(s?.draftPreviewKey ?? '').trim() || String(s?.draftPreviewPath ?? '').trim();
-			if (key) await r2DeleteObject({ key });
-		} catch {
-			// ignore
-		}
-		const { error } = await (supabase as any)
-			.from('drafts')
-			.delete()
-			.eq('id', id)
-			.eq('user_id', userId)
-			.eq('kind', STUDIO_WORKSPACE_DRAFT_KIND);
-		if (error) {
-			alert(error.message ?? 'Could not delete carousel');
-			return;
-		}
-		recentCarousels = recentCarousels.filter((x) => x.id !== id);
-		const next = { ...recentCarouselThumbById };
-		delete next[id];
-		recentCarouselThumbById = next;
-	}
-
 	onMount(async () => {
 		const {
 			data: { user },
@@ -221,22 +181,12 @@
 		}
 		userId = user.id;
 
-		const [recentCarouselsRows, savedTplRows] = await Promise.all([
-			fetchDraftLibraryRows(supabase, {
-				userId: user.id,
-				kind: STUDIO_WORKSPACE_DRAFT_KIND,
-				limit: 8,
-			}),
-			fetchDraftLibraryRows(supabase, {
-				userId: user.id,
-				kind: STUDIO_SAVED_TEMPLATE_KIND,
-				limit: 12,
-			}),
-		]);
-
-		recentCarousels = recentCarouselsRows;
-		studioSavedTemplates = savedTplRows;
-		await Promise.all([hydrateRecentCarouselThumbs(), hydrateSavedTemplateThumbs()]);
+		studioSavedTemplates = await fetchDraftLibraryRows(supabase, {
+			userId: user.id,
+			kind: STUDIO_SAVED_TEMPLATE_KIND,
+			limit: 12,
+		});
+		await hydrateSavedTemplateThumbs();
 		loading = false;
 	});
 </script>
@@ -292,106 +242,24 @@
 		{/each}
 	</section>
 
-	<!-- Recent carousels -->
-	<section class="flex flex-col gap-4" aria-labelledby="recent-carousels-heading" aria-busy={loading}>
+	<!-- Saved templates -->
+	<section class="flex flex-col gap-4" aria-labelledby="saved-templates-heading" aria-busy={loading}>
 		<div class="flex flex-wrap items-end justify-between gap-3">
 			<div class="min-w-0 space-y-1">
-				<h2 id="recent-carousels-heading" class="text-base font-semibold tracking-tight">
-					Recent carousels
+				<h2 id="saved-templates-heading" class="text-base font-semibold tracking-tight">
+					Saved from Studio
 				</h2>
 				<p class="text-sm text-muted-foreground">
-					Your latest Studio drafts — open one to keep editing.
+					Only appears when you tap Save template. Manage or bulk-delete on
+					<a class="font-medium text-foreground underline-offset-4 hover:underline" href="/dashboard/carousels"
+						>Carousels</a
+					>.
 				</p>
 			</div>
 			<Button href="/dashboard/carousels" variant="outline" size="sm">
 				View all
 				<ArrowRight data-icon="inline-end" />
 			</Button>
-		</div>
-
-		{#if loading}
-			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden="true">
-				{#each [0, 1, 2, 3] as i (i)}
-					<Skeleton class="aspect-4/5 rounded-xl" />
-				{/each}
-			</div>
-		{:else if recentCarousels.length > 0}
-			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-				{#each recentCarousels as row (row.id)}
-					{@const pv = draftPreviewUrl(row, recentCarouselThumbById)}
-					<Card.Root class="group relative gap-0 py-0 [--card-spacing:0]">
-						<a
-							class="absolute inset-0 z-0"
-							href="/dashboard/studio?draft={row.id}"
-							aria-label="Open carousel {carouselTitle(row)}"
-						></a>
-						<div class="relative aspect-4/5 overflow-hidden bg-muted">
-							{#if pv.url}
-								<img
-									src={pv.url}
-									alt=""
-									class="size-full {pv.fullSlideRaster
-										? 'object-contain bg-black/35'
-										: 'object-cover'}"
-									referrerpolicy="no-referrer"
-									loading="lazy"
-									draggable="false"
-								/>
-							{:else}
-								<div
-									class="flex size-full items-center justify-center p-4 text-center text-xs text-muted-foreground"
-								>
-									<span class="line-clamp-3">{carouselTitle(row)}</span>
-								</div>
-							{/if}
-							<div
-								class="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/70 via-black/35 to-transparent p-3 pt-10"
-							>
-								<p class="truncate text-xs font-semibold text-white">{carouselTitle(row)}</p>
-								<p class="text-[11px] text-white/70">{timeAgo(row.updated_at)}</p>
-							</div>
-						</div>
-						<Button
-							type="button"
-							variant="destructive"
-							size="icon-sm"
-							class="absolute top-2.5 right-2.5 z-10 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-							title="Delete carousel"
-							aria-label="Delete carousel"
-							onclick={() => void deleteRecentCarousel(row.id)}
-						>
-							<Trash2 />
-						</Button>
-					</Card.Root>
-				{/each}
-			</div>
-		{:else}
-			<Empty.Root class="border border-dashed">
-				<Empty.Header>
-					<Empty.Title>No carousels yet</Empty.Title>
-					<Empty.Description>
-						Pick a template to start one — it will show up here.
-					</Empty.Description>
-				</Empty.Header>
-				<Empty.Content>
-					<Button href="/dashboard/templates" size="sm">Browse templates</Button>
-				</Empty.Content>
-			</Empty.Root>
-		{/if}
-	</section>
-
-	<!-- Saved templates -->
-	<section class="flex flex-col gap-4" aria-labelledby="saved-templates-heading" aria-busy={loading}>
-		<div class="space-y-1">
-			<h2 id="saved-templates-heading" class="text-base font-semibold tracking-tight">
-				Saved templates
-			</h2>
-			<p class="text-sm text-muted-foreground">
-				Layouts you saved from Studio. Open one to keep editing, or manage the full list on
-				<a class="font-medium text-foreground underline-offset-4 hover:underline" href="/dashboard/carousels"
-					>Carousels</a
-				>.
-			</p>
 		</div>
 
 		{#if loading}
@@ -403,33 +271,44 @@
 		{:else if studioSavedTemplates.length > 0}
 			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 				{#each studioSavedTemplates as row (row.id)}
-					{@const pv = draftPreviewUrl(row, studioSavedTemplateThumbById)}
-					<Card.Root class="group relative gap-0 py-0 [--card-spacing:0]">
+					{@const pv = draftPreviewUrl(row, studioSavedTemplateThumbById, brokenSavedThumbIds)}
+					{@const name = studioSavedTemplateName(row)}
+					<Card.Root class="group relative gap-0 overflow-hidden py-0 transition-colors hover:bg-muted/40 [--card-spacing:0]">
 						<a
-							class="absolute inset-0 z-0"
 							href="/dashboard/studio?saved={row.id}"
-							aria-label="Open saved template {studioSavedTemplateName(row)}"
-						></a>
-						<div class="relative aspect-4/5 overflow-hidden bg-muted">
-							{#if pv.url}
-								<img
-									src={pv.url}
-									alt=""
-									class="size-full {pv.fullSlideRaster
-										? 'object-contain bg-black/35'
-										: 'object-cover'}"
-									referrerpolicy="no-referrer"
-									loading="lazy"
-									draggable="false"
-								/>
-							{:else}
+							class="block outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							aria-label="Open saved template {name}"
+						>
+							<div class="relative aspect-4/5 overflow-hidden bg-muted">
+								{#if pv.url}
+									<img
+										src={pv.url}
+										alt=""
+										class="size-full {pv.fullSlideRaster
+											? 'object-contain bg-black/35'
+											: 'object-cover'}"
+										referrerpolicy="no-referrer"
+										loading="lazy"
+										draggable="false"
+										onerror={() => {
+											brokenSavedThumbIds = { ...brokenSavedThumbIds, [row.id]: true };
+										}}
+									/>
+								{:else}
+									<div
+										class="flex size-full items-center justify-center p-4 text-center text-xs text-muted-foreground"
+									>
+										<span class="line-clamp-4">{name}</span>
+									</div>
+								{/if}
 								<div
-									class="flex size-full items-center justify-center p-4 text-center text-xs text-muted-foreground"
+									class="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/70 via-black/35 to-transparent p-3 pt-10"
 								>
-									<span class="line-clamp-3">{studioSavedTemplateName(row)}</span>
+									<p class="truncate text-xs font-semibold text-white">{name}</p>
+									<p class="text-[11px] text-white/70">{timeAgo(row.updated_at)}</p>
 								</div>
-							{/if}
-						</div>
+							</div>
+						</a>
 						<Button
 							type="button"
 							variant="destructive"
@@ -437,7 +316,11 @@
 							class="absolute top-2.5 right-2.5 z-10 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
 							title="Delete template"
 							aria-label="Delete template"
-							onclick={() => void deleteStudioSavedTemplate(row.id)}
+							onclick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								void deleteStudioSavedTemplate(row.id);
+							}}
 						>
 							<Trash2 />
 						</Button>

@@ -117,7 +117,7 @@
 				title="Remove media"
 				aria-label="Remove media"
 			>
-				<Trash2 size={13} class="avatar-tb-muted" />
+				<Trash2 size={13} class="text-red-600" />
 			</button>
 		{/if}
 

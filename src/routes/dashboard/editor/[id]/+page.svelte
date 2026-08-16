@@ -151,7 +151,7 @@
 			const d = await r.json();
 			if (!r.ok) throw new Error(d.error ?? 'Failed');
 			overlayText = d.text ?? overlayText;
-			newsSource = brandNewsSource || sourceLabels[newsCategory] ?? d.source ?? 'News';
+			newsSource = brandNewsSource || (sourceLabels[newsCategory] ?? d.source ?? 'News');
 			articleTitle = d.title ?? ''; articleUrl = d.url ?? '';
 			if (d.title) generateBg(d.title);
 		} catch (e: any) { newsError = e.message; }

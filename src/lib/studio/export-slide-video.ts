@@ -4,7 +4,11 @@
  * Browser capture is WebM; `transcodeSlideVideoToMp4` turns it into H.264 MP4.
  */
 import { toPng } from 'html-to-image';
-import { SAFE_HTML_TO_IMAGE_OPTS, TRANSPARENT_PIXEL } from '$lib/studio/export-capture';
+import {
+	SAFE_HTML_TO_IMAGE_OPTS,
+	TRANSPARENT_PIXEL,
+	materializeDomImagesForExport,
+} from '$lib/studio/export-capture';
 
 /** Dual-pass hole colors — never flatten semi-transparent overlays onto a single chroma. */
 const HOLE_A = { css: '#FF00FF', r: 255, g: 0, b: 255 };
@@ -95,10 +99,14 @@ function withVideoHoles<T>(
 ): Promise<T> {
 	const placeholders: HTMLElement[] = [];
 	const prevVis: string[] = [];
+	const prevPoster: Array<string | null> = [];
 	for (const video of videos) {
 		const host = video.parentElement;
 		if (!host) continue;
 		prevVis.push(video.style.visibility);
+		prevPoster.push(video.getAttribute('poster'));
+		// Poster URLs are often remote CDN — leave them on and html-to-image taints the canvas.
+		video.removeAttribute('poster');
 		video.style.visibility = 'hidden';
 		const placeholder = document.createElement('div');
 		placeholder.setAttribute('data-export-chroma', '1');
@@ -111,6 +119,9 @@ function withVideoHoles<T>(
 		for (const ph of placeholders) ph.remove();
 		videos.forEach((video, i) => {
 			if (prevVis[i] !== undefined) video.style.visibility = prevVis[i]!;
+			const poster = prevPoster[i];
+			if (poster != null && poster !== '') video.setAttribute('poster', poster);
+			else video.removeAttribute('poster');
 		});
 	});
 }
@@ -136,6 +147,35 @@ function drawVideoInSlideBox(
 	const y = (vidRect.top - rootRect.top) * scaleY;
 	const w = Math.max(1, vidRect.width * scaleX);
 	const h = Math.max(1, vidRect.height * scaleY);
+
+	const vw = video.videoWidth;
+	const vh = video.videoHeight;
+	const fit = (getComputedStyle(video).objectFit || 'cover').toLowerCase();
+	// `drawImage(video, x, y, w, h)` stretches — match CSS object-fit instead.
+	let sx = 0;
+	let sy = 0;
+	let sw = vw;
+	let sh = vh;
+	let dx = x;
+	let dy = y;
+	let dw = w;
+	let dh = h;
+	if (fit === 'contain') {
+		const scale = Math.min(w / vw, h / vh);
+		dw = vw * scale;
+		dh = vh * scale;
+		dx = x + (w - dw) / 2;
+		dy = y + (h - dh) / 2;
+	} else if (fit !== 'fill') {
+		// cover (default) — crop source to destination aspect
+		const scale = Math.max(w / vw, h / vh);
+		const cw = w / scale;
+		const ch = h / scale;
+		sx = (vw - cw) / 2;
+		sy = (vh - ch) / 2;
+		sw = cw;
+		sh = ch;
+	}
 
 	ctx.save();
 	const clipEl = video.parentElement;
@@ -164,7 +204,7 @@ function drawVideoInSlideBox(
 			ctx.clip();
 		}
 	}
-	ctx.drawImage(video, x, y, w, h);
+	ctx.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh);
 	ctx.restore();
 }
 
@@ -196,8 +236,10 @@ export async function captureSlideOverlayWithVideoHole(opts: {
 	width: number;
 	height: number;
 	backgroundColor?: string;
+	/** Rewrite remote/blob imgs to data URLs so html-to-image doesn't taint the canvas. */
+	toSafeImageUrl?: (url: string) => Promise<string>;
 }): Promise<HTMLCanvasElement> {
-	const { root, video, width, height, backgroundColor } = opts;
+	const { root, video, width, height, backgroundColor, toSafeImageUrl } = opts;
 	const videos = collectSlideVideos(root, video);
 	if (!videos.length) throw new Error('Video has no parent');
 
@@ -206,6 +248,10 @@ export async function captureSlideOverlayWithVideoHole(opts: {
 	} catch {
 		/* ignore */
 	}
+
+	const restoreImgs = toSafeImageUrl
+		? await materializeDomImagesForExport(root, toSafeImageUrl)
+		: () => {};
 
 	const pngOpts = {
 		width,
@@ -218,13 +264,27 @@ export async function captureSlideOverlayWithVideoHole(opts: {
 
 	const capture = (holeCss: string) =>
 		withVideoHoles(videos, holeCss, async () => {
-			const dataUrl = await toPng(root, pngOpts);
-			return loadImage(dataUrl || TRANSPARENT_PIXEL);
+			try {
+				const dataUrl = await toPng(root, pngOpts);
+				return loadImage(dataUrl || TRANSPARENT_PIXEL);
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : String(e ?? '');
+				if (/taint|toDataURL|SecurityError/i.test(msg)) {
+					throw new Error(
+						'Export hit a blocked image (CORS). Wait for media to finish loading, then try again.',
+					);
+				}
+				throw e;
+			}
 		});
 
-	const imgA = await capture(HOLE_A.css);
-	const imgB = await capture(HOLE_B.css);
-	return matteFromDualHoles(imgA, imgB, width, height);
+	try {
+		const imgA = await capture(HOLE_A.css);
+		const imgB = await capture(HOLE_B.css);
+		return matteFromDualHoles(imgA, imgB, width, height);
+	} finally {
+		restoreImgs();
+	}
 }
 
 export type RecordSlideVideoProgress = (pct: number) => void;
@@ -244,6 +304,8 @@ export async function recordSlideAsVideo(opts: {
 	fps?: number;
 	includeAudio?: boolean;
 	onProgress?: RecordSlideVideoProgress;
+	/** Rewrite remote/blob imgs before overlay capture (avoids tainted canvas). */
+	toSafeImageUrl?: (url: string) => Promise<string>;
 }): Promise<Blob> {
 	const {
 		root,
@@ -255,6 +317,7 @@ export async function recordSlideAsVideo(opts: {
 		fps = 30,
 		includeAudio = true,
 		onProgress,
+		toSafeImageUrl,
 	} = opts;
 
 	const mediaDur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
@@ -293,6 +356,7 @@ export async function recordSlideAsVideo(opts: {
 		width,
 		height,
 		backgroundColor,
+		toSafeImageUrl,
 	});
 
 	const canvas = document.createElement('canvas');

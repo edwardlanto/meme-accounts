@@ -10,7 +10,7 @@
 	import { initReveal } from '$lib/marketing/reveal';
 
 	let interval = $state<'month' | 'year'>('month');
-	let checkoutBusy = $state<string | null>(null);
+	let checkoutBusy = $state<PaidPlanId | null>(null);
 	let checkoutError = $state<string | null>(null);
 
 	const user = $derived($page.data.user);
@@ -23,6 +23,7 @@
 			window.location.href = `/?auth=signup&next=${encodeURIComponent(`/checkout?plan=${plan}&interval=${interval}`)}`;
 			return;
 		}
+		if (checkoutBusy === plan) return;
 		checkoutBusy = plan;
 		try {
 			const res = await fetch('/api/stripe/checkout', {
@@ -57,7 +58,15 @@
 		return `Choose ${PLAN_CATALOG[plan].name}`;
 	}
 
-	onMount(() => initReveal());
+	onMount(() => {
+		initReveal();
+		// Back/forward or a stuck Stripe redirect left busy=true and locked other CTAs.
+		const resetBusy = () => {
+			checkoutBusy = null;
+		};
+		window.addEventListener('pageshow', resetBusy);
+		return () => window.removeEventListener('pageshow', resetBusy);
+	});
 </script>
 
 <svelte:head>
@@ -71,10 +80,11 @@
 	<section class="marketing-section pt-10 sm:pt-16">
 		<div class="marketing-container">
 			<div class="grid items-end gap-8 lg:grid-cols-2 lg:gap-10">
-				<div class="min-w-0">
+				<div class="min-w-0 lg:min-w-[28rem]">
 					<p class="mk-eyebrow"><Sparkles size={12} class="inline" /> Pricing</p>
-					<h1 class="mk-hero-title max-w-none text-left">
-						Ship more posts.<br /><em class="mk-hero-accent not-italic">Pay for what scales.</em>
+					<h1 class="mk-hero-title mk-hero-title--pricing text-left">
+						<span class="mk-hero-line">Ship more posts.</span>
+						<em class="mk-hero-accent mk-hero-line not-italic">Pay for what scales.</em>
 					</h1>
 					<p class="mk-hero-sub mx-0 text-left">
 						Start free with 5 carousels per month. Upgrade when news-to-post, captions, and bulk workflows earn their keep.
@@ -154,7 +164,7 @@
 							size="marketing"
 							variant={planId === 'creator' ? 'default' : 'outline'}
 							class="mk-price-cta"
-							disabled={checkoutBusy !== null}
+							disabled={checkoutBusy === planId}
 							onclick={() => startCheckout(planId)}
 						>
 							{checkoutLabel(planId)}

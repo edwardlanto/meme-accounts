@@ -99,13 +99,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	let session;
 	try {
+		const origin = new URL(request.url).origin;
 		session = await stripe.checkout.sessions.create({
 			mode: 'subscription',
 			customer: customerId,
 			client_reference_id: user.id,
 			line_items: [{ price: priceId, quantity: 1 }],
-			success_url: appUrl(`/checkout/success?session_id={CHECKOUT_SESSION_ID}`),
-			cancel_url: appUrl(`/checkout?plan=${plan}&interval=${interval}&canceled=1`),
+			success_url: appUrl(`/checkout/success?session_id={CHECKOUT_SESSION_ID}`, origin),
+			cancel_url: appUrl(`/checkout?plan=${plan}&interval=${interval}&canceled=1`, origin),
 			allow_promotion_codes: true,
 			billing_address_collection: 'auto',
 			customer_update: { address: 'auto', name: 'auto' },

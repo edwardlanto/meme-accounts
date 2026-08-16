@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { supabase } from '$lib/supabase';
-	import { goto } from '$app/navigation';
 	import {
 		LayoutDashboard,
 		ImagePlus,
-		Settings,
 		Rows3,
 		Video,
 		LayoutTemplate,
@@ -51,12 +50,6 @@
 				{ href: '/dashboard/clips', label: 'Clips', icon: Clapperboard },
 				{ href: '/dashboard/bulk', label: 'Bulk', icon: Rows3 },
 				{ href: '/dashboard/videos', label: 'Videos', icon: Video },
-			],
-		},
-		{
-			label: 'Account',
-			items: [
-				{ href: '/dashboard/settings', label: 'Settings', icon: Settings },
 			],
 		},
 	];
@@ -111,6 +104,16 @@
 
 	$effect(() => {
 		if (sidebarRailOnly) sidebarOpen = false;
+	});
+
+	/** Studio popovers can leave body { pointer-events: none } and block sidebar links. */
+	beforeNavigate(() => {
+		if (typeof document === 'undefined') return;
+		document.body.style.pointerEvents = '';
+		document.body.style.overflow = '';
+		document.body.style.removeProperty('--scrollbar-width');
+		document.body.style.paddingRight = '';
+		document.body.style.marginRight = '';
 	});
 
 	type ThemeMode = 'light' | 'dark';

@@ -6,18 +6,23 @@
 	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 	import { BLACK_TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import { loadGoogleFont } from '$lib/fonts';
+	import type { HighlightDefaults } from '$lib/highlight';
 
 	interface Props {
 		backgroundImage?: string;
 		name?: string;
 		handle?: string;
 		avatar?: string;
+		/** Prefer photo vs initials when both are available. */
+		avatarMode?: 'text' | 'image';
 		avatarInnerBg?: string;
 		avatarLabel?: string;
 		headline?: string;
 		body?: string;
 		headlineColor?: string;
 		bodyColor?: string;
+		highlightColor?: string;
+		highlightDefaults?: HighlightDefaults;
 		showSwipe?: boolean;
 		canvasW?: number;
 		canvasH?: number;
@@ -41,12 +46,15 @@
 		name = BLACK_TEXT_CAROUSEL_DEFAULTS.name,
 		handle = BLACK_TEXT_CAROUSEL_DEFAULTS.handle,
 		avatar = '',
+		avatarMode = 'text' as 'text' | 'image',
 		avatarInnerBg = '#1a1a1a',
 		avatarLabel = '',
 		headline = BLACK_TEXT_CAROUSEL_DEFAULTS.headline,
 		body = BLACK_TEXT_CAROUSEL_DEFAULTS.body,
 		headlineColor = BLACK_TEXT_CAROUSEL_DEFAULTS.headlineColor,
 		bodyColor = '#ffffff',
+		highlightColor = '#F5A623',
+		highlightDefaults,
 		showSwipe = true,
 		canvasW = 1080,
 		canvasH = 1350,
@@ -65,6 +73,7 @@
 		showToolbar = false,
 	}: Props = $props();
 
+	const bareHighlight = $derived(highlightDefaults ?? { color: highlightColor });
 	const headlineDisplay = $derived(headline);
 	const bodyDisplay = $derived(body);
 
@@ -141,6 +150,7 @@
 	}
 
 	const discText = $derived((avatarLabel && avatarLabel.trim()) || initials(name));
+	const showAvatarImage = $derived(avatarMode !== 'text' && !!avatar?.trim());
 </script>
 
 <div
@@ -232,7 +242,7 @@
 									justify-content: center;
 								"
 							>
-								{#if avatar?.trim()}
+								{#if showAvatarImage}
 									<img
 										src={avatar}
 										alt=""
@@ -289,6 +299,8 @@
 								fontFamily={mergedHeadlineStyle.fontFamily}
 								fontSize={mergedHeadlineStyle.fontSize}
 								lineHeight={mergedHeadlineStyle.lineHeight}
+								defaultColor={highlightColor}
+								defaultStyle={bareHighlight}
 								ariaLabel="Slide headline"
 								onTextChange={onHeadlineChange}
 								onTextSelect={onTextSelect}
@@ -299,7 +311,8 @@
 										as="div"
 										text={headlineDisplay}
 										parseHighlights={true}
-										defaultColor="#F5A623"
+										defaultColor={bareHighlight}
+										baseFontWeight={mergedHeadlineStyle.fontWeight ?? 700}
 										style="margin: 0; text-align: {mergedHeadlineStyle.align ?? 'left'}; word-break: break-word; white-space: pre-wrap; {headlineCss}"
 									/>
 								{/snippet}
@@ -339,6 +352,7 @@
 										text={bodyDisplay}
 										parseHighlights={true}
 										defaultColor={bodyColor}
+										baseFontWeight={mergedBodyStyle.fontWeight ?? 400}
 										style="margin: 0; text-align: {mergedBodyStyle.align ?? 'left'}; word-break: break-word; white-space: pre-wrap; {bodyCss}"
 									/>
 								{/snippet}

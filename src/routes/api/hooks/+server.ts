@@ -2,21 +2,35 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { hooksBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
+import {
+	assessUserTopicSafety,
+	filterUnsafeGeneratedStrings,
+	withCopySafetyRules,
+} from '$lib/server/ai-copy-safety';
+import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const heavy = enforceAiHeavyRateLimit(user.id);
+	if (!heavy.ok) return rateLimitedJson(heavy.retryAfterSec);
 
 	const parsed = await parseJsonBody(request, hooksBodySchema, 32_000);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
 	const { topic, niche, hookType, count } = parsed.data;
 
+	const topicSafety = assessUserTopicSafety(topic, niche);
+	if (!topicSafety.ok) {
+		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
+	}
+
 	const topicBlock = sandboxUserPlaintext('TOPIC', topic, 9000);
 	const nicheBlock = sandboxUserPlaintext('NICHE', niche || 'General', 520);
 	const styleBlock = sandboxUserPlaintext('HOOK_STYLE', hookType || 'Any (mix of styles)', 220);
 
-	const prompt = `You are a viral Instagram content strategist. Generate ${count} high-performing carousel hook variations.
+	const prompt = withCopySafetyRules(`You are a viral Instagram content strategist. Generate ${count} high-performing carousel hook variations.
 
 ${topicBlock}
 ${nicheBlock}
@@ -30,7 +44,7 @@ Rules for great hooks:
 - Make the reader NEED to swipe
 
 Return a JSON array of strings only, no markdown, no commentary. Example format:
-["Hook 1", "Hook 2", ...]`;
+["Hook 1", "Hook 2", ...]`);
 
 	if (!env.OPENROUTER_API_KEY) {
 		const demoHooks = [
@@ -51,13 +65,13 @@ Return a JSON array of strings only, no markdown, no commentary. Example format:
 	const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 		method: 'POST',
 		headers: {
-			'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
+			Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
 			'Content-Type': 'application/json',
 			'HTTP-Referer': 'https://memeaccounts.com',
 			'X-Title': 'Meme Accounts',
 		},
 		body: JSON.stringify({
-			model: 'google/gemini-3.7-flash',
+			model: 'anthropic/claude-sonnet-4.5',
 			messages: [{ role: 'user', content: prompt }],
 			temperature: 0.85,
 			max_tokens: 600,
@@ -76,5 +90,13 @@ Return a JSON array of strings only, no markdown, no commentary. Example format:
 		hooks = raw.split('\n').filter((l: string) => l.trim()).slice(0, count);
 	}
 
-	return json({ hooks });
+	const safe = filterUnsafeGeneratedStrings(Array.isArray(hooks) ? hooks.map(String) : []);
+	if (!safe.length) {
+		return json(
+			{ error: 'Could not generate safe hooks for that topic. Try a different angle.' },
+			{ status: 422 },
+		);
+	}
+
+	return json({ hooks: safe.slice(0, count) });
 };

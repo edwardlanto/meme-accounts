@@ -4,6 +4,8 @@ import type { RequestHandler } from './$types';
 import { fillDataImgSlotsWithFal } from '$lib/server/brand-carousel-fal-slots';
 import { brandGenerateBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { FONT_DISPLAY_STACK, GOOGLE_FONTS_CAROUSEL_EXPORT } from '$lib/fonts/brand-fonts';
+import { assessUserTopicSafety, withCopySafetyRules } from '$lib/server/ai-copy-safety';
+import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const ANTHROPIC_MESSAGES_API = 'https://api.anthropic.com/v1/messages';
@@ -85,6 +87,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
+	const heavy = enforceAiHeavyRateLimit(user.id);
+	if (!heavy.ok) return rateLimitedJson(heavy.retryAfterSec);
+
 	const parsed = await parseJsonBody(request, brandGenerateBodySchema);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
@@ -98,6 +103,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const slideCountNum = slideCount;
 
+	const topicSafety = assessUserTopicSafety(
+		typeof content === 'string' ? content : JSON.stringify(content ?? ''),
+		brandName,
+		handle,
+	);
+	if (!topicSafety.ok) {
+		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
+	}
+
 	const styleObj =
 		typeof style === 'object' && style !== null ? (style as Record<string, unknown>) : null;
 	const styleBlock = styleObj ? JSON.stringify(styleObj, null, 2) : String(style ?? '{}');
@@ -105,7 +119,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const h = (handle || 'mybrand').replace(/^@/, '');
 	const color = primaryColor || String(styleObj?.primaryColor ?? '') || '#FF0000';
 
-	const systemPrompt = loadCarouselSystemPrompt();
+	const systemPrompt = withCopySafetyRules(loadCarouselSystemPrompt());
 	if (!systemPrompt.trim()) {
 		return json(
 			{

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark, Save, Plus } from 'lucide-svelte';
+	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark, Plus } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { setFlashToast } from '$lib/ui/flash-toast';
@@ -23,9 +23,6 @@
 		onListSavedTemplates?: () => Promise<{ id: string; name: string; updatedAt: string }[]>;
 		/** Prefill for the save-template name field when the popover opens. */
 		defaultTemplateName?: string;
-		/** Explicit workspace draft save (listed under Carousels → Studio drafts). */
-		onSaveDraft?: () => void | Promise<void>;
-		draftSaving?: boolean;
 	}
 
 	let {
@@ -43,8 +40,6 @@
 		onSaveTemplate = undefined,
 		onListSavedTemplates = undefined,
 		defaultTemplateName = '',
-		onSaveDraft = undefined,
-		draftSaving = false,
 	} = ($props() as $$Props);
 
 	/** Host for fixed mode — portaled to `document.body` so nothing clips or re-parents the float. */
@@ -197,10 +192,6 @@
 		}
 	}
 
-	async function handleSaveDraftClick() {
-		if (!onSaveDraft || draftSaving) return;
-		await onSaveDraft();
-	}
 </script>
 
 {#if hasSlides}
@@ -213,25 +204,6 @@
 			? ''
 			: `right:16px;bottom:${bottomOffsetPx}px;z-index:${zIndex};width:168px;`}
 	>
-		{#if typeof onSaveDraft === 'function'}
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={() => void handleSaveDraftClick()}
-				disabled={draftSaving}
-				class="w-full justify-start shadow-sm"
-				title="Save a workspace draft to Carousels"
-			>
-				{#if draftSaving}
-					<LoaderCircle class="animate-spin" />
-					Saving…
-				{:else}
-					<Save />
-					Save draft
-				{/if}
-			</Button>
-		{/if}
-
 		<!-- Save template -->
 		{#if typeof onSaveTemplate === 'function'}
 			<div class="relative">

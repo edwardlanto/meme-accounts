@@ -15,7 +15,7 @@ supabase/
 2. Run each file **in order** (000 → 001 → ...)
 3. Each file is safe to re-run (uses `if not exists` / `on conflict do nothing`)
 
-Latest: `019_library_list_views.sql` — slim library views for drafts / bulk / clip projects (list pages skip full JSON).
+Latest: `021_drafts_rls_with_check.sql` — drafts RLS WITH CHECK for inserts (matches bulk_workspaces).
 
 ## Adding a new migration
 

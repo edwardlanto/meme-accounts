@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { r2PutObject } from '$lib/server/r2';
-import { isValidOwnerR2Key, sniffStrictImageMime } from '$lib/server/request-security';
+import { isValidOwnerR2Key, sniffStrictImageMime, sniffStrictVideoMime } from '$lib/server/request-security';
 
 const MAX_UPLOAD_BYTES = 35 * 1024 * 1024;
 
@@ -24,13 +24,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (buf.byteLength > MAX_UPLOAD_BYTES) {
 		return json({ error: 'File too large' }, { status: 413 });
 	}
-	const sniffed = sniffStrictImageMime(buf);
-	if (!sniffed) return json({ error: 'Unsupported or invalid image file' }, { status: 400 });
-	const contentType = sniffed;
+	const imageMime = sniffStrictImageMime(buf);
+	const videoMime = imageMime ? null : sniffStrictVideoMime(buf);
+	if (!imageMime && !videoMime) {
+		return json({ error: 'Unsupported or invalid image file' }, { status: 400 });
+	}
+	const contentType = imageMime ?? videoMime!;
 
 	try {
 		await r2PutObject(key, buf, contentType);
-		return json({ ok: true, key });
+		return json({ ok: true, key, contentType });
 	} catch (e: unknown) {
 		const message = e instanceof Error ? e.message : String(e);
 		console.error('[r2/upload]', message);

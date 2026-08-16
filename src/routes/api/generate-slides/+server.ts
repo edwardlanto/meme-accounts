@@ -6,6 +6,13 @@ import { canConsumeCarouselTokens, consumeCarouselTokens } from '$lib/server/usa
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { fitCopyBudget } from '$lib/studio/fit-copy';
 import { generationStylePrompt, generationTonePromptSuffix } from '$lib/studio/generation-tone';
+import {
+	assessUserTopicSafety,
+	isUnsafeGeneratedCopy,
+	scrubGeneratedCopy,
+	withCopySafetyRules,
+} from '$lib/server/ai-copy-safety';
+import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -26,6 +33,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
+	const heavy = enforceAiHeavyRateLimit(user.id);
+	if (!heavy.ok) return rateLimitedJson(heavy.retryAfterSec);
+
 	const parsed = await parseJsonBody(request, generateSlidesBodySchema, 64_000);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
@@ -33,6 +43,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		parsed.data;
 	const decksWanted = Math.max(1, Math.min(10, deckCount ?? 1));
 	const wantHighlights = autoHighlight === true;
+
+	const topicSafety = assessUserTopicSafety(topic, audience);
+	if (!topicSafety.ok) {
+		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
+	}
 
 	const tokenGate = await canConsumeCarouselTokens(user.id, decksWanted);
 	if (!tokenGate.ok) {
@@ -73,7 +88,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
-				model: 'google/gemini-3.7-flash',
+				model: 'anthropic/claude-sonnet-4.5',
 				messages: [{ role: 'user', content: prompt }],
 				temperature: emotion ? 0.7 : 0.85,
 				max_tokens: decksWanted > 1 ? 8000 : 4000,
@@ -87,19 +102,39 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
 		const parsedJson = JSON.parse(jsonStr);
 
-		const normalizeSlide = (s: any, i: number): GeneratedSlide => ({
-			id: String(s?.id ?? `slide_${i + 1}`),
-			type: (s?.type ?? 'value') as GeneratedSlide['type'],
-			layout: (s?.layout ?? 'text-only') as GeneratedSlide['layout'],
-			imageIndex: s?.imageIndex ?? null,
-			accentEmoji: s?.accentEmoji,
-			slideNumber: i + 1,
-			headline: fitCopy(stripDashes(String(s?.headline ?? '')), 9, 56),
-			subheadline:
-				s?.subheadline != null ? fitCopy(stripDashes(String(s.subheadline)), 12, 80) : undefined,
-			body: s?.body != null ? fitCopy(stripDashes(String(s.body)), 26, 165) : undefined,
-			bullets: Array.isArray(s?.bullets) ? s.bullets.map((b: unknown) => stripDashes(String(b))) : undefined,
-		});
+		const normalizeSlide = (s: any, i: number): GeneratedSlide => {
+			const headline = scrubGeneratedCopy(fitCopy(stripDashes(String(s?.headline ?? '')), 9, 56));
+			const subheadline =
+				s?.subheadline != null
+					? scrubGeneratedCopy(fitCopy(stripDashes(String(s.subheadline)), 12, 80)) || undefined
+					: undefined;
+			const body =
+				s?.body != null
+					? scrubGeneratedCopy(fitCopy(stripDashes(String(s.body)), 26, 165)) || undefined
+					: undefined;
+			const bullets = Array.isArray(s?.bullets)
+				? s.bullets
+						.map((b: unknown) => scrubGeneratedCopy(stripDashes(String(b))))
+						.filter(Boolean)
+				: undefined;
+			return {
+				id: String(s?.id ?? `slide_${i + 1}`),
+				type: (s?.type ?? 'value') as GeneratedSlide['type'],
+				layout: (s?.layout ?? 'text-only') as GeneratedSlide['layout'],
+				imageIndex: s?.imageIndex ?? null,
+				accentEmoji: s?.accentEmoji,
+				slideNumber: i + 1,
+				headline: headline || 'Keep going',
+				subheadline,
+				body,
+				bullets: bullets?.length ? bullets : undefined,
+			};
+		};
+
+		const slideLooksUnsafe = (s: GeneratedSlide) =>
+			isUnsafeGeneratedCopy(
+				[s.headline, s.subheadline, s.body, ...(s.bullets ?? [])].filter(Boolean).join(' '),
+			);
 
 		if (decksWanted > 1) {
 			const rawDecks = Array.isArray(parsedJson)
@@ -114,6 +149,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					slides: slidesRaw.map((s: GeneratedSlide, i: number) => normalizeSlide(s, i)),
 				};
 			});
+			if (decks.some((d: { slides: GeneratedSlide[] }) => d.slides.some(slideLooksUnsafe))) {
+				return json(
+					{ error: 'Generated copy didn’t pass safety checks. Try a different topic.' },
+					{ status: 422 },
+				);
+			}
 		if (wantHighlights) {
 			decks = await highlightDeckNewsHeadlines(decks);
 		}
@@ -124,6 +165,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	let slides: GeneratedSlide[] = (
 		Array.isArray(parsedJson) ? parsedJson : parsedJson?.slides ?? []
 	).map((s: GeneratedSlide, i: number) => normalizeSlide(s, i));
+	if (slides.some(slideLooksUnsafe)) {
+		return json(
+			{ error: 'Generated copy didn’t pass safety checks. Try a different topic.' },
+			{ status: 422 },
+		);
+	}
 	if (wantHighlights) {
 		slides = await highlightNewsHeadlines(slides);
 	}
@@ -215,7 +262,7 @@ async function batchAddHighlights(headlines: string[]): Promise<string[]> {
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
-				model: 'google/gemini-3.7-flash',
+				model: 'anthropic/claude-sonnet-4.5',
 				messages: [
 					{ role: 'system', content: system },
 					{ role: 'user', content: user },
@@ -274,7 +321,7 @@ function buildPrompt(
 			? `The creator uploaded ${imageCount} photo(s) indexed 0-${imageCount - 1}. Distribute naturally: hero + key value slides get images. Always set imageIndex: null for text-only and quote layouts.`
 			: `No photos uploaded. All slides use "text-only" or "quote" layouts. imageIndex must be null on every slide.`;
 
-	return `You are a world-class viral social media strategist. Generate exactly ${slideCount} carousel slides.
+	return withCopySafetyRules(`You are a world-class viral social media strategist. Generate exactly ${slideCount} carousel slides.
 Be fast and precise: one clear idea per slide, no filler.
 Copy is rendered on a 1080x1350 image, so it MUST fit: short headlines, tight body text, zero padding words.
 
@@ -330,7 +377,7 @@ CRITICAL RULES:
 - Last slide: always "text-only" CTA.
 - bullets: only on tip/value type slides. Max 3. Omit key entirely otherwise.
 - accentEmoji: optional. Only where it adds genuine energy.
-- subheadline/body: omit the key entirely if empty (don't use empty strings).`;
+- subheadline/body: omit the key entirely if empty (don't use empty strings).`);
 }
 
 function buildDecksPrompt(

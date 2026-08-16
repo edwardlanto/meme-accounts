@@ -36,7 +36,7 @@
 	let snapchatStatus = $state<Status | null>(null);
 	let redditStatus   = $state<Status | null>(null);
 	let youtubeStatus  = $state<Status | null>(null);
-	let loading        = $state(true);
+	let loading        = $state(false);
 	let copied         = $state<string | null>(null);
 
 	let showBlueskyModal = $state(false);
@@ -462,7 +462,7 @@
 
 	function planStatusLabel(status: string) {
 		switch (status) {
-			case 'active': return 'Active';
+			case 'active': return 'Paid';
 			case 'trialing': return 'Trial';
 			case 'past_due': return 'Past due';
 			case 'canceled': return 'Canceled';
@@ -483,6 +483,16 @@
 				return 'status-pill--muted';
 		}
 	}
+
+	const planSummary = $derived.by(() => {
+		const name = billing?.planName ?? 'Free';
+		const status = billing?.planStatus ?? 'inactive';
+		const statusLabel = planStatusLabel(status);
+		if (billing?.plan && billing.plan !== 'free') {
+			return `${name} · ${statusLabel}`;
+		}
+		return status === 'inactive' || status === 'canceled' ? 'Free' : `${name} · ${statusLabel}`;
+	});
 
 	async function openPortal(flow: 'manage' | 'cancel' = 'manage') {
 		billingBusy = true;
@@ -788,7 +798,7 @@
 						<p class="profile-name">{displayNameDraft || userName || 'Unnamed User'}</p>
 						<p class="profile-email">{userEmail}</p>
 					</div>
-					<div class="profile-plan-badge">{billing?.planName ?? 'Free'}</div>
+					<div class="profile-plan-badge">{planSummary}</div>
 				</div>
 
 				<div class="form-grid">
@@ -891,15 +901,38 @@
 							<p class="pref-label">Current plan</p>
 							<p class="pref-sub">Synced from Stripe after checkout</p>
 						</div>
-						<div class="pref-value">{billing?.planName ?? 'Free'}</div>
+						<div class="pref-value pref-value--plan">
+							<span>{planSummary}</span>
+							{#if billing}
+								<span class="status-pill {planStatusClass(billing.planStatus)}">
+									{planStatusLabel(billing.planStatus)}
+								</span>
+							{/if}
+						</div>
 					</div>
-					{#if trial && !trial.isPaid}
+					{#if usage && !usage.isPaid}
 						<div class="pref-row">
 							<div>
-								<p class="pref-label">Free exports used</p>
-								<p class="pref-sub">Upgrade for unlimited exports</p>
+								<p class="pref-label">Carousels this month</p>
+								<p class="pref-sub">Free plan allowance</p>
 							</div>
-							<div class="pref-value">{trial.used} / {trial.limit}</div>
+							<div class="pref-value">{usage.used} / {usage.limit ?? 5}</div>
+						</div>
+					{:else if usage?.isPaid && usage.limit !== null}
+						<div class="pref-row">
+							<div>
+								<p class="pref-label">Carousels this month</p>
+								<p class="pref-sub">{billing?.planName ?? 'Paid'} plan allowance</p>
+							</div>
+							<div class="pref-value">{usage.used} / {usage.limit}</div>
+						</div>
+					{:else if usage?.isPaid && usage.limit === null}
+						<div class="pref-row">
+							<div>
+								<p class="pref-label">Carousels this month</p>
+								<p class="pref-sub">Unlimited on {billing?.planName ?? 'Business'}</p>
+							</div>
+							<div class="pref-value">{usage.used} used</div>
 						</div>
 					{/if}
 				</div>
@@ -1268,9 +1301,15 @@
 									<span class="status-pill {planStatusClass(billing.planStatus)}">
 										{planStatusLabel(billing.planStatus)}
 									</span>
-									{#if billing.currentPeriodEnd && billing.plan !== 'free'}
+									{#if billing.planStatus === 'trialing'}
+										<span class="plan-renew">Stripe trial — converts to paid at period end</span>
+									{:else if billing.currentPeriodEnd && billing.plan !== 'free' && billing.planStatus === 'active'}
 										<span class="plan-renew">
 											Renews {new Date(billing.currentPeriodEnd).toLocaleDateString()}
+										</span>
+									{:else if billing.currentPeriodEnd && billing.planStatus === 'canceled'}
+										<span class="plan-renew">
+											Access until {new Date(billing.currentPeriodEnd).toLocaleDateString()}
 										</span>
 									{/if}
 								</div>
@@ -1302,12 +1341,29 @@
 						<div class="trial-banner">
 							<p class="trial-title">Carousel usage this month</p>
 							<p class="trial-sub">
-								{usage.used} of {usage.limit} carousels used · {usage.remaining} remaining.
+								{usage.used} of {usage.limit} carousels used · {usage.remaining} remaining
+								{#if billing.planStatus === 'trialing'}
+									· on trial
+								{/if}.
+							</p>
+						</div>
+					{:else if usage?.isPaid && usage.limit === null}
+						<div class="trial-banner">
+							<p class="trial-title">Carousel usage this month</p>
+							<p class="trial-sub">
+								{usage.used} generated · unlimited on {billing.planName}
+								{#if billing.planStatus === 'trialing'}
+									(trial)
+								{/if}.
 							</p>
 						</div>
 					{/if}
 				{:else}
-					<p class="card-desc">Could not load billing details. Try refreshing the page.</p>
+					<p class="card-desc">
+						{(data as { billingError?: string }).billingError
+							? `Could not load billing: ${(data as { billingError?: string }).billingError}`
+							: 'Could not load billing details. Try refreshing the page.'}
+					</p>
 				{/if}
 
 				{#if billingError}
@@ -2125,6 +2181,14 @@
 	.status-pill--muted { background: var(--panel-bg-2); color: var(--t-muted); border: 1px solid var(--panel-border); }
 	.plan-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.35rem; }
 	.plan-renew { font-size: 0.75rem; color: var(--t-muted); }
+	.pref-value--plan {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.35rem;
+		text-align: right;
+	}
+	.pref-value--plan .status-pill { align-self: flex-end; }
 
 	.trial-banner {
 		padding: 0.85rem 1rem; border-radius: 12px;

@@ -4,7 +4,7 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
-	import { loadGoogleFont } from '$lib/fonts';
+	import { canvasFontFamilyStack, loadGoogleFont } from '$lib/fonts';
 	import { textBgCss, textShadowStyleAttr } from '$lib/textStyleCss';
 	import {
 		PHOTO_CAPTION_DEFAULTS,
@@ -202,12 +202,13 @@
 											text={headline}
 											defaultColor={highlightColor}
 											parseHighlights={true}
+											baseFontWeight={headlineStyle.fontWeight ?? 400}
 											style="
 												margin: 0;
 												white-space: pre-wrap;
 												word-break: break-word;
 												text-transform: uppercase;
-												font-family: '{topicHeadlineFamily}', Impact, 'Arial Black', sans-serif;
+												font-family: {canvasFontFamilyStack(topicHeadlineFamily)};
 												letter-spacing: {headlineStyle.letterSpacing ?? PHOTO_TOPIC_HEADLINE_STYLE.letterSpacing}em;
 												line-height: {headlineStyle.lineHeight ?? PHOTO_TOPIC_HEADLINE_STYLE.lineHeight};
 												color: {headlineStyle.color ?? headlineColor};
@@ -273,6 +274,7 @@
 										text={body}
 										defaultColor={highlightColor}
 										parseHighlights={true}
+										baseFontWeight={bodyStyle.fontWeight ?? 400}
 										style="
 											margin: 0;
 											white-space: pre-wrap;
@@ -367,6 +369,7 @@
 										as="div"
 										text={headline}
 										parseHighlights={true}
+										baseFontWeight={headlineStyle.fontWeight ?? 500}
 										style="
 											margin: 0;
 											white-space: pre-wrap;
@@ -418,6 +421,7 @@
 										as="div"
 										text={body}
 										parseHighlights={true}
+										baseFontWeight={bodyStyle.fontWeight ?? 500}
 										style="
 											margin: 0;
 											white-space: pre-wrap;

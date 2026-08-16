@@ -4,6 +4,7 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import CreditCardIcon from '@lucide/svelte/icons/credit-card';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import type { ComponentProps } from 'svelte';
 
 	export type NavGroupItem = {
@@ -29,6 +30,15 @@
 	} = $props();
 
 	const currentSearch = $derived($page.url.search);
+
+	function clearBodyPointerLock() {
+		if (typeof document === 'undefined') return;
+		document.body.style.pointerEvents = '';
+		document.body.style.overflow = '';
+		document.body.style.removeProperty('--scrollbar-width');
+		document.body.style.paddingRight = '';
+		document.body.style.marginRight = '';
+	}
 
 	function normalizeNavHref(href: string): string {
 		const path = (href.split('?')[0] || href).replace(/\/+$/, '') || '/';
@@ -70,7 +80,13 @@
 	}
 
 	function onNavClick(e: MouseEvent, href: string) {
+		clearBodyPointerLock();
 		const cleanHref = (href.split('?')[0] || href).replace(/\/+$/, '') || '/';
+		if (cleanHref === '/dashboard/settings') {
+			e.preventDefault();
+			void goto('/dashboard/settings');
+			return;
+		}
 		if (cleanHref !== '/dashboard/templates') return;
 		if (typeof window === 'undefined') return;
 		const path = (window.location.pathname || '').replace(/\/+$/, '') || '/';
@@ -180,9 +196,28 @@
 	<Sidebar.Footer>
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
+				<Sidebar.MenuButton
+					isActive={isActive('/dashboard/settings')}
+					tooltipContent="Settings"
+				>
+					{#snippet child({ props })}
+						<a
+							href="/dashboard/settings"
+							{...props}
+							data-nav="Settings"
+							aria-current={isActive('/dashboard/settings') ? 'page' : undefined}
+							onclick={(e) => onNavClick(e, '/dashboard/settings')}
+						>
+							<SettingsIcon />
+							<span>Settings</span>
+						</a>
+					{/snippet}
+				</Sidebar.MenuButton>
+			</Sidebar.MenuItem>
+			<Sidebar.MenuItem>
 				<Sidebar.MenuButton tooltipContent="Pricing">
 					{#snippet child({ props })}
-						<a href="/pricing" {...props}>
+						<a href="/pricing" {...props} onclick={() => clearBodyPointerLock()}>
 							<CreditCardIcon />
 							<span>Pricing</span>
 						</a>
@@ -190,7 +225,13 @@
 				</Sidebar.MenuButton>
 			</Sidebar.MenuItem>
 			<Sidebar.MenuItem>
-				<Sidebar.MenuButton tooltipContent={signedIn ? 'Sign out' : 'Sign in'} onclick={() => onSignOut?.()}>
+				<Sidebar.MenuButton
+					tooltipContent={signedIn ? 'Sign out' : 'Sign in'}
+					onclick={() => {
+						clearBodyPointerLock();
+						onSignOut?.();
+					}}
+				>
 					<LogOutIcon />
 					<span>{signedIn ? 'Sign out' : 'Sign in'}</span>
 				</Sidebar.MenuButton>

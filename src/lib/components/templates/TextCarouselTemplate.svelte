@@ -6,13 +6,15 @@
 	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 	import { TEXT_CAROUSEL_DEFAULTS } from '$lib/studio/slide-content-defaults';
 	import { autoTextCarouselFontPx } from '$lib/studio/text-carousel-body';
-	import { stripMarkup } from '$lib/highlight';
+	import { stripMarkup, type HighlightDefaults } from '$lib/highlight';
 	import { loadGoogleFont } from '$lib/fonts';
 
 	interface Props {
 		name?: string;
 		handle?: string;
 		avatar?: string;
+		/** Prefer photo vs initials when both are available. */
+		avatarMode?: 'text' | 'image';
 		/** Solid fill inside the circle when no image (empty = use canvas `baseBg`). */
 		avatarInnerBg?: string;
 		/** Override text inside the circle; empty = derive initials from `name`. */
@@ -24,6 +26,9 @@
 		templateTheme?: 'light' | 'dark';
 		text?: string;
 		showSwipe?: boolean;
+		/** Brand / Studio highlight for bare `[[phrase]]` markup. */
+		highlightColor?: string;
+		highlightDefaults?: HighlightDefaults;
 		/** Logical export size (Studio); 1080×1350 design is letterboxed */
 		canvasW?: number;
 		canvasH?: number;
@@ -57,6 +62,7 @@
 		name      = 'Captains of industry',
 		handle    = '@captainsofindustryy',
 		avatar    = '',
+		avatarMode = 'text' as 'text' | 'image',
 		avatarInnerBg = '',
 		avatarLabel = '',
 		ringColor = '#c9b97a',
@@ -65,6 +71,8 @@
 		templateTheme = 'light',
 		text      = TEXT_CAROUSEL_DEFAULTS.body,
 		showSwipe = false,
+		highlightColor = '#F5A623',
+		highlightDefaults,
 		canvasW   = 1080,
 		canvasH   = 1350,
 		scale     = 1,
@@ -83,6 +91,7 @@
 		showToolbar = false,
 	}: Props = $props();
 
+	const bareHighlight = $derived(highlightDefaults ?? { color: highlightColor });
 	const isLight = $derived(templateTheme === 'light');
 	const baseBg = $derived((bgColor || (isLight ? '#ffffff' : '#0a0a0a')).trim());
 	const baseText = $derived(isLight ? '#0a0a0a' : '#ffffff');
@@ -163,6 +172,7 @@
 	);
 	const nameForInitials = $derived((name && name.trim()) ? name : TEXT_CAROUSEL_DEFAULTS.name);
 	const discText = $derived((avatarLabel && avatarLabel.trim()) || initials(nameForInitials));
+	const showAvatarImage = $derived(avatarMode !== 'text' && !!avatar?.trim());
 	const ringPx = $derived(Math.max(0, Math.min(24, Math.round(Number(ringWidth) || 0))));
 	const avatarOuterSize = $derived(130 + ringPx * 2);
 
@@ -284,7 +294,7 @@
 								}
 							}}
 						>
-							{#if avatar?.trim()}
+							{#if showAvatarImage}
 								<img src={avatar} alt="" style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;" />
 							{:else}
 								<span style="
@@ -421,6 +431,8 @@
 						fontSize={mergedBodyStyle.fontSize}
 						lineHeight={mergedBodyStyle.lineHeight}
 						fontWeight={mergedBodyStyle.fontWeight}
+						defaultColor={highlightColor}
+						defaultStyle={bareHighlight}
 						{showToolbar}
 						onTextChange={onTextChange}
 						onTextSelect={onTextSelect}
@@ -432,7 +444,8 @@
 								as="div"
 								text={bodyDisplayText}
 								parseHighlights={true}
-								defaultColor="#F5A623"
+								defaultColor={bareHighlight}
+								baseFontWeight={mergedBodyStyle.fontWeight ?? 400}
 								style="margin: 0; letter-spacing: -0.8px; word-break: break-word; white-space: pre-wrap; text-align: left; color: {baseText}; {bodyMergedCss}"
 							/>
 						{/snippet}

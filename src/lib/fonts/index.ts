@@ -12,6 +12,9 @@ export {
 export {
 	GOOGLE_FONTS,
 	CATEGORY_LABELS,
+	IMPACT_WEBFONT_STANDIN,
+	canvasFontFamilyCss,
+	canvasFontFamilyStack,
 	fontsByCategory,
 	loadGoogleFont,
 	type FontCategory,

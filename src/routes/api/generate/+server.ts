@@ -4,6 +4,8 @@ import { Buffer } from 'node:buffer';
 import { fal } from '@fal-ai/client';
 import type { RequestHandler } from './$types';
 import { sandboxUserPlaintext, validateBrandGenerateFields } from '$lib/server/request-security';
+import { assessUserTopicSafety, withCopySafetyRules } from '$lib/server/ai-copy-safety';
+import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit';
 
 /**
  * Build the system prompt by concatenating the markdown files in
@@ -57,6 +59,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
+	const heavy = enforceAiHeavyRateLimit(user.id);
+	if (!heavy.ok) return rateLimitedJson(heavy.retryAfterSec);
+
 	if (!env.OPENROUTER_API_KEY) return json({ error: 'Missing OPENROUTER_API_KEY' }, { status: 500 });
 	if (!env.FAL_KEY) return json({ error: 'Missing FAL_KEY' }, { status: 500 });
 	// Some fal OpenAI endpoints require an OpenAI key; if yours does, set OPENAI_API_KEY.
@@ -90,12 +95,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		return json({ error: 'Topic and brand name are required' }, { status: 400 });
 	}
 
+	const topicSafety = assessUserTopicSafety(validated.topicOk, validated.brandOk);
+	if (!topicSafety.ok) {
+		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
+	}
+
 	// ── Reference image → base64 data URL (MIME from magic bytes — not client `Content-Type`) ──
 	const b64 = Buffer.from(validated.fileBytes).toString('base64');
 	const mime = validated.imageMime;
 	const dataUrl = `data:${mime};base64,${b64}`;
 
-	const system = buildSystemPrompt();
+	const system = withCopySafetyRules(buildSystemPrompt());
 
 	const topicBlock = sandboxUserPlaintext('TOPIC', validated.topicOk, 12000);
 	const brandBlock = sandboxUserPlaintext('BRAND', validated.brandOk, 200);

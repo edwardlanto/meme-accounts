@@ -21,6 +21,33 @@ select
       'templatePreviewUrl', d.state->'templatePreviewUrl',
       'formatId', d.state->'formatId',
       'source', d.state->'source',
+      'coverImageUrl', (
+        select img
+        from (
+          select nullif(btrim(v), '') as img
+          from unnest(
+            array[
+              d.state#>>'{bgImagesByTemplate,news,0}',
+              d.state#>>'{bgImagesByTemplate,blank,0}',
+              d.state#>>'{bgImagesByTemplate,photoStory,0}',
+              d.state#>>'{bgImagesByTemplate,imageQuote,0}',
+              d.state#>>'{bgImagesByTemplate,videoStory,0}',
+              d.state#>>'{bgImagesByTemplate,textCarousel,0}',
+              d.state#>>'{bgImagesByTemplate,blackText,0}',
+              d.state#>>'{bgImagesByTemplate,tweet,0}',
+              d.state#>>'{bgImagesByTemplate,article,0}',
+              d.state#>>'{bgImagesByTemplate,brandStack,0}'
+            ]
+          ) as u(v)
+        ) x
+        where img is not null
+          and (
+            img like 'https://%'
+            or img like 'http://%'
+          )
+          and length(img) < 2000
+        limit 1
+      ),
       'slides', case
         when jsonb_typeof(d.state->'slides') = 'array' then (
           select jsonb_agg(s.elem order by s.ord)

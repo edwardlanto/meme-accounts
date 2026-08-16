@@ -70,6 +70,7 @@ export async function ensureR2RefLoaded(
 
 export type StudioR2PrefetchMedia = {
 	bgImagesByTemplate: Record<string, string[] | undefined>;
+	bgVideosByTemplate?: Record<string, string[] | undefined>;
 	circleImages: string[];
 	circle2Images: string[];
 	subjectCutouts: string[];
@@ -90,6 +91,13 @@ export async function prefetchAllR2RefsInStudioMedia(
 	for (const t of Object.keys(media.bgImagesByTemplate)) {
 		for (const u of media.bgImagesByTemplate[t] ?? []) {
 			if (isR2Ref(u)) await ensureR2Resolved(u);
+		}
+	}
+	if (media.bgVideosByTemplate) {
+		for (const t of Object.keys(media.bgVideosByTemplate)) {
+			for (const u of media.bgVideosByTemplate[t] ?? []) {
+				if (isR2Ref(u)) await ensureR2Resolved(u);
+			}
 		}
 	}
 	for (const u of media.circleImages ?? []) {

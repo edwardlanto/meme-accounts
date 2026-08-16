@@ -7,9 +7,15 @@ import {
 	textCarouselBudgetFromMaxWords,
 } from '$lib/studio/text-carousel-body';
 import { newsTextCarouselBodySchema, parseJsonBody } from '$lib/server/request-security';
+import {
+	assessUserTopicSafety,
+	scrubGeneratedCopy,
+	withCopySafetyRules,
+} from '$lib/server/ai-copy-safety';
+import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'google/gemini-3.7-flash';
+const MODEL = 'anthropic/claude-sonnet-4.5';
 
 function demoBody(
 	paragraphCount: number,
@@ -76,6 +82,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user: authUser } = await locals.safeGetSession();
 	if (!authUser) return json({ error: 'Unauthorized' }, { status: 401 });
 
+	const heavy = enforceAiHeavyRateLimit(authUser.id);
+	if (!heavy.ok) return rateLimitedJson(heavy.retryAfterSec);
+
 	const parsed = await parseJsonBody(request, newsTextCarouselBodySchema);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
@@ -95,6 +104,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	if (!text && !title && !angle) {
 		return json({ error: 'Missing source text' }, { status: 400 });
+	}
+
+	const topicSafety = assessUserTopicSafety(title, text, angle);
+	if (!topicSafety.ok) {
+		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
 	}
 
 	const maxWordsRaw =
@@ -171,7 +185,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			body: JSON.stringify({
 				model: MODEL,
 				messages: [
-					{ role: 'system', content: system },
+					{ role: 'system', content: withCopySafetyRules(system) },
 					{ role: 'user', content: userPrompt },
 				],
 				temperature: 0.88,
@@ -190,16 +204,23 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			const parsedJson = JSON.parse(content) as { paragraphs?: unknown };
 			if (Array.isArray(parsedJson.paragraphs)) {
 				paragraphs = parsedJson.paragraphs
-					.map((p) => String(p ?? '').trim())
+					.map((p) => scrubGeneratedCopy(String(p ?? '').trim()))
 					.filter(Boolean)
 					.slice(0, paragraphCount);
 			}
 		} catch {
 			paragraphs = content
 				.split(/\n\s*\n+/)
-				.map((p) => p.trim())
+				.map((p) => scrubGeneratedCopy(p.trim()))
 				.filter(Boolean)
 				.slice(0, paragraphCount);
+		}
+
+		if (!paragraphs.length) {
+			return json(
+				{ error: 'Generated copy didn’t pass safety checks. Try a different topic.' },
+				{ status: 422 },
+			);
 		}
 
 		while (paragraphs.length < paragraphCount) {

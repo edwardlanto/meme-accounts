@@ -4,7 +4,7 @@
 	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection, type HighlightDefaults } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
-	import { loadGoogleFont } from '$lib/fonts';
+	import { canvasFontFamilyCss, loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import ImageStickerOverlayBox from '$lib/components/ImageStickerOverlayBox.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
@@ -38,7 +38,7 @@
 		circleShadowCss,
 		type CircleShadow,
 	} from '$lib/studio/circle-shadow';
-	import { buildBottomShadowGradient, normalizeBottomShadowCurve, type BottomShadowCurve } from '$lib/studio/bottom-shadow';
+	import { buildBottomShadowGradient, normalizeBottomShadowCurve, normalizeBottomShadowColor, type BottomShadowCurve } from '$lib/studio/bottom-shadow';
 	import {
 		isVideoFile,
 		isVideoMediaUrl,
@@ -133,11 +133,18 @@
 		sourceBorderColor?: string;
 		/** Max width in px for the source logo (aspect ratio preserved). Default 260. */
 		sourceLogoWidth?: number;
+		/**
+		 * Solid plate behind the source logo only (not the text-chip `sourceStyle.bgColor`).
+		 * Brand text BG must not paint over the logo.
+		 */
+		sourceLogoPlateColor?: string;
 		/** Replace / clear the News source logo image. */
 		onSourceLogoChange?: (src: string) => void;
 		/** Fired when the user resizes the source logo from the canvas tools. */
 		onSourceLogoWidthChange?: (width: number) => void;
-		/** Patch News source chip style (logo BG / padding / radius, or text chip). */
+		/** Logo plate color (hex) or empty to clear. */
+		onSourceLogoPlateChange?: (hex: string) => void;
+		/** Patch News source chip style (logo pad / radius, or text chip). */
 		onSourceStyleChange?: (patch: Partial<TextStyle>) => void;
 		highlightColor?: string;
 		/** Default look for bare `[[phrase]]` (solid / gradient / pattern). Falls back to `highlightColor`. */
@@ -162,12 +169,14 @@
 		/** In `contain` mode: scale % (50–400). 100 = largest fit without crop; >100 zooms in / extends past frame. */
 		bgContainMagnify?: number;
 		textPanelOffsetY?: number; // bottom text panel offset (bindable, px)
-		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 92. */
+		/** Height of the bottom shadow gradient as a % of canvas height (0–100). Default 56. */
 		shadowHeight?: number;
 		/** Opacity of the bottom shadow (0–1). Default 1. */
 		shadowStrength?: number;
 		/** Fade curve — `natural` is the smoothest editorial look. */
 		shadowCurve?: BottomShadowCurve;
+		/** Letterbox tint (hex). Default black. */
+		shadowColor?: string;
 		/** Optional repeating grid texture overlay (tiled). */
 		gridImage?: string;
 		gridTile?: number; // px
@@ -256,8 +265,10 @@
 		sourceBorderKind = 'none',
 		sourceBorderColor = '',
 		sourceLogoWidth = 260,
+		sourceLogoPlateColor = '',
 		onSourceLogoChange,
 		onSourceLogoWidthChange,
+		onSourceLogoPlateChange,
 		onSourceStyleChange,
 		highlightColor = '#F5A623',
 		highlightDefaults,
@@ -277,9 +288,10 @@
 		bgFitMode = $bindable<'cover' | 'contain'>('cover'),
 		bgContainMagnify = $bindable(100),
 		textPanelOffsetY = $bindable(0),
-		shadowHeight = $bindable(48),
+		shadowHeight = $bindable(56),
 		shadowStrength = $bindable(1),
 		shadowCurve = $bindable<BottomShadowCurve>('news'),
+		shadowColor = $bindable('#000000'),
 		gridImage = '',
 		gridTile = 80,
 		gridOpacity = 0.25,
@@ -471,7 +483,9 @@
 		const s = headlineStyle;
 		const lines: string[] = [];
 		const family = s.fontFamily ?? NEWS_HEADLINE_STYLE.fontFamily;
-		lines.push(`font-family: '${family}', 'Bebas Neue', Impact, sans-serif;`);
+		// Neutral fallbacks only — Bebas/Impact in the stack hid failed local fonts
+		// (Impact often blocked) so the toolbar label changed but the canvas didn't.
+		lines.push(canvasFontFamilyCss(family));
 		lines.push(`font-size: ${s.fontSize ?? fontSize}px;`);
 		lines.push(`font-weight: ${s.fontWeight ?? NEWS_HEADLINE_STYLE.fontWeight};`);
 		// Bebas Neue is single-weight — allow synthetic bold so toolbar weight changes are visible.
@@ -508,9 +522,7 @@
 		const s = subtextStyle;
 		const lines: string[] = [];
 		const family = s.fontFamily ?? NEWS_SUBTEXT_STYLE.fontFamily;
-		lines.push(
-			`font-family: '${family}', var(--font-sans), system-ui, -apple-system, sans-serif;`,
-		);
+		lines.push(canvasFontFamilyCss(family));
 		lines.push(`font-size: ${effectiveSubtextFontSize}px;`);
 		lines.push(`font-weight: ${s.fontWeight ?? NEWS_SUBTEXT_STYLE.fontWeight};`);
 		if (s.italic) lines.push('font-style: italic;');
@@ -531,7 +543,7 @@
 	const sourceCss = $derived.by(() => {
 		const s = sourceStyle;
 		const lines: string[] = [];
-		if (s.fontFamily) lines.push(`font-family: '${s.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif;`);
+		if (s.fontFamily) lines.push(canvasFontFamilyCss(s.fontFamily));
 		else lines.push(`font-family: var(--font-sans), system-ui, -apple-system, sans-serif;`);
 		lines.push(`font-size: ${s.fontSize ?? 34}px;`);
 		lines.push(`font-weight: ${s.fontWeight ?? 700};`);
@@ -554,16 +566,17 @@
 	const sourceLogoPad = $derived.by(() => {
 		const raw = Number(sourceStyle?.padding);
 		if (Number.isFinite(raw)) return Math.max(0, Math.min(LOGO_PAD_MAX, Math.round(raw)));
-		const bg = String(sourceStyle?.bgColor ?? '').trim();
-		return bg && bg !== 'transparent' && bg !== 'none' ? LOGO_PAD_DEFAULT : 0;
+		const plate = String(sourceLogoPlateColor ?? '').trim();
+		return plate && plate !== 'transparent' && plate !== 'none' ? LOGO_PAD_DEFAULT : 0;
 	});
 	const sourceLogoRadius = $derived.by(() => {
 		const raw = Number(sourceStyle?.borderRadius);
 		if (Number.isFinite(raw)) return Math.max(0, Math.min(LOGO_RADIUS_MAX, Math.round(raw)));
 		return LOGO_RADIUS_DEFAULT;
 	});
+	/** Logo plate — never reuse text-chip `sourceStyle.bgColor` (brand text BG). */
 	const sourceLogoBg = $derived.by(() => {
-		const raw = String(sourceStyle?.bgColor ?? '').trim();
+		const raw = String(sourceLogoPlateColor ?? '').trim();
 		if (!raw || raw === 'transparent' || raw === 'none') return '';
 		return raw;
 	});
@@ -591,7 +604,11 @@
 		onSourceStyleChange?.({ borderRadius: next });
 	}
 	function setSourceLogoBg(hex: string | undefined) {
-		onSourceStyleChange?.({ bgColor: hex });
+		const next = String(hex ?? '').trim();
+		onSourceLogoPlateChange?.(next && next !== 'transparent' && next !== 'none' ? next : '');
+		if (!Number.isFinite(Number(sourceStyle?.padding)) && next && next !== 'transparent' && next !== 'none') {
+			onSourceStyleChange?.({ padding: LOGO_PAD_DEFAULT });
+		}
 	}
 
 	let headlineEl = $state<HTMLElement | null>(null);
@@ -738,9 +755,14 @@
 		Math.max(50, Math.min(400, Number(bgContainMagnify) || 100)),
 	);
 
-	// Bottom shadow gradient — height/strength/curve controllable.
+	// Bottom shadow gradient — height/strength/curve/color controllable.
 	const shadowGradient = $derived(
-		buildBottomShadowGradient(shadowHeight, shadowStrength, normalizeBottomShadowCurve(shadowCurve)),
+		buildBottomShadowGradient(
+			shadowHeight,
+			shadowStrength,
+			normalizeBottomShadowCurve(shadowCurve),
+			normalizeBottomShadowColor(shadowColor),
+		),
 	);
 
 	const W = $derived(Math.max(320, Number(w) || 1080));
@@ -1866,7 +1888,7 @@
 			background: {isLight ? '#ffffff' : '#0a0a0a'};
 			transform: scale({scale});
 			transform-origin: top left;
-			font-family: 'Bebas Neue', Impact, 'Arial Black', sans-serif;
+			font-family: system-ui, -apple-system, sans-serif;
 		"
 	>
 		<!-- Background: video takes priority over image.
@@ -2209,7 +2231,7 @@
 							if (seg.gradientFrom && seg.gradientTo) {
 								return wrapClippedFillHtml(gradientTextFillCss(seg.gradientFrom, seg.gradientTo), esc);
 							}
-							return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+							return `<span style="color: ${seg.color}; font-weight: inherit;">${esc}</span>`;
 						}).join('')}
 					</div>
 				{/if}
@@ -2444,7 +2466,7 @@
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleImageZoom(0.12)} disabled={(Number(circleImageZoom) || 1) >= 4.99} title="Zoom photo in (up to 5×)" aria-label="Zoom photo in"><ZoomIn size={16} class="text-foreground" strokeWidth={2} /></Button>
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircleImageZoom(-0.12)} disabled={(Number(circleImageZoom) || 1) <= 1.01} title="Zoom photo out" aria-label="Zoom photo out"><ZoomOut size={16} class="text-foreground" strokeWidth={2} /></Button>
 						</div>
-						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
+						<Button variant="ghost" size="icon" class="text-red-600 hover:text-red-700 h-11 w-11 shrink-0 rounded-full" onclick={removeCircle} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="!text-red-600" strokeWidth={2} /></Button>
 					</PopoverContent>
 				{/if}
 			</Popover>
@@ -2676,7 +2698,7 @@
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2ImageZoom(0.12)} disabled={(Number(circle2ImageZoom) || 1) >= 4.99} title="Zoom photo in (up to 5×)" aria-label="Zoom photo in"><ZoomIn size={16} class="text-foreground" strokeWidth={2} /></Button>
 							<Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 rounded-full" type="button" onclick={() => bumpCircle2ImageZoom(-0.12)} disabled={(Number(circle2ImageZoom) || 1) <= 1.01} title="Zoom photo out" aria-label="Zoom photo out"><ZoomOut size={16} class="text-foreground" strokeWidth={2} /></Button>
 						</div>
-						<Button variant="ghost" size="icon" class="text-destructive hover:text-destructive h-11 w-11 shrink-0 rounded-full" onclick={removeCircle2} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="text-destructive" strokeWidth={2} /></Button>
+						<Button variant="ghost" size="icon" class="text-red-600 hover:text-red-700 h-11 w-11 shrink-0 rounded-full" onclick={removeCircle2} title="Remove circle" aria-label="Remove circle"><Trash2 size={20} class="!text-red-600" strokeWidth={2} /></Button>
 					</PopoverContent>
 				{/if}
 			</Popover>
@@ -3049,12 +3071,12 @@
 														<Button
 															variant="ghost"
 															size="icon"
-															class="h-11 w-11 shrink-0 rounded-full text-destructive"
+															class="h-11 w-11 shrink-0 rounded-full text-red-600 hover:text-red-700"
 															onclick={clearSourceLogo}
 															title="Remove logo"
 															aria-label="Remove logo"
 														>
-															<Trash2 size={20} strokeWidth={2} />
+															<Trash2 size={20} class="!text-red-600" strokeWidth={2} />
 														</Button>
 													</PopoverContent>
 												</Popover>
@@ -3228,9 +3250,9 @@
 									: 'display: inline;'}"
 							>
 							{#if seg.patternImage}
-								<span style="{patternStyle(seg.patternImage)}; pointer-events: none;">{seg.text}</span>
+								<span style="{patternStyle(seg.patternImage)}; font-weight: inherit; pointer-events: none;">{seg.text}</span>
 							{:else if seg.gradientFrom && seg.gradientTo}
-								<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)}; pointer-events: none;">{seg.text}</span>
+								<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)}; font-weight: inherit; pointer-events: none;">{seg.text}</span>
 							{:else if seg.markerBg}
 								<span
 									style="
@@ -3239,6 +3261,7 @@
 										-webkit-background-clip: border-box;
 										background-clip: border-box;
 										color: {textColor};
+										font-weight: inherit;
 										{TEXT_BG_CHIP_BOX_CSS}
 										text-box: normal; text-box-trim: none;
 										isolation: isolate;
@@ -3246,7 +3269,7 @@
 									"
 								>{seg.text}</span>
 							{:else}
-								<span style="color: {seg.color};">{seg.text}</span>
+								<span style="color: {seg.color}; font-weight: inherit;">{seg.text}</span>
 							{/if}
 							</span>
 						{:else}
@@ -3283,6 +3306,7 @@
 							showToolbar={false}
 							defaultColor={highlightColor}
 							defaultStyle={highlightParseDefaults}
+							fontFamily={headlineStyle.fontFamily ?? NEWS_HEADLINE_STYLE.fontFamily}
 							liveLineHeight={headlineStyle.lineHeight}
 							liveFontWeight={headlineStyle.fontWeight}
 							lineHeight="inherit"
@@ -3352,7 +3376,7 @@
 							pointer-events: {interactive && editingSubtext ? 'none' : 'auto'};
 							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
 						"
-					>{#each subtextSegments as seg}{#if seg.highlighted}<span data-hl-plain-start={seg.start ?? ''} data-hl-plain-end={seg.end ?? ''} style="cursor:text;pointer-events:auto;display:inline;">{#if seg.markerBg}<span style="background-color:{seg.markerBg};background-image:none;-webkit-background-clip:border-box;background-clip:border-box;color:{textColor};{TEXT_BG_CHIP_BOX_CSS}text-box:normal;text-box-trim:none;isolation:isolate;{textPaddingCss(subtextStyle)}">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;pointer-events:none;">{seg.text}</span>{:else}<span style="color:{seg.color};">{seg.text}</span>{/if}</span>{:else}{seg.text}{/if}{/each}</p>
+					>{#each subtextSegments as seg}{#if seg.highlighted}<span data-hl-plain-start={seg.start ?? ''} data-hl-plain-end={seg.end ?? ''} style="cursor:text;pointer-events:auto;display:inline;">{#if seg.markerBg}<span style="background-color:{seg.markerBg};background-image:none;-webkit-background-clip:border-box;background-clip:border-box;color:{textColor};font-weight:inherit;{TEXT_BG_CHIP_BOX_CSS}text-box:normal;text-box-trim:none;isolation:isolate;{textPaddingCss(subtextStyle)}">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;pointer-events:none;font-weight:inherit;">{seg.text}</span>{:else}<span style="color:{seg.color};font-weight:inherit;">{seg.text}</span>{/if}</span>{:else}{seg.text}{/if}{/each}</p>
 					{#if editingSubtext && interactive}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div

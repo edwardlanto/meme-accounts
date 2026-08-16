@@ -324,6 +324,7 @@
 								as="div"
 								text={bodyDisplay}
 								parseHighlights={true}
+								baseFontWeight={bodyStyle.fontWeight ?? 400}
 								style="
 									margin: 0;
 									white-space: pre-wrap;

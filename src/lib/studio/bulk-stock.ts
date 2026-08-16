@@ -147,6 +147,75 @@ export function stockQueryFromSlide(headline: string, body = '', topicHint = '')
 	return q.slice(0, 80) || 'cinematic editorial background';
 }
 
+export type StockQueryKind = 'photo' | 'video' | 'circle';
+
+export type StockQueryPlan = {
+	query: string;
+	queries: string[];
+	circleQuery: string;
+};
+
+/**
+ * Ask Studio `/api/stock/query` (OpenRouter) for visual Pexels/Unsplash queries.
+ * Falls back to `stockQueryFromSlide` when the API is unavailable.
+ */
+export async function resolveStockSearchQueries(opts: {
+	topic?: string;
+	kind?: StockQueryKind;
+	slides?: { headline?: string; body?: string }[];
+}): Promise<StockQueryPlan> {
+	const topic = String(opts.topic ?? '').trim();
+	const kind: StockQueryKind =
+		opts.kind === 'video' || opts.kind === 'circle' ? opts.kind : 'photo';
+	const slides = (opts.slides ?? [])
+		.map((s) => ({
+			headline: String(s.headline ?? '').trim(),
+			body: String(s.body ?? '').trim(),
+		}))
+		.filter((s) => s.headline || s.body)
+		.slice(0, 8);
+
+	const localFallback = (): StockQueryPlan => {
+		const first = slides[0] ?? { headline: topic, body: '' };
+		const query =
+			stockQueryFromSlide(first.headline, first.body, topic) || 'editorial photo';
+		const queries = (slides.length ? slides : [first]).map(
+			(s) => stockQueryFromSlide(s.headline, s.body, topic) || query,
+		);
+		const circleQuery =
+			stockQueryFromSlide(first.headline || topic, '', topic) || 'portrait close up';
+		return { query, queries, circleQuery };
+	};
+
+	try {
+		const res = await fetch('/api/stock/query', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				topic: topic || undefined,
+				kind,
+				slides: slides.length ? slides : undefined,
+			}),
+		});
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok) return localFallback();
+		const query = String(data?.query ?? '').trim();
+		const queries = Array.isArray(data?.queries)
+			? data.queries.map((q: unknown) => String(q ?? '').trim()).filter(Boolean)
+			: [];
+		const circleQuery = String(data?.circleQuery ?? '').trim();
+		if (!query && !queries.length) return localFallback();
+		const primary = query || queries[0] || localFallback().query;
+		return {
+			query: primary.slice(0, 80),
+			queries: (queries.length ? queries : [primary]).map((q: string) => q.slice(0, 80)),
+			circleQuery: (circleQuery || primary).slice(0, 80),
+		};
+	} catch {
+		return localFallback();
+	}
+}
+
 export type StockPick = {
 	url: string;
 	kind: 'image' | 'video';
@@ -468,9 +537,18 @@ export async function resolveStockForTemplate(
 	topicHint = '',
 ): Promise<StockPick | null> {
 	if (!templateUsesStockMedia(template)) return null;
-	const query = stockQueryFromSlide(headline, body, topicHint);
-	const video = await fetchStockVideo(query);
-	if (video) return video;
+	const preferVideo = templateUsesStockVideo(template);
+	const plan = await resolveStockSearchQueries({
+		topic: topicHint,
+		kind: preferVideo ? 'video' : 'photo',
+		slides: [{ headline, body }],
+	});
+	const query =
+		plan.query || stockQueryFromSlide(headline, body, topicHint) || 'editorial photo';
+	if (preferVideo) {
+		const video = await fetchStockVideo(query);
+		if (video) return video;
+	}
 	return fetchStockImage(query);
 }
 

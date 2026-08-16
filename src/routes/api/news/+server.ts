@@ -3,8 +3,15 @@ import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
-import { clampToCompleteWords } from '$lib/studio/fit-copy';
+import { clampToCompleteWords, ensureCompleteThought } from '$lib/studio/fit-copy';
 import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
+import {
+	assessUserTopicSafety,
+	scrubGeneratedCopy,
+	withCopySafetyRules,
+} from '$lib/server/ai-copy-safety';
+import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit';
+import { canConsumeCarouselTokens, consumeCarouselTokens } from '$lib/server/usage';
 
 const THENEWSAPI_BASE = 'https://api.thenewsapi.com/v1/news/top';
 /** Prefer /all when searching — category + keyword work more reliably than top-only. */
@@ -88,7 +95,7 @@ async function openRouterComplete(
 				'X-Title': 'Meme Accounts',
 			},
 			body: JSON.stringify({
-				model: 'google/gemini-3.7-flash',
+				model: 'anthropic/claude-sonnet-4.5',
 				messages,
 				temperature,
 				max_tokens,
@@ -191,25 +198,26 @@ function demoSynthetic(
 			.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
 			.join(' ');
 		const keyWord = wordsFromHint(h, 1)[0] ?? 'IDEAS';
+		/* Content ABOUT the topic — never meta advice about posting / carousels / algorithms. */
 		const hooks = [
-			`WHY [[${keyWord}]] MATTERS MORE THAN YOU THINK`,
-			`THE [[${keyWord}]] ANGLE MOST PEOPLE MISS`,
-			`WHAT [[${keyWord}]] TEACHES YOU ABOUT THE FEED`,
-			`START WITH [[${keyWord}]] BEFORE YOU POST ANYTHING ELSE`,
-			`[[${keyWord}]] IS NOT WHAT THE ALGORITHM REWARDS`,
+			`WHY [[${keyWord}]] STILL SURPRISES PEOPLE`,
+			`THE [[${keyWord}]] DETAIL MOST PEOPLE MISS`,
+			`WHAT [[${keyWord}]] LOOKS LIKE UP CLOSE`,
+			`ONE [[${keyWord}]] MOMENT THAT CHANGES THE STORY`,
+			`[[${keyWord}]] IS NOT WHAT YOU THINK IT IS`,
 		];
 		const hook = hooks[salt % hooks.length]!;
 		const ledes = [
-			`${topicTitle} rewards creators who lead with a specific image, a concrete detail, and one clear takeaway per slide.`,
-			`Most posts about ${topic} fail because they stay generic; the ones that win name a moment, a place, or a habit readers recognize instantly.`,
-			`The best ${topic} carousels open on something tangible, then widen into a pattern your audience can act on this week.`,
-			`If you are building around ${topic}, start with what people already feel, then show the small shift that changes the outcome.`,
+			`${topicTitle} rewards attention to one concrete scene: a place, a habit, or a detail you can picture in a second.`,
+			`Most takes on ${topic} stay vague. The ones that stick name a moment, a street, a ritual, or a number people recognize.`,
+			`${topicTitle} feels real when you lead with something tangible, then widen into a pattern readers can notice in their own week.`,
+			`Start with what people already feel about ${topic}, then show the small shift that changes the outcome.`,
 		];
 		const bibleBeats = [
-			`Name one surprising fact or image tied to ${topic} that stops the scroll in the first second.`,
-			`Contrast a common mistake with what actually works for audiences interested in ${topic}.`,
-			`Give one example, scene, or object that makes ${topic} feel real instead of abstract.`,
-			`Close with a practical next step someone can try before the week ends.`,
+			`Open on one specific image or fact tied to ${topic} that stops the scroll.`,
+			`Name a common misconception about ${topic} and what actually happens instead.`,
+			`Give one example, scene, or object that makes ${topic} feel concrete, not abstract.`,
+			`Close with one practical next step a reader can try this week related to ${topic}.`,
 		];
 		const lede = ledes[salt % ledes.length]!;
 		const description = [lede, ...bibleBeats].join(' ');
@@ -445,16 +453,16 @@ async function syntheticContent(
 		.slice(0, 12);
 
 	const ANGLE_HINTS = [
-		'Lead with a surprising statistic or concrete number.',
-		'Lead with a common mistake people make.',
-		'Lead with a vivid before/after beat.',
-		'Lead with a myth people still believe.',
-		'Lead with a day-in-the-life scene.',
-		'Lead with a contrarian take that still feels true.',
-		'Lead with one sharp practical move the reader can try today.',
-		'Lead with an emotional personal stake (fear, pride, or relief).',
-		'Lead with a weird-but-true detail most people overlook.',
-		'Lead with a question the reader cannot ignore.',
+		'Lead with a surprising statistic or concrete number tied to the request.',
+		'Lead with a common mistake people make about this exact topic.',
+		'Lead with a vivid before/after beat that still names the topic.',
+		'Lead with a myth people still believe about this topic.',
+		'Lead with a day-in-the-life scene where the topic is unmistakable.',
+		'Lead with a contrarian take on the request that still feels true.',
+		'Lead with one sharp practical move about this topic the reader can try today.',
+		'Lead with an emotional personal stake (fear, pride, or relief) about the topic.',
+		'Lead with a weird-but-true detail about this topic most people overlook.',
+		'Lead with a question about the topic the reader cannot ignore.',
 	];
 	const angleHint = ANGLE_HINTS[Math.floor(Math.random() * ANGLE_HINTS.length)]!;
 
@@ -462,51 +470,69 @@ async function syntheticContent(
 		avoidClean.length > 0
 			? `\n\nCRITICAL — prior runs for this same request already used these hooks/angles (do NOT reuse wording, structure, or the same core claim):\n${avoidClean
 					.map((h, i) => `${i + 1}. "${h}"`)
-					.join('\n')}\nPick a genuinely different angle. ${angleHint}\n`
-			: `\n\nFreshness: ${angleHint} Do not default to the most generic take on this topic.\n`;
+					.join('\n')}\nPick a genuinely different angle ON THE SAME TOPIC. ${angleHint}\n`
+			: `\n\nFreshness: ${angleHint} Do not default to the most generic take — but stay on the user's subject.\n`;
 
 	const regenBlock =
 		(typeof regenNonce === 'string' && regenNonce.trim().length > 0
 			? `\n\nStudio repeat-load (session ${regenNonce.replace(/"/g, "'").slice(0, 32)}):
 - Write a NEW hook — do not reuse prior wording.
 - Rewrite context with a DIFFERENT opening sentence and different concrete details than any prior run on this topic.
-- The first sentence of context is shown under the headline; it must feel fresh on every regenerate.\n`
+- The first sentence of context is shown under the headline; it must feel fresh on every regenerate.
+- Still name the user's topic — freshness is a new ANGLE, not a new subject.\n`
 			: '') + avoidBlock;
+
+	/** Shared hook craft — stops metaphor drift (e.g. "god is real" → random surgery scene). */
+	const hookCraft = `HOOK CRAFT (non-negotiable):
+- RELEVANCE LOCK: A stranger reading ONLY the hook must know it is about the user's request. Include distinctive words from the request (or an unmistakable paraphrase). Ban distant metaphors that never name the subject.
+- Bad (off-topic metaphor): user says "god is real" → hook about a surgeon and a heart with no God/faith/belief words.
+- Good: name God, faith, belief, prayer, creation, or the claim itself — then make it punchy.
+- EYE-CATCHING: pattern interrupt + specificity. Prefer a bold claim, tension, or concrete image OVER soft poetic scenes.
+- Front-load the subject in the first 4–6 words when the request is a short claim or topic.
+- One complete thought. No hashtags, no emojis.`;
 
 	const userPrompt =
 		mode === 'general'
 			? `You turn a natural-language request into Instagram carousel overlay copy. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
-The user speaks casually — e.g. "Make me a carousel of beds", "carousel about why founders quit", "3 tips for better sleep".
-Interpret their intent and produce carousel-ready copy that delivers exactly what they asked for.
+The user speaks casually — e.g. "god is real", "Make me a carousel of beds", "why founders quit", "japan".
+Interpret their intent and produce carousel-ready copy that is ABOUT THE TOPIC ITSELF.
+
+CRITICAL — never write meta advice about social media, posting, algorithms, "carousels", "hooks", "slides", "creators", or the feed.
+If they ask for Japan, write about Japan. If they ask "god is real", write about that claim / faith / belief — not an unrelated medical or nature metaphor that never says so.
+
+${hookCraft}
 
 Rules for "hook":
-- Slide 1 overlay: the strongest opening line for their request
+- Slide 1 overlay: the strongest, most scroll-stopping line about THEIR request
 - Max ${maxWords} words, ALL CAPS
-- No hashtags, no emojis
-- Must clearly match what they asked for (topic, format, tone)
+- Must pass the relevance lock above
+- Make it feel like a cover line people screenshot — not a caption under a stock photo
 
 Rules for "context":
 - 6–12 full sentences in normal sentence case
-- This is the bible for later slides: concrete details, angles, examples, and beats a carousel writer can use
-- Match the shape they implied (tips → numbered ideas; product/topic → facets; story → beats; list → distinct items)
+- Bible for later slides: concrete details, angles, examples, and beats about THE SAME topic as the hook
+- Match the shape they implied (tips → numbered ideas; claim/belief → proof, tension, stakes; product/topic → facets; story → beats)
 - Do not paste the hook verbatim
 - Prefer specific nouns, numbers, and images over vague advice
-- Sentence 1 is the on-canvas paragraph under the headline — make it a sharp, self-contained lede of at most ${supportCap} words (1–2 sentences). Remaining sentences are bible only for later slides.
+- Sentence 1 is the on-canvas paragraph under the headline — sharp lede of at most ${supportCap} words (1–2 complete sentences). Remaining sentences are bible only.
+- Sentence 1 MUST finish the idea (spell out units: "95 percent", never stop at "95.") and stay on the same subject as the hook
+- Ban listicle-about-content-creation: no "open with a tangible image", "stop the scroll", "what the algorithm rewards", etc.
 
-${hasHint ? `User request (MUST follow this closely):\n"""${hintSafe}"""` : `No request given — invent a vivid, useful carousel topic.`}${regenBlock}`
+${hasHint ? `User request (hook + context MUST be unmistakably about this — quote its key words in the hook when short):\n"""${hintSafe}"""` : `No request given — invent a vivid, useful carousel topic.`}${regenBlock}`
 
 			: mode === 'steps'
 			? `You write a numbered STEPS / listicle bible for an Instagram carousel. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
+${hookCraft}
+
 Rules for "hook":
 - One punchy cover line that promises exactly ${stepsN} steps (or ways/tips) about the topic
 - Max ${maxWords} words, ALL CAPS
-- No hashtags, no emojis
 - Prefer forms like "${stepsN} STEPS TO …" or "${stepsN} WAYS TO …"
-- Name the topic clearly
+- Name the topic clearly in the cover line
 
 Rules for "context":
 - Normal sentence case
@@ -520,31 +546,35 @@ Rules for "context":
 			? `You write viral Instagram quote carousel copy. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
+${hookCraft}
+
 Rules for "hook":
-- One original, memorable quote line about the topic (do NOT copy a famous person's exact words)
+- One original, memorable quote line ABOUT the user's topic (do NOT copy a famous person's exact words)
 - Max ${maxWords} words, ALL CAPS
-- No quotation marks in the hook text, no hashtags, no emojis
-- Should feel wise, sharp, or emotionally true — not generic motivational poster filler
+- No quotation marks in the hook text
+- Wise, sharp, or emotionally true — not generic poster filler and not an off-topic metaphor
 
 Rules for "context":
 - 6–10 full sentences in normal sentence case
 - Unpack what the quote means for someone navigating this topic: tension, tradeoff, hope, or accountability
 - Give carousel writers distinct follow-up angles (not a numbered tip list)
-- Do not attribute to a real named person unless the user topic requires it; prefer universal voice${hasHint ? `\n\nUser topic (the quote and context MUST be clearly about this subject — name it directly):\n"""${hintSafe}"""` : ''}${regenBlock}`
+- Do not attribute to a real named person unless the user topic requires it; prefer universal voice${hasHint ? `\n\nUser topic (quote + context MUST be clearly about this — name it in the hook):\n"""${hintSafe}"""` : ''}${regenBlock}`
 
 			: mode === 'fact'
 			? `You write viral Instagram overlay copy. Output ONLY valid JSON (no markdown fences) with this shape:
 {"hook":"...","context":"..."}
 
+${hookCraft}
+
 Rules for "hook":
-- One punchy fact-style line, max ${maxWords} words
-- Write in ALL CAPS
-- No hashtags, no emojis
-- Should feel surprising but plausible (avoid obvious urban myths)
+- One punchy fact-style line ABOUT the user's topic, max ${maxWords} words
+- ALL CAPS
+- Surprising but plausible (avoid urban myths and off-topic science flexes)
 
 Rules for "context":
 - 5–8 full sentences in normal sentence case
-- Expand the fact with vivid, concrete detail a carousel writer can mine for follow-up slides
+- Expand the fact with vivid detail a carousel writer can mine — still on the same subject
+- Sentence 1 is the on-canvas lede (≤ ${supportCap} words); finish the idea; spell out units
 - Do not repeat the hook verbatim; add mechanisms, numbers where natural, and implications${hasHint ? `\n\nUser topic (MUST be the explicit subject of both hook and context — name it directly):\n"""${hintSafe}"""` : ''}${regenBlock}`
 
 		: `You write viral Instagram micro-stories for overlay text. Output ONLY valid JSON (no markdown fences) with this shape:
@@ -552,23 +582,23 @@ Rules for "context":
 
 Theme for the story: "${themeLabel}"${hasHint ? `\nTopic: "${hintSafe}" — the story MUST revolve around this specific subject. Name it explicitly in the hook and weave it through the context.` : ''}
 
+${hookCraft}
+
 Rules for "hook":
 - Opening beat of a micro-story, max ${maxWords} words
 - ALL CAPS
-- No hashtags, no emojis
 - Drop the reader into a specific moment (who, where, what is going wrong or about to change)
-- If a topic is given above, the hook MUST name or directly reference it
+- The topic must be unmistakable in the hook — not implied by a parallel metaphor
 
 Rules for "context":
-- 8–14 full sentences in normal sentence case — this MUST read as a tiny story, not self-help bullets
-- Use one clear POV (one named person OR a tight "they" couple) and keep the same cast through the whole context
-- Tell a chain of scenes in order: ordinary world → inciting incident → rising pressure → a choice or revelation → consequence → emotional landing (lesson, irony, or quiet win)
-- Include at least one concrete sensory or physical detail per paragraph (sound, place, object, time of day)
-- No "three tips", "here is why", or generic motivational slogans unless tied to a specific plot beat
+- 8–14 full sentences in normal sentence case — a tiny story, not self-help bullets
+- One clear POV; same cast throughout
+- Chain: ordinary world → incident → pressure → choice/revelation → consequence → landing
+- Concrete sensory detail; no generic slogans unless in-scene
 - Do not paste the hook verbatim as the first sentence${regenBlock}`;
 
 	const toneSuffix = generationTonePromptSuffix(tone);
-	const userPromptWithTone = userPrompt + toneSuffix;
+	const userPromptWithTone = withCopySafetyRules(userPrompt + toneSuffix);
 
 	const baseTemp =
 		mode === 'general'
@@ -602,8 +632,15 @@ Rules for "context":
 	let usedDemoFallback = false;
 	let parseWarning: string | undefined;
 	if (parsed) {
-		overlayText = parsed.hook;
-		description = parsed.context;
+		overlayText = scrubGeneratedCopy(parsed.hook);
+		description = scrubGeneratedCopy(parsed.context);
+		if (!overlayText && !description) {
+			usedDemoFallback = true;
+			parseWarning = 'Generated copy didn’t pass safety checks — using offline demo.';
+			const demo = demoSynthetic(mode, storyCategory, syntheticHint, stepsN, regenNonce);
+			overlayText = demo.text;
+			description = demo.description;
+		}
 	} else if (mode === 'steps' || mode === 'general') {
 		usedDemoFallback = true;
 		if (jsonRaw) {
@@ -633,6 +670,7 @@ Rules for "context":
 		stripEmDashes(String(overlayText ?? '').replace(/\[\[|\]\]/g, '')),
 		maxWords,
 	);
+	overlayText = ensureCompleteThought(overlayText);
 	description = stripEmDashes(description);
 
 	if (autoHighlight && overlayText && !overlayText.includes('[[')) {
@@ -666,6 +704,10 @@ Rules for "context":
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
 	if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
+	const userId = user.id;
+
+	const heavy = enforceAiHeavyRateLimit(userId);
+	if (!heavy.ok) return rateLimitedJson(heavy.retryAfterSec);
 
 	const parsed = await parseJsonBody(request, newsBodySchema);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
@@ -696,12 +738,41 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		style: body.style,
 	};
 
+	const topicSafety = assessUserTopicSafety(search, syntheticHint, storyCategory);
+	if (!topicSafety.ok) {
+		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
+	}
+
+	const tokenGate = await canConsumeCarouselTokens(userId, 1);
+	if (!tokenGate.ok) {
+		return json(
+			{
+				error: tokenGate.error,
+				code: tokenGate.code,
+				usage: tokenGate.status,
+			},
+			{ status: 402 },
+		);
+	}
+
 	/** Supporting paragraph under the hook — prefer explicit body budget from Studio. */
 	function supportWordCap(headlineWords: number): number {
 		if (maxWordsSupport > 0) return maxWordsSupport;
 		if (headlineWords <= 16) return Math.max(12, Math.min(16, headlineWords + 2));
 		if (headlineWords <= 28) return Math.min(28, Math.max(20, headlineWords));
 		return Math.max(24, Math.min(120, headlineWords));
+	}
+
+	async function billedJson(payload: Record<string, unknown>, opts?: { demo?: boolean }) {
+		if (opts?.demo) return json(payload);
+		const billed = await consumeCarouselTokens(userId, 1);
+		if (!billed.ok) {
+			return json(
+				{ error: billed.error, code: billed.code, usage: billed.status },
+				{ status: 402 },
+			);
+		}
+		return json({ ...payload, usage: billed.status });
 	}
 
 	if (mode === 'general' || mode === 'fact' || mode === 'story' || mode === 'quote' || mode === 'steps') {
@@ -716,9 +787,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				typeof body.studioRegenAt === 'number' && Number.isFinite(body.studioRegenAt)
 					? String(Math.floor(body.studioRegenAt))
 					: '';
-			return json(demoSynthetic(mode, storyCategory, syntheticHint, stepCount, regenNonce), {
-				status: 200,
-			});
+			return billedJson(
+				demoSynthetic(mode, storyCategory, syntheticHint, stepCount, regenNonce) as Record<
+					string,
+					unknown
+				>,
+				{ demo: true },
+			);
 		}
 		const regenNonce =
 			typeof body.studioRegenAt === 'number' && Number.isFinite(body.studioRegenAt)
@@ -727,8 +802,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const avoidHooks = Array.isArray(body.avoidHooks)
 			? body.avoidHooks.map((h) => String(h ?? '').trim()).filter(Boolean).slice(0, 12)
 			: [];
-		return json(
-			await syntheticContent(
+		return billedJson(
+			(await syntheticContent(
 				mode,
 				storyCategory,
 				autoHighlight !== false,
@@ -739,14 +814,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				maxWordsSupport,
 				tone,
 				avoidHooks,
-			),
-			{ status: 200 },
+			)) as Record<string, unknown>,
 		);
 	}
 
 	// ── News mode: fetch from TheNewsAPI ──────────────────────────────────
 	if (!env.THENEWSAPI_TOKEN) {
-		return json(demoArticle(), { status: 200 });
+		return billedJson(demoArticle() as Record<string, unknown>, { demo: true });
 	}
 
 	const categoryParam = normalizeNewsCategories(categories);
@@ -821,11 +895,13 @@ Rules:
 - Max ${maxWords} words total
 - ALL CAPS (the template will uppercase it, but write in caps anyway)
 - No hashtags, no emojis
-- Short, punchy sentences
+- ONE complete grammatical sentence (or two short clauses joined by a comma or colon)
+- Never mash two unrelated claims together without punctuation
 - NEVER use em dashes (—) or en dashes (–). Use commas, periods, or a plain hyphen (-) only.
-- MUST END WITH A COMPLETE THOUGHT — do not cut off mid-sentence
+- MUST END WITH A COMPLETE THOUGHT — do not cut off mid-sentence or mid-clause
 - If the full story won't fit in ${maxWords} words, write a shorter complete hook instead
-- Start with the most shocking/interesting fact
+- Keep the SAME news subject — do not swap in a prettier unrelated metaphor
+- Start with the most shocking/interesting fact; front-load specificity
 
 Headline & snippet: "${snippet}"
 ${generationTonePromptSuffix(tone)}
@@ -839,9 +915,11 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 		);
 		if (candidate) overlayText = candidate;
 
-		overlayText = clampToCompleteWords(
-			stripEmDashes(String(overlayText ?? '').replace(/\[\[|\]\]/g, '')),
-			maxWords,
+		overlayText = ensureCompleteThought(
+			clampToCompleteWords(
+				stripEmDashes(String(overlayText ?? '').replace(/\[\[|\]\]/g, '')),
+				maxWords,
+			),
 		);
 
 		if (autoHighlight && overlayText) {
@@ -856,6 +934,8 @@ Rules:
 - Max ${supportCap} words total — match this budget closely (SoftBank-length lede when ~24)
 - Sentence case (not ALL CAPS)
 - Must end on a finished sentence with . ! or ?
+- Every sentence must start and finish a full idea — never end on "that", "and", "to", "a", or similar
+- NEVER stop on a bare number (write "95 percent" / "16 hours", never "95." or "16.")
 - NEVER use ellipsis (…) or cut a word short
 - NEVER use em dashes (—) or en dashes (–)
 - NEVER use [[double brackets]] or any highlight markup — plain text only (highlights belong on the headline)
@@ -877,19 +957,25 @@ Return ONLY the supporting paragraph.`;
 		if (support) supportingCopy = stripEmDashes(support.replace(/\u2026/g, '').trim());
 		// Keep supporting copy in the same ballpark as the word-count chip.
 		{
-			supportingCopy = clampToCompleteWords(supportingCopy, supportCap);
+			supportingCopy = ensureCompleteThought(
+				clampToCompleteWords(supportingCopy, supportCap),
+			);
 		}
 		/* Paragraph role: never ship highlight markup under the headline. */
 		supportingCopy = supportingCopy.replace(/\[\[|\]\]/g, '').trim();
 	} else {
-		overlayText = clampToCompleteWords(stripEmDashes(String(overlayText ?? '')), maxWords);
-		supportingCopy = clampToCompleteWords(
-			stripEmDashes(String(supportingCopy ?? '')),
-			supportWordCap(maxWords),
+		overlayText = ensureCompleteThought(
+			clampToCompleteWords(stripEmDashes(String(overlayText ?? '')), maxWords),
+		);
+		supportingCopy = ensureCompleteThought(
+			clampToCompleteWords(
+				stripEmDashes(String(supportingCopy ?? '')),
+				supportWordCap(maxWords),
+			),
 		).replace(/\[\[|\]\]/g, '').trim();
 	}
 
-	return json({
+	return billedJson({
 		text: stripEmDashes(overlayText),
 		imageUrl: article.image_url ?? null,
 		title: stripEmDashes(article.title ?? ''),

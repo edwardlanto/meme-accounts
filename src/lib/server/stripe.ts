@@ -17,8 +17,12 @@ export function getStripe(): Stripe {
 	});
 }
 
-export function appUrl(path = ''): string {
-	const base = (publicEnv.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+export function appUrl(path = '', origin?: string | null): string {
+	const base = (
+		String(origin ?? '').trim() ||
+		publicEnv.PUBLIC_APP_URL ||
+		'http://localhost:3000'
+	).replace(/\/$/, '');
 	return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 

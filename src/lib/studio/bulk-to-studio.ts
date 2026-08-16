@@ -198,6 +198,7 @@ export const BULK_STYLES = [
 	{ id: 'bold', label: 'Bold' },
 	{ id: 'editorial', label: 'Editorial' },
 	{ id: 'minimal', label: 'Minimal' },
+	{ id: 'first-person', label: 'First Person' },
 ] as const;
 
 export type BulkStyleId = (typeof BULK_STYLES)[number]['id'];

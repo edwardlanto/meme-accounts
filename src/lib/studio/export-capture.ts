@@ -5,7 +5,13 @@
 
 /** Human-readable message from html-to-image / canvas failures (often an Event, not Error). */
 export function formatExportError(err: unknown): string {
-	if (err instanceof Error && err.message.trim()) return err.message.trim();
+	if (err instanceof Error && err.message.trim()) {
+		const m = err.message.trim();
+		if (/taint|toDataURL|SecurityError/i.test(m)) {
+			return 'Export hit a blocked image or video (CORS). Wait for media to finish loading, then try again.';
+		}
+		return m;
+	}
 	if (typeof err === 'string' && err.trim()) return err.trim();
 	if (err && typeof err === 'object') {
 		const anyErr = err as { message?: unknown; type?: unknown; isTrusted?: unknown; name?: unknown };

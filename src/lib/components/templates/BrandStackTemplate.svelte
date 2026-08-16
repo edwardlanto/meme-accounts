@@ -374,6 +374,7 @@
 										as="div"
 										text={headline}
 										parseHighlights={true}
+										baseFontWeight={headlineStyle.fontWeight ?? BRAND_STACK_HEADLINE_STYLE.fontWeight}
 										style="
 											margin: 0;
 											white-space: pre-wrap;

@@ -208,7 +208,7 @@ export const mediaToDataUrlSchema = z.object({
 	url: z.string().url().max(2048),
 });
 
-const STYLE_OPTIONS = ['bold', 'editorial', 'minimal'] as const;
+const STYLE_OPTIONS = ['bold', 'editorial', 'minimal', 'first-person'] as const;
 
 export const generateSlidesBodySchema = z.object({
 	topic: z.string().min(1).max(MAX_SLIDES_TOPIC_LEN),
@@ -378,7 +378,14 @@ export const newsVariantsBodySchema = z.object({
 		z.number().finite().int().min(1).max(8).optional(),
 	),
 	includeReplies: z.boolean().optional(),
+	/** When true (default), also return a supporting paragraph per slide under each headline. */
+	includeBodies: z.boolean().optional(),
 	maxWords: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(6).max(120).optional(),
+	),
+	/** Word budget for supporting paragraphs (bodies[i]). Defaults ~24. */
+	maxWordsSupport: z.preprocess(
 		(val) => (val === undefined || val === null ? undefined : Number(val)),
 		z.number().finite().int().min(6).max(120).optional(),
 	),
@@ -418,6 +425,21 @@ export const newsTextCarouselBodySchema = z.object({
 		z.number().finite().int().min(6).max(120).optional(),
 	),
 	studioRegenAt: z.number().finite().optional(),
+});
+
+/** LLM → Pexels/Unsplash search query for Studio stock fill. */
+export const stockQueryBodySchema = z.object({
+	topic: z.string().max(500).optional(),
+	kind: z.enum(['photo', 'video', 'circle']).optional(),
+	slides: z
+		.array(
+			z.object({
+				headline: z.string().max(800).optional(),
+				body: z.string().max(2_000).optional(),
+			}),
+		)
+		.max(12)
+		.optional(),
 });
 
 export const blueskyConnectBodySchema = z.object({

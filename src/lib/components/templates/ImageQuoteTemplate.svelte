@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
+	import { canvasFontFamilyCss, loadGoogleFont } from '$lib/fonts';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
@@ -78,7 +79,7 @@
 	const quoteTypeCss = $derived.by(() => {
 		const s = headlineStyle;
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', Impact, 'Arial Black', sans-serif;`);
+		if (s.fontFamily) bits.push(canvasFontFamilyCss(s.fontFamily));
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -125,6 +126,11 @@
 	});
 	const quoteSize = $derived(headlineStyle.fontSize ?? autoQuoteSize);
 
+	$effect(() => {
+		const family = headlineStyle.fontFamily ?? 'Impact';
+		void loadGoogleFont(family, headlineStyle.fontWeight ?? 900);
+	});
+
 	const mediaStretch = $derived(
 		Math.max(0.4, Math.min(1.75, Number(textOffsets.articleImageSize?.x ?? 1) || 1)),
 	);
@@ -169,7 +175,7 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			background: {baseBg};
-			font-family: Impact, 'Arial Black', sans-serif;
+			font-family: Impact, 'Anton', system-ui, sans-serif;
 			overflow: hidden;
 		"
 	>
@@ -291,6 +297,7 @@
 									text={displayText}
 									parseHighlights={true}
 									defaultColor={highlightColor}
+									baseFontWeight={900}
 									style="
 										color: {baseText};
 										font-weight: 900;
@@ -299,7 +306,7 @@
 										line-height: 1.12;
 										font-size: {quoteSize}px;
 										text-align: center;
-										font-family: Impact, 'Arial Black', sans-serif;
+										font-family: Impact, 'Anton', system-ui, sans-serif;
 										white-space: pre-wrap;
 										overflow-wrap: break-word;
 										word-break: normal;
@@ -353,7 +360,7 @@
 											font-size: 44px;
 											font-weight: 900;
 											color: {baseText};
-											font-family: Impact, 'Arial Black', sans-serif;
+											font-family: Impact, 'Anton', system-ui, sans-serif;
 											line-height: 1;
 											display: inline-block;
 											min-height: 1em;
