@@ -212,7 +212,7 @@
 			class="pointer-events-none absolute -top-[30%] left-[12%] h-[420px] w-[640px] bg-[radial-gradient(closest-side,rgba(123,241,168,0.28),transparent_72%),radial-gradient(closest-side_at_78%_40%,rgba(232,255,72,0.12),transparent_70%)] blur-sm"
 			aria-hidden="true"
 		></div>
-		<Card.Content class="relative z-10 flex min-h-[220px] flex-col justify-center gap-5 px-8 py-9 sm:px-10">
+		<Card.Content class="relative z-10 flex min-h-[180px] flex-col justify-center gap-5 px-5 py-7 sm:min-h-[220px] sm:px-10 sm:py-9">
 			<Badge variant="secondary" class="w-fit gap-1.5 rounded-full px-3 py-1">
 				<span class="size-1.5 rounded-full bg-primary" aria-hidden="true"></span>
 				Studio

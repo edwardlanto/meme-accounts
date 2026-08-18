@@ -270,9 +270,10 @@ import JSZip from 'jszip';
 	} from '$lib/video-clips/caption-chunking';
 	import {
 		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
-		Image, Type, Layers, ListOrdered, MessageSquare,
+		Image, ImagePlus, Type, Layers, ListOrdered, MessageSquare,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Music, Play, X, Circle, Palette, Trash2, RotateCcw, Wallpaper, ArrowUp, ChevronDown, PanelBottom, User, Users, Heart, Highlighter, History
 	} from 'lucide-svelte';
+	import { IsMobile } from '$lib/hooks/is-mobile.svelte.js';
 
 	/** Default full-bleed asset for the Black text carousel template. */
 	/** Empty: solid `#000` from the template. Avoid a JPEG that already contains the sample copy — it would stack under live text and look doubled. */
@@ -4457,7 +4458,16 @@ import JSZip from 'jszip';
 
 	// Text panel drag (template px)
 	let textPanelOffsetY = $state(0);
-	let assetsCollapsed = $state(false);
+	let assetsCollapsed = $state(true);
+	const studioIsMobile = new IsMobile();
+	let studioAssetsLayoutInit = false;
+	$effect(() => {
+		void studioIsMobile.current;
+		if (studioAssetsLayoutInit) return;
+		if (typeof window === 'undefined') return;
+		studioAssetsLayoutInit = true;
+		if (!studioIsMobile.current) assetsCollapsed = false;
+	});
 	/** Per-slide News bottom vignette — height tracks each slide’s text stack independently. */
 	let shadowHeightBySlide = $state<number[]>(
 		emptySlides(() => NEWS_DEFAULT_LAYOUT.shadowHeight),
@@ -15204,11 +15214,11 @@ if (tweetTopImageHeightBySlide.length !== n) {
 	});
 </script>
 
-<div class="flex h-full overflow-hidden">
+<div class="studio-root flex h-full min-w-0 overflow-hidden">
 
 	<!-- ── Main canvas column ─────────────────────────────────────────────── -->
 	<div
-		class="flex-1 flex flex-col min-h-0 overflow-hidden p-6 gap-3 studio-right"
+		class="studio-right flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden p-3 gap-2 md:p-6 md:gap-3"
 		style="background: var(--app-bg);"
 	>
 	{#if draftError}
@@ -15248,6 +15258,19 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			     Hiding it with pointer-events:none froze the whole chrome when filmstrip reveal stalled. -->
 			<div class="studio-dock-inner">
 			<ButtonGroup.Root>
+			{#if assetsCollapsed}
+				<Button
+					type="button"
+					variant="outline"
+					class="studio-assets-open-btn studio-dock-tool-btn"
+					title="Show assets"
+					aria-label="Show assets"
+					onclick={() => (assetsCollapsed = false)}
+				>
+					<ImagePlus />
+					<span class="studio-dock-tool-label">Assets</span>
+				</Button>
+			{/if}
 			<DockToolbar items={dockItems} inline />
 			<TemplateDockToolbar
 				templates={templateDockTabs}
@@ -15263,15 +15286,15 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				onApplyAll={() => applyTemplateToAll(activeTemplate, { skipNewsSeed: true })}
 			/>
 			<ButtonGroup.Root title="Canvas background">
-				<ButtonGroup.Text>
-					<span class="text-muted-foreground">White</span>
+				<ButtonGroup.Text class="studio-canvas-bg-toggle">
+					<span class="studio-dock-tool-label text-muted-foreground">White</span>
 					<Switch
 						id="studio-canvas-bg-toggle"
 						checked={canvasBgDark}
 						onCheckedChange={(v) => setCanvasBackgroundDark(!!v)}
 						aria-label="Toggle canvas background black or white"
 					/>
-					<span class="text-muted-foreground">Black</span>
+					<span class="studio-dock-tool-label text-muted-foreground">Black</span>
 				</ButtonGroup.Text>
 			</ButtonGroup.Root>
 			<ButtonGroup.Root class="studio-dock-tool-group">
@@ -15286,7 +15309,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							aria-label="Bottom shadow"
 						>
 							<PanelBottom />
-							Shadow
+							<span class="studio-dock-tool-label">Shadow</span>
 						</Button>
 					{/snippet}
 				</PopoverTrigger>
@@ -15509,7 +15532,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 								aria-hidden="true"
 							></span>
 							<Highlighter />
-							Highlights
+							<span class="studio-dock-tool-label">Highlights</span>
 							{#if hlOn}
 								<span class="studio-hl-on-dot" aria-hidden="true"></span>
 							{/if}
@@ -15638,7 +15661,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							aria-label="Branding"
 						>
 							<User />
-							Branding
+							<span class="studio-dock-tool-label">Branding</span>
 						</Button>
 					{/snippet}
 				</PopoverTrigger>
@@ -17572,7 +17595,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		{/if}
 
 		<!-- Format dock — under filmstrip, above prompt bar -->
-		<div class="relative z-[35] flex w-full shrink-0 justify-center px-4 pt-1.5 pb-0.5">
+		<div class="studio-format-dock relative z-[35] flex w-full min-w-0 shrink-0 justify-center px-1 pt-1.5 pb-0.5 md:px-4">
 			<FormatDockToolbar
 				formats={FORMATS.map((f) => ({ id: f.id, label: f.label, title: `${f.w}×${f.h}` }))}
 				selectedId={formatId}
@@ -17581,7 +17604,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		</div>
 
 		<!-- ── Prompt bar ── below the filmstrip ───────────────────── -->
-		<div class="studio-prompt-chrome relative z-[40] shrink-0 overflow-visible px-4 pt-1.5 pb-3">
+		<div class="studio-prompt-chrome relative z-[40] shrink-0 overflow-visible px-2 pt-1.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4 md:pb-3">
 			<div class="mx-auto w-full max-w-2xl overflow-visible">
 				<div class="prompt-bar">
 
@@ -18244,6 +18267,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	</div>
 
 	<!-- ── Right rail: assets panel ─────────────────────────────────────────── -->
+	{#if !assetsCollapsed}
+		<button
+			type="button"
+			class="studio-assets-scrim"
+			aria-label="Close assets"
+			onclick={() => (assetsCollapsed = true)}
+		></button>
+	{/if}
 	<div class="studio-right-rail flex min-h-0 shrink-0 flex-col" class:is-collapsed={assetsCollapsed}>
 		<StudioAssetsSidebar
 			{userId}
@@ -19083,6 +19114,97 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 	.studio-dock-inner :global(.studio-dock-tool-btn--hl-off) {
 		color: #8a8a8a;
+	}
+
+	.studio-assets-open-btn {
+		display: none;
+	}
+	.studio-assets-scrim {
+		display: none;
+	}
+
+	@media (max-width: 767px) {
+		.studio-root {
+			position: relative;
+		}
+		.studio-dock-row {
+			min-height: 48px;
+			justify-content: flex-start;
+			overflow-x: auto;
+			-webkit-overflow-scrolling: touch;
+			scrollbar-width: none;
+			padding-bottom: 2px;
+		}
+		.studio-dock-row::-webkit-scrollbar {
+			display: none;
+		}
+		.studio-dock-inner {
+			justify-content: flex-start;
+			width: max-content;
+			max-width: none;
+		}
+		.studio-dock-tool-label {
+			display: none;
+		}
+		.studio-canvas-bg-toggle {
+			padding-inline: 0.45rem;
+			gap: 0.35rem;
+		}
+		.studio-assets-open-btn {
+			display: inline-flex;
+		}
+		.studio-assets-scrim {
+			display: block;
+			position: fixed;
+			top: calc(3.5rem + env(safe-area-inset-top, 0px));
+			right: 0;
+			bottom: 0;
+			left: 0;
+			z-index: 280;
+			border: 0;
+			background: rgba(8, 8, 8, 0.45);
+			cursor: pointer;
+		}
+		.studio-right-rail {
+			position: fixed;
+			top: calc(3.5rem + env(safe-area-inset-top, 0px));
+			right: 0;
+			bottom: 0;
+			z-index: 300;
+			width: min(100vw, 22rem);
+			max-width: 100%;
+			background: var(--app-surface, #fff);
+			box-shadow: -16px 0 40px rgba(0, 0, 0, 0.18);
+			transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), width 0ms;
+		}
+		.studio-right-rail.is-collapsed {
+			width: min(100vw, 22rem);
+			transform: translateX(110%);
+			pointer-events: none;
+		}
+		.studio-format-dock {
+			overflow-x: auto;
+			-webkit-overflow-scrolling: touch;
+			scrollbar-width: none;
+			justify-content: flex-start;
+		}
+		.studio-format-dock::-webkit-scrollbar {
+			display: none;
+		}
+		.studio-prompt-chrome :global(.prompt-bar) {
+			max-width: 100%;
+		}
+		:global(.studio-dock-popover) {
+			width: min(92vw, 320px) !important;
+			max-height: min(70vh, 520px);
+		}
+	}
+
+	@media (pointer: coarse) {
+		.studio-dock-inner :global([data-slot='button']) {
+			min-height: 40px;
+			min-width: 40px;
+		}
 	}
 
 	.studio-hl-swatch {

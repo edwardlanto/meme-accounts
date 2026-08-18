@@ -2,7 +2,7 @@
 	import { ExternalLink, Image, CheckCircle2, AlertTriangle } from 'lucide-svelte';
 </script>
 
-<div class="p-8 max-w-4xl">
+<div class="dash-page max-w-4xl">
 	<div class="mb-8">
 		<div class="flex items-center gap-2 mb-2">
 			<div class="w-9 h-9 rounded-xl bg-white/3 border border-white/6 flex items-center justify-center">

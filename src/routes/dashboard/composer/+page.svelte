@@ -383,10 +383,10 @@ function defaultImageQuote(): ImageQuoteData {
 	function tColor(t: TemplateType) { return TEMPLATES.find(x => x.id === t)?.color ?? '#fff'; }
 </script>
 
-<div class="composer-root flex h-full overflow-hidden" style="background: var(--app-bg); color: var(--app-text);">
+<div class="composer-root dash-split" style="background: var(--app-bg); color: var(--app-text);">
 
 <!-- ═══════════════════════════════════════════════════════════════ SIDEBAR -->
-<div class="w-80 flex-shrink-0 border-r flex flex-col overflow-hidden" style="background: var(--app-surface-2); border-color: var(--app-border);">
+<div class="dash-split-aside w-80 border-r" style="background: var(--app-surface-2); border-color: var(--app-border);">
 
 	<!-- Header -->
 	<div class="px-5 py-4 border-b border-white/[0.04] flex-shrink-0 flex items-center gap-2">
@@ -846,7 +846,7 @@ function defaultImageQuote(): ImageQuoteData {
 </div>
 
 <!-- Floating Post button -->
-<div class="fixed bottom-6 right-6 z-50">
+<div class="fixed bottom-6 right-4 z-50 max-md:bottom-[max(1rem,env(safe-area-inset-bottom))]">
 	<button
 		onclick={() => goto('/dashboard/post-scheduler')}
 		class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all border"
@@ -857,10 +857,11 @@ function defaultImageQuote(): ImageQuoteData {
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ PREVIEW -->
-<div class="flex-1 flex flex-col items-center justify-center overflow-auto p-8 gap-4" style="background: var(--app-bg);">
+<div class="dash-split-stage" style="background: var(--app-bg);">
 	<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">Slide {activeIdx+1} / {slides.length} — 1080 × 1350</p>
 
-	<div style="width:{PREVIEW_W}px;height:{Math.round(PREVIEW_W*1350/1080)}px;">
+	<div class="dash-preview-frame">
+	<div class="dash-preview-inner">
 		{#if s.template === 'tweet'}
 			<TweetTemplate bind:exportRef {...s.tweet} scale={previewScale} interactive={false} />
 		{:else if s.template === 'text'}
@@ -904,6 +905,7 @@ function defaultImageQuote(): ImageQuoteData {
 				interactive={true}
 			/>
 		{/if}
+	</div>
 	</div>
 
 	{#if slides.length > 1}

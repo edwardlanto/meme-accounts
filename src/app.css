@@ -497,6 +497,7 @@ input[type="reset"]:disabled,
 	padding: 32px 32px 64px;
 	box-sizing: border-box;
 	font-family: var(--font-body);
+	overflow-x: clip;
 }
 
 @media (max-width: 767px) {
@@ -523,4 +524,74 @@ input[type="reset"]:disabled,
 	font-size: 14px;
 	line-height: 1.55;
 	max-width: 60ch;
+}
+
+/* Split tool shells (composer, tweet/text/article studio, slideshows, editor) */
+.dash-split {
+	display: flex;
+	min-width: 0;
+	height: 100%;
+	overflow: hidden;
+}
+.dash-split-aside {
+	flex-shrink: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+.dash-split-stage {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	overflow: auto;
+	gap: 1rem;
+	padding: 2rem;
+}
+.dash-preview-frame {
+	container-type: inline-size;
+	width: min(520px, 100%);
+	aspect-ratio: 1080 / 1350;
+	overflow: hidden;
+	flex-shrink: 0;
+}
+.dash-preview-inner {
+	width: 520px;
+	height: calc(520px * 1350 / 1080);
+	transform: scale(calc(100cqi / 520));
+	transform-origin: top left;
+}
+
+@media (max-width: 767px) {
+	.dash-split {
+		flex-direction: column;
+	}
+	.dash-split-aside {
+		width: 100% !important;
+		max-height: min(34vh, 16rem);
+		border-right-width: 0 !important;
+		border-bottom: 1px solid var(--app-border, rgba(15, 15, 16, 0.08));
+	}
+	.dash-split > .dash-split-aside:last-child {
+		max-height: none;
+		flex: 1 1 auto;
+		min-height: 10rem;
+		border-bottom: none;
+		border-top: 1px solid var(--app-border, rgba(15, 15, 16, 0.08));
+	}
+	.dash-split-stage {
+		padding: 0.75rem 0.75rem 1.25rem;
+		justify-content: flex-start;
+	}
+}
+
+@media (pointer: coarse) {
+	.dash-split-aside button,
+	.dash-split-aside a {
+		min-height: 44px;
+	}
 }

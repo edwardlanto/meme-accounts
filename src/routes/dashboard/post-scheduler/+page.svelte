@@ -1325,7 +1325,7 @@
 		{/if}
 
 		<!-- Calendar toolbar -->
-		<div class="px-5 py-3 flex items-center justify-between border-b shrink-0" style="border-color: var(--app-border);">
+		<div class="px-3 py-3 flex flex-wrap items-center justify-between gap-2 border-b shrink-0 md:px-5" style="border-color: var(--app-border);">
 
 			<!-- Left: date navigation -->
 			<div class="flex items-center gap-1.5">
@@ -1794,9 +1794,10 @@
 	/* ── Root layout ── */
 	.sched-root {
 		display: flex;
-		height: 100vh;
+		height: 100%;
 		width: 100%;
 		overflow: hidden;
+		min-height: 0;
 	}
 
 	/* ── Sidebar ── */
@@ -1972,5 +1973,20 @@
 	/* ── Light theme override ── */
 	:global(:root:not([data-theme="dark"]) .sched-root) {
 		--calLine: rgba(10,10,10,.08);
+	}
+
+	@media (max-width: 767px) {
+		.sched-root {
+			flex-direction: column;
+			overflow: auto;
+			height: auto;
+			min-height: 100%;
+		}
+		.sched-aside {
+			width: 100%;
+			max-height: none;
+			border-right: none;
+			border-bottom: 1px solid var(--app-border);
+		}
 	}
 </style>

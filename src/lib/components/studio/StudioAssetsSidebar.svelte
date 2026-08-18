@@ -932,6 +932,21 @@
 		padding: 12px 6px;
 	}
 
+	@media (max-width: 767px) {
+		.assets-sidebar {
+			box-shadow: none;
+			border-left: none;
+			height: 100%;
+		}
+		.assets-header {
+			padding-top: 14px;
+		}
+		.assets-header :global(button) {
+			min-width: 40px;
+			min-height: 40px;
+		}
+	}
+
 	.assets-rail-label {
 		font-size: 10px;
 		font-weight: 650;

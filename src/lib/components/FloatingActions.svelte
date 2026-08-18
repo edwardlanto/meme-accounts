@@ -208,7 +208,7 @@
 		{#if typeof onSaveTemplate === 'function'}
 			<div class="relative">
 				{#if showSavePanel}
-					<div class="panel absolute bottom-0 right-full mr-2 w-[320px] overflow-hidden z-10">
+					<div class="panel absolute bottom-0 right-full mr-2 w-[min(320px,calc(100vw-24px))] overflow-hidden z-10">
 						<div class="panel-header">
 							<div class="flex items-center gap-2">
 								<Bookmark size={13} class="text-[#7c3aed]" />
@@ -648,4 +648,27 @@
 
 	.platform-btn:hover { background: rgba(10, 10, 10, 0.06); }
 	.platform-btn--active { border-color: var(--platform-color); background: color-mix(in srgb, var(--platform-color) 8%, transparent); }
+
+	@media (max-width: 767px) {
+		.floating-actions:not(.inline) {
+			top: calc(4.25rem + env(safe-area-inset-top, 0px));
+			bottom: auto !important;
+			right: 10px !important;
+			width: min(10.5rem, calc(100vw - 1.25rem)) !important;
+		}
+		.floating-actions:not(.inline) :global(.panel) {
+			right: 0;
+			left: auto;
+			bottom: auto;
+			top: calc(100% + 8px);
+			margin-right: 0;
+			margin-left: 0;
+			width: min(20rem, calc(100vw - 1.5rem)) !important;
+			max-height: min(70vh, 28rem);
+			overflow: auto;
+		}
+		.floating-actions :global(button) {
+			min-height: 40px;
+		}
+	}
 </style>

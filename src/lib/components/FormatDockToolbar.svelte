@@ -31,6 +31,18 @@
 </div>
 
 <style>
+	.format-dock {
+		max-width: 100%;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
+	}
+	.format-dock::-webkit-scrollbar {
+		display: none;
+	}
+	.format-dock :global([data-slot='toggle-group']) {
+		flex-wrap: nowrap;
+	}
 	.format-dock :global([data-slot='toggle-group-item'][data-state='on']) {
 		background: var(--app-accent, #7bf1a8);
 		color: #080808;

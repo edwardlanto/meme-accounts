@@ -673,7 +673,8 @@
 	.vpage {
 		display: flex;
 		flex-direction: column;
-		height: 100vh;
+		height: 100%;
+		min-height: 0;
 		background: #070707;
 		overflow: hidden;
 		font-family: var(--font-display);
@@ -1365,4 +1366,21 @@
 	:global(.muted) { color: rgba(255,255,255,0.25); }
 	:global(.spin) { animation: spin 1s linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
+
+	@media (max-width: 1024px) {
+		.vlayout {
+			grid-template-columns: 1fr;
+			grid-template-rows: minmax(8rem, 28vh) minmax(16rem, 1fr) auto;
+			overflow: auto;
+		}
+	}
+	@media (max-width: 767px) {
+		.vheader {
+			padding: 8px 12px;
+			height: auto;
+			min-height: 52px;
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+	}
 </style>

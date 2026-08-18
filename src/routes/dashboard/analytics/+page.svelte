@@ -1080,4 +1080,27 @@
 	}
 	.acct-label { font-size: 0.875rem; color: rgba(255,255,255,0.82); margin: 0 0 0.15rem; font-weight: 500; }
 	.acct-meta { font-size: 0.7rem; color: rgba(255,255,255,0.3); margin: 0; font-family: var(--font-display); }
+
+	@media (max-width: 1024px) {
+		.kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+		.queue-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+		.posts-table-head,
+		.post-row { grid-template-columns: 1fr 90px 70px; }
+		.posts-table-head > :nth-child(n+4),
+		.post-row > :nth-child(n+4) { display: none; }
+	}
+	@media (max-width: 767px) {
+		.kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+		.queue-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+		.chart-donut-wrap { grid-template-columns: 1fr; gap: 1.25rem; }
+		.donut-item { grid-template-columns: 10px 1fr 40px minmax(0, 1fr); }
+		.bar-row { grid-template-columns: 1fr; gap: 0.35rem; }
+		.posts-table { overflow-x: auto; }
+		.posts-table-head,
+		.post-row {
+			grid-template-columns: minmax(10rem, 1fr) 72px 64px;
+			padding-inline: 0.85rem;
+			min-width: 22rem;
+		}
+	}
 </style>

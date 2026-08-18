@@ -143,14 +143,14 @@
 		onSignOut={signOut}
 		collapsible={sidebarRailOnly ? 'icon' : 'offcanvas'}
 	/>
-	<Sidebar.Inset class="min-h-0 overflow-hidden">
+	<Sidebar.Inset class="min-h-0 min-w-0 overflow-hidden">
 		<header
 			class={cn(
-				'flex h-16 shrink-0 items-center gap-2 border-b px-4',
+				'relative z-40 flex h-14 shrink-0 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)] md:h-16 md:px-4',
 				toolPage && 'md:hidden'
 			)}
 		>
-			<Sidebar.Trigger class="-ms-1" />
+			<Sidebar.Trigger class="-ms-1 min-h-11 min-w-11 md:min-h-8 md:min-w-8" />
 			<Separator orientation="vertical" class="me-2 h-4" />
 			<Breadcrumb.Root>
 				<Breadcrumb.List>
@@ -169,7 +169,7 @@
 				</Breadcrumb.List>
 			</Breadcrumb.Root>
 		</header>
-		<div class={cn('min-h-0 flex-1', toolPage ? 'overflow-hidden' : 'overflow-y-auto')}>
+		<div class={cn('min-h-0 min-w-0 flex-1', toolPage ? 'overflow-hidden' : 'overflow-x-hidden overflow-y-auto')}>
 			{@render children()}
 		</div>
 	</Sidebar.Inset>

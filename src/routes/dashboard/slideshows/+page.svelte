@@ -615,11 +615,11 @@ ${inlineEditScript}
 	const hasSlides   = $derived(extractedSlides.length > 0 && !generating);
 </script>
 
-<div class="slideshows-root flex h-full overflow-hidden" style="background: var(--app-bg); color: var(--app-text);">
+<div class="slideshows-root dash-split" style="background: var(--app-bg); color: var(--app-text);">
 
 <!-- ══════════════════════════════════════════════════════════ SIDEBAR -->
 <div
-	class="w-[272px] flex-shrink-0 border-r flex flex-col overflow-hidden"
+	class="dash-split-aside w-[272px] border-r"
 	style="background: var(--app-surface-2); border-color: var(--app-border);"
 >
 

@@ -201,10 +201,10 @@
 		<Loader size={20} class="animate-spin text-violet-400" />
 	</div>
 {:else}
-<div class="flex flex-col h-full">
+<div class="flex flex-col h-full min-w-0">
 
 	<!-- ── Top bar: mode toggle ────────────────────────────────────────── -->
-	<div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.05] bg-[#0d0d0d] shrink-0">
+	<div class="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-white/[0.05] bg-[#0d0d0d] shrink-0 md:gap-3 md:px-4">
 		<a href="/dashboard/carousels" class="flex items-center gap-1 text-xs font-body text-white/40 hover:text-white transition-colors shrink-0">
 			<ChevronLeft size={13} /> Back
 		</a>
@@ -254,13 +254,13 @@
 	</div>
 
 	<!-- ── Editor body ─────────────────────────────────────────────────── -->
-	<div class="flex flex-1 overflow-hidden">
+	<div class="dash-split flex-1">
 
 		{#if mode === 'carousel'}
 		<!-- ════════════════ CAROUSEL MODE ════════════════ -->
 
 		<!-- Left: slide strip -->
-		<div class="w-52 border-r border-white/[0.05] flex flex-col bg-[#0d0d0d]">
+		<div class="dash-split-aside w-52 border-r border-white/[0.05] bg-[#0d0d0d]">
 			<div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
 				{#each slides as slide, i}
 					<button onclick={() => activeIdx = i}
@@ -296,7 +296,7 @@
 		</div>
 
 		<!-- Center: canvas -->
-		<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] relative p-8 gap-6">
+		<div class="dash-split-stage bg-[#080808] relative p-4 md:p-8">
 			<div class="flex items-center gap-3 self-stretch">
 				<span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.05] text-white/30">{slides.length} slides</span>
 				<div class="ml-auto">
@@ -308,7 +308,7 @@
 			</div>
 
 			{#if showHookPanel}
-				<div class="absolute top-16 right-6 w-80 glass border border-violet-500/20 rounded-2xl p-5 z-20 shadow-2xl">
+				<div class="absolute top-16 right-4 w-[min(20rem,calc(100vw-1.5rem))] glass border border-violet-500/20 rounded-2xl p-5 z-20 shadow-2xl">
 					<div class="flex items-center justify-between mb-4">
 						<h3 class="font-display font-semibold text-sm text-white">Generate AI Hooks</h3>
 						<button onclick={() => showHookPanel = false} class="text-white/30 hover:text-white transition-colors"><X size={14} /></button>
@@ -336,8 +336,8 @@
 			{/if}
 
 			{#if activeSlide}
-				<div class="relative rounded-2xl overflow-hidden shadow-2xl"
-					style="width:420px;height:525px;background:{activeSlide.bg};display:flex;flex-direction:column;align-items:{activeSlide.align==='left'?'flex-start':activeSlide.align==='right'?'flex-end':'center'};justify-content:center;padding:48px 36px;">
+				<div class="relative rounded-2xl overflow-hidden shadow-2xl max-w-full"
+					style="width:min(420px,100%);height:auto;aspect-ratio:420/525;background:{activeSlide.bg};display:flex;flex-direction:column;align-items:{activeSlide.align==='left'?'flex-start':activeSlide.align==='right'?'flex-end':'center'};justify-content:center;padding:clamp(1.25rem,6vw,48px) clamp(1rem,5vw,36px);">
 					<div class="absolute inset-0 opacity-30" style="background:radial-gradient(ellipse at 30% 20%,rgba(139,92,246,0.15) 0%,transparent 60%)"></div>
 					<div class="relative z-10 w-full" style="text-align:{activeSlide.align}">
 						<div class="inline-block mb-4 px-2 py-0.5 rounded-full border" style="border-color:{activeSlide.textColor}22;background:{activeSlide.textColor}11">
@@ -362,7 +362,7 @@
 
 		<!-- Right: properties -->
 		{#if activeSlide}
-		<div class="w-64 border-l border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-y-auto">
+		<div class="dash-split-aside w-64 border-l border-white/[0.05] bg-[#0d0d0d]">
 			<div class="px-5 py-4 border-b border-white/[0.04]">
 				<p class="font-display font-semibold text-sm text-white">Slide {activeIdx+1} properties</p>
 			</div>
@@ -439,7 +439,7 @@
 		<!-- ════════════════ NEWS MODE ════════════════ -->
 
 		<!-- Left: news controls -->
-		<div class="w-72 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-y-auto">
+		<div class="dash-split-aside w-72 border-r border-white/[0.05] bg-[#0d0d0d]">
 			<div class="p-4 flex flex-col gap-3">
 
 				<!-- Category -->

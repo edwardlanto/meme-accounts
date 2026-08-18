@@ -126,10 +126,10 @@
 
 <FloatingActions {...({ slideLabels: slides.map((_, i) => `Slide ${i + 1}`) } as any)} />
 
-<div class="flex h-full overflow-hidden">
+<div class="dash-split">
 
 	<!-- ── Left sidebar ────────────────────────────────────────────────────── -->
-	<div class="w-80 flex-shrink-0 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-hidden">
+	<div class="dash-split-aside w-80 border-r border-white/[0.05] bg-[#0d0d0d]">
 
 		<!-- Header -->
 		<div class="px-5 py-4 border-b border-white/[0.04] flex-shrink-0">
@@ -325,12 +325,13 @@
 	</div>
 
 	<!-- ── Preview panel ───────────────────────────────────────────────────── -->
-	<div class="flex-1 flex flex-col items-center justify-center bg-[#060606] overflow-auto p-8 gap-4">
+	<div class="dash-split-stage bg-[#060606]">
 		<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">
 			Slide {activeIdx + 1} / {slides.length} — 1080 × 1350
 		</p>
 
-		<div style="width: {PREVIEW_W}px; height: {Math.round(PREVIEW_W * 1350 / 1080)}px;">
+		<div class="dash-preview-frame">
+		<div class="dash-preview-inner">
 			<ArticleTemplate
 				bind:exportRef
 				text={s.text}
@@ -343,6 +344,7 @@
 					slides = slides.map((sl, j) => (j === i ? { ...sl, text: v } : sl));
 				}}
 			/>
+		</div>
 		</div>
 
 		{#if slides.length > 1}

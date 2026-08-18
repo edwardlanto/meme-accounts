@@ -4953,6 +4953,8 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
 		margin-bottom: 0.55rem;
 	}
 	.rows-count {
@@ -5195,6 +5197,14 @@
 		.filmstrip-wrap {
 			width: 100%;
 			max-width: var(--bulk-preview-width);
+		}
+		.bulk {
+			--bulk-preview-width: min(252px, calc(100vw - 2rem));
+			padding-left: 0;
+			padding-right: 0;
+		}
+		.bulk-prompt-chrome {
+			width: calc(100vw - 1rem);
 		}
 	}
 	.show-preview-col {

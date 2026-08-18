@@ -36,7 +36,7 @@
 		if (!el) return () => themeObs.disconnect();
 
 		const compute = (w: number) => {
-			templateCols = w >= 980 ? 4 : w >= 720 ? 3 : 2;
+			templateCols = w >= 980 ? 4 : w >= 720 ? 3 : w >= 420 ? 2 : 1;
 		};
 
 		const ro = new ResizeObserver((entries) => {

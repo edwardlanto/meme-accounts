@@ -202,10 +202,10 @@
 	});
 </script>
 
-<div class="flex h-full overflow-hidden">
+<div class="dash-split">
 
 	<!-- ── Left sidebar ────────────────────────────────────────────────────── -->
-	<div class="w-80 flex-shrink-0 border-r border-white/[0.05] bg-[#0d0d0d] flex flex-col overflow-hidden">
+	<div class="dash-split-aside w-80 border-r border-white/[0.05] bg-[#0d0d0d]">
 
 		<!-- Header -->
 		<div class="px-5 py-4 border-b border-white/[0.04] flex-shrink-0">
@@ -432,12 +432,13 @@
 	</div>
 
 	<!-- ── Preview panel ───────────────────────────────────────────────────── -->
-	<div class="flex-1 flex flex-col items-center justify-center bg-[#080808] overflow-auto p-8 gap-4">
+	<div class="dash-split-stage bg-[#080808]">
 		<p class="font-mono text-[10px] text-white/20 uppercase tracking-widest">
 			Slide {activeIdx + 1} / {slides.length} — 1080 × 1350
 		</p>
 
-		<div style="width: {PREVIEW_W}px; height: {Math.round(PREVIEW_W * 1350 / 1080)}px;">
+		<div class="dash-preview-frame">
+		<div class="dash-preview-inner">
 			<TweetTemplate
 				bind:exportRef
 				topName={s.topName}
@@ -466,6 +467,7 @@
 				}}
 			/>
 		</div>
+		</div>
 
 		<!-- Prev / next arrows -->
 		{#if slides.length > 1}
@@ -490,15 +492,15 @@
 </div>
 
 {#if slides.length > 0}
-	<div class="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-2">
-		<button onclick={() => goto('/dashboard/post-scheduler')} class="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all bg-[#1a1a1a] border border-white/[0.12] text-white/70 hover:text-white hover:border-cyan-500/40 hover:bg-[#1e1e1e]">
+	<div class="fixed bottom-6 right-4 z-50 flex flex-col items-end gap-2 max-md:bottom-[max(1rem,env(safe-area-inset-bottom))] max-md:right-3">
+		<button onclick={() => goto('/dashboard/post-scheduler')} class="flex items-center gap-2 pl-3 pr-4 py-2.5 min-h-11 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all bg-[#1a1a1a] border border-white/[0.12] text-white/70 hover:text-white hover:border-cyan-500/40 hover:bg-[#1e1e1e]">
 			<Calendar size={14} /> Post
 		</button>
 
 		<!-- Burn Music -->
 		<div class="relative">
 			{#if showMusicPanel}
-				<div class="absolute bottom-full mb-2 right-0 w-[400px] rounded-2xl bg-[#111] border border-white/[0.1] shadow-2xl overflow-hidden">
+				<div class="absolute bottom-full mb-2 right-0 w-[min(400px,calc(100vw-1.5rem))] rounded-2xl bg-[#111] border border-white/[0.1] shadow-2xl overflow-hidden">
 					<div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
 						<div class="flex items-center gap-2">
 							<Music size={13} class="text-violet-400" />

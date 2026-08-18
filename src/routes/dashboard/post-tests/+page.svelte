@@ -815,8 +815,8 @@
 	}
 </script>
 
-<div class="max-w-4xl mx-auto px-6 py-8">
-	<div class="flex items-start justify-between gap-4">
+<div class="dash-page max-w-4xl mx-auto">
+	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div>
 			<p class="text-[10px] font-mono text-white/30 uppercase tracking-widest">Post tests</p>
 			<h1 class="text-xl font-display font-semibold text-white/90 mt-1">Instagram · Facebook · TikTok — post now or schedule</h1>

@@ -193,3 +193,37 @@
 	color: #fff !important;
 	stroke: #fff !important;
 }
+
+@media (max-width: 767px) {
+	.prompt-bar {
+		border-radius: 22px;
+	}
+	.prompt-bar-input {
+		padding: 0.55rem 0.65rem 0.25rem;
+		min-height: 2.75rem;
+	}
+	.prompt-bar-field {
+		font-size: 16px;
+		padding: 0.4rem 0.2rem;
+	}
+	.prompt-bar-tools {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
+		padding-bottom: 0.45rem;
+	}
+	.prompt-bar-tools::-webkit-scrollbar {
+		display: none;
+	}
+	.prompt-chip,
+	.prompt-bar-icon-btn,
+	.prompt-bar-submit {
+		min-height: 36px;
+	}
+	.prompt-bar-icon-btn,
+	.prompt-bar-submit {
+		width: 36px;
+		height: 36px;
+	}
+}

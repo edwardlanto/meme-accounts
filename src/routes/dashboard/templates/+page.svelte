@@ -303,6 +303,11 @@
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
+	@media (max-width: 420px) {
+		.saved-grid {
+			grid-template-columns: 1fr;
+		}
+	}
 	.saved-card {
 		position: relative;
 		border-radius: 16px;

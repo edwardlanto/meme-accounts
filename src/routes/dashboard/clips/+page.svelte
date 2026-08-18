@@ -1620,7 +1620,7 @@
 	.saved-templates-grid {
 		margin-top: 14px;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
 		gap: 14px;
 	}
 	.saved-template-tile {
@@ -1743,7 +1743,7 @@
 
 	.carousel-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
 		gap: 14px;
 	}
 	.carousel-card {
@@ -1997,7 +1997,7 @@
 	}
 	.yt-clips-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
 		gap: 20px 18px;
 		align-items: start;
 	}
