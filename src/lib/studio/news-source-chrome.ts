@@ -48,7 +48,8 @@ function isDisplayableMediaUrl(u: string): boolean {
 
 export function newsSourceChromeFromBrandKit(kit: BrandKitSettings): NewsSourceChrome {
 	return {
-		sourceLogoSrc: String(kit.logoUrl ?? '').trim(),
+		/* Default News no longer inherits the generic brand/profile logo. */
+		sourceLogoSrc: '',
 		sourceLogoWidth: clampLogoWidth(kit.sourceLogoWidth, 140),
 		sourceLogoPlateColor: String(
 			(kit as { sourceLogoPlateColor?: string }).sourceLogoPlateColor ?? '',

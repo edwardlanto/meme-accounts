@@ -30,6 +30,7 @@ import JSZip from 'jszip';
 	import StudioAssetsSidebar from '$lib/components/studio/StudioAssetsSidebar.svelte';
 	import FloatingActions from '$lib/components/FloatingActions.svelte';
 	import StudioLeavePrompt from '$lib/components/studio/StudioLeavePrompt.svelte';
+	import StudioAiPromptModal from '$lib/components/studio/StudioAiPromptModal.svelte';
 	import { refreshUsageStatus } from '$lib/usage-client';
 	import {
 		isTemplateDevToolsEnabled,
@@ -7987,15 +7988,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			source = name;
 		}
 		if (kit.sourceLabelMode === 'logo' || kit.sourceLabelMode === 'text') {
-			/* Prefer logo whenever a brand mark exists — text label mode is retired in the UI. */
-			sourceLabelMode = String(kit.logoUrl ?? '').trim() ? 'logo' : kit.sourceLabelMode;
-		}
-		if (typeof kit.logoUrl === 'string') {
-			sourceLogoSrc = String(kit.logoUrl).trim();
-			if (sourceLogoSrc) {
-				sourceLabelMode = 'logo';
-				void ensureR2Resolved(sourceLogoSrc);
-			}
+			/* Default News should not auto-inherit the generic brand/profile logo. */
+			sourceLabelMode = kit.sourceLabelMode;
 		}
 		const avatar = String(kit.avatarUrl ?? '').trim() || String(kit.logoUrl ?? '').trim();
 		if (avatar) {
@@ -18361,125 +18355,32 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 	</div>
 {/if}
 
-{#if circleAIModalFor !== null}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="fixed inset-0 z-[100] flex items-center justify-center p-4"
-		onclick={closeCircleAIModal}
-		role="presentation"
-	>
-		<div class="absolute inset-0 bg-black/50"></div>
-		<div
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="circle-ai-title"
-			class="relative w-full max-w-lg rounded-lg border border-border bg-background p-6 shadow-lg"
-			onclick={(e) => e.stopPropagation()}
-		>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				class="absolute top-3 right-3 text-muted-foreground"
-				onclick={closeCircleAIModal}
-				aria-label="Close"
-			>
-				<X size={16} />
-			</Button>
-			<div class="flex flex-col gap-1.5 pr-8">
-				<h2 id="circle-ai-title" class="text-lg leading-none font-semibold tracking-tight">
-					Circle AI
-				</h2>
-				<p class="text-muted-foreground text-sm">
-					Describe a subject and vibe. Keep it short — no text in the image.
-				</p>
-			</div>
-			<Input
-				id="circle-ai-prompt-input"
-				class="mt-4"
-				bind:value={circleAIPrompt}
-				placeholder="Describe an image and click generate…"
-				onkeydown={(e) => {
-					if (e.key === 'Enter') submitCircleAIModal();
-					if (e.key === 'Escape') closeCircleAIModal();
-				}}
-				autofocus
-			/>
-			<div class="mt-6 flex justify-end gap-2">
-				<Button variant="outline" onclick={closeCircleAIModal}>Cancel</Button>
-				<Button
-					onclick={submitCircleAIModal}
-					disabled={circleAIGenerating || !circleAIPrompt.trim()}
-				>
-					{#if circleAIGenerating}
-						<Loader size={14} class="animate-spin" /> Generating…
-					{:else}
-						<Sparkles size={14} /> Generate
-					{/if}
-				</Button>
-			</div>
-		</div>
-	</div>
-{/if}
+<StudioAiPromptModal
+	open={circleAIModalFor !== null}
+	title="Circle AI"
+	description="Describe a subject and vibe. Keep it short — no text in the image."
+	bind:prompt={circleAIPrompt}
+	placeholder="Describe an image and click generate…"
+	busy={circleAIGenerating}
+	canSubmit={!!circleAIPrompt.trim()}
+	inputId="circle-ai-prompt-input"
+	onClose={closeCircleAIModal}
+	onSubmit={submitCircleAIModal}
+/>
 
-{#if bgAIModalOpen}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="fixed inset-0 z-[100] flex items-center justify-center p-4"
-		onclick={closeBgAIModal}
-		role="presentation"
-	>
-		<div class="absolute inset-0 bg-black/50"></div>
-		<div
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="bg-ai-title"
-			class="relative w-full max-w-lg rounded-lg border border-border bg-background p-6 shadow-lg"
-			onclick={(e) => e.stopPropagation()}
-		>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				class="absolute top-3 right-3 text-muted-foreground"
-				onclick={closeBgAIModal}
-				aria-label="Close"
-			>
-				<X size={16} />
-			</Button>
-			<div class="flex flex-col gap-1.5 pr-8">
-				<h2 id="bg-ai-title" class="text-lg leading-none font-semibold tracking-tight">
-					AI background
-				</h2>
-				<p class="text-muted-foreground text-sm">
-					Describe the scene, or leave empty to use the recommended prompt from this slide.
-				</p>
-			</div>
-			<Input
-				id="bg-ai-prompt-input"
-				class="mt-4"
-				bind:value={bgAIPrompt}
-				placeholder={bgAIRecommended || 'Describe a background and click generate…'}
-				onkeydown={(e) => {
-					if (e.key === 'Enter') void submitBgAIModal();
-					if (e.key === 'Escape') closeBgAIModal();
-				}}
-				autofocus
-			/>
-			<div class="mt-6 flex justify-end gap-2">
-				<Button variant="outline" onclick={closeBgAIModal}>Cancel</Button>
-				<Button
-					onclick={() => void submitBgAIModal()}
-					disabled={bgAIGenerating || !(bgAIPrompt.trim() || bgAIRecommended)}
-				>
-					{#if bgAIGenerating}
-						<Loader size={14} class="animate-spin" /> Generating…
-					{:else}
-						<Sparkles size={14} /> Generate
-					{/if}
-				</Button>
-			</div>
-		</div>
-	</div>
-{/if}
+<StudioAiPromptModal
+	open={bgAIModalOpen}
+	title="AI background"
+	description="Describe the scene, or leave empty to use the suggested prompt from this slide."
+	bind:prompt={bgAIPrompt}
+	placeholder={bgAIRecommended || 'Describe a background and click generate…'}
+	recommended={bgAIRecommended}
+	busy={bgAIGenerating}
+	canSubmit={!!(bgAIPrompt.trim() || bgAIRecommended)}
+	inputId="bg-ai-prompt-input"
+	onClose={closeBgAIModal}
+	onSubmit={() => void submitBgAIModal()}
+/>
 
 <!-- Double-click canvas/video or dock “BG tools” to open -->
 <NewsBackgroundToolbar
