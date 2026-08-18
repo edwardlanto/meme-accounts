@@ -18,11 +18,10 @@ export function getStripe(): Stripe {
 }
 
 export function appUrl(path = '', origin?: string | null): string {
-	const base = (
-		String(origin ?? '').trim() ||
-		publicEnv.PUBLIC_APP_URL ||
-		'http://localhost:3000'
-	).replace(/\/$/, '');
+	const base = (String(origin ?? '').trim() || publicEnv.PUBLIC_APP_URL || '').replace(/\/$/, '');
+	if (!base) {
+		throw new Error('Missing PUBLIC_APP_URL or request origin for absolute app URL');
+	}
 	return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 

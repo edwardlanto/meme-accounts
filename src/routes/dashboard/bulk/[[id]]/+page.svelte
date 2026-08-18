@@ -2348,109 +2348,118 @@
 			const workflowTpls = await resolveWorkflowTemplatesForGenerate();
 			const defaultTpl = workflowTpls[0] ?? coerceTemplateId(brandKit.defaultTemplateId);
 			const tone = bulkTonePayload();
-			const newShows: BulkShow[] = [];
 			const deckTitlesSeen: string[] = [];
+			let copyStopped = false;
+			const DECK_COPY_CONCURRENCY = 2;
 
-			for (let d = 0; d < decksWanted; d++) {
-				const avoidHooks =
-					mode === 'news' || !userId
-						? []
-						: [...deckTitlesSeen, ...recentTitlesForQuery(userId, histQuery, 8)].slice(0, 12);
+			const deckResults: Array<BulkShow | null> = await mapPool(
+				Array.from({ length: decksWanted }, (_, d) => d),
+				DECK_COPY_CONCURRENCY,
+				async (d): Promise<BulkShow | null> => {
+					if (copyStopped) return null;
 
-				const slideN = Math.max(1, slidesPerShow);
-				const newsRes = await fetch('/api/news', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						mode,
-						storyCategory,
-						search: mode === 'news' ? t : undefined,
-						categories: mode === 'news' ? newsCategory : undefined,
-						limit: 15,
-						autoHighlight: wordHighlightsOn,
-						pick: mode === 'news' ? 'random' : 'first',
-						syntheticHint: syntheticHint || undefined,
+					const avoidHooks =
+						mode === 'news' || !userId
+							? []
+							: [...deckTitlesSeen, ...recentTitlesForQuery(userId, histQuery, 8)].slice(0, 12);
+
+					const slideN = Math.max(1, slidesPerShow);
+					const newsRes = await fetch('/api/news', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							mode,
+							storyCategory,
+							search: mode === 'news' ? t : undefined,
+							categories: mode === 'news' ? newsCategory : undefined,
+							limit: 15,
+							autoHighlight: wordHighlightsOn,
+							pick: mode === 'news' ? 'random' : 'first',
+							syntheticHint: syntheticHint || undefined,
+							stepCount: mode === 'steps' ? resolvedSteps : undefined,
+							slideCount: mode === 'news' ? undefined : slideN,
+							studioRegenAt: Date.now() + d,
+							avoidHooks: avoidHooks.length ? avoidHooks : undefined,
+							maxWords: bulkHeadlineMaxWords,
+							maxWordsSupport: bulkBodyMaxWords,
+							...tone,
+						}),
+					});
+					const newsData = await newsRes.json();
+					if (newsRes.status === 402 || newsData?.code === 'LIMIT_REACHED') {
+						copyStopped = true;
+						if (!applyUsageFromPayload(newsData)) usageCanGenerate = false;
+						openUsageUpgrade(typeof newsData?.error === 'string' ? newsData.error : undefined);
+						return null;
+					}
+					if (!newsRes.ok) {
+						throw new Error(newsData?.error || `Generate failed (${newsRes.status})`);
+					}
+					if (!applyUsageFromPayload(newsData)) void refreshBulkUsage();
+
+					const hookText = stripEmDashes(String(newsData.text ?? ''));
+					const rawBody = stripEmDashes(String(newsData.description ?? newsData.title ?? ''));
+					const deckTitle = stripEmDashes(
+						String(newsData.title ?? hookText).replace(/\[\[|\]\]/g, ''),
+					).slice(0, 80);
+					if (deckTitle) deckTitlesSeen.push(deckTitle);
+
+					/* Same Hook → N distinct beats as Studio (`fetchDeckStoryBeats` / `/api/news/variants`). */
+					const { copyStrings, bodies: beatBodies } = await fetchDeckStoryBeats({
+						hookText: hookText || deckTitle,
+						rawText: rawBody || deckTitle || hookText || t,
+						count: slideN,
+						title: deckTitle || t.slice(0, 80),
+						sourceUrl: typeof newsData.url === 'string' ? newsData.url : undefined,
+						contentMode: mode,
+						userRequest: t,
 						stepCount: mode === 'steps' ? resolvedSteps : undefined,
-						slideCount: mode === 'news' ? undefined : slideN,
-						studioRegenAt: Date.now() + d,
-						avoidHooks: avoidHooks.length ? avoidHooks : undefined,
+						autoHighlight: wordHighlightsOn,
+						includeBodies: true,
 						maxWords: bulkHeadlineMaxWords,
 						maxWordsSupport: bulkBodyMaxWords,
-						...tone,
-					}),
-				});
-				const newsData = await newsRes.json();
-				if (newsRes.status === 402 || newsData?.code === 'LIMIT_REACHED') {
-					if (!applyUsageFromPayload(newsData)) usageCanGenerate = false;
-					openUsageUpgrade(typeof newsData?.error === 'string' ? newsData.error : undefined);
-					break;
-				}
-				if (!newsRes.ok) {
-					throw new Error(newsData?.error || `Generate failed (${newsRes.status})`);
-				}
-				if (!applyUsageFromPayload(newsData)) void refreshBulkUsage();
+						tone,
+						clampBody: (text) => clampBulkNewsBody(text),
+					});
 
-				const hookText = stripEmDashes(String(newsData.text ?? ''));
-				const rawBody = stripEmDashes(String(newsData.description ?? newsData.title ?? ''));
-				const deckTitle = stripEmDashes(
-					String(newsData.title ?? hookText).replace(/\[\[|\]\]/g, ''),
-				).slice(0, 80);
-				if (deckTitle) deckTitlesSeen.push(deckTitle);
+					const keepMarkup = wordHighlightsOn;
+					const headlines = copyStrings.map((h) =>
+						clampBulkHeadline(h || hookText || deckTitle, keepMarkup),
+					);
+					const bodies = (
+						beatBodies.length ? beatBodies : Array.from({ length: slideN }, () => rawBody)
+					).map((b) => clampBulkNewsBody(b || rawBody));
 
-				/* Same Hook → N distinct beats as Studio (`fetchDeckStoryBeats` / `/api/news/variants`). */
-				const { copyStrings, bodies: beatBodies } = await fetchDeckStoryBeats({
-					hookText: hookText || deckTitle,
-					rawText: rawBody || deckTitle || hookText || t,
-					count: slideN,
-					title: deckTitle || t.slice(0, 80),
-					sourceUrl: typeof newsData.url === 'string' ? newsData.url : undefined,
-					contentMode: mode,
-					userRequest: t,
-					stepCount: mode === 'steps' ? resolvedSteps : undefined,
-					autoHighlight: wordHighlightsOn,
-					includeBodies: true,
-					maxWords: bulkHeadlineMaxWords,
-					maxWordsSupport: bulkBodyMaxWords,
-					tone,
-					clampBody: (text) => clampBulkNewsBody(text),
-				});
+					let slides: BulkSlide[] = Array.from({ length: slideN }, (_, i) => {
+						const step = slideWorkflow[i] ?? slideWorkflow[slideWorkflow.length - 1];
+						const savedId = String(step?.savedId ?? '').trim();
+						const savedName = String(step?.savedName ?? '').trim();
+						return {
+							id: crypto.randomUUID(),
+							template: coerceTemplateId(workflowTpls[i] ?? defaultTpl),
+							headline:
+								headlines[i] ||
+								(i === 0
+									? clampBulkHeadline(hookText, keepMarkup)
+									: clampBulkHeadline(copyStrings[i] || headlines[0] || hookText, keepMarkup)),
+							body: bodies[i] || (i === 0 ? clampBulkNewsBody(rawBody) : ''),
+							captions: { ...caps },
+							...(savedId
+								? { savedTemplateId: savedId, savedTemplateName: savedName || undefined }
+								: {}),
+						};
+					});
+					if (!slides.length) slides.push(createBlankSlide(defaultTpl, caps));
 
-				const keepMarkup = wordHighlightsOn;
-				const headlines = copyStrings.map((h) =>
-					clampBulkHeadline(h || hookText || deckTitle, keepMarkup),
-				);
-				const bodies = (beatBodies.length ? beatBodies : Array.from({ length: slideN }, () => rawBody)).map(
-					(b) => clampBulkNewsBody(b || rawBody),
-				);
-
-				let slides: BulkSlide[] = Array.from({ length: slideN }, (_, i) => {
-					const step = slideWorkflow[i] ?? slideWorkflow[slideWorkflow.length - 1];
-					const savedId = String(step?.savedId ?? '').trim();
-					const savedName = String(step?.savedName ?? '').trim();
 					return {
 						id: crypto.randomUUID(),
-						template: coerceTemplateId(workflowTpls[i] ?? defaultTpl),
-						headline:
-							headlines[i] ||
-							(i === 0
-								? clampBulkHeadline(hookText, keepMarkup)
-								: clampBulkHeadline(copyStrings[i] || headlines[0] || hookText, keepMarkup)),
-						body: bodies[i] || (i === 0 ? clampBulkNewsBody(rawBody) : ''),
-						captions: { ...caps },
-						...(savedId
-							? { savedTemplateId: savedId, savedTemplateName: savedName || undefined }
-							: {}),
+						title: deckTitle || t.slice(0, 48),
+						slides,
+						activeSlideId: slides[0]!.id,
 					};
-				});
-				if (!slides.length) slides.push(createBlankSlide(defaultTpl, caps));
-
-				newShows.push({
-					id: crypto.randomUUID(),
-					title: deckTitle || t.slice(0, 48),
-					slides,
-					activeSlideId: slides[0]!.id,
-				});
-			}
+				},
+			);
+			const newShows = deckResults.filter((s): s is BulkShow => s != null);
 
 			if (!newShows.length) {
 				if (usageBlocked) return;
@@ -3202,7 +3211,7 @@
 										{/if}
 									</button>
 								{/if}
-								{#if String(slide.mediaThumb ?? '').trim() || slide.sourceR2Key}
+								<!-- {#if String(slide.mediaThumb ?? '').trim() || slide.sourceR2Key}
 									<button
 										type="button"
 										class="menu-item"
@@ -3217,8 +3226,8 @@
 										{/if}
 										Scene photo
 									</button>
-								{/if}
-								{#if slide.sourceR2Key && slide.mediaKind === 'video'}
+								{/if} -->
+								<!-- {#if slide.sourceR2Key && slide.mediaKind === 'video'}
 									<button
 										type="button"
 										class="menu-item"
@@ -3244,7 +3253,7 @@
 										{/if}
 										MP4
 									</button>
-								{/if}
+								{/if} -->
 							</div>
 
 							<div class="flex flex-col gap-1.5">
@@ -4061,7 +4070,7 @@
 								<span class="min-w-0">
 									<span class="block text-[12.5px] font-semibold">Stock photos</span>
 									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]"
-										>Pexels / Unsplash stills for image templates</span
+										>Pexels stills for image templates</span
 									>
 								</span>
 								{#if stockMediaMode === 'photo'}

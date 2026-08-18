@@ -72,7 +72,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			? 'Stock VIDEO search (Pexels). Favor scenes with natural motion: walking, cooking, city traffic, waves, hands at work. Avoid static product shots.'
 			: kind === 'circle'
 				? 'Tight CIRCLE BADGE crop for Instagram news. Prefer a single clear real-world subject matching the slide headline + topic (face, food close-up, landmark detail, object hero). Never return finance charts, candlesticks, trading screens, or generic dashboard UI unless the topic is explicitly markets/stocks.'
-				: 'Stock PHOTO search (Pexels/Unsplash). Favor concrete visual scenes that read at Instagram feed size.';
+				: 'Stock PHOTO search (Pexels). Favor concrete visual scenes that read at Instagram feed size.';
 
 	const slideBlock = slides.length
 		? slides
@@ -86,7 +86,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		: sandboxUserPlaintext('TOPIC', topic || 'editorial lifestyle', 500);
 
 	const system =
-		`You write short stock-media SEARCH QUERIES for Pexels and Unsplash. Output ONLY valid JSON.\n` +
+		`You write short stock-media SEARCH QUERIES for Pexels. Output ONLY valid JSON.\n` +
 		`Return shape: {"query":"...","queries":["..."],"circleQuery":"..."}\n` +
 		`Rules:\n` +
 		`- ${kindHint}\n` +

@@ -94,7 +94,7 @@
 		 * so News / video layouts render plain text.
 		 */
 		textHighlightsEnabled?: boolean;
-		/** Optional News source logo when slide is in logo mode. */
+		/** Optional News source logo. Empty = no News kicker (logo is not default). */
 		sourceLogoSrc?: string;
 		/** News source logo max width (brand kit / override). Default matches Studio byline size. */
 		sourceLogoWidth?: number;
@@ -102,7 +102,7 @@
 		sourceLogoPlateColor?: string;
 		/** News logo / text drag offsets (template px) — same contract as Studio. */
 		textOffsets?: Record<string, { x: number; y: number }>;
-		/** Optional News text byline when no logo (brand display name). Empty = hide source. */
+		/** Display name for Text Carousel / video watermarks. Not used as a News kicker. */
 		sourceLabel?: string;
 		/** Brand-kit highlight paint for bare `[[phrase]]` (Settings → Branding). */
 		highlightColor?: string;
@@ -533,9 +533,9 @@
 			<NewsTemplate
 				text={newsTemplateText}
 				subtext={maybeStrip(body)}
-				source={String(sourceLabel ?? '').trim()}
-				sourceLogoSrc={String(sourceLogoSrc ?? '').trim()}
-				sourceLabelMode={String(sourceLogoSrc ?? '').trim() ? 'logo' : 'text'}
+				source=""
+				sourceLogoSrc={brandLogo}
+				sourceLabelMode="logo"
 				sourceLogoWidth={resolvedSourceLogoWidth}
 				sourceLogoPlateColor={String(sourceLogoPlateColor ?? '').trim()}
 				sourceStyle={{ align: 'center' }}

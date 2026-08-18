@@ -156,7 +156,7 @@ export type StockQueryPlan = {
 };
 
 /**
- * Ask Studio `/api/stock/query` (OpenRouter) for visual Pexels/Unsplash queries.
+ * Ask Studio `/api/stock/query` (OpenRouter) for visual Pexels queries.
  * Falls back to `stockQueryFromSlide` when the API is unavailable.
  */
 export async function resolveStockSearchQueries(opts: {
@@ -269,33 +269,6 @@ function bestPhoto(photos: PhotoCandidate[]): PhotoCandidate | null {
 	return [...photos].sort((a, b) => scorePhoto(b) - scorePhoto(a))[0] ?? null;
 }
 
-async function searchUnsplash(
-	query: string,
-	page = 1,
-	perPage = 12,
-): Promise<{ photos: PhotoCandidate[]; error?: string; totalPages?: number }> {
-	const res = await fetch(
-		`/api/unsplash/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}`,
-	);
-	const data = await res.json().catch(() => ({}));
-	if (!res.ok) {
-		return { photos: [], error: String(data?.error || `Unsplash ${res.status}`) };
-	}
-	const photos = (Array.isArray(data.photos) ? data.photos : [])
-		.map((p: any) => ({
-			regular: String(p?.regular ?? ''),
-			small: String(p?.small ?? ''),
-			alt: String(p?.alt ?? ''),
-			photographer: String(p?.photographer ?? ''),
-			likes: Number(p?.likes ?? 0) || 0,
-			downloads: Number(p?.downloads ?? 0) || 0,
-			downloadLocation: String(p?.downloadLocation ?? ''),
-			source: 'unsplash' as const,
-		}))
-		.filter((p: PhotoCandidate) => p.regular);
-	return { photos, totalPages: Number(data?.totalPages ?? 1) || 1 };
-}
-
 async function searchPexelsPhotos(
 	query: string,
 	page = 1,
@@ -321,15 +294,6 @@ async function searchPexelsPhotos(
 		}))
 		.filter((p: PhotoCandidate) => p.regular);
 	return { photos, totalPages: Number(data?.totalPages ?? 1) || 1 };
-}
-
-function pingUnsplashDownload(downloadLocation?: string) {
-	if (!downloadLocation) return;
-	void fetch('/api/unsplash/download', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ downloadLocation }),
-	}).catch(() => {});
 }
 
 function candidateToPick(pick: PhotoCandidate): StockPick {
@@ -361,14 +325,12 @@ function appendUniquePhotos(
 		const key = photoKey(p);
 		if (!key || seen.has(key)) continue;
 		seen.add(key);
-		const pick = candidateToPick(p);
-		if (pick.source === 'unsplash') pingUnsplashDownload(pick.downloadLocation);
-		out.push(pick);
+		out.push(candidateToPick(p));
 		if (out.length >= limit) break;
 	}
 }
 
-/** Pexels photos first, then Unsplash. No videos. */
+/** Pexels photos only. No videos. */
 export async function fetchStockImagePool(query: string, limit = 24): Promise<StockPick[]> {
 	const q = query.trim();
 	if (!q) return [];
@@ -376,19 +338,16 @@ export async function fetchStockImagePool(query: string, limit = 24): Promise<St
 	const seen = new Set<string>();
 	const pexels = await searchPexelsPhotos(q);
 	appendUniquePhotos(out, pexels.photos, limit, seen);
-	if (out.length >= limit) return out;
-	const unsplash = await searchUnsplash(q);
-	appendUniquePhotos(out, unsplash.photos, limit, seen);
 	return out;
 }
 
-/** Fetch best still: Pexels photos, then Unsplash. */
+/** Fetch best still from Pexels. */
 export async function fetchStockImage(query: string): Promise<StockPick | null> {
 	const pool = await fetchStockImagePool(query, 1);
 	return pool[0] ?? null;
 }
 
-/** Pexels first, then Unsplash — ranked for square circle badges. */
+/** Pexels photos ranked for square circle badges. */
 export async function fetchStockCircleImagePool(query: string, limit = 12): Promise<StockPick[]> {
 	const q = query.trim();
 	if (!q) return [];
@@ -396,9 +355,6 @@ export async function fetchStockCircleImagePool(query: string, limit = 12): Prom
 	const seen = new Set<string>();
 	const pexels = await searchPexelsPhotos(q, 1, Math.max(limit, 12));
 	appendUniquePhotos(out, pexels.photos, limit, seen, scoreCirclePhoto);
-	if (out.length >= limit) return out;
-	const unsplash = await searchUnsplash(q, 1, Math.max(limit, 12));
-	appendUniquePhotos(out, unsplash.photos, limit, seen, scoreCirclePhoto);
 	return out;
 }
 
@@ -418,9 +374,7 @@ export type SidebarStockPhoto = {
 	pexelsId?: number;
 };
 
-const STOCK_SIDEBAR_FILL_THRESHOLD = 6;
-
-/** Sidebar search: Pexels page first, Unsplash fills when results are sparse. */
+/** Sidebar search: Pexels photos only. */
 export async function searchStockPhotosForSidebar(
 	query: string,
 	page = 1,
@@ -438,26 +392,6 @@ export async function searchStockPhotosForSidebar(
 		photographer: p.photographer || '',
 		source: 'pexels' as const,
 	}));
-
-	if (page === 1 && photos.length < STOCK_SIDEBAR_FILL_THRESHOLD) {
-		const unsplash = await searchUnsplash(q, 1, perPage);
-		const seen = new Set(photos.map((p) => p.regular.split('?')[0]));
-		for (const p of unsplash.photos) {
-			const key = photoKey(p);
-			if (!key || seen.has(key)) continue;
-			seen.add(key);
-			photos.push({
-				id: `unsplash-${photos.length}-${key}`,
-				small: p.small || p.regular,
-				regular: p.regular,
-				alt: p.alt || '',
-				photographer: p.photographer || '',
-				source: 'unsplash',
-				downloadLocation: p.downloadLocation,
-			});
-			if (photos.length >= perPage) break;
-		}
-	}
 
 	const totalPages = Math.max(Number(pexels.totalPages ?? 1) || 1, 1);
 	return {
@@ -509,7 +443,7 @@ export async function fetchStockVideo(query: string): Promise<StockPick | null> 
 }
 
 /**
- * Waterfall pool: Pexels videos → Pexels photos → Unsplash.
+ * Pexels videos, then Pexels photos if the video pool is short.
  * Used when Generate / Pull from assets fills slide backgrounds.
  */
 export async function fetchStockMediaPool(query: string, limit = 24): Promise<StockPick[]> {
@@ -521,9 +455,6 @@ export async function fetchStockMediaPool(query: string, limit = 24): Promise<St
 	const seen = new Set(out.map((p) => p.url.split('?')[0] || p.url));
 	const pexels = await searchPexelsPhotos(q);
 	appendUniquePhotos(out, pexels.photos, limit, seen);
-	if (out.length >= limit) return out;
-	const unsplash = await searchUnsplash(q);
-	appendUniquePhotos(out, unsplash.photos, limit, seen);
 	return out;
 }
 
@@ -578,7 +509,7 @@ export async function resolveStockForTemplate(
 	return null;
 }
 
-/** Run stock picks with limited concurrency (keeps Unsplash/Pexels happy). */
+/** Run stock picks with limited concurrency (keeps Pexels happy). */
 export async function mapPool<T, R>(
 	items: T[],
 	limit: number,

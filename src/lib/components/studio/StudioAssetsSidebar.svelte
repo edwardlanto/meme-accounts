@@ -903,7 +903,7 @@
 					</div>
 				{/if}
 
-				<p class="unsplash-note">Free stock photos via Pexels and Unsplash</p>
+				<p class="unsplash-note">Free stock photos via Pexels</p>
 			{/if}
 		</div>
 		{#if stockError}
