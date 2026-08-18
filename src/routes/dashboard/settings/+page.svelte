@@ -4,6 +4,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { passwordResetRedirectTo } from '$lib/auth-modal';
 	import { PLAN_CATALOG } from '$lib/pricing-catalog';
+	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
 	import {
 		DEFAULT_BRAND_KIT,
 		brandProfile,
@@ -1376,6 +1377,12 @@
 							<p class="trial-sub" style="margin-top:0.35rem">
 								AI images: not included on Free (stock photos only). Hobby includes 50/mo.
 							</p>
+							{#if CLIP_FINDER_ENABLED}
+								<p class="trial-sub" style="margin-top:0.35rem">
+									Clip minutes: {usage.clipMinutesUsed ?? 0} of {usage.clipMinutesLimit ?? 60}
+									· max video {usage.maxClipVideoMinutes ?? 20} min
+								</p>
+							{/if}
 						</div>
 					{:else if usage?.isPaid && usage.limit !== null}
 						<div class="trial-banner">
@@ -1395,6 +1402,17 @@
 									AI images: {usage.aiImagesUsed} used · unlimited
 								{/if}
 							</p>
+							{#if CLIP_FINDER_ENABLED}
+								<p class="trial-sub" style="margin-top:0.35rem">
+									{#if usage.clipMinutesLimit != null}
+										Clip minutes: {usage.clipMinutesUsed} of {usage.clipMinutesLimit} · {usage.clipMinutesRemaining} remaining
+										· max video {usage.maxClipVideoMinutes} min
+									{:else}
+										Clip minutes: {usage.clipMinutesUsed} used · unlimited
+										· max video {usage.maxClipVideoMinutes} min
+									{/if}
+								</p>
+							{/if}
 						</div>
 					{:else if usage?.isPaid && usage.limit === null}
 						<div class="trial-banner">
@@ -1412,6 +1430,17 @@
 									AI images: {usage.aiImagesUsed} used · unlimited
 								{/if}
 							</p>
+							{#if CLIP_FINDER_ENABLED}
+								<p class="trial-sub" style="margin-top:0.35rem">
+									{#if usage.clipMinutesLimit != null}
+										Clip minutes: {usage.clipMinutesUsed} of {usage.clipMinutesLimit} · {usage.clipMinutesRemaining} remaining
+										· max video {usage.maxClipVideoMinutes} min
+									{:else}
+										Clip minutes: {usage.clipMinutesUsed} used · unlimited
+										· max video {usage.maxClipVideoMinutes} min
+									{/if}
+								</p>
+							{/if}
 						</div>
 					{/if}
 				{:else}
@@ -1517,7 +1546,7 @@
 						{#if billing?.plan === 'creator'}
 							Unlimited carousels, team workspace, and API access — ${PLAN_CATALOG.business.monthly}/mo.
 						{:else}
-							100 carousels/month, all caption styles, no watermark — ${PLAN_CATALOG.creator.monthly}/mo.
+							{PLAN_CATALOG.creator.carouselsPerMonth} carousels/month, all caption styles, no watermark — ${PLAN_CATALOG.creator.monthly}/mo.
 						{/if}
 					</p>
 					<Button href={`/checkout?plan=${billing?.plan === 'creator' ? 'business' : 'creator'}`}>

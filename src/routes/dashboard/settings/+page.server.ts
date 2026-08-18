@@ -57,6 +57,11 @@ export const load: PageServerLoad = async ({ parent }) => {
 			aiImagesLimit: usage.aiImagesLimit,
 			aiImagesRemaining: usage.aiImagesRemaining,
 			canGenerateAiImage: usage.canGenerateAiImage,
+			clipMinutesUsed: usage.clipMinutesUsed,
+			clipMinutesLimit: usage.clipMinutesLimit,
+			clipMinutesRemaining: usage.clipMinutesRemaining,
+			canAnalyzeClips: usage.canAnalyzeClips,
+			maxClipVideoMinutes: usage.maxClipVideoMinutes,
 		},
 		profile: {
 			fullName:

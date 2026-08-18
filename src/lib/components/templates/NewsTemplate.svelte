@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import { onDestroy, tick } from 'svelte';
+	import { sanitizeOverlayLine } from '$lib/studio/overlay-copy';
 	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection, type HighlightDefaults } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
@@ -131,7 +132,7 @@
 		sourceBorderKind?: 'none' | 'rules' | 'box';
 		/** Hex for rules / box. Empty = follow source text / highlight color. */
 		sourceBorderColor?: string;
-		/** Max width in px for the source logo (aspect ratio preserved). Default 260. */
+		/** Max width in px for the source logo (aspect ratio preserved). Default 140. */
 		sourceLogoWidth?: number;
 		/**
 		 * Solid plate behind the source logo only (not the text-chip `sourceStyle.bgColor`).
@@ -264,7 +265,7 @@
 		sourceLabelMode = 'logo',
 		sourceBorderKind = 'none',
 		sourceBorderColor = '',
-		sourceLogoWidth = 260,
+		sourceLogoWidth = 140,
 		sourceLogoPlateColor = '',
 		onSourceLogoChange,
 		onSourceLogoWidthChange,
@@ -550,7 +551,7 @@
 		lines.push(`font-style: ${s.italic === false ? 'normal' : (s.italic ?? true) ? 'italic' : 'normal'};`);
 		if (s.underline) lines.push('text-decoration: underline;');
 		lines.push(`color: ${s.color ?? highlightColor};`);
-		lines.push(`text-align: ${s.align ?? 'right'};`);
+		lines.push(`text-align: ${s.align ?? 'center'};`);
 		lines.push(`letter-spacing: ${s.letterSpacing != null ? `${s.letterSpacing}em` : '3px'};`);
 		appendTextShadowCss(lines, s);
 		/* Logo mode paints BG / pad / radius on the image chip — not this text span. */
@@ -614,6 +615,44 @@
 	let headlineEl = $state<HTMLElement | null>(null);
 	let sourceEl = $state<HTMLElement | null>(null);
 	let lastHeadlineRestoreNonce = $state(-1);
+
+	const sourceRowJustify = $derived.by(() => {
+		const a = String(sourceStyle?.align ?? 'center');
+		if (a === 'left') return 'flex-start';
+		if (a === 'right') return 'flex-end';
+		return 'center';
+	});
+
+	const sourceLogoMaxHeight = $derived(Math.max(48, Math.round((Number(sourceLogoWidth) || 140) * 0.55)));
+
+	const sourceLogoImgCss = $derived(
+		[
+			'display: block;',
+			`max-width: ${Math.max(40, sourceLogoWidth)}px;`,
+			`max-height: ${sourceLogoMaxHeight}px;`,
+			'width: auto;',
+			'height: auto;',
+			'object-fit: contain;',
+			'pointer-events: none;',
+			'filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18));',
+		].join(' '),
+	);
+
+	function paintSourceLogoSrc(raw: string): string {
+		const resolved = String(resolveSrc?.(raw) || '').trim();
+		if (resolved) return resolved;
+		const s = String(raw ?? '').trim();
+		if (
+			s.startsWith('data:') ||
+			s.startsWith('blob:') ||
+			s.startsWith('http://') ||
+			s.startsWith('https://') ||
+			s.startsWith('/')
+		) {
+			return s;
+		}
+		return '';
+	}
 
 	const showSource = $derived(
 		(sourceLabelMode === 'logo' && !!sourceLogoSrc) || (sourceLabelMode === 'text' && !!source),
@@ -697,7 +736,7 @@
 	}
 
 	function bumpSourceLogoWidth(delta: number) {
-		const next = Math.round(Math.max(80, Math.min(400, (Number(sourceLogoWidth) || 260) + delta)));
+		const next = Math.round(Math.max(80, Math.min(400, (Number(sourceLogoWidth) || 140) + delta)));
 		onSourceLogoWidthChange?.(next);
 	}
 
@@ -775,11 +814,36 @@
 		const canvas = exportRef;
 		const stack = textStackEl;
 		if (!canvas || !stack || !onTextStackLayout) return;
-		const c = canvas.getBoundingClientRect();
-		const s = stack.getBoundingClientRect();
-		if (c.height < 8) return;
-		const topPct = ((s.top - c.top) / c.height) * 100;
-		const heightPct = (s.height / c.height) * 100;
+		/*
+		 * Prefer design-space metrics (offset*) so Bulk’s CSS scale() doesn’t
+		 * skew autofit vs Studio’s full-size canvas after generate.
+		 * Transform on the canvas makes it the offsetParent for descendants.
+		 */
+		const canvasH = Math.max(1, canvas.offsetHeight || H);
+		let topPx = 0;
+		let node: HTMLElement | null = stack;
+		let usedOffset = true;
+		while (node && node !== canvas) {
+			topPx += node.offsetTop;
+			const parent = node.offsetParent as HTMLElement | null;
+			if (!parent || (parent !== canvas && !canvas.contains(parent))) {
+				usedOffset = false;
+				break;
+			}
+			node = parent;
+		}
+		let topPct: number;
+		let heightPct: number;
+		if (usedOffset && node === canvas) {
+			topPct = (topPx / canvasH) * 100;
+			heightPct = (stack.offsetHeight / canvasH) * 100;
+		} else {
+			const c = canvas.getBoundingClientRect();
+			const s = stack.getBoundingClientRect();
+			if (c.height < 8) return;
+			topPct = ((s.top - c.top) / c.height) * 100;
+			heightPct = (s.height / c.height) * 100;
+		}
 		if (!Number.isFinite(topPct) || !Number.isFinite(heightPct)) return;
 		const key = `${topPct.toFixed(1)}:${heightPct.toFixed(1)}`;
 		if (key === lastReportedStackKey) return;
@@ -797,6 +861,7 @@
 		void W;
 		void H;
 		void scale;
+		lastReportedStackKey = '';
 		const stack = textStackEl;
 		if (!stack || typeof ResizeObserver === 'undefined') {
 			queueMicrotask(reportTextStackLayout);
@@ -806,7 +871,27 @@
 		ro.observe(stack);
 		if (exportRef) ro.observe(exportRef);
 		queueMicrotask(reportTextStackLayout);
-		return () => ro.disconnect();
+		const fontsReady =
+			typeof document !== 'undefined' && document.fonts?.ready
+				? document.fonts.ready.then(() => {
+						lastReportedStackKey = '';
+						reportTextStackLayout();
+					})
+				: null;
+		const t1 = setTimeout(() => {
+			lastReportedStackKey = '';
+			reportTextStackLayout();
+		}, 120);
+		const t2 = setTimeout(() => {
+			lastReportedStackKey = '';
+			reportTextStackLayout();
+		}, 400);
+		return () => {
+			ro.disconnect();
+			clearTimeout(t1);
+			clearTimeout(t2);
+			void fontsReady;
+		};
 	});
 
 	// Contain-mode pan: bgOffsetX/Y are reused as the focal point (50 = center).
@@ -817,12 +902,14 @@
 	const highlightParseDefaults = $derived(
 		highlightDefaults ?? { color: highlightColor },
 	);
+	const safeText = $derived(sanitizeOverlayLine(String(text ?? '')));
+	const safeSubtext = $derived(sanitizeOverlayLine(String(subtext ?? '')));
 	let parsed = $derived(
-		parseHighlightMarkup(String(text ?? '').replace(/\n+$/g, ''), highlightParseDefaults),
+		parseHighlightMarkup(safeText.replace(/\n+$/g, ''), highlightParseDefaults),
 	);
 	let segments = $derived(segmentText(parsed));
 	let subtextParsed = $derived(
-		parseHighlightMarkup(String(subtext ?? ''), highlightParseDefaults),
+		parseHighlightMarkup(safeSubtext, highlightParseDefaults),
 	);
 	let subtextSegments = $derived(segmentText(subtextParsed));
 
@@ -901,13 +988,13 @@
 	});
 
 	$effect(() => {
-		if (!editingSubtext && subtext !== subtextDraft) subtextDraft = subtext;
+		if (!editingSubtext && safeSubtext !== subtextDraft) subtextDraft = safeSubtext;
 	});
 
 	function startSubtextEdit(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
-		subtextDraft = String(subtext ?? '');
+		subtextDraft = safeSubtext;
 		editingSubtext = true;
 		void tick().then(() => {
 			const ce = subtextEditableEl;
@@ -957,7 +1044,7 @@
 	function onSubtextKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.preventDefault();
-			subtextDraft = String(subtext ?? '');
+			subtextDraft = safeSubtext;
 			editingSubtext = false;
 			return;
 		}
@@ -1039,7 +1126,7 @@
 	}
 
 	$effect(() => {
-		if (text !== headlineDraft) headlineDraft = text;
+		if (safeText !== headlineDraft) headlineDraft = safeText;
 	});
 
 	// ── Text panel drag (HTML) ─────────────────────────────────────────────
@@ -1055,7 +1142,7 @@
 	function startEdit(e: MouseEvent) {
 		if (!interactive) return;
 		e.stopPropagation();
-		headlineDraft = text;
+		headlineDraft = safeText;
 		onHeadlineEditStart?.();
 		editing = true;
 		setTimeout(() => {
@@ -2868,7 +2955,7 @@
 										"
 									>
 										{#if sourceLabelMode === 'logo' && sourceLogoSrc}
-											{@const logoSrc = resolveSrc?.(sourceLogoSrc) || sourceLogoSrc}
+											{@const logoSrc = paintSourceLogoSrc(sourceLogoSrc)}
 											{@const logoSelected = selectedText === 'source' || sourceLogoToolbarOpen}
 											{#snippet sourceLogoTrigger({ props }: { props: Record<string, unknown> })}
 												{@const triggerProps = props as Record<string, unknown> & {
@@ -2888,21 +2975,14 @@
 													}}
 													ondblclick={onSourceLogoDblClick}
 												>
+													{#if logoSrc}
 													<img
 														src={logoSrc}
 														alt=""
 														draggable="false"
-														style="
-															display: block;
-															max-width: {Math.max(40, sourceLogoWidth)}px;
-															max-height: 52px;
-															width: auto;
-															height: auto;
-															object-fit: contain;
-															pointer-events: none;
-															filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18)){templateTheme === 'dark' ? ' brightness(0) invert(1)' : ''};
-														"
+														style={sourceLogoImgCss}
 													/>
+													{/if}
 													{#if sourceLogoRemovingBg}
 														<div
 															style="
@@ -3082,21 +3162,14 @@
 												</Popover>
 											{:else}
 												<div style={sourceLogoChromeCss}>
+													{#if logoSrc}
 													<img
 														src={logoSrc}
 														alt=""
 														draggable="false"
-														style="
-															display: block;
-															max-width: {Math.max(40, sourceLogoWidth)}px;
-															max-height: 52px;
-															width: auto;
-															height: auto;
-															object-fit: contain;
-															pointer-events: none;
-															filter: drop-shadow(0 1px 0 rgba(0,0,0,0.18)){templateTheme === 'dark' ? ' brightness(0) invert(1)' : ''};
-														"
+														style={sourceLogoImgCss}
 													/>
+													{/if}
 												</div>
 											{/if}
 										{:else if sourceLabelMode === 'text' && source}
@@ -3157,7 +3230,7 @@
 				"
 			>
 			{#if showSource}
-				<div style="position: relative; z-index: 90; width: 100%; display: flex; justify-content: flex-end; align-items: center;">
+				<div style="position: relative; z-index: 90; width: 100%; display: flex; justify-content: {sourceRowJustify}; align-items: center;">
 					{@render newsSourceBlock()}
 				</div>
 			{/if}

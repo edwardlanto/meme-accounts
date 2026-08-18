@@ -288,7 +288,8 @@
 
 	$effect(() => {
 		const el = storyVideoEl;
-		if (!el) return;
+		const src = resolvedVideo;
+		if (!el || !src) return;
 		const muted = !!videoMuted;
 		const vol = Math.max(0, Math.min(1, Number(videoVolume)));
 		el.muted = muted;

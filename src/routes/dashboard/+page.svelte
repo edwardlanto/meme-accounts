@@ -13,6 +13,8 @@
 		Video,
 		LayoutTemplate,
 		Clapperboard,
+		Layers,
+		Images,
 	} from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -22,6 +24,9 @@
 	import { coerceTemplateId, type TemplateId } from '$lib/studio/template-ids';
 	import { defaultThumbForTemplate } from '$lib/studio/slide-content-defaults';
 	import { libraryCardImageUrl } from '$lib/client/optimize-image-url';
+	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
+
+	let { data } = $props();
 
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
@@ -38,9 +43,18 @@
 		{ href: '/dashboard/templates', icon: LayoutTemplate, label: 'Templates', sub: 'Layouts & starters' },
 		{ href: '/dashboard/carousels', icon: ImagePlus, label: 'Carousels', sub: 'Saved templates & Bulk posts' },
 		{ href: '/dashboard/clips', icon: Clapperboard, label: 'Clips', sub: 'YouTube clip stacks' },
-		{ href: '/dashboard/bulk', icon: Rows3, label: 'Bulk', sub: 'Edit slideshows + clips' },
+		{ href: '/dashboard/bulk', icon: Rows3, label: 'Bulk', sub: 'Edit slideshows' },
 		{ href: '/dashboard/videos', icon: Video, label: 'Videos', sub: 'Paste link → find clips' },
 	] as const;
+
+	const visiblePrimaryCards = $derived(
+		primaryCards.filter(
+			(c) => CLIP_FINDER_ENABLED || (c.href !== '/dashboard/clips' && c.href !== '/dashboard/videos'),
+		),
+	);
+
+	const slideshowsGenerated = $derived(data.generation?.slideshows ?? 0);
+	const slidesGenerated = $derived(data.generation?.slides ?? 0);
 
 	function timeAgo(dateStr: string): string {
 		const d = new Date(dateStr);
@@ -214,9 +228,42 @@
 		</Card.Content>
 	</Card.Root>
 
+	<section class="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Generation totals">
+		<Card.Root size="sm">
+			<Card.Content class="flex items-center gap-3 py-1">
+				<div
+					class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground ring-1 ring-foreground/10"
+				>
+					<Layers class="size-[18px]" />
+				</div>
+				<div class="min-w-0 flex-1">
+					<p class="text-2xl font-semibold tracking-tight tabular-nums">
+						{slideshowsGenerated.toLocaleString()}
+					</p>
+					<Card.Description class="text-xs">Slideshows generated</Card.Description>
+				</div>
+			</Card.Content>
+		</Card.Root>
+		<Card.Root size="sm">
+			<Card.Content class="flex items-center gap-3 py-1">
+				<div
+					class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground ring-1 ring-foreground/10"
+				>
+					<Images class="size-[18px]" />
+				</div>
+				<div class="min-w-0 flex-1">
+					<p class="text-2xl font-semibold tracking-tight tabular-nums">
+						{slidesGenerated.toLocaleString()}
+					</p>
+					<Card.Description class="text-xs">Slides generated</Card.Description>
+				</div>
+			</Card.Content>
+		</Card.Root>
+	</section>
+
 	<!-- Quick actions -->
 	<section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-		{#each primaryCards as c (c.href)}
+		{#each visiblePrimaryCards as c (c.href)}
 			{@const Icon = c.icon}
 			<a href={c.href} class="group block outline-none">
 				<Card.Root

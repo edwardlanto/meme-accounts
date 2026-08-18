@@ -74,6 +74,11 @@ import JSZip from 'jszip';
 		type StudioComposePrefs,
 	} from '$lib/studio/compose-prefs';
 	import {
+		fetchDeckStoryBeats as fetchDeckStoryBeatsShared,
+		fallbackStoryBeats,
+		normalizeHeadlineVariants,
+	} from '$lib/studio/deck-story-beats';
+	import {
 		draftStateHasEmbeddedMedia,
 		stripEmbeddedMediaFromDraftState,
 	} from '$lib/studio/draft-state-prune';
@@ -175,6 +180,7 @@ import JSZip from 'jszip';
 		buildBottomShadowGradient,
 		normalizeBottomShadowCurve,
 		normalizeBottomShadowColor,
+		NEWS_SHADOW_AUTOFIT,
 		type BottomShadowCurve,
 	} from '$lib/studio/bottom-shadow';
 	import {
@@ -1390,12 +1396,16 @@ import JSZip from 'jszip';
 			}
 			if (!String(videoStoryWatermarkBySlide[idx] ?? '').trim()) {
 				videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) =>
-					i === idx ? BRAND_STACK_DEFAULTS.watermark : x,
+					i === idx
+						? String(brandDisplayName ?? '').trim() || BRAND_STACK_DEFAULTS.watermark
+						: x,
 				);
 			}
 			if (!String(brandStackBrandBySlide[idx] ?? '').trim()) {
 				brandStackBrandBySlide = brandStackBrandBySlide.map((x, i) =>
-					i === idx ? BRAND_STACK_DEFAULTS.brand : x,
+					i === idx
+						? String(brandDisplayName ?? '').trim() || BRAND_STACK_DEFAULTS.brand
+						: x,
 				);
 			}
 			if (!String(brandStackBottomMediaBySlide[idx] ?? '').trim()) {
@@ -1450,7 +1460,9 @@ import JSZip from 'jszip';
 				}
 			} else if (defaultWatermark && !String(videoStoryWatermarkBySlide[idx] ?? '').trim()) {
 				videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) =>
-					i === idx ? defaultWatermark : x,
+					i === idx
+						? String(brandDisplayName ?? '').trim() || defaultWatermark
+						: x,
 				);
 			}
 			if (t === 'videoCreator' || t === 'videoPost') {
@@ -1988,6 +2000,10 @@ import JSZip from 'jszip';
 			if (from === 'news') {
 				const src = String(source ?? '').trim();
 				if (src && !isPlaceholderNewsSource(src)) wm = src;
+				else {
+					const brand = String(brandDisplayName ?? '').trim();
+					if (brand) wm = brand;
+				}
 			}
 			if (wm) {
 				videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) =>
@@ -2001,7 +2017,10 @@ import JSZip from 'jszip';
 		let name = '';
 		let handle = '';
 		let avatar = '';
-		if (from === 'tweet') {
+		if (from === 'news') {
+			name = String(source ?? '').trim() || String(brandDisplayName ?? '').trim();
+			avatar = String(sourceLogoSrc ?? '').trim();
+		} else if (from === 'tweet') {
 			name = String(tweetTopNameBySlide[idx] ?? '').trim();
 			handle = String(tweetTopHandleBySlide[idx] ?? '').trim();
 			avatar = String(tweetTopAvatarImageBySlide[idx] ?? '').trim();
@@ -2045,6 +2064,81 @@ import JSZip from 'jszip';
 	}
 
 	/** Blank canvas zeros News vignette/shadow and paints solid white — restore when leaving blank. */
+	/** Brand mark (logo image and/or display name) onto whichever chrome the template exposes. */
+	function reapplyBrandChromeForTemplate(
+		t: TemplateId,
+		idx: number,
+		opts?: { preserveNewsLayout?: boolean },
+	) {
+		const brand = String(brandDisplayName ?? '').trim();
+		const logo = String(sourceLogoSrc ?? '').trim();
+
+		if (t === 'news') {
+			if (userId) {
+				try {
+					const preserve =
+						!!opts?.preserveNewsLayout || !!resolveTemplateOverride('news');
+					applyNewsSourceChromeFromKit(loadBrandKit(userId), {
+						preserveOffsets: preserve,
+						preserveWidth: preserve,
+						preservePlate: preserve,
+					});
+				} catch {
+					/* ignore */
+				}
+			} else if (brand && (isPlaceholderNewsSource(source) || !String(source ?? '').trim())) {
+				source = brand;
+			}
+			return;
+		}
+
+		if (templateAcceptsWatermark(t)) {
+			const cur = String(videoStoryWatermarkBySlide[idx] ?? '').trim();
+			const demoWm =
+				!cur ||
+				cur === VIDEO_STORY_DEFAULTS.watermark ||
+				cur === BRAND_STACK_DEFAULTS.watermark;
+			if (brand && demoWm) {
+				videoStoryWatermarkBySlide = videoStoryWatermarkBySlide.map((x, i) =>
+					i === idx ? brand : x,
+				);
+			}
+		}
+
+		if (isBrandStackFamily(t)) {
+			const curBrand = String(brandStackBrandBySlide[idx] ?? '').trim();
+			if (brand && (!curBrand || curBrand === BRAND_STACK_DEFAULTS.brand)) {
+				brandStackBrandBySlide = brandStackBrandBySlide.map((x, i) =>
+					i === idx ? brand : x,
+				);
+			}
+		}
+
+		if (!templateAcceptsProfile(t)) return;
+
+		if (brand && isPlaceholderProfileName(textCarouselNameBySlide[idx] ?? '')) {
+			textCarouselNameBySlide = textCarouselNameBySlide.map((x, i) =>
+				i === idx ? brand : x,
+			);
+		}
+		if (brandHandle && isPlaceholderProfileHandle(textCarouselHandleBySlide[idx] ?? '')) {
+			textCarouselHandleBySlide = textCarouselHandleBySlide.map((x, i) =>
+				i === idx ? brandHandle : x,
+			);
+		}
+		if (logo) {
+			const curAv = String(textCarouselAvatarImageBySlide[idx] ?? '').trim();
+			if (!curAv || isStockOrDemoMediaUrl(curAv)) {
+				textCarouselAvatarImageBySlide = textCarouselAvatarImageBySlide.map((x, i) =>
+					i === idx ? logo : x,
+				);
+				textCarouselAvatarModeBySlide = textCarouselAvatarModeBySlide.map((x, i) =>
+					i === idx ? 'image' : x,
+				);
+			}
+		}
+	}
+
 	function bootstrapNewsSlideAfterSwitch(idx: number) {
 		if (!String(slides[idx] ?? '').trim()) {
 			slides = slides.map((x, i) => (i === idx ? NEWS_PLACEHOLDER_HEADLINE : x));
@@ -2058,6 +2152,7 @@ import JSZip from 'jszip';
 			);
 		}
 		if (isPlaceholderNewsSource(source) && idx === 0) source = defaultNewsSource();
+		reapplyBrandChromeForTemplate('news', idx);
 		while (newsSolidBgBySlide.length <= idx) newsSolidBgBySlide = [...newsSolidBgBySlide, ''];
 		if (isBlankCanvasSolidFill(newsSolidBgBySlide[idx] ?? '')) {
 			newsSolidBgBySlide = newsSolidBgBySlide.map((c, i) => (i === idx ? '' : c));
@@ -2105,6 +2200,7 @@ import JSZip from 'jszip';
 		carrySlideCopyAcrossTemplates(from, to, idx);
 		carrySlideMediaAcrossTemplates(from, to, idx);
 		carrySlideExtrasAcrossTemplates(from, to, idx);
+		reapplyBrandChromeForTemplate(to, idx);
 	}
 
 	/**
@@ -2232,6 +2328,7 @@ import JSZip from 'jszip';
 			const from = wasAllBlank ? 'blank' : prevPerSlide[i] ?? 'news';
 			ensureTemplateDefaultsForSlide(t, i);
 			finalizeTemplateSwitch(from, t, i);
+			reapplyBrandChromeForTemplate(t, i);
 		}
 		/* After a generation/edit, never re-seed SoftBank demos — that stomps carried copy/media. */
 		if (t === 'news' && !opts?.skipNewsSeed && !hadRealStory) seedNewsStarterPlaceholderLayout();
@@ -3641,13 +3738,12 @@ import JSZip from 'jszip';
 	// Post data
 	let source = $state('');
 	let sourceLogoSrc = $state('');
-	/** Always logo for News branding (text byline removed from UI). */
-	let sourceLabelMode = $state<'text' | 'logo'>('logo');
+	let sourceLabelMode = $state<'text' | 'logo'>('text');
 	/** Legacy chrome — kept for saved kits; branding UI no longer exposes these. */
 	let sourceBorderKind = $state<'none' | 'rules' | 'box'>('none');
 	let sourceBorderColor = $state('');
 	/** Max width in px for source logo (News template). */
-	let sourceLogoWidth = $state(260);
+	let sourceLogoWidth = $state(140);
 	/** Solid plate behind the News source logo (separate from text-chip bgColor). */
 	let sourceLogoPlateColor = $state('');
 	let articleUrl = $state('');
@@ -5069,6 +5165,7 @@ import JSZip from 'jszip';
 		);
 		ensureTemplateDefaultsForSlide(nextTemplate, newIdx);
 		applyTemplateDevOverride(nextTemplate, { slides: [newIdx] });
+		reapplyBrandChromeForTemplate(nextTemplate, newIdx);
 
 		if (clip) {
 			putClipOnSlide(newIdx, clip);
@@ -6602,6 +6699,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			case 'source':
 				if (sourceLabelMode === 'logo') {
 					sourceLogoSrc = '';
+					sourceLabelMode = 'text';
+					persistNewsSourceChrome({ sourceLogoSrc: '', sourceLabelMode: 'text' });
 				} else {
 					source = '';
 				}
@@ -7132,7 +7231,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	const canvasStyleMap = $derived((stylesByTemplateBySlide[previewTemplate] ?? [])[paintSlide] ?? {});
 	const canvasHeadlineStyle = $derived(canvasStyleMap.headline ?? {});
 	const canvasNewsSubtextStyle = $derived(canvasStyleMap.newsSubtext ?? {});
-	const canvasSourceStyle = $derived({ align: 'right' as const, ...(canvasStyleMap.source ?? {}) });
+	const canvasSourceStyle = $derived({ align: 'center' as const, ...(canvasStyleMap.source ?? {}) });
 	const canvasVideoStoryHeadlineStyle = $derived(canvasStyleMap.videoStoryHeadline ?? {});
 	const canvasVideoStoryWatermarkStyle = $derived(canvasStyleMap.videoStoryWatermark ?? {});
 	const canvasBrandStackBrandStyle = $derived(canvasStyleMap.brandStackBrand ?? {});
@@ -7791,7 +7890,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		) as unknown) as Record<TemplateId, boolean[]>;
 
 		if (typeof (s as any).brandCtaEnabled === 'boolean') {
-			brandCtaEnabled = (s as any).brandCtaEnabled;
+			/* Follow-slide chrome removed from Studio UI — keep decks content-only. */
+			brandCtaEnabled = false;
+			editingBrandCta = false;
 		}
 
 		if (brandDisplayName || brandHandle) {
@@ -7866,48 +7967,55 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		});
 	}
 
-	function applyNewsSourceChromeFromKit(kit: {
-		displayName?: string;
-		logoUrl?: string;
-		avatarUrl?: string;
-		sourceLabelMode?: 'text' | 'logo';
-		sourceLogoWidth?: number;
-		sourceBorderKind?: 'none' | 'rules' | 'box';
-		sourceBorderColor?: string;
-		sourceOffsetX?: number;
-		sourceOffsetY?: number;
-		textBgColor?: string;
-	}) {
+	function applyNewsSourceChromeFromKit(
+		kit: {
+			displayName?: string;
+			logoUrl?: string;
+			avatarUrl?: string;
+			sourceLabelMode?: 'text' | 'logo';
+			sourceLogoWidth?: number;
+			sourceLogoPlateColor?: string;
+			sourceBorderKind?: 'none' | 'rules' | 'box';
+			sourceBorderColor?: string;
+			sourceOffsetX?: number;
+			sourceOffsetY?: number;
+			textBgColor?: string;
+		},
+		opts?: { preserveOffsets?: boolean; preserveWidth?: boolean; preservePlate?: boolean },
+	) {
 		const name = String(kit.displayName ?? brandDisplayName ?? '').trim();
 		if (name && (isPlaceholderNewsSource(source) || !String(source ?? '').trim())) {
 			source = name;
 		}
-		if (kit.sourceLabelMode === 'logo' || kit.sourceLabelMode === 'text') {
-			/* Prefer logo whenever a brand mark exists — text label mode is retired in the UI. */
-			sourceLabelMode = String(kit.logoUrl ?? '').trim() ? 'logo' : kit.sourceLabelMode;
+		if (kit.sourceLabelMode === 'text' && !String(sourceLogoSrc ?? '').trim()) {
+			sourceLabelMode = 'text';
 		}
-		if (typeof kit.logoUrl === 'string') {
-			sourceLogoSrc = String(kit.logoUrl).trim();
-			if (sourceLogoSrc) {
-				sourceLabelMode = 'logo';
-				void ensureR2Resolved(sourceLogoSrc);
-			}
+		/* Do not paint brand-kit `logoUrl` onto default News — only saved layouts / Add logo. */
+		if (typeof kit.logoUrl === 'string' && String(kit.logoUrl).trim()) {
+			void ensureR2Resolved(String(kit.logoUrl).trim());
 		}
 		const avatar = String(kit.avatarUrl ?? '').trim() || String(kit.logoUrl ?? '').trim();
 		if (avatar) {
 			applyBrandLogoToProfileAvatars(avatar, false);
 			void ensureR2Resolved(avatar);
 		}
-		const w = Number(kit.sourceLogoWidth);
-		if (Number.isFinite(w) && w > 0) sourceLogoWidth = Math.round(Math.max(80, Math.min(400, w)));
+		if (!opts?.preserveWidth) {
+			const w = Number(kit.sourceLogoWidth);
+			if (Number.isFinite(w) && w > 0) sourceLogoWidth = Math.round(Math.max(80, Math.min(400, w)));
+		}
+		if (!opts?.preservePlate && typeof kit.sourceLogoPlateColor === 'string') {
+			sourceLogoPlateColor = String(kit.sourceLogoPlateColor ?? '').trim();
+		}
 		if (kit.sourceBorderKind === 'none' || kit.sourceBorderKind === 'rules' || kit.sourceBorderKind === 'box') {
 			sourceBorderKind = kit.sourceBorderKind;
 		}
 		if (typeof kit.sourceBorderColor === 'string') sourceBorderColor = kit.sourceBorderColor;
-		const ox = Number(kit.sourceOffsetX);
-		const oy = Number(kit.sourceOffsetY);
-		if (Number.isFinite(ox) || Number.isFinite(oy)) {
-			applyNewsSourceOffsetsFromBrand(Number.isFinite(ox) ? ox : 0, Number.isFinite(oy) ? oy : 0);
+		if (!opts?.preserveOffsets) {
+			const ox = Number(kit.sourceOffsetX);
+			const oy = Number(kit.sourceOffsetY);
+			if (Number.isFinite(ox) || Number.isFinite(oy)) {
+				applyNewsSourceOffsetsFromBrand(Number.isFinite(ox) ? ox : 0, Number.isFinite(oy) ? oy : 0);
+			}
 		}
 		const bg = normalizeTextBgHex(String(kit.textBgColor ?? ''));
 		/* Text-chip BG must not plate the logo — only apply in text byline mode. */
@@ -7918,6 +8026,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		sourceLabelMode: 'text' | 'logo';
 		sourceLogoSrc: string;
 		sourceLogoWidth: number;
+		sourceLogoPlateColor: string;
 		sourceBorderKind: 'none' | 'rules' | 'box';
 		sourceBorderColor: string;
 		sourceOffsetX: number;
@@ -7928,7 +8037,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		try {
 			const kit = loadBrandKit(userId);
 			const mode = extra?.sourceLabelMode ?? sourceLabelMode;
-			const logo =
+			const nextLogo =
 				extra && Object.prototype.hasOwnProperty.call(extra, 'sourceLogoSrc')
 					? String(extra.sourceLogoSrc ?? '').trim()
 					: String(sourceLogoSrc ?? '').trim();
@@ -7938,12 +8047,21 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				const canvasBg = normalizeTextBgHex(String(canvasSourceStyle?.bgColor ?? ''));
 				if (canvasBg) brandTextBgColor = canvasBg;
 			}
+			const plate =
+				extra && Object.prototype.hasOwnProperty.call(extra, 'sourceLogoPlateColor')
+					? String(extra.sourceLogoPlateColor ?? '').trim()
+					: String(sourceLogoPlateColor ?? '').trim();
 			saveBrandKit(userId, {
 				...kit,
 				displayName: String(extra?.displayName ?? brandDisplayName ?? kit.displayName).trim() || kit.displayName,
-				logoUrl: logo,
+				/* Clearing News chrome must not wipe the brand-kit mark (avatars / later Add logo). */
+				logoUrl:
+					extra && Object.prototype.hasOwnProperty.call(extra, 'sourceLogoSrc')
+						? (nextLogo || kit.logoUrl)
+						: (nextLogo || kit.logoUrl),
 				sourceLabelMode: mode,
 				sourceLogoWidth: extra?.sourceLogoWidth ?? sourceLogoWidth,
+				sourceLogoPlateColor: plate,
 				sourceBorderKind: extra?.sourceBorderKind ?? sourceBorderKind,
 				sourceBorderColor: extra?.sourceBorderColor ?? sourceBorderColor,
 				sourceOffsetX: extra?.sourceOffsetX ?? off.x,
@@ -8119,12 +8237,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	}
 
 	function selectBrandCtaSlide() {
-		editingBrandCta = true;
-		brandCtaEnabled = true;
+		/* Follow-slide editor removed from the filmstrip UI. */
+		editingBrandCta = false;
+		brandCtaEnabled = false;
 	}
 
 	function selectContentSlide(i: number) {
 		editingBrandCta = false;
+		brandCtaEnabled = false;
 		addSlideMenuOpen = false;
 		addSlideMenuPos = null;
 		activeSlide = i;
@@ -8488,8 +8608,25 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			source = defaultNewsSource();
 		}
 		if (force) {
-			sourceLabelMode = 'logo';
 			sourceBorderKind = 'none';
+			sourceLogoSrc = '';
+			sourceLabelMode = 'text';
+			if (userId) {
+				try {
+					const preserve = !!resolveTemplateOverride('news');
+					applyNewsSourceChromeFromKit(loadBrandKit(userId), {
+						preserveOffsets: preserve,
+						preserveWidth: preserve,
+						preservePlate: preserve,
+					});
+				} catch {
+					/* ignore */
+				}
+			} else if (String(sourceLogoSrc ?? '').trim()) {
+				sourceLabelMode = 'logo';
+			} else if (String(source ?? '').trim()) {
+				sourceLabelMode = 'text';
+			}
 		}
 		newsSolidBgBySlide = Array.from({ length: targetLen }, (_, i) =>
 			force ? '' : String(newsSolidBgBySlide[i] ?? ''),
@@ -8598,6 +8735,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				sourceLabelMode,
 				sourceLogoSrc,
 				sourceLogoWidth,
+				sourceLogoPlateColor,
 				sourceBorderKind,
 				sourceBorderColor,
 			},
@@ -8687,8 +8825,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		circleShadow = layout.circleShadow;
 		circle2Shadow = layout.circle2Shadow;
 		sourceLabelMode = layout.sourceLabelMode;
-		if (layout.sourceLogoSrc) sourceLogoSrc = layout.sourceLogoSrc;
+		sourceLogoSrc = String(layout.sourceLogoSrc ?? '').trim();
 		sourceLogoWidth = layout.sourceLogoWidth;
+		if (typeof (layout as { sourceLogoPlateColor?: unknown }).sourceLogoPlateColor === 'string') {
+			sourceLogoPlateColor = String(
+				(layout as { sourceLogoPlateColor: string }).sourceLogoPlateColor ?? '',
+			).trim();
+		}
 		sourceBorderKind = layout.sourceBorderKind;
 		sourceBorderColor = layout.sourceBorderColor;
 
@@ -8714,16 +8857,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			stylesByTemplateBySlide = { ...stylesByTemplateBySlide, news: row };
 		}
 
+		/* Only write slots present on the document — never wipe existing moves when
+		   offsets were omitted (older pins / partial docs). */
 		const offsetEntries = newsOffsetsForStudioRow(doc);
-		if (Object.keys(offsetEntries).length || Object.keys(doc.offsets).length === 0) {
+		if (Object.keys(offsetEntries).length) {
 			const next = textOffsetsBySlide.slice();
 			while (next.length < n) next.push({});
 			for (const i of idxs) {
 				if (i < 0 || i >= n) continue;
 				const row = { ...(next[i] ?? {}) };
-				for (const kind of ['headline', 'newsSubtext', 'source']) {
-					delete row[offsetKey('news', kind)];
-				}
 				for (const [kind, off] of Object.entries(offsetEntries)) {
 					row[offsetKey('news', kind)] = { x: off.x, y: off.y };
 				}
@@ -8807,35 +8949,57 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		return pad(slides);
 	}
 
-	/** Snapshot the current slide’s design tokens for this built-in template (DEV pin). */
-	function captureTemplateDevSnapshot(template: TemplateId): TemplateDevOverrideSnapshot {
+	/** Snapshot design tokens for a built-in template (account override / DEV pin). */
+	function captureTemplateDevSnapshot(
+		template: TemplateId,
+		slideIndex: number = activeSlide,
+	): TemplateDevOverrideSnapshot {
 		commitInlineTextEditsBeforeSave();
-		const styles = cloneDevJson((stylesByTemplateBySlide[template] ?? [])[activeSlide] ?? {});
+		const si = Math.max(0, Math.min(Math.max(0, slides.length - 1), Math.floor(slideIndex)));
+		const styles = cloneDevJson((stylesByTemplateBySlide[template] ?? [])[si] ?? {});
 		const tweetStyles =
-			template === 'tweet' ? cloneDevJson(tweetStylesBySlide[activeSlide] ?? {}) : undefined;
+			template === 'tweet' ? cloneDevJson(tweetStylesBySlide[si] ?? {}) : undefined;
 		const film = clampFilmStripPct(
-			filmStripTopPctByTemplate[template]?.[activeSlide] ?? filmStripDefaultsFor(template).topPct,
-			filmStripBottomPctByTemplate[template]?.[activeSlide] ?? filmStripDefaultsFor(template).bottomPct,
+			filmStripTopPctByTemplate[template]?.[si] ?? filmStripDefaultsFor(template).topPct,
+			filmStripBottomPctByTemplate[template]?.[si] ?? filmStripDefaultsFor(template).bottomPct,
 		);
-		const textOffsets = cloneDevJson(offsetsForTemplate(activeSlide, template));
+		const textOffsets = cloneDevJson(offsetsForTemplate(si, template));
 		const pruneUrl = (u: unknown) => {
 			const s = String(u ?? '').trim();
 			if (!s || s.startsWith('blob:')) return '';
 			return s;
 		};
 		const textOverlays = cloneDevJson(
-			((slideTextOverlaysByTemplate[template] ?? [])[activeSlide] ?? []).filter(
+			((slideTextOverlaysByTemplate[template] ?? [])[si] ?? []).filter(
 				(o) => o && String(o.text ?? '').trim(),
 			),
 		);
 		const imageOverlays = cloneDevJson(
-			((slideOverlaysByTemplate[template] ?? [])[activeSlide] ?? [])
+			((slideOverlaysByTemplate[template] ?? [])[si] ?? [])
 				.map((o) => {
 					const src = pruneUrl(o?.src);
 					return src ? { ...o, src } : null;
 				})
 				.filter((o): o is Overlay => !!o),
 		);
+		const canvasLayout = {
+			bgOffsetX,
+			bgOffsetY,
+			bgZoom,
+			bgFitMode,
+			bgContainMagnify,
+			textPanelOffsetY,
+			circleX,
+			circleY,
+			circleSize,
+			circle2X,
+			circle2Y,
+			circle2Size,
+			circleBorderColor,
+			circle2BorderColor,
+			circleShadow: cloneDevJson(circleShadow),
+			circle2Shadow: cloneDevJson(circle2Shadow),
+		};
 		return {
 			v: 1,
 			templateId: template,
@@ -8847,6 +9011,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			textOffsets,
 			textOverlays,
 			imageOverlays,
+			canvasLayout,
 			starter: {
 				slides: cloneDevJson(starterSlidesForCapture(template)),
 				newsSubtextBySlide: cloneDevJson(newsSubtextBySlide.map((x) => String(x ?? ''))),
@@ -8854,6 +9019,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				sourceLabelMode,
 				sourceLogoSrc: pruneUrl(sourceLogoSrc),
 				sourceLogoWidth,
+				sourceLogoPlateColor,
 				sourceBorderKind,
 				sourceBorderColor,
 				bgImages: cloneDevJson((bgImagesByTemplate[template] ?? []).map(pruneUrl)),
@@ -8872,7 +9038,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			highlightGradientTo,
 			highlightPattern,
 			studioTextHighlightsEnabled,
-			newsDocument: template === 'news' ? captureLiveNewsLayoutDocument(activeSlide) : undefined,
+			newsDocument: template === 'news' ? captureLiveNewsLayoutDocument(si) : undefined,
 			newsLayout:
 				template === 'news'
 					? {
@@ -8888,17 +9054,18 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 							bgFitMode,
 							bgContainMagnify,
 							textPanelOffsetY,
-							shadowHeight,
-							shadowStrength,
-							shadowCurve,
-							shadowAutoFit,
+							shadowHeight: shadowHeightAt(si),
+							shadowStrength: shadowStrengthAt(si),
+							shadowCurve: shadowCurveAt(si),
+							shadowAutoFit: shadowAutoFitAt(si),
 							circleBorderColor,
 							circle2BorderColor,
 							circleShadow: cloneDevJson(circleShadow),
 							circle2Shadow: cloneDevJson(circle2Shadow),
 							sourceLabelMode,
-							sourceLogoSrc,
+							sourceLogoSrc: pruneUrl(sourceLogoSrc),
 							sourceLogoWidth,
+							sourceLogoPlateColor,
 							sourceBorderKind,
 							sourceBorderColor,
 						}
@@ -8908,9 +9075,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	function pinCurrentTemplateDesign() {
 		if (!isTemplateDevToolsEnabled()) return;
-		const snap = captureTemplateDevSnapshot(activeTemplate);
-		saveTemplateDevOverride(snap);
-		applyTemplateDevOverride(activeTemplate, { slides: 'all' });
+		void persistActiveTemplateAsAccountDefault().catch((e) => {
+			console.warn('[studio] pin / account template override save failed', e);
+		});
 	}
 
 	function resolveTemplateOverride(template: TemplateId): TemplateDevOverrideSnapshot | null {
@@ -8937,10 +9104,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	}
 
 	async function persistActiveTemplateAsAccountDefault() {
-		const template = activeTemplate;
+		await persistTemplateAsAccountDefault(activeTemplate, activeSlide);
+	}
+
+	/** Persist one built-in template’s chrome (styles, offsets, layout) as the account default. */
+	async function persistTemplateAsAccountDefault(template: TemplateId, slideIndex: number) {
 		commitInlineTextEditsBeforeSave();
 		await materializeBlobUrlsForDraftSave();
-		let snap = captureTemplateDevSnapshot(template);
+		let snap = captureTemplateDevSnapshot(template, slideIndex);
 		if (userId && snap.starter) {
 			try {
 				const uploaded = await uploadTemplateMediaToR2AndRewriteState(`default-${template}`, {
@@ -8949,6 +9120,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					circle2Images: snap.starter.circle2Images ?? [],
 					sourceLogoSrc: snap.starter.sourceLogoSrc ?? '',
 				});
+				const logoUrl = String(uploaded.sourceLogoSrc ?? snap.starter.sourceLogoSrc ?? '').trim();
 				snap = {
 					...snap,
 					starter: {
@@ -8956,16 +9128,56 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 						bgImages: uploaded.bgImagesByTemplate?.[template] ?? snap.starter.bgImages,
 						circleImages: uploaded.circleImages ?? snap.starter.circleImages,
 						circle2Images: uploaded.circle2Images ?? snap.starter.circle2Images,
-						sourceLogoSrc: String(uploaded.sourceLogoSrc ?? snap.starter.sourceLogoSrc ?? ''),
+						sourceLogoSrc: logoUrl,
+						sourceLogoWidth: snap.starter.sourceLogoWidth ?? sourceLogoWidth,
+						sourceLogoPlateColor:
+							snap.starter.sourceLogoPlateColor ?? sourceLogoPlateColor,
 					},
+					newsLayout: snap.newsLayout
+						? {
+								...snap.newsLayout,
+								sourceLogoSrc: logoUrl || snap.newsLayout.sourceLogoSrc,
+								sourceLogoWidth: sourceLogoWidth,
+								sourceLogoPlateColor,
+							}
+						: snap.newsLayout,
+					newsDocument: snap.newsDocument
+						? {
+								...snap.newsDocument,
+								layout: {
+									...snap.newsDocument.layout,
+									sourceLogoSrc: logoUrl || snap.newsDocument.layout.sourceLogoSrc,
+									sourceLogoWidth,
+									sourceLogoPlateColor,
+								},
+							}
+						: snap.newsDocument,
 				};
 			} catch (e) {
 				console.warn('[studio] starter media upload failed', e);
 			}
 		}
+		/* Keep brand kit logo chrome in sync with the saved News default (position, size, plate). */
+		if (template === 'news') {
+			const off = getTextOffset(slideIndex, offsetKey('news', 'source'));
+			const logoForKit =
+				String(snap.newsDocument?.layout?.sourceLogoSrc ?? '').trim() ||
+				String(snap.starter?.sourceLogoSrc ?? '').trim() ||
+				String(sourceLogoSrc ?? '').trim();
+			if (logoForKit && logoForKit !== sourceLogoSrc) sourceLogoSrc = logoForKit;
+			persistNewsSourceChrome({
+				sourceLabelMode,
+				sourceLogoSrc: logoForKit,
+				sourceLogoWidth,
+				sourceLogoPlateColor,
+				sourceBorderKind,
+				sourceBorderColor,
+				sourceOffsetX: off.x,
+				sourceOffsetY: off.y,
+			});
+		}
 		accountTemplateOverrides = { ...accountTemplateOverrides, [template]: snap };
 		if (isTemplateDevToolsEnabled()) saveTemplateDevOverride(snap);
-		applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
 		if (!userId) return;
 		const { data: existing } = await (supabase as any)
 			.from('drafts')
@@ -8993,6 +9205,33 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			state: snap,
 		});
 		if (error) throw new Error(error.message ?? 'Could not save template default');
+	}
+
+	/** Save account defaults for every unique template currently in the deck. */
+	async function persistDeckTemplatesAsAccountDefaults(opts?: { reapplyCanvas?: boolean }) {
+		const seen = new Set<TemplateId>();
+		const pairs: { template: TemplateId; slideIndex: number }[] = [];
+		for (let i = 0; i < slideTemplates.length; i++) {
+			const template = coerceTemplateId(slideTemplates[i] ?? activeTemplate);
+			if (seen.has(template)) continue;
+			seen.add(template);
+			pairs.push({ template, slideIndex: i });
+		}
+		if (!pairs.length) {
+			pairs.push({ template: activeTemplate, slideIndex: activeSlide });
+		}
+		for (const { template, slideIndex } of pairs) {
+			await persistTemplateAsAccountDefault(template, slideIndex);
+		}
+		/* Re-applying starter chrome here used to wipe the open canvas right after Save. */
+		if (opts?.reapplyCanvas) {
+			applyTemplateDevOverride(activeTemplate, { slides: 'all', forceStarter: true });
+			if (activeTemplate === 'news') {
+				reapplyBrandChromeForTemplate('news', activeSlide, { preserveNewsLayout: true });
+			} else if (resolveTemplateOverride(activeTemplate)) {
+				reapplyBrandChromeForTemplate(activeTemplate, activeSlide);
+			}
+		}
 	}
 
 	function applyTemplateDevOverride(
@@ -9090,6 +9329,62 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		const newsDoc = template === 'news' ? parseNewsLayoutDocument(ov.newsDocument) : null;
 		if (newsDoc) {
 			applyNewsLayoutDocumentToStudio(newsDoc, { slides: opts?.slides ?? 'all', overlays: true });
+			/* Merge top-level textOffsets when the document omitted a slot (older pins). */
+			if (ov.textOffsets && Object.keys(ov.textOffsets).length) {
+				const next = textOffsetsBySlide.slice();
+				while (next.length < n) next.push({});
+				for (const i of idxs) {
+					if (i < 0 || i >= n) continue;
+					const row = { ...(next[i] ?? {}) };
+					for (const [kind, off] of Object.entries(ov.textOffsets)) {
+						if (!off) continue;
+						const key = offsetKey(template, kind);
+						if (row[key]) continue;
+						row[key] = { x: Number(off.x) || 0, y: Number(off.y) || 0 };
+					}
+					next[i] = row;
+				}
+				textOffsetsBySlide = next;
+			}
+			/* Starter chrome fills gaps the layout doc left empty (logo URL, borders). */
+			const starter = ov.starter;
+			if (starter) {
+				if (!String(sourceLogoSrc ?? '').trim() && starter.sourceLogoSrc) {
+					sourceLogoSrc = String(starter.sourceLogoSrc).trim();
+					if (sourceLogoSrc) sourceLabelMode = 'logo';
+				}
+				if (
+					typeof starter.sourceLogoWidth === 'number' &&
+					Number.isFinite(starter.sourceLogoWidth) &&
+					!(Number(sourceLogoWidth) > 0)
+				) {
+					sourceLogoWidth = Math.round(
+						Math.max(80, Math.min(400, starter.sourceLogoWidth)),
+					);
+				}
+				if (
+					typeof starter.sourceLogoPlateColor === 'string' &&
+					!String(sourceLogoPlateColor ?? '').trim()
+				) {
+					sourceLogoPlateColor = String(starter.sourceLogoPlateColor).trim();
+				}
+				if (
+					(starter.sourceBorderKind === 'none' ||
+						starter.sourceBorderKind === 'rules' ||
+						starter.sourceBorderKind === 'box') &&
+					sourceBorderKind === 'none' &&
+					starter.sourceBorderKind !== 'none'
+				) {
+					sourceBorderKind = starter.sourceBorderKind;
+				}
+				if (
+					typeof starter.sourceBorderColor === 'string' &&
+					starter.sourceBorderColor.trim() &&
+					!String(sourceBorderColor ?? '').trim()
+				) {
+					sourceBorderColor = starter.sourceBorderColor;
+				}
+			}
 			/* Starter copy/media come only from `*_DEFAULTS` / generated-demo-posts — not pins. */
 			return;
 		}
@@ -9165,6 +9460,50 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (typeof layout.circle2BorderColor === 'string') circle2BorderColor = layout.circle2BorderColor;
 			if (layout.circleShadow) circleShadow = normalizeCircleShadow(layout.circleShadow);
 			if (layout.circle2Shadow) circle2Shadow = normalizeCircleShadow(layout.circle2Shadow);
+			if (layout.sourceLabelMode === 'text' || layout.sourceLabelMode === 'logo') {
+				sourceLabelMode = layout.sourceLabelMode;
+			}
+			if (typeof layout.sourceLogoSrc === 'string') {
+				sourceLogoSrc = layout.sourceLogoSrc.trim();
+				if (sourceLogoSrc) sourceLabelMode = 'logo';
+				else if (sourceLabelMode === 'logo') sourceLabelMode = 'text';
+			}
+			if (typeof layout.sourceLogoWidth === 'number' && Number.isFinite(layout.sourceLogoWidth)) {
+				sourceLogoWidth = Math.round(Math.max(80, Math.min(400, layout.sourceLogoWidth)));
+			}
+			if (typeof layout.sourceLogoPlateColor === 'string') {
+				sourceLogoPlateColor = String(layout.sourceLogoPlateColor ?? '').trim();
+			}
+			if (
+				layout.sourceBorderKind === 'none' ||
+				layout.sourceBorderKind === 'rules' ||
+				layout.sourceBorderKind === 'box'
+			) {
+				sourceBorderKind = layout.sourceBorderKind;
+			}
+			if (typeof layout.sourceBorderColor === 'string') {
+				sourceBorderColor = layout.sourceBorderColor;
+			}
+		}
+
+		const canvas = ov.canvasLayout;
+		if (canvas && template !== 'news') {
+			if (typeof canvas.bgOffsetX === 'number') bgOffsetX = canvas.bgOffsetX;
+			if (typeof canvas.bgOffsetY === 'number') bgOffsetY = canvas.bgOffsetY;
+			if (typeof canvas.bgZoom === 'number') bgZoom = canvas.bgZoom;
+			if (canvas.bgFitMode === 'cover' || canvas.bgFitMode === 'contain') bgFitMode = canvas.bgFitMode;
+			if (typeof canvas.bgContainMagnify === 'number') bgContainMagnify = canvas.bgContainMagnify;
+			if (typeof canvas.textPanelOffsetY === 'number') textPanelOffsetY = canvas.textPanelOffsetY;
+			if (typeof canvas.circleX === 'number') circleX = canvas.circleX;
+			if (typeof canvas.circleY === 'number') circleY = canvas.circleY;
+			if (typeof canvas.circleSize === 'number') circleSize = canvas.circleSize;
+			if (typeof canvas.circle2X === 'number') circle2X = canvas.circle2X;
+			if (typeof canvas.circle2Y === 'number') circle2Y = canvas.circle2Y;
+			if (typeof canvas.circle2Size === 'number') circle2Size = canvas.circle2Size;
+			if (typeof canvas.circleBorderColor === 'string') circleBorderColor = canvas.circleBorderColor;
+			if (typeof canvas.circle2BorderColor === 'string') circle2BorderColor = canvas.circle2BorderColor;
+			if (canvas.circleShadow) circleShadow = normalizeCircleShadow(canvas.circleShadow);
+			if (canvas.circle2Shadow) circle2Shadow = normalizeCircleShadow(canvas.circle2Shadow);
 		}
 
 		/* Do not apply ov.starter — one product default for copy/media (`*_DEFAULTS`). */
@@ -9173,7 +9512,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	/**
 	 * Seed default copy/media after Templates gallery / `?template=` opens.
 	 * Copy + media always come from `*_DEFAULTS` (generated-demo-posts) — one product default.
-	 * Pinned overrides may still apply styles / offsets / letterbox, not starter content.
+	 * Account overrides then restore styles / offsets / letterbox / canvas layout.
 	 */
 	function seedFreshTemplateSession(template: TemplateId) {
 		newsHeadlineLive = null;
@@ -9191,14 +9530,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			canvasBgDark = true;
 			if (!textColorTouched) textColor = '#FFFFFF';
 			applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
-			// Starter may reset source chrome — restore last brand logo/position.
-			if (userId) {
-				try {
-					applyNewsSourceChromeFromKit(loadBrandKit(userId));
-				} catch {
-					/* ignore */
-				}
-			}
+			/* Account News override owns logo position / size / plate — only fill missing brand mark. */
+			reapplyBrandChromeForTemplate('news', 0, { preserveNewsLayout: true });
 			return;
 		}
 		if (template === 'blank') {
@@ -9207,6 +9540,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 
 		const n = Math.max(DEFAULT_STUDIO_SLIDE_COUNT, slides.length);
+		/* Defaults first, then account override wins (styles, offsets, canvas layout). */
 		for (let i = 0; i < n; i++) {
 			ensureTemplateDefaultsForSlide(template, i);
 		}
@@ -9218,9 +9552,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (!textColorTouched) textColor = '#FFFFFF';
 		}
 		applyTemplateDevOverride(template, { slides: 'all', forceStarter: true });
-		// DEV starter slots may omit copy — re-seed stock defaults so filmstrip thumbs aren't empty.
+		const hasOverride = !!resolveTemplateOverride(template);
 		for (let i = 0; i < n; i++) {
+			/* Only fill empty copy/media slots — never wipe override chrome. */
 			ensureTemplateDefaultsForSlide(template, i);
+			if (!hasOverride) reapplyBrandChromeForTemplate(template, i);
 		}
 		if (template === 'tweet') {
 			for (let i = 0; i < n; i++) ensureTweetSlideProfileDefaults(i);
@@ -9379,7 +9715,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	async function saveStudioTemplateNamed(
 		nameOverride?: string,
-		opts?: { overwriteId?: string },
+		opts?: { overwriteId?: string; leaveAfter?: boolean; leaveHref?: string },
 	) {
 		let uid = String(userId ?? '').trim();
 		if (!uid) {
@@ -9541,9 +9877,34 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		studioTemplateFeedback = r2Note ? `${savedLabel}.${r2Note}` : savedLabel;
 		showSaveTemplatePanel = false;
 		studioHasUnsavedChanges = false;
-		allowStudioLeave = true;
+		/* Keep account defaults in sync — do not re-apply starter onto the open canvas. */
+		try {
+			await persistDeckTemplatesAsAccountDefaults({ reapplyCanvas: false });
+		} catch (e) {
+			console.warn('[studio] account template override after save failed', e);
+		}
 		setFlashToast(savedLabel);
-		await goto('/dashboard/carousels');
+
+		if (opts?.leaveAfter) {
+			allowStudioLeave = true;
+			const href = String(opts.leaveHref ?? '').trim() || '/dashboard/carousels';
+			await goto(href);
+			return;
+		}
+
+		/* Stay in Studio — remember this saved id for overwrite next time. */
+		allowStudioLeave = false;
+		if (templateId && typeof window !== 'undefined') {
+			try {
+				const url = new URL(window.location.href);
+				url.searchParams.set('saved', templateId);
+				url.searchParams.delete('from');
+				url.searchParams.delete('draft');
+				history.replaceState(history.state, '', `${url.pathname}${url.search}`);
+			} catch {
+				/* ignore */
+			}
+		}
 	}
 
 	function extFromMime(mime: string): string {
@@ -10254,7 +10615,8 @@ tweetTopImagePanYBySlide,
 		leaveSaveBusy = true;
 		leaveSaveError = '';
 		try {
-			await saveStudioTemplateNamed(name);
+			const href = pendingLeaveHref || '/dashboard/carousels';
+			await saveStudioTemplateNamed(name, { leaveAfter: true, leaveHref: href });
 			closeLeavePrompt();
 		} catch (e: unknown) {
 			leaveSaveError = e instanceof Error ? e.message : 'Could not save template';
@@ -10316,7 +10678,8 @@ tweetTopImagePanYBySlide,
 							applyBlankCanvas();
 							applyDraftState(bulkState);
 							slideCount = Math.max(1, slides.length);
-							if (bulkState.brandCtaEnabled) brandCtaEnabled = true;
+							brandCtaEnabled = false;
+							editingBrandCta = false;
 							const capsList = Array.isArray(bulkState._studioCaptionsBySlide)
 								? (bulkState._studioCaptionsBySlide as (StudioClipCaptionImport | null)[])
 								: [];
@@ -10412,7 +10775,16 @@ tweetTopImagePanYBySlide,
 			if (kit && typeof kit.textHighlightsEnabled === 'boolean') {
 				studioTextHighlightsEnabled = kit.textHighlightsEnabled;
 			}
-			if (kit) applyNewsSourceChromeFromKit(kit);
+			if (kit) {
+				/* Don't clobber logo position / size from a saved News override or open deck. */
+				const preserveNews =
+					!!resolveTemplateOverride('news') || studioDraftWasRestored;
+				applyNewsSourceChromeFromKit(kit, {
+					preserveOffsets: preserveNews,
+					preserveWidth: preserveNews,
+					preservePlate: preserveNews,
+				});
+			}
 		};
 		window.addEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
 		return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
@@ -11022,58 +11394,12 @@ tweetTopImagePanYBySlide,
 			.trim();
 	}
 
-	function normalizeHeadlineVariants(variants: string[], hookText: string, count: number): string[] {
-		const n = Math.max(1, count);
-		const hook = String(hookText ?? '').trim();
-		if (!variants.length) {
-			return fallbackStoryBeats(hook, '', n);
-		}
-		if (variants.length >= n) return variants.slice(0, n);
-		const out = variants.map((v) => String(v ?? '').trim()).filter(Boolean);
-		if (!out.length) return fallbackStoryBeats(hook, '', n);
-		// Prefer unique fallbacks over repeating the last line on every trailing slide.
-		const filler = fallbackStoryBeats(hook || out[0]!, out.join(' '), n);
-		while (out.length < n) {
-			const next = filler[out.length] ?? out[out.length - 1]!;
-			out.push(next);
-		}
-		return out.slice(0, n);
-	}
-
-	/** Deterministic Hook → support beats when the variants API is unavailable. */
-	function fallbackStoryBeats(hookText: string, rawText: string, count: number): string[] {
-		const n = Math.max(1, count);
-		const hook = String(hookText ?? '').trim();
-		const body = String(rawText ?? '').trim();
-		const sentences = `${hook}${hook && body ? ' ' : ''}${body}`
-			.replace(/\s+/g, ' ')
-			.split(/(?<=[.!?])\s+/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-		if (!sentences.length) {
-			return Array.from({ length: n }, (_, i) => (i === 0 ? hook : ''));
-		}
-		if (n === 1) return [sentences.slice(0, 2).join(' ') || hook];
-
-		const out: string[] = [];
-		out.push(sentences[0] ?? hook);
-		const rest = sentences.slice(1);
-		if (!rest.length) {
-			while (out.length < n) out.push(out[0]!);
-			return out.slice(0, n);
-		}
-		const supportCount = n - 1;
-		const per = Math.max(1, Math.ceil(rest.length / supportCount));
-		for (let i = 0; i < supportCount; i++) {
-			const chunk = rest.slice(i * per, (i + 1) * per).join(' ');
-			out.push(chunk || rest[Math.min(i, rest.length - 1)]!);
-		}
-		return out.slice(0, n);
-	}
+	/* Headline / beat helpers live in `$lib/studio/deck-story-beats` (shared with Bulk). */
 
 	/**
 	 * Shared Hook → content → content beats for the whole deck (any template mix).
 	 * Slide 0 = strongest hook; later slides are distinct supporting beats.
+	 * Same `/api/news/variants` path as Bulk (`$lib/studio/deck-story-beats`).
 	 */
 	async function fetchDeckStoryBeats(
 		hookText: string,
@@ -11081,66 +11407,30 @@ tweetTopImagePanYBySlide,
 		count: number,
 		opts?: { includeReplies?: boolean; autoHighlight?: boolean; includeBodies?: boolean },
 	): Promise<{ copyStrings: string[]; tweetReplies: string[]; bodies: string[] }> {
-		const n = Math.max(1, count);
-		const hook = String(hookText ?? '').trim();
-		const body = String(rawText || articleSnippet || articleTitle || '').trim();
-		const wantBodies = opts?.includeBodies !== false;
-		if (n <= 1) {
-			return {
-				copyStrings: [hook || body],
-				tweetReplies: opts?.includeReplies ? [TWEET_DEFAULTS.bottomText] : [],
-				bodies: wantBodies ? [clampNewsSubtext(body, undefined, '') || body] : [],
-			};
-		}
-		try {
-			const variantBodyText =
-				newsContentMode === 'story'
-					? `HOOK (slide 1 overlay):\n${hook}\n\nNARRATIVE CONTEXT (continue this story across slides; do not turn it into a news explainer):\n${body}`
-					: newsContentMode === 'steps'
-						? `HOOK (slide 1 overlay):\n${hook}\n\nSTEPS BIBLE (use numbered steps; slide 1 = hook, middle = STEP k, last = CTA):\n${body}`
-						: newsContentMode === 'general'
-							? `USER REQUEST:\n${generalTopicPrompt.trim() || articleTitle}\n\nHOOK (slide 1 overlay):\n${hook}\n\nCONTEXT BIBLE (fulfill the request across slides):\n${body}`
-							: body || articleTitle;
-			const res = await fetch('/api/news/variants', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					count: n,
-					title: articleTitle,
-					text: variantBodyText,
-					sourceUrl: articleUrl,
-					autoHighlight: !!opts?.autoHighlight,
-					contentMode: newsContentMode,
-					stepCount: newsContentMode === 'steps' ? stepsCount : undefined,
-					includeReplies: !!opts?.includeReplies,
-					includeBodies: wantBodies,
-					maxWords: studioHeadlineMaxWords,
-					maxWordsSupport: studioBodyMaxWords,
-					...studioGenerationTonePayload(),
-				}),
-			});
-			const data = await res.json();
-			if (!res.ok) throw new Error(data.error ?? 'Variant generation failed');
-			const variants: string[] = data.variants ?? [];
-			const rawBodies: string[] = Array.isArray(data.bodies) ? data.bodies : [];
-			return {
-				copyStrings: normalizeHeadlineVariants(variants, hook, n),
-				tweetReplies: opts?.includeReplies
-					? normalizeTweetReplies(data.replies ?? [], n)
-					: [],
-				bodies: wantBodies ? normalizeSupportBodies(rawBodies, body, n) : [],
-			};
-		} catch (e: any) {
-			newsError = `Slide variants: ${e?.message ?? String(e)}`;
-			const fallback = fallbackStoryBeats(hook, body, n);
-			return {
-				copyStrings: fallback,
-				tweetReplies: opts?.includeReplies ? normalizeTweetReplies([], n) : [],
-				bodies: wantBodies
-					? distributeNewsSubtextAcrossSlides(body, fallback, n)
-					: [],
-			};
-		}
+		const result = await fetchDeckStoryBeatsShared({
+			hookText,
+			rawText: String(rawText || articleSnippet || articleTitle || '').trim(),
+			count,
+			title: articleTitle,
+			sourceUrl: articleUrl,
+			contentMode: newsContentMode,
+			userRequest: generalTopicPrompt.trim() || articleTitle,
+			stepCount: newsContentMode === 'steps' ? stepsCount : undefined,
+			autoHighlight: !!opts?.autoHighlight,
+			includeReplies: !!opts?.includeReplies,
+			includeBodies: opts?.includeBodies !== false,
+			maxWords: studioHeadlineMaxWords,
+			maxWordsSupport: studioBodyMaxWords,
+			tone: studioGenerationTonePayload(),
+			clampBody: (text) => clampNewsSubtext(text, undefined, ''),
+		});
+		return {
+			copyStrings: result.copyStrings,
+			tweetReplies: opts?.includeReplies
+				? normalizeTweetReplies(result.tweetReplies, Math.max(1, count))
+				: [],
+			bodies: result.bodies,
+		};
 	}
 
 	/** Clamp + pad supporting paragraphs so each slide has its own body. */
@@ -11278,12 +11568,8 @@ tweetTopImagePanYBySlide,
 	function fitNewsShadowFromStack(info: { topPct: number; heightPct: number }) {
 		const i = paintSlide;
 		if (!shadowAutoFitAt(i)) return;
-		// Fit this slide only — short follow-ups stay short; tall hooks stay tall.
-		// padAbove clears the soft top of the News fade so the first headline line sits in solid black.
-		const cover = bottomShadowHeightForTextStack(info, {
-			min: NEWS_DEFAULT_LAYOUT.shadowHeight,
-			padAbove: 22,
-		});
+		// Fit this slide only — Bulk uses the same NEWS_SHADOW_AUTOFIT numbers.
+		const cover = bottomShadowHeightForTextStack(info, { ...NEWS_SHADOW_AUTOFIT });
 		if (Math.abs(cover - shadowHeightAt(i)) > 0.5) {
 			setSlideShadow(i, { height: cover });
 		}
@@ -11638,6 +11924,7 @@ tweetTopImagePanYBySlide,
 					pick: newsContentMode === 'news' ? 'random' : 'first',
 					syntheticHint: syntheticHintStr || undefined,
 					stepCount: newsContentMode === 'steps' ? resolvedStepsCount : undefined,
+					slideCount: newsContentMode === 'news' ? undefined : slideCount,
 					studioRegenAt: Date.now(),
 					maxWords: studioHeadlineMaxWords,
 					maxWordsSupport: studioBodyMaxWords,
@@ -11995,7 +12282,14 @@ tweetTopImagePanYBySlide,
 		source = resolveNewsSourceAfterFetch();
 		if (userId) {
 			try {
-				applyNewsSourceChromeFromKit(loadBrandKit(userId));
+				const preserveNews =
+					contentTemplate === 'news' &&
+					(!!resolveTemplateOverride('news') || !!accountNewsLock);
+				applyNewsSourceChromeFromKit(loadBrandKit(userId), {
+					preserveOffsets: preserveNews,
+					preserveWidth: preserveNews,
+					preservePlate: preserveNews,
+				});
 				source = resolveNewsSourceAfterFetch();
 			} catch {
 				/* ignore */
@@ -15419,8 +15713,14 @@ if (tweetTopImageHeightBySlide.length !== n) {
 									}
 									(e.currentTarget as HTMLInputElement).value = '';
 									sourceLabelMode = 'logo';
+									/* First upload often still has the old 260 default — snap to byline-sized mark. */
+									if (sourceLogoWidth >= 220) sourceLogoWidth = 140;
 									applyBrandLogoToProfileAvatars(sourceLogoSrc, true);
-									persistNewsSourceChrome({ sourceLogoSrc, sourceLabelMode: 'logo' });
+									persistNewsSourceChrome({
+										sourceLogoSrc,
+										sourceLabelMode: 'logo',
+										sourceLogoWidth,
+									});
 								}}
 							/>
 							<Button type="button" variant="outline" size="sm" class="h-8 rounded-lg text-[11px] font-semibold border-[#ebebeb]" onclick={() => sourceLogoInput?.click()}>
@@ -15429,7 +15729,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							{#if sourceLogoSrc}
 								<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => {
 									sourceLogoSrc = '';
-									persistNewsSourceChrome({ sourceLogoSrc: '' });
+									sourceLabelMode = 'text';
+									persistNewsSourceChrome({ sourceLogoSrc: '', sourceLabelMode: 'text' });
 								}}>Remove</Button>
 								<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
 									<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
@@ -15679,10 +15980,10 @@ showSubjectCutout={canvasShowCutout}
 					onSourceLogoChange={(src) => {
 						if (!canvasInteractive) return;
 						sourceLogoSrc = src;
-						if (src) sourceLabelMode = 'logo';
+						sourceLabelMode = src ? 'logo' : 'text';
 						persistNewsSourceChrome({
 							sourceLogoSrc: src,
-							sourceLabelMode: src ? 'logo' : sourceLabelMode,
+							sourceLabelMode: src ? 'logo' : 'text',
 						});
 					}}
 					onSourceLogoWidthChange={(w) => {
@@ -15693,6 +15994,7 @@ showSubjectCutout={canvasShowCutout}
 					onSourceLogoPlateChange={(hex) => {
 						if (!canvasInteractive) return;
 						sourceLogoPlateColor = String(hex ?? '').trim();
+						persistNewsSourceChrome({ sourceLogoPlateColor });
 					}}
 					onSourceStyleChange={(patch) => {
 						if (!canvasInteractive) return;
@@ -16722,95 +17024,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 
 		<!-- Slide filmstrip: drag to reorder (show for single-slide decks so Hook + Add stay visible) -->
 		{#if slides.length >= 1}
-			{#if editingBrandCta}
-				<div
-					class="brand-cta-panel mx-auto mb-2 max-w-3xl rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5"
-					role="region"
-					aria-label="Follow slide settings"
-				>
-					<div class="flex flex-wrap items-center gap-2 mb-2">
-						<label class="flex items-center gap-2 text-[11px] font-medium text-white/75 cursor-pointer">
-							<input
-								type="checkbox"
-								checked={brandCtaEnabled}
-								onchange={(e) => {
-									brandCtaEnabled = (e.currentTarget as HTMLInputElement).checked;
-									if (!brandCtaEnabled) editingBrandCta = false;
-								}}
-							/>
-							Include follow slide at end
-						</label>
-						{#if brandCtaSavedNote}
-							<span class="text-[10px] text-emerald-400">{brandCtaSavedNote}</span>
-						{:else}
-							<span class="text-[10px] text-white/35">Saved to your brand</span>
-						{/if}
-						<a
-							href="/dashboard/bulk?resume=1"
-							class="ml-auto text-[10px] text-sky-300/90 hover:text-sky-200 underline-offset-2 hover:underline"
-						>
-							Brand kit &amp; Bulk
-						</a>
-					</div>
-					<div class="grid gap-2 sm:grid-cols-[auto_1fr] sm:items-start">
-						<div class="flex items-center gap-2">
-							<button
-								type="button"
-								class="rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-white/85 hover:bg-white/10"
-								onclick={() => brandCtaImageInput?.click()}
-							>
-								{brandCta.image ? 'Change image' : 'Upload image'}
-							</button>
-							{#if brandCta.image}
-								<button
-									type="button"
-									class="text-[10px] text-white/45 hover:text-white/70"
-									onclick={clearBrandCtaImage}
-								>
-									Remove
-								</button>
-							{/if}
-						</div>
-						<div class="grid gap-2 sm:grid-cols-2">
-							<label class="grid gap-1 text-[10px] text-white/45">
-								Headline
-								<input
-									class="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-[12px] text-white"
-									value={brandCta.headline}
-									oninput={(e) => {
-										brandCta = {
-											...brandCta,
-											headline: (e.currentTarget as HTMLInputElement).value,
-										};
-									}}
-									onchange={() => persistBrandCta()}
-								/>
-							</label>
-							<label class="grid gap-1 text-[10px] text-white/45">
-								Follow line
-								<input
-									class="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-[12px] text-white"
-									value={brandCta.subline}
-									oninput={(e) => {
-										brandCta = {
-											...brandCta,
-											subline: (e.currentTarget as HTMLInputElement).value,
-										};
-									}}
-									onchange={() => persistBrandCta()}
-								/>
-							</label>
-						</div>
-					</div>
-					<input
-						bind:this={brandCtaImageInput}
-						type="file"
-						accept="image/*"
-						class="sr-only"
-						onchange={handleBrandCtaImageUpload}
-					/>
-				</div>
-			{/if}
 			{@const filmstripGenerateBusy =
 				studioGenerating || fetchingNews || generatingVariants}
 			{@const filmstripLoading =
@@ -17035,46 +17248,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					</div>
 				{/each}
 				</div>
-
-				<!-- Brand follow slide (optional, saved to your brand) -->
-				<button
-					type="button"
-					onclick={selectBrandCtaSlide}
-					class="filmstrip-cell relative flex-shrink-0 flex flex-col items-center gap-1 group"
-					title="Follow slide — saved to your brand"
-				>
-					<div
-						class="filmstrip-thumb w-16 h-20 rounded-lg overflow-hidden border-2 transition-colors relative
-							{filmstripLoading || filmstripGenerateBusy
-								? 'border-transparent'
-								: editingBrandCta
-							? 'border-violet-400/80 shadow-[0_0_0_1px_rgba(167,139,250,0.35)]'
-							: brandCtaEnabled
-								? 'border-white/25'
-								: 'border-dashed border-white/12'}"
-						style="background: var(--app-surface-3);"
-					>
-						{#if filmstripLoading || filmstripGenerateBusy}
-							<div class="filmstrip-skel absolute inset-0" aria-hidden="true"></div>
-						{:else if brandCta.image}
-							<img src={brandCta.image} alt="" class="w-full h-full object-cover opacity-90" />
-						{:else}
-							<div class="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-white/40 px-1 text-center leading-tight">
-								Follow
-							</div>
-						{/if}
-						{#if brandCtaEnabled && !filmstripLoading}
-							<span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-violet-400"></span>
-						{/if}
-					</div>
-					<span class="filmstrip-label flex items-center justify-center font-mono text-[9px] {editingBrandCta ? 'is-active' : ''}">
-						{#if filmstripLoading || filmstripGenerateBusy}
-							<span class="filmstrip-label-skel" aria-hidden="true"></span>
-						{:else}
-							Follow
-						{/if}
-					</span>
-				</button>
 
 				<!-- Add slide — duplicates the focused slide -->
 				<div class="filmstrip-cell relative flex-shrink-0 flex flex-col items-center gap-1">

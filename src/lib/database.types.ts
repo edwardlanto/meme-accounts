@@ -18,6 +18,9 @@ export interface Database {
           trial_exports_used: number;
           carousel_tokens_used: number;
           ai_images_used: number;
+          clip_minutes_used: number;
+          slideshows_generated: number;
+          slides_generated: number;
           usage_period_start: string | null;
           marketing_emails: boolean;
           created_at: string;
@@ -34,6 +37,9 @@ export interface Database {
           | 'trial_exports_used'
           | 'carousel_tokens_used'
           | 'ai_images_used'
+          | 'clip_minutes_used'
+          | 'slideshows_generated'
+          | 'slides_generated'
           | 'usage_period_start'
           | 'marketing_emails'
         > & {
@@ -44,6 +50,9 @@ export interface Database {
           trial_exports_used?: number;
           carousel_tokens_used?: number;
           ai_images_used?: number;
+          clip_minutes_used?: number;
+          slideshows_generated?: number;
+          slides_generated?: number;
           usage_period_start?: string | null;
           marketing_emails?: boolean;
         };

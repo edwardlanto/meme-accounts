@@ -22,6 +22,13 @@ export type PlanEntitlements = {
 	carouselsPerMonth: number | null;
 	/** Fal / Vertex AI images per calendar month. `null` = unlimited. Free = 0 (stock only). */
 	aiImagesPerMonth: number | null;
+	/**
+	 * Source video minutes for clip finder (`/api/videos/analyze`) per calendar month.
+	 * Billed as ceil(durationSec / 60) per job. `null` = unlimited.
+	 */
+	clipMinutesPerMonth: number | null;
+	/** Max single source video length in minutes for clipping. */
+	maxClipVideoMinutes: number;
 	captionStyles: number | 'all';
 	watermark: boolean;
 	competitorTracks: number | null;
@@ -31,13 +38,17 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	free: {
 		carouselsPerMonth: 5,
 		aiImagesPerMonth: 0,
+		clipMinutesPerMonth: 60,
+		maxClipVideoMinutes: 20,
 		captionStyles: 1,
 		watermark: true,
 		competitorTracks: 3,
 	},
 	hobby: {
-		carouselsPerMonth: 30,
+		carouselsPerMonth: 50,
 		aiImagesPerMonth: 50,
+		clipMinutesPerMonth: 180,
+		maxClipVideoMinutes: 60,
 		captionStyles: 5,
 		watermark: true,
 		competitorTracks: 10,
@@ -45,6 +56,8 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	creator: {
 		carouselsPerMonth: 100,
 		aiImagesPerMonth: 120,
+		clipMinutesPerMonth: 600,
+		maxClipVideoMinutes: 180,
 		captionStyles: 'all',
 		watermark: false,
 		competitorTracks: 25,
@@ -52,6 +65,8 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	business: {
 		carouselsPerMonth: null,
 		aiImagesPerMonth: 400,
+		clipMinutesPerMonth: 2000,
+		maxClipVideoMinutes: 240,
 		captionStyles: 'all',
 		watermark: false,
 		competitorTracks: null,
@@ -64,6 +79,21 @@ export function carouselLimitForPlan(plan: string | null | undefined): number | 
 
 export function aiImageLimitForPlan(plan: string | null | undefined): number | null {
 	return PLAN_ENTITLEMENTS[normalizePlanId(plan)].aiImagesPerMonth;
+}
+
+export function clipMinutesLimitForPlan(plan: string | null | undefined): number | null {
+	return PLAN_ENTITLEMENTS[normalizePlanId(plan)].clipMinutesPerMonth;
+}
+
+export function maxClipVideoMinutesForPlan(plan: string | null | undefined): number {
+	return PLAN_ENTITLEMENTS[normalizePlanId(plan)].maxClipVideoMinutes;
+}
+
+/** Billable minutes for a source duration (always ≥ 1 when duration > 0). */
+export function clipMinutesFromDurationSec(durationSec: number): number {
+	const sec = Math.max(0, Number(durationSec) || 0);
+	if (sec <= 0) return 1;
+	return Math.max(1, Math.ceil(sec / 60));
 }
 
 export function isPaidPlanActive(

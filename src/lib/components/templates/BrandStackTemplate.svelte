@@ -127,7 +127,8 @@
 
 	$effect(() => {
 		const el = topVideoEl;
-		if (!el) return;
+		const src = resolvedTopVideo;
+		if (!el || !src) return;
 		el.muted = videoMuted;
 		el.loop = true;
 		el.playsInline = true;
@@ -498,6 +499,9 @@
 					playsinline
 					muted
 					onloadeddata={(e) => {
+						void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
+					}}
+					oncanplay={(e) => {
 						void (e.currentTarget as HTMLVideoElement).play().catch(() => {});
 					}}
 					style="

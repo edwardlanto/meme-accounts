@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { BulkSlide } from '$lib/studio/bulk-to-studio';
 	import { createBlankSlide } from '$lib/studio/bulk-to-studio';
+	import type { Overlay } from '$lib/types';
 	import {
 		coerceTemplateId,
 		isBrandStackFamily,
@@ -22,6 +23,7 @@
 		BLACK_TEXT_CAROUSEL_DEFAULTS,
 		BRAND_STACK_DEFAULTS,
 		IMAGE_QUOTE_DEFAULTS,
+		NEWS_DEFAULT_LAYOUT,
 		NEWS_HEADLINE_STYLE,
 		NEWS_SUBTEXT_STYLE,
 		PHOTO_CAPTION_DEFAULTS,
@@ -48,6 +50,10 @@
 		WHITE_MEDIA_DEFAULTS,
 		WHITE_THREAD_DEFAULTS,
 	} from '$lib/studio/slide-content-defaults';
+	import {
+		bottomShadowHeightForTextStack,
+		NEWS_SHADOW_AUTOFIT,
+	} from '$lib/studio/bottom-shadow';
 	import { ensureFirstWordHighlight } from '$lib/video-clips/video-hook';
 	import { stripMarkup, type HighlightDefaults } from '$lib/highlight';
 	import { DEFAULT_BRAND_KIT } from '$lib/studio/brand-kit';
@@ -90,11 +96,19 @@
 		textHighlightsEnabled?: boolean;
 		/** Optional News source logo when slide is in logo mode. */
 		sourceLogoSrc?: string;
+		/** News source logo max width (brand kit / override). Default matches Studio byline size. */
+		sourceLogoWidth?: number;
+		/** Optional plate behind the News logo (hex). */
+		sourceLogoPlateColor?: string;
+		/** News logo / text drag offsets (template px) — same contract as Studio. */
+		textOffsets?: Record<string, { x: number; y: number }>;
 		/** Optional News text byline when no logo (brand display name). Empty = hide source. */
 		sourceLabel?: string;
 		/** Brand-kit highlight paint for bare `[[phrase]]` (Settings → Branding). */
 		highlightColor?: string;
 		highlightDefaults?: HighlightDefaults;
+		/** News image stickers from saved template / account override. */
+		overlays?: Overlay[];
 	};
 
 	let {
@@ -104,10 +118,18 @@
 		preferThumb = false,
 		textHighlightsEnabled = true,
 		sourceLogoSrc = '',
+		sourceLogoWidth = 140,
+		sourceLogoPlateColor = '',
+		textOffsets = {},
 		sourceLabel = '',
 		highlightColor = DEFAULT_BRAND_KIT.highlightColor,
 		highlightDefaults,
+		overlays = [],
 	}: Props = $props();
+
+	const resolvedSourceLogoWidth = $derived(
+		Math.round(Math.max(80, Math.min(400, Number(sourceLogoWidth) || 140))),
+	);
 
 	const resolvedHighlightColor = $derived(
 		String(highlightDefaults?.color ?? highlightColor ?? DEFAULT_BRAND_KIT.highlightColor).trim() ||
@@ -119,6 +141,16 @@
 
 	const slide = $derived(slideProp ?? createBlankSlide('news'));
 	const previewMuted = $derived(slide.videoMuted !== false);
+
+	/** News bottom vignette — same autofit as Studio after generate. */
+	let newsShadowHeight = $state(NEWS_DEFAULT_LAYOUT.shadowHeight);
+
+	function fitNewsShadowFromStack(info: { topPct: number; heightPct: number }) {
+		const cover = bottomShadowHeightForTextStack(info, { ...NEWS_SHADOW_AUTOFIT });
+		if (Math.abs(cover - newsShadowHeight) > 0.5) {
+			newsShadowHeight = cover;
+		}
+	}
 
 	function maybeStrip(text: string): string {
 		return textHighlightsEnabled ? text : stripMarkup(text);
@@ -150,6 +182,8 @@
 	const previewH = $derived(studioPreviewHeight(width, CANVAS_W, CANVAS_H));
 
 	const template = $derived(coerceTemplateId(slide.template));
+	const brandLabel = $derived(String(sourceLabel ?? '').trim());
+	const brandLogo = $derived(String(sourceLogoSrc ?? '').trim());
 	const headline = $derived(String(slide.headline ?? '').trim() || ' ');
 	const newsTemplateText = $derived.by(() => {
 		const raw = slide.clipMeta?.newsHeadline?.trim();
@@ -343,8 +377,10 @@
 			/>
 		{:else if template === 'textCarousel'}
 			<TextCarouselTemplate
-				name={TEXT_CAROUSEL_DEFAULTS.name}
+				name={brandLabel || TEXT_CAROUSEL_DEFAULTS.name}
 				handle={TEXT_CAROUSEL_DEFAULTS.handle}
+				avatar={brandLogo || undefined}
+				avatarMode={brandLogo ? 'image' : 'text'}
 				text={maybeStrip(textCarouselBody)}
 				canvasW={CANVAS_W}
 				canvasH={CANVAS_H}
@@ -354,9 +390,9 @@
 		{:else if template === 'whiteThread' || template === 'whiteMedia'}
 			<WhitePostTemplate
 				layout={template === 'whiteMedia' ? 'media' : 'thread'}
-				name={template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.name : WHITE_THREAD_DEFAULTS.name}
+				name={brandLabel || (template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.name : WHITE_THREAD_DEFAULTS.name)}
 				handle={template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.handle : WHITE_THREAD_DEFAULTS.handle}
-				avatar={template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.avatarUrl : WHITE_THREAD_DEFAULTS.avatarUrl}
+				avatar={brandLogo || (template === 'whiteMedia' ? WHITE_MEDIA_DEFAULTS.avatarUrl : WHITE_THREAD_DEFAULTS.avatarUrl)}
 				text={maybeStrip(whiteBody)}
 				mediaImage={optimizeImageUrl(mediaUrl || WHITE_MEDIA_DEFAULTS.imageUrl, fetchW)}
 				w={CANVAS_W}
@@ -410,14 +446,15 @@
 					template === 'videoSource' ||
 					template === 'videoFeature'
 						? ''
-						: VIDEO_STORY_DEFAULTS.watermark
+						: brandLabel || VIDEO_STORY_DEFAULTS.watermark
 				}
 				profileName={
-					template === 'videoPost'
-						? VIDEO_POST_DEFAULTS.name
-						: template === 'videoCreator'
-							? VIDEO_CREATOR_DEFAULTS.name
-							: undefined
+					template === 'videoPost' || template === 'videoCreator'
+						? brandLabel ||
+							(template === 'videoPost'
+								? VIDEO_POST_DEFAULTS.name
+								: VIDEO_CREATOR_DEFAULTS.name)
+						: undefined
 				}
 				profileHandle={
 					template === 'videoPost'
@@ -425,6 +462,18 @@
 						: template === 'videoCreator'
 							? VIDEO_CREATOR_DEFAULTS.handle
 							: undefined
+				}
+				profileAvatar={
+					template === 'videoPost' || template === 'videoCreator'
+						? brandLogo || (template === 'videoPost' ? VIDEO_POST_DEFAULTS.avatarUrl : '')
+						: undefined
+				}
+				profileAvatarMode={
+					template === 'videoPost' || template === 'videoCreator'
+						? brandLogo || (template === 'videoPost' && VIDEO_POST_DEFAULTS.avatarUrl)
+							? 'image'
+							: 'text'
+						: undefined
 				}
 				{videoSrc}
 				{videoPoster}
@@ -487,7 +536,10 @@
 				source={String(sourceLabel ?? '').trim()}
 				sourceLogoSrc={String(sourceLogoSrc ?? '').trim()}
 				sourceLabelMode={String(sourceLogoSrc ?? '').trim() ? 'logo' : 'text'}
-				sourceLogoWidth={160}
+				sourceLogoWidth={resolvedSourceLogoWidth}
+				sourceLogoPlateColor={String(sourceLogoPlateColor ?? '').trim()}
+				sourceStyle={{ align: 'center' }}
+				textOffsets={textOffsets ?? {}}
 				backgroundImage={
 					mediaKind === 'video'
 						? playbackUrl
@@ -509,9 +561,11 @@
 				bgZoom={100}
 				bgOffsetX={50}
 				bgOffsetY={50}
-				shadowHeight={58}
-				shadowStrength={0.88}
-				shadowCurve="natural"
+				shadowHeight={newsShadowHeight}
+				shadowStrength={1}
+				shadowCurve="news"
+				onTextStackLayout={fitNewsShadowFromStack}
+				overlays={overlays ?? []}
 				headlineStyle={{ ...NEWS_HEADLINE_STYLE }}
 				subtextStyle={{ ...NEWS_SUBTEXT_STYLE }}
 				w={CANVAS_W}
@@ -531,8 +585,8 @@
 		{:else if isBrandStackFamily(template)}
 			<BrandStackTemplate
 				headline={headline === ' ' ? BRAND_STACK_DEFAULTS.headline : headline}
-				watermark={BRAND_STACK_DEFAULTS.watermark}
-				brand={BRAND_STACK_DEFAULTS.brand}
+				watermark={brandLabel || BRAND_STACK_DEFAULTS.watermark}
+				brand={brandLabel || BRAND_STACK_DEFAULTS.brand}
 				topVideoSrc={playbackUrl || ''}
 				topImageSrc={!playbackUrl ? (mediaThumb || '/placeholders/carousel/video-template-poster.jpg') : ''}
 				bottomMediaSrc={BRAND_STACK_DEFAULTS.bottomMediaUrl}

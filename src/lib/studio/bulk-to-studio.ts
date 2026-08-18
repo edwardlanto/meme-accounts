@@ -21,6 +21,7 @@ import {
 	} from './slide-content-defaults';
 import type { StudioClipCaptionImport } from './clip-import';
 import type { CaptionSegment } from '$lib/video-clips/caption-sync';
+import type { Overlay } from '$lib/types';
 import { DEFAULT_BRAND_KIT } from './brand-kit';
 import {
 	parseReframeAspectFromSettingsKey,
@@ -49,6 +50,9 @@ export type BulkSlide = {
 	/** Timed cues for export / Studio (when captions enabled). */
 	captionSegments?: CaptionSegment[];
 	studioCaptionImport?: StudioClipCaptionImport | null;
+	/** Saved Studio template this slide was generated with (e.g. “new news”). */
+	savedTemplateId?: string;
+	savedTemplateName?: string;
 	mediaUrl?: string;
 	mediaKind?: 'image' | 'video' | null;
 	mediaThumb?: string;
@@ -359,13 +363,18 @@ export function createBlankSlide(
 }
 
 export function createBlankShow(
-	template: TemplateId = 'news',
+	template: TemplateId | TemplateId[] = 'news',
 	captionDefaults?: Partial<BulkRowCaptions>,
 	slideCount = 3,
 ): BulkShow {
 	const n = Math.max(1, Math.min(12, Math.floor(Number(slideCount)) || 3));
-	const tpl = coerceTemplateId(template);
-	const slides = Array.from({ length: n }, () => createBlankSlide(tpl, captionDefaults));
+	const templates = Array.isArray(template)
+		? template.map((t) => coerceTemplateId(t))
+		: null;
+	const fallback = coerceTemplateId(Array.isArray(template) ? template[0] ?? 'news' : template);
+	const slides = Array.from({ length: n }, (_, i) =>
+		createBlankSlide(templates?.[i] ?? fallback, captionDefaults),
+	);
 	return {
 		id: newId(),
 		title: '',
@@ -393,7 +402,23 @@ export function activeSlideOf(show: BulkShow): BulkSlide {
  */
 export function buildDraftStateFromShow(
 	show: BulkShow,
-	opts?: { brandCtaEnabled?: boolean; activeSlide?: number },
+	opts?: {
+		brandCtaEnabled?: boolean;
+		activeSlide?: number;
+		/** News logo chrome from brand kit / Studio override — so Edit in Studio matches Bulk. */
+		newsChrome?: {
+			sourceLogoSrc?: string;
+			sourceLogoWidth?: number;
+			sourceLogoPlateColor?: string;
+			sourceOffsetX?: number;
+			sourceOffsetY?: number;
+			sourceLabel?: string;
+			sourceBorderKind?: 'none' | 'rules' | 'box';
+			sourceBorderColor?: string;
+		};
+		/** Per-slide News stickers so Edit in Studio matches Bulk preview. */
+		imageOverlaysBySlide?: Overlay[][];
+	},
 ): Record<string, unknown> {
 	const list = show.slides.length ? show.slides : [createBlankSlide()];
 	const n = list.length;
@@ -493,6 +518,31 @@ export function buildDraftStateFromShow(
 		? studioFormatForReframeAspect(reframeAspect ?? '9:16')
 		: 'feed';
 
+	const chrome = opts?.newsChrome;
+	const logoSrc = String(chrome?.sourceLogoSrc ?? '').trim();
+	const ox = Number(chrome?.sourceOffsetX);
+	const oy = Number(chrome?.sourceOffsetY);
+	const textOffsetsBySlide = usesNews
+		? Array.from({ length: n }, () => ({
+				'news:source': {
+					x: Number.isFinite(ox) ? Math.round(ox) : 0,
+					y: Number.isFinite(oy) ? Math.round(oy) : 0,
+				},
+			}))
+		: undefined;
+
+	const overlayRows = opts?.imageOverlaysBySlide ?? [];
+	const slideOverlaysByTemplate =
+		usesNews && overlayRows.some((r) => r.length)
+			? {
+					news: Array.from({ length: n }, (_, i) => {
+						const row = overlayRows[i] ?? [];
+						if (row.length) return row;
+						return overlayRows[0] ?? [];
+					}),
+				}
+			: undefined;
+
 	return {
 		slideCount: n,
 		activeSlide: opts?.activeSlide ?? (activeIdx >= 0 ? activeIdx : 0),
@@ -507,6 +557,22 @@ export function buildDraftStateFromShow(
 					shadowHeight: NEWS_DEFAULT_LAYOUT.shadowHeight,
 					shadowStrength: NEWS_DEFAULT_LAYOUT.shadowStrength,
 					textPanelOffsetY: NEWS_DEFAULT_LAYOUT.textPanelOffsetY,
+					sourceLogoSrc: logoSrc,
+					sourceLabelMode: logoSrc ? 'logo' : 'text',
+					sourceLogoWidth: (() => {
+						const w = Number(chrome?.sourceLogoWidth);
+						return Number.isFinite(w) && w > 0
+							? Math.round(Math.max(80, Math.min(400, w)))
+							: 140;
+					})(),
+					sourceLogoPlateColor: String(chrome?.sourceLogoPlateColor ?? '').trim(),
+					sourceBorderKind:
+						chrome?.sourceBorderKind === 'rules' || chrome?.sourceBorderKind === 'box'
+							? chrome.sourceBorderKind
+							: 'none',
+					sourceBorderColor: String(chrome?.sourceBorderColor ?? '').trim() || '#ffffff',
+					source: String(chrome?.sourceLabel ?? '').trim(),
+					...(textOffsetsBySlide ? { textOffsetsBySlide } : {}),
 				}
 			: {}),
 		slides,
@@ -526,6 +592,7 @@ export function buildDraftStateFromShow(
 		newsSubtextBySlide,
 		bgImagesByTemplate,
 		bgVideosByTemplate,
+		...(slideOverlaysByTemplate ? { slideOverlaysByTemplate } : {}),
 		/** True when pyautoflip saliency already stacked faces into one 9:16 MP4. */
 		videoSplitCompositedBySlide: list.map(
 			(r) =>

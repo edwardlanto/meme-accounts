@@ -86,14 +86,17 @@
 	});
 
 	$effect(() => {
+		const src = resolvedSrc;
 		const start = Number(videoTrimStartSec) || 0;
 		const end = Number(videoTrimEndSec) || 0;
 		const muted = videoMuted;
 		const vol = Math.max(0, Math.min(1, videoVolume));
 		for (const el of [topEl, bottomEl, fullEl]) {
-			if (!el) continue;
+			if (!el || !src) continue;
 			el.muted = muted;
 			el.volume = muted ? 0 : vol;
+			el.loop = true;
+			el.playsInline = true;
 			if (end > start && Number.isFinite(el.currentTime)) {
 				if (el.currentTime < start || el.currentTime > end) {
 					try {
@@ -103,6 +106,7 @@
 					}
 				}
 			}
+			void el.play().catch(() => {});
 		}
 	});
 

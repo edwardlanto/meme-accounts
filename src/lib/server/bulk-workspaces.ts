@@ -46,10 +46,19 @@ function stripEmbeddedSlideMedia(slide: BulkSlide): BulkSlide {
 }
 
 function stripEmbeddedShowsMedia(shows: BulkShow[]): BulkShow[] {
-	return shows.map((show) => ({
-		...show,
-		slides: (show.slides ?? []).map(stripEmbeddedSlideMedia),
-	}));
+	return shows.map((show) => {
+		const seen = new Set<string>();
+		const slides = (show.slides ?? [])
+			.map(stripEmbeddedSlideMedia)
+			.filter((sl) => {
+				const id = String(sl.id ?? '').trim();
+				if (!id) return true;
+				if (seen.has(id)) return false;
+				seen.add(id);
+				return true;
+			});
+		return { ...show, slides };
+	});
 }
 
 function libraryShowsToShows(cards: unknown): BulkShow[] {
@@ -60,6 +69,7 @@ function libraryShowsToShows(cards: unknown): BulkShow[] {
 			| BulkSlide
 			| null;
 		const thumb = String(c.thumb ?? '').trim();
+		const listedCount = Math.max(1, Math.min(24, Math.floor(Number(c.slideCount)) || 1));
 		const slide: BulkSlide = cover
 			? {
 					...cover,
@@ -78,14 +88,53 @@ function libraryShowsToShows(cards: unknown): BulkShow[] {
 					mediaThumb: thumb || undefined,
 					mediaUrl: thumb || undefined,
 				};
+		/* Library view only ships the cover — pad placeholders so slideCount stays accurate. */
+		const slides: BulkSlide[] =
+			listedCount <= 1
+				? [slide]
+				: [
+						slide,
+						...Array.from({ length: listedCount - 1 }, (_, i) => ({
+							...slide,
+							id: `${slide.id}__pad_${i + 2}`,
+							headline: '',
+							body: '',
+						})),
+					];
 		return {
 			id: String(c.id ?? ''),
 			title: String(c.title ?? 'Untitled'),
 			fromVideoClips: c.fromVideoClips === true,
 			activeSlideId: slide.id,
-			slides: [slide],
+			slides,
 		};
 	});
+}
+
+/** Drop exact duplicate workspaces left over from history re-uploads (same show ids). */
+export function dedupeBulkWorkspaceRows<T extends { id: string; shows?: BulkShow[]; updated_at?: string }>(
+	rows: T[],
+): T[] {
+	const best = new Map<string, T>();
+	for (const row of rows) {
+		const showIds = (row.shows ?? [])
+			.map((s) => String(s.id ?? '').trim())
+			.filter(Boolean)
+			.sort()
+			.join(',');
+		const key = showIds || `id:${row.id}`;
+		const prev = best.get(key);
+		if (!prev) {
+			best.set(key, row);
+			continue;
+		}
+		const prevTs = Date.parse(String(prev.updated_at ?? '')) || 0;
+		const nextTs = Date.parse(String(row.updated_at ?? '')) || 0;
+		if (nextTs >= prevTs) best.set(key, row);
+	}
+	/* Preserve original order (newest-first from query) while dropping dupes. */
+	const keepIds = new Set([...best.values()].map((r) => r.id));
+	return rows.filter((r) => keepIds.has(r.id));
 }
 
 function titleFromShows(shows: BulkShow[], topic?: string): string {
@@ -154,16 +203,19 @@ export async function listBulkWorkspaces(userId: string, limit = 24): Promise<Bu
 			)
 			.eq('user_id', userId)
 			.order('updated_at', { ascending: false })
-			.limit(limit);
+			.limit(Math.min(100, Math.max(limit * 3, limit)));
 		if (slim.error) {
 			if (!viewMissing(String(slim.error.message ?? ''))) {
 				console.warn('[bulk_workspaces] library view:', slim.error.message);
 			}
 		} else {
-			return ((slim.data ?? []) as Array<BulkWorkspaceRow & { library_shows?: unknown }>).map((r) => ({
-				...r,
-				shows: libraryShowsToShows(r.library_shows),
-			}));
+			const mapped = ((slim.data ?? []) as Array<BulkWorkspaceRow & { library_shows?: unknown }>).map(
+				(r) => ({
+					...r,
+					shows: libraryShowsToShows(r.library_shows),
+				}),
+			);
+			return dedupeBulkWorkspaceRows(mapped).slice(0, limit);
 		}
 
 		const { data, error } = await admin
@@ -171,12 +223,12 @@ export async function listBulkWorkspaces(userId: string, limit = 24): Promise<Bu
 			.select('*')
 			.eq('user_id', userId)
 			.order('updated_at', { ascending: false })
-			.limit(limit);
+			.limit(Math.min(100, Math.max(limit * 3, limit)));
 		if (error) {
 			console.warn('[bulk_workspaces] list failed', error.message);
 			return [];
 		}
-		return (data ?? []) as BulkWorkspaceRow[];
+		return dedupeBulkWorkspaceRows((data ?? []) as BulkWorkspaceRow[]).slice(0, limit);
 	} catch (e) {
 		console.warn('[bulk_workspaces] list error', e);
 		return [];

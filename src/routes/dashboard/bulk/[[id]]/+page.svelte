@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
@@ -23,7 +23,6 @@
 		createBlankShow,
 		createBlankSlide,
 		activeSlideOf,
-		templateForSlideType,
 		rowNeedsBody,
 		buildDraftStateFromShow,
 		stashBulkImport,
@@ -55,6 +54,8 @@
 		touchBulkWorkspaceSession,
 		archiveBulkShowsToHistory,
 		rematerializeBulkShows,
+		BULK_WORKSPACE_DELETED_EVENT,
+		wasBulkWorkspaceDeletedLocally,
 	} from '$lib/studio/bulk-workspace';
 	import type { PageData } from './$types';
 	import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
@@ -65,6 +66,28 @@
 		mapPool,
 	} from '$lib/studio/bulk-stock';
 	import { STUDIO_TEMPLATES, coerceTemplateId, isVideoSplitFamily, type TemplateId } from '$lib/studio/template-ids';
+	import { fetchDraftLibraryRows } from '$lib/studio/draft-library';
+	import { fetchDeckStoryBeats } from '$lib/studio/deck-story-beats';
+	import {
+		resolveNewsSourceChrome,
+		resolveNewsSourceChromeMedia,
+		newsSourceTextOffsets,
+		type NewsSourceChrome,
+	} from '$lib/studio/news-source-chrome';
+	import {
+		imageOverlaysBySlideFromSavedDraft,
+		imageOverlaysFromNewsOverride,
+		imageOverlaysForSlide,
+		resolveImageOverlaysBySlideMedia,
+	} from '$lib/studio/bulk-image-overlays';
+	import type { Overlay } from '$lib/types';
+	import type { TemplateDevOverride } from '$lib/studio/template-dev-override';
+	import {
+		DEFAULT_STUDIO_COMPOSE_PREFS,
+		type NewsCopyLength,
+		type NewsStudioContentMode,
+		type StockMediaKind,
+	} from '$lib/studio/compose-prefs';
 	import { CAPTION_TEMPLATES } from '$lib/video-clips/caption-templates';
 	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
 	import BulkSlidePreview from '$lib/components/bulk/BulkSlidePreview.svelte';
@@ -72,6 +95,15 @@
 	import BulkPopover from '$lib/components/bulk/BulkPopover.svelte';
 	import { r2SignRead } from '$lib/r2Client';
 	import { formatTimestamp } from '$lib/video-clips/export-clip';
+	import JSZip from 'jszip';
+	import { toPng } from 'html-to-image';
+	import { STUDIO_FEED_CANVAS } from '$lib/studio/clip-preview-canvas';
+	import {
+		formatExportError,
+		materializeDomImagesForExport,
+		replaceVideosWithFrameImages,
+		SAFE_HTML_TO_IMAGE_OPTS,
+	} from '$lib/studio/export-capture';
 	import {
 		DEFAULT_AUTO_REFRAME,
 		VIDEO_SPLIT_AUTO_REFRAME,
@@ -109,8 +141,29 @@
 		Wallpaper,
 		Play,
 		Ban,
+		MessageSquare,
+		Newspaper,
+		Quote,
+		Type,
+		ListOrdered,
+		LayoutTemplate,
 	} from 'lucide-svelte';
-	import type { StockMediaKind } from '$lib/studio/compose-prefs';
+	import { NEWS_DEFAULT_SUBTEXT, NEWS_PLACEHOLDER_HEADLINE } from '$lib/studio/slide-content-defaults';
+	import {
+		clampToCompleteWords,
+		ensureCompleteThought,
+		fitCopyBudget,
+		splitIntoSentences,
+	} from '$lib/studio/fit-copy';
+	import { sanitizeOverlayLine } from '$lib/studio/overlay-copy';
+	import {
+		clearPromptHistory,
+		loadPromptHistory,
+		pushPromptHistory,
+		recentTitlesForQuery,
+		removePromptHistoryEntry,
+		type StudioPromptHistoryEntry,
+	} from '$lib/studio/prompt-history';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import {
 		AVAILABLE_PATTERNS,
@@ -123,13 +176,6 @@
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as NativeSelect from '$lib/components/ui/native-select/index.js';
-	import {
-		clearPromptHistory,
-		loadPromptHistory,
-		pushPromptHistory,
-		removePromptHistoryEntry,
-		type StudioPromptHistoryEntry,
-	} from '$lib/studio/prompt-history';
 	import { refreshUsageStatus } from '$lib/usage-client';
 	import { PLAN_CATALOG } from '$lib/pricing-catalog';
 
@@ -154,17 +200,51 @@
 
 	let userId = $state('');
 	let brandKit = $state<BrandKitSettings>({ ...DEFAULT_BRAND_KIT, cta: { ...DEFAULT_BRAND_KIT.cta } });
+	/** Studio account News override (logo move / size / plate) — same as Studio. */
+	let newsTemplateOverride = $state<TemplateDevOverride | null>(null);
 	let brandSavedNote = $state('');
 
 	let topic = $state('');
+	let newsContentMode = $state<NewsStudioContentMode>('general');
+	let newsCopyLength = $state<NewsCopyLength>('default');
+	let newsCategory = $state('general');
+	let factTopicCategory = $state('any');
+	let quoteTopicCategory = $state('any');
+	let storyCategory = $state('health');
+	let stepsCount = $state(5);
 	let audienceId = $state<string>('');
 	let audience = $state('');
 	let style = $state<BulkStyleId>('bold');
 	let emotion = $state<BulkEmotionId>('inspiring');
 	/** Number of separate slideshows / ideas */
 	let ideaCount = $state(1);
-	/** Slides inside each slideshow */
-	let slidesPerShow = $state(1);
+	/** Slides inside each slideshow — same default as Studio (3). */
+	let slidesPerShow = $state(DEFAULT_STUDIO_COMPOSE_PREFS.slideCount);
+	/** Per-slide template workflow — length always matches `slidesPerShow`. */
+	type BulkWorkflowStep = {
+		template: TemplateId;
+		/** Saved Studio template draft id (from Save template). */
+		savedId?: string;
+		savedName?: string;
+	};
+	type SavedWorkflowTemplate = {
+		id: string;
+		name: string;
+		templates: TemplateId[];
+		/** News logo from the saved Studio draft (`r2:` or https). */
+		logoSrc?: string;
+		/** Per-slide News stickers from the saved Studio draft. */
+		overlaysBySlide?: Overlay[][];
+	};
+	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
+	const BULK_WORKFLOW_STORAGE_KEY = 'bulk_slide_workflow_v1';
+	let slideWorkflow = $state<BulkWorkflowStep[]>(
+		Array.from({ length: DEFAULT_STUDIO_COMPOSE_PREFS.slideCount }, () => ({
+			template: 'news' as TemplateId,
+		})),
+	);
+	let savedWorkflowTemplates = $state<SavedWorkflowTemplate[]>([]);
+	let savedWorkflowLoading = $state(false);
 	/** Off | Stock photos | Stock videos — matches Studio media chip. */
 	type BulkStockMode = 'off' | StockMediaKind;
 	let stockMediaMode = $state<BulkStockMode>('photo');
@@ -174,6 +254,70 @@
 	let generateError = $state('');
 	let promptHistory = $state<StudioPromptHistoryEntry[]>([]);
 	let promptHistoryOpen = $state(false);
+
+	const NEWS_CATEGORIES = [
+		{ id: 'general', label: 'General' },
+		{ id: 'business', label: 'Business' },
+		{ id: 'tech', label: 'Tech' },
+		{ id: 'finance', label: 'Finance' },
+		{ id: 'politics', label: 'Politics' },
+		{ id: 'health', label: 'Health' },
+		{ id: 'science', label: 'Science' },
+		{ id: 'sports', label: 'Sports' },
+		{ id: 'entertainment', label: 'Entertainment' },
+	] as const;
+
+	const FACT_TOPICS = [
+		{ id: 'any', label: 'Any' },
+		{ id: 'business', label: 'Business' },
+		{ id: 'tech', label: 'Technology' },
+		{ id: 'science', label: 'Science' },
+		{ id: 'health', label: 'Health' },
+		{ id: 'history', label: 'History' },
+		{ id: 'nature', label: 'Nature' },
+		{ id: 'space', label: 'Space' },
+		{ id: 'finance', label: 'Finance' },
+		{ id: 'psychology', label: 'Psychology' },
+		{ id: 'culture', label: 'Culture' },
+		{ id: 'sports', label: 'Sports' },
+		{ id: 'food', label: 'Food' },
+		{ id: 'environment', label: 'Environment' },
+		{ id: 'education', label: 'Education' },
+	] as const;
+
+	const STORY_THEMES = [
+		{ id: 'health', label: 'Health' },
+		{ id: 'wealth', label: 'Wealth' },
+		{ id: 'relationships', label: 'Relationships' },
+		{ id: 'career', label: 'Career' },
+		{ id: 'mindset', label: 'Mindset' },
+		{ id: 'productivity', label: 'Productivity' },
+		{ id: 'fitness', label: 'Fitness' },
+		{ id: 'money', label: 'Money' },
+	] as const;
+
+	const CONTENT_MODE_OPTS = [
+		{ id: 'general' as const, icon: MessageSquare, label: 'General' },
+		{ id: 'news' as const, icon: Newspaper, label: 'News' },
+		{ id: 'fact' as const, icon: Sparkles, label: 'Random fact' },
+		{ id: 'story' as const, icon: Type, label: 'Random story' },
+		{ id: 'quote' as const, icon: Quote, label: 'Quote' },
+		{ id: 'steps' as const, icon: ListOrdered, label: 'Steps' },
+	];
+
+	const topicPlaceholder = $derived(
+		newsContentMode === 'news'
+			? 'Search keyword…'
+			: newsContentMode === 'fact'
+				? 'Specific angle or context…'
+				: newsContentMode === 'quote'
+					? 'Topic for the quote (e.g. discipline)…'
+					: newsContentMode === 'steps'
+						? 'e.g. 5 steps to get a better gut…'
+						: newsContentMode === 'story'
+							? 'Story direction or angle…'
+							: 'Message…',
+	);
 
 	let usageCanGenerate = $state<boolean | null>(null);
 	let usageRemaining = $state<number | null>(null);
@@ -190,6 +334,281 @@
 	const promptSubmitDisabled = $derived(
 		generating || (!usageBlocked && (!promptReady || ideaCount < 1 || maxIdeasAllowed < 1)),
 	);
+	const workflowTemplateSummary = $derived.by(() => {
+		const labels = slideWorkflow.map((step) => workflowStepLabel(step));
+		if (!labels.length) return 'Workflow';
+		if (labels.length === 1) return `Workflow · ${labels[0]}`;
+		const uniq = new Set(labels);
+		if (uniq.size === 1) return `Workflow · ${labels[0]} ×${labels.length}`;
+		return `Workflow · ${labels.join(' → ')}`;
+	});
+
+	function defaultWorkflowTemplate(): TemplateId {
+		return coerceTemplateId(brandKit.defaultTemplateId) || 'news';
+	}
+
+	function workflowStepLabel(step: BulkWorkflowStep): string {
+		const layout =
+			STUDIO_TEMPLATES.find((t) => t.id === step.template)?.label ?? step.template;
+		const saved = step.savedName?.trim();
+		if (saved) {
+			/* Saved Studio templates often sit on News — show both so Bulk doesn’t look “stuck” on News. */
+			return saved.toLowerCase() === layout.toLowerCase() ? saved : `${saved} · ${layout}`;
+		}
+		return layout;
+	}
+
+	function workflowStepSelectValue(step: BulkWorkflowStep): string {
+		return step.savedId ? `saved:${step.savedId}` : step.template;
+	}
+
+	function templatesFromSavedDraftState(state: Record<string, unknown> | null | undefined): TemplateId[] {
+		const raw = Array.isArray(state?.slideTemplates) ? (state!.slideTemplates as unknown[]) : [];
+		const templates = raw
+			.map((t) => coerceTemplateId(String(t ?? '')))
+			.filter(Boolean) as TemplateId[];
+		if (templates.length) return templates;
+		/* Older / partial saves — fall back to a single primary if present. */
+		const primary = coerceTemplateId(String(state?.templateId ?? state?.activeTemplate ?? ''));
+		return primary ? [primary] : [];
+	}
+
+	function logoFromSavedDraftState(state: Record<string, unknown> | null | undefined): string {
+		if (!state || typeof state !== 'object') return '';
+		const top = String(state.sourceLogoSrc ?? '').trim();
+		if (top) return top;
+		const layout = state.newsLayout as { sourceLogoSrc?: unknown } | undefined;
+		const fromLayout = String(layout?.sourceLogoSrc ?? '').trim();
+		if (fromLayout) return fromLayout;
+		const doc = state.newsDocument as { layout?: { sourceLogoSrc?: unknown } } | undefined;
+		const fromDoc = String(doc?.layout?.sourceLogoSrc ?? '').trim();
+		if (fromDoc) return fromDoc;
+		const starter = state.starter as { sourceLogoSrc?: unknown } | undefined;
+		return String(starter?.sourceLogoSrc ?? '').trim();
+	}
+
+	function persistSlideWorkflow() {
+		if (!userId || typeof localStorage === 'undefined') return;
+		try {
+			localStorage.setItem(
+				`${BULK_WORKFLOW_STORAGE_KEY}:${userId}`,
+				JSON.stringify({
+					slidesPerShow,
+					steps: slideWorkflow.map((s) => ({
+						template: coerceTemplateId(s.template),
+						...(s.savedId ? { savedId: s.savedId, savedName: s.savedName } : {}),
+					})),
+				}),
+			);
+		} catch {
+			/* ignore quota */
+		}
+	}
+
+	function restoreSlideWorkflow(): boolean {
+		if (!userId || typeof localStorage === 'undefined') return false;
+		try {
+			const raw = localStorage.getItem(`${BULK_WORKFLOW_STORAGE_KEY}:${userId}`);
+			if (!raw) return false;
+			const parsed = JSON.parse(raw) as {
+				slidesPerShow?: number;
+				steps?: Array<{ template?: string; savedId?: string; savedName?: string }>;
+			};
+			const steps = Array.isArray(parsed.steps) ? parsed.steps : [];
+			if (!steps.length) return false;
+			const n = Math.max(
+				1,
+				Math.min(8, Math.floor(Number(parsed.slidesPerShow)) || steps.length),
+			);
+			slideWorkflow = Array.from({ length: n }, (_, i) => {
+				const cur = steps[i] ?? steps[steps.length - 1]!;
+				return {
+					template: coerceTemplateId(cur.template ?? 'news'),
+					...(cur.savedId
+						? { savedId: String(cur.savedId), savedName: String(cur.savedName ?? '').trim() || undefined }
+						: {}),
+				};
+			});
+			slidesPerShow = n;
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	function syncSlideWorkflow(count = slidesPerShow) {
+		const n = Math.max(1, Math.min(8, Math.floor(Number(count)) || 1));
+		const fallback: BulkWorkflowStep = { template: defaultWorkflowTemplate() };
+		const prev = slideWorkflow;
+		const next = Array.from({ length: n }, (_, i) => {
+			const cur = prev[i] ?? prev[prev.length - 1] ?? fallback;
+			return {
+				template: coerceTemplateId(cur.template ?? fallback.template),
+				...(cur.savedId ? { savedId: cur.savedId, savedName: cur.savedName } : {}),
+			};
+		});
+		slideWorkflow = next;
+		slidesPerShow = n;
+		persistSlideWorkflow();
+	}
+
+	function setSlideWorkflowTemplate(index: number, template: TemplateId) {
+		const next = [...slideWorkflow];
+		next[index] = { template: coerceTemplateId(template) };
+		slideWorkflow = next;
+		persistSlideWorkflow();
+	}
+
+	function setSlideWorkflowFromSelect(index: number, raw: string) {
+		const v = String(raw ?? '');
+		if (v.startsWith('saved:')) {
+			const id = v.slice(6);
+			const saved = savedWorkflowTemplates.find((s) => s.id === id);
+			if (!saved) return;
+			/* Picking a saved Studio template replaces the whole flow (not just slide 1’s layout id). */
+			applySavedTemplateAsFlow(saved);
+			return;
+		}
+		setSlideWorkflowTemplate(index, v as TemplateId);
+	}
+
+	function addWorkflowStep(template?: TemplateId) {
+		if (slideWorkflow.length >= 8) return;
+		const fallback = defaultWorkflowTemplate();
+		const tpl = coerceTemplateId(
+			template ?? slideWorkflow[slideWorkflow.length - 1]?.template ?? fallback,
+		);
+		slideWorkflow = [...slideWorkflow, { template: tpl }];
+		slidesPerShow = slideWorkflow.length;
+		persistSlideWorkflow();
+	}
+
+	function addSavedWorkflowStep(saved: SavedWorkflowTemplate) {
+		if (slideWorkflow.length >= 8) return;
+		const tpl = coerceTemplateId(
+			saved.templates[Math.min(slideWorkflow.length, saved.templates.length - 1)] ??
+				saved.templates[0] ??
+				'news',
+		);
+		slideWorkflow = [
+			...slideWorkflow,
+			{
+				template: tpl,
+				savedId: saved.id,
+				savedName: saved.name,
+			},
+		];
+		slidesPerShow = slideWorkflow.length;
+		persistSlideWorkflow();
+	}
+
+	/** Replace the whole flow with every slide layout from a saved Studio template. */
+	function applySavedTemplateAsFlow(saved: SavedWorkflowTemplate) {
+		const templates = (saved.templates.length ? saved.templates : ['news' as TemplateId]).slice(0, 8);
+		slideWorkflow = templates.map((template) => ({
+			template: coerceTemplateId(template),
+			savedId: saved.id,
+			savedName: saved.name,
+		}));
+		slidesPerShow = slideWorkflow.length;
+		persistSlideWorkflow();
+	}
+
+	function removeWorkflowStep(index: number) {
+		if (slideWorkflow.length <= 1) return;
+		slideWorkflow = slideWorkflow.filter((_, i) => i !== index);
+		slidesPerShow = Math.max(1, slideWorkflow.length);
+		persistSlideWorkflow();
+	}
+
+	function workflowTemplatesForShow(): TemplateId[] {
+		const n = Math.max(1, slidesPerShow);
+		const fallback = defaultWorkflowTemplate();
+		return Array.from({ length: n }, (_, i) =>
+			coerceTemplateId(slideWorkflow[i]?.template ?? fallback),
+		);
+	}
+
+	/** Prefer live `slideTemplates` from the saved Studio draft so Bulk can’t drift to News. */
+	async function resolveWorkflowTemplatesForGenerate(): Promise<TemplateId[]> {
+		const n = Math.max(1, slidesPerShow);
+		const fallback = defaultWorkflowTemplate();
+		const savedIds = [
+			...new Set(
+				slideWorkflow.map((s) => String(s.savedId ?? '').trim()).filter(Boolean),
+			),
+		];
+		if (savedIds.length === 1 && userId) {
+			const savedId = savedIds[0]!;
+			try {
+				const { data } = await (supabase as any)
+					.from('drafts')
+					.select('state')
+					.eq('id', savedId)
+					.eq('user_id', userId)
+					.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+					.maybeSingle();
+				const templates = templatesFromSavedDraftState(
+					(data?.state ?? null) as Record<string, unknown> | null,
+				);
+				if (templates.length) {
+					const name =
+						String((data?.state as Record<string, unknown> | undefined)?._templateName ?? '')
+							.trim() ||
+						slideWorkflow.find((s) => s.savedId === savedId)?.savedName ||
+						'Saved template';
+					slideWorkflow = Array.from({ length: n }, (_, i) => ({
+						template: coerceTemplateId(
+							templates[i] ?? templates[templates.length - 1] ?? fallback,
+						),
+						savedId,
+						savedName: name,
+					}));
+					persistSlideWorkflow();
+					return workflowTemplatesForShow();
+				}
+			} catch {
+				/* fall through to in-memory workflow */
+			}
+		}
+		return workflowTemplatesForShow();
+	}
+
+	async function refreshSavedWorkflowTemplates() {
+		if (!userId) {
+			savedWorkflowTemplates = [];
+			return;
+		}
+		savedWorkflowLoading = true;
+		try {
+			const data = await fetchDraftLibraryRows(supabase, {
+				userId,
+				kind: STUDIO_SAVED_TEMPLATE_KIND,
+				limit: 40,
+			});
+			savedWorkflowTemplates = data
+				.map((row) => {
+					const state = (row.state ?? null) as Record<string, unknown> | null;
+					const templates = templatesFromSavedDraftState(state);
+					const logoSrc = logoFromSavedDraftState(state);
+					const overlaysBySlide = imageOverlaysBySlideFromSavedDraft(state);
+					return {
+						id: String(row.id ?? ''),
+						name: String(row.state?._templateName ?? '').trim() || 'Untitled template',
+						templates: templates.length ? templates : (['news'] as TemplateId[]),
+						...(logoSrc ? { logoSrc } : {}),
+						...(overlaysBySlide.some((r) => r.length)
+							? { overlaysBySlide }
+							: {}),
+					};
+				})
+				.filter((row) => row.id);
+		} catch {
+			savedWorkflowTemplates = [];
+		} finally {
+			savedWorkflowLoading = false;
+		}
+	}
 
 	$effect(() => {
 		if (maxIdeasAllowed >= 1 && ideaCount > maxIdeasAllowed) {
@@ -213,6 +632,64 @@
 	);
 	const styleChipLabel = $derived(BULK_STYLES.find((s) => s.id === style)?.label ?? 'Style');
 	const emotionChipLabel = $derived(BULK_EMOTIONS.find((e) => e.id === emotion)?.label ?? 'Emotion');
+	const copyLengthChipLabel = $derived(
+		newsCopyLength === 'short' ? 'Short' : newsCopyLength === 'standard' ? 'Standard' : 'Default',
+	);
+
+	function countPlainWords(text: string): number {
+		return String(text ?? '')
+			.replace(/\[\[|\]\]/g, '')
+			.trim()
+			.split(/\s+/)
+			.filter(Boolean).length;
+	}
+
+	/** Headline / hook budget — matches Studio. */
+	const bulkHeadlineMaxWords = $derived.by(() => {
+		if (newsCopyLength === 'short') return 10;
+		if (newsCopyLength === 'standard') return 16;
+		const n = countPlainWords(NEWS_PLACEHOLDER_HEADLINE);
+		return Math.max(6, Math.min(24, n || 12));
+	});
+
+	/** Body / support budget — matches Studio News default. */
+	const bulkBodyMaxWords = $derived.by(() => {
+		if (newsCopyLength === 'short') return 18;
+		if (newsCopyLength === 'standard') return 28;
+		const n = countPlainWords(NEWS_DEFAULT_SUBTEXT);
+		return Math.max(6, Math.min(80, n || 24));
+	});
+
+	const bulkDefaultWordBudgetLabel = $derived(
+		`Match placeholder — ${bulkBodyMaxWords} words`,
+	);
+
+	/** SoftBank-length News body — first 1–2 sentences only (API context is a longer bible). */
+	function clampBulkNewsBody(text: string): string {
+		const plain = stripEmDashes(String(text ?? '').replace(/\[\[|\]\]/g, ''))
+			.replace(/\u2026/g, '')
+			.replace(/\s+/g, ' ')
+			.trim();
+		if (!plain) return '';
+		const maxWords = bulkBodyMaxWords;
+		const maxSentences = newsCopyLength === 'short' ? 1 : 2;
+		const maxChars = Math.max(140, Math.min(320, maxWords * 7));
+		const sentences = splitIntoSentences(plain).filter((s) => s.trim());
+		const candidate = (sentences.slice(0, maxSentences).join(' ').trim() || plain).trim();
+		return fitCopyBudget(candidate, { maxWords, maxChars });
+	}
+
+	/** Headline / hook — same word chip as Studio News. */
+	function clampBulkHeadline(text: string, keepMarkup: boolean): string {
+		const raw = sanitizeOverlayLine(stripEmDashes(String(text ?? '').trim()));
+		if (!raw) return '';
+		const maxWords = bulkHeadlineMaxWords;
+		const plain = raw.replace(/\[\[|\]\]/g, '').replace(/\s+/g, ' ').trim();
+		if (keepMarkup && raw.includes('[[') && countPlainWords(plain) <= maxWords) {
+			return raw;
+		}
+		return ensureCompleteThought(clampToCompleteWords(plain, maxWords));
+	}
 
 	async function refreshBulkUsage() {
 		try {
@@ -252,8 +729,59 @@
 	}
 
 	function applyPromptHistoryEntry(entry: StudioPromptHistoryEntry) {
+		newsContentMode = entry.mode;
 		topic = entry.query;
 		promptHistoryOpen = false;
+	}
+
+	function parseStepsCountFromPrompt(prompt: string, fallback: number): number {
+		const m = String(prompt ?? '').match(/\b([3-8])\s*(?:steps?|ways?|tips?|things?)\b/i);
+		if (m) return Math.max(3, Math.min(8, Number(m[1])));
+		return Math.max(3, Math.min(8, Math.floor(fallback) || 5));
+	}
+
+	function bulkTonePayload() {
+		return {
+			audience: audiencePromptText(audienceId, audience) || undefined,
+			emotion: emotion || undefined,
+			style,
+		};
+	}
+
+	function bulkSyntheticHint(mode: NewsStudioContentMode, query: string): string {
+		const q = query.trim();
+		if (mode === 'fact') {
+			const label =
+				factTopicCategory !== 'any'
+					? (FACT_TOPICS.find((t) => t.id === factTopicCategory)?.label ?? '')
+					: '';
+			return [label, q].filter(Boolean).join(': ').slice(0, 600);
+		}
+		if (mode === 'quote') {
+			const label =
+				quoteTopicCategory !== 'any'
+					? (FACT_TOPICS.find((t) => t.id === quoteTopicCategory)?.label ?? '')
+					: '';
+			return [label, q].filter(Boolean).join(': ').slice(0, 600);
+		}
+		return q.slice(0, 600);
+	}
+
+	function applyUsageFromPayload(data: { usage?: unknown }) {
+		if (data.usage && typeof data.usage === 'object') {
+			const u = data.usage as {
+				canGenerate?: boolean;
+				remaining?: number | null;
+				used?: number;
+				limit?: number | null;
+			};
+			if (typeof u.canGenerate === 'boolean') usageCanGenerate = u.canGenerate;
+			if (u.remaining !== undefined) usageRemaining = u.remaining;
+			if (typeof u.used === 'number') usageUsed = u.used;
+			if (u.limit !== undefined) usageLimit = u.limit;
+			return true;
+		}
+		return false;
 	}
 
 	function submitBulkPrompt() {
@@ -284,6 +812,10 @@
 	let pyautoflipReady = $state(false);
 	let ffmpegReady = $state(false);
 	let exportBusySlideId = $state<string | null>(null);
+	let exportBusyShowId = $state<string | null>(null);
+	let exportCaptureSlide = $state<BulkSlide | null>(null);
+	let exportCaptureIndex = $state(0);
+	let exportHostEl = $state<HTMLDivElement | null>(null);
 	let clipProjectId = $state<string | null>(null);
 	let clipProjectSource = $state<VideoImportMeta | null>(null);
 	let clipProjectClips = $state<VideoClip[]>([]);
@@ -376,21 +908,47 @@
 	}
 
 	function leanShowsForCloud(source: BulkShow[]): BulkShow[] {
-		return source.map((show) => ({
-			...show,
-			slides: (show.slides ?? []).map((sl) => {
-				const { mediaLoading: _m, reframeBusy: _r, ...rest } = sl;
-				const mediaUrl = String(rest.mediaUrl ?? '');
-				const mediaThumb = String(rest.mediaThumb ?? '');
-				const dropUrl = mediaUrl.startsWith('data:') || mediaUrl.startsWith('blob:');
-				const dropThumb = mediaThumb.startsWith('data:') || mediaThumb.startsWith('blob:');
-				return {
-					...rest,
-					mediaUrl: dropUrl ? (dropThumb ? undefined : mediaThumb || undefined) : rest.mediaUrl,
-					mediaThumb: dropThumb ? undefined : rest.mediaThumb,
-				};
-			}),
-		}));
+		return source.map((show) => {
+			const seen = new Set<string>();
+			const slides = (show.slides ?? []).filter((sl) => {
+				const id = String(sl.id ?? '').trim();
+				if (!id) return true;
+				if (seen.has(id)) return false;
+				seen.add(id);
+				return true;
+			});
+			return {
+				...show,
+				slides: slides.map((sl) => {
+					const { mediaLoading: _m, reframeBusy: _r, ...rest } = sl;
+					const mediaUrl = String(rest.mediaUrl ?? '');
+					const mediaThumb = String(rest.mediaThumb ?? '');
+					const dropUrl = mediaUrl.startsWith('data:') || mediaUrl.startsWith('blob:');
+					const dropThumb = mediaThumb.startsWith('data:') || mediaThumb.startsWith('blob:');
+					return {
+						...rest,
+						mediaUrl: dropUrl ? (dropThumb ? undefined : mediaThumb || undefined) : rest.mediaUrl,
+						mediaThumb: dropThumb ? undefined : rest.mediaThumb,
+					};
+				}),
+			};
+		});
+	}
+
+	function dedupeShowSlides(source: BulkShow[]): BulkShow[] {
+		return source.map((show) => {
+			const seen = new Set<string>();
+			const slides = (show.slides ?? []).filter((sl) => {
+				const id = String(sl.id ?? '').trim();
+				if (!id) return true;
+				if (seen.has(id)) return false;
+				seen.add(id);
+				return true;
+			});
+			const active =
+				slides.some((s) => s.id === show.activeSlideId) ? show.activeSlideId : slides[0]?.id ?? '';
+			return { ...show, slides, activeSlideId: active };
+		});
 	}
 
 	async function refreshLibrary() {
@@ -467,9 +1025,24 @@
 			selectedShowId,
 			clipProjectId,
 		};
-		const updateId = opts?.updateId || undefined;
-		const res = await fetch(updateId ? `/api/bulk/workspaces/${updateId}` : '/api/bulk/workspaces', {
-			method: updateId ? 'PATCH' : 'POST',
+		const updateId = String(opts?.updateId ?? '').trim() || undefined;
+		if (updateId && userId && wasBulkWorkspaceDeletedLocally(userId, updateId)) {
+			/* User deleted this row in Carousels — don't PATCH/resurrect it; insert fresh if needed. */
+		} else if (updateId) {
+			const res = await fetch(`/api/bulk/workspaces/${updateId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
+			if (res.ok) return updateId;
+			/* Deleted from Carousels (or stale id) — fall through to a fresh insert. */
+			if (res.status !== 404) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error((err as { error?: string }).error || 'Could not save slideshow');
+			}
+		}
+		const res = await fetch('/api/bulk/workspaces', {
+			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(payload),
 		});
@@ -478,14 +1051,17 @@
 			throw new Error((err as { error?: string }).error || 'Could not save slideshow');
 		}
 		const json = (await res.json()) as { id?: string };
-		return json.id ?? updateId ?? null;
+		return json.id ?? null;
 	}
 
-	async function archiveCurrentToCloud() {
+	/** Keep prior stack in local history — do not spam Carousels with a new cloud row. */
+	async function archiveCurrentToLocalHistory() {
 		if (!userId || !showsHaveContent(shows)) return null;
-		const id = await saveShowsToCloud(shows);
-		void refreshLibrary();
-		return id;
+		return archiveBulkShowsToHistory(userId, {
+			shows,
+			selectedShowId,
+			topic,
+		});
 	}
 
 	async function saveCurrentToLibrary() {
@@ -518,13 +1094,23 @@
 		if (libraryBusy) return;
 		libraryBusy = true;
 		try {
-			if (showsHaveContent(shows)) {
-				const id = await saveShowsToCloud(shows, { updateId: cloudWorkspaceId });
-				if (id) cloudWorkspaceId = id;
+			if (showsHaveContent(shows) && userId) {
+				await archiveBulkShowsToHistory(userId, {
+					shows,
+					selectedShowId,
+					topic,
+				}).catch(() => {});
+				/* Update existing library row only — never recreate a row the user deleted. */
+				if (
+					cloudWorkspaceId &&
+					!wasBulkWorkspaceDeletedLocally(userId, cloudWorkspaceId)
+				) {
+					await saveShowsToCloud(shows, { updateId: cloudWorkspaceId }).catch(() => {});
+				}
 			}
 			if (userId) clearBulkWorkspace(userId);
 			const caps = captionDefaultsFromKit(brandKit);
-			const blank = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, slidesPerShow);
+			const blank = createBlankShow(workflowTemplatesForShow(), caps, slidesPerShow);
 			workspaceAutosaveReady = false;
 			workspaceRevealReady = false;
 			shows = [blank];
@@ -555,7 +1141,7 @@
 				cloudWorkspaceId = null;
 				if (userId) clearBulkWorkspace(userId);
 				const caps = captionDefaultsFromKit(brandKit);
-				const blank = createBlankShow(coerceTemplateId(brandKit.defaultTemplateId), caps, 3);
+				const blank = createBlankShow(workflowTemplatesForShow(), caps, slidesPerShow);
 				shows = [blank];
 				selectedShowId = blank.id;
 				topic = '';
@@ -590,8 +1176,26 @@
 			const kit = (e as CustomEvent<BrandKitSettings>).detail;
 			if (kit) brandKit = kit;
 		};
+		const onWorkspaceDeleted = (e: Event) => {
+			const ids = (e as CustomEvent<{ ids?: string[] }>).detail?.ids ?? [];
+			const hit = ids.some((id) => id && id === cloudWorkspaceId);
+			if (!hit) return;
+			cloudWorkspaceId = null;
+			if (userId) clearBulkWorkspace(userId);
+			const caps = captionDefaultsFromKit(brandKit);
+			const blank = createBlankShow(workflowTemplatesForShow(), caps, slidesPerShow);
+			shows = [blank];
+			selectedShowId = blank.id;
+			topic = '';
+			clipProjectId = null;
+			void goto('/dashboard/bulk', { replaceState: true, noScroll: true });
+		};
 		window.addEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
-		return () => window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+		window.addEventListener(BULK_WORKSPACE_DELETED_EVENT, onWorkspaceDeleted);
+		return () => {
+			window.removeEventListener(BRAND_KIT_UPDATED_EVENT, onBrandKit);
+			window.removeEventListener(BULK_WORKSPACE_DELETED_EVENT, onWorkspaceDeleted);
+		};
 	});
 
 	onMount(async () => {
@@ -615,8 +1219,40 @@
 			userId = user.id;
 			void refreshBulkUsage();
 			brandKit = await hydrateBrandKit(user.id);
+			try {
+				const { data: ovRows } = await (supabase as any)
+					.from('drafts')
+					.select('state')
+					.eq('user_id', user.id)
+					.eq('kind', 'studio_template_override')
+					.limit(40);
+				const newsOv = (Array.isArray(ovRows) ? ovRows : [])
+					.map((row: { state?: TemplateDevOverride }) => row?.state)
+					.find(
+						(s: TemplateDevOverride | undefined) =>
+							s &&
+							s.v === 1 &&
+							s.enabled !== false &&
+							coerceTemplateId(String(s.templateId ?? '')) === 'news',
+					) as TemplateDevOverride | undefined;
+				newsTemplateOverride = newsOv ?? null;
+			} catch {
+				newsTemplateOverride = null;
+			}
 			const caps = captionDefaultsFromKit(brandKit);
 			const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
+			const restoredWorkflow = restoreSlideWorkflow();
+			if (!restoredWorkflow) {
+				syncSlideWorkflow(slidesPerShow);
+				if (
+					slideWorkflow.every((s) => s.template === 'news' && !s.savedId) &&
+					defaultTpl !== 'news'
+				) {
+					slideWorkflow = Array.from({ length: slidesPerShow }, () => ({ template: defaultTpl }));
+					persistSlideWorkflow();
+				}
+			}
+			void refreshSavedWorkflowTemplates();
 
 			try {
 				const res = await fetch('/api/videos/tools');
@@ -632,11 +1268,13 @@
 			const cloud = data.cloudWorkspace;
 			if (cloud?.shows?.length) {
 				cloudWorkspaceId = cloud.id;
-				shows = await resignShowsMedia(
-					cloud.shows.map((s) => ({
-						...s,
-						slides: (s.slides ?? []).map((sl) => ({ ...sl })),
-					})),
+				shows = dedupeShowSlides(
+					await resignShowsMedia(
+						cloud.shows.map((s) => ({
+							...s,
+							slides: (s.slides ?? []).map((sl) => ({ ...sl })),
+						})),
+					),
 				);
 				const showParam = $page.url.searchParams.get('show');
 				selectedShowId =
@@ -701,16 +1339,22 @@
 			// Bare /dashboard/bulk → placeholders. Resume only with ?resume=1 (Studio / F5 mid-edit).
 			const wantResume = $page.url.searchParams.get('resume') === '1';
 			if (wantResume && saved?.shows?.length) {
-				shows = await resignShowsMedia(saved.shows);
-				selectedShowId =
-					saved.selectedShowId && saved.shows.some((s) => s.id === saved.selectedShowId)
-						? saved.selectedShowId
-						: saved.shows[0]?.id ?? null;
-				if (saved.topic?.trim()) topic = saved.topic;
-				if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
-				touchBulkWorkspaceSession(user.id);
-				await finishWorkspaceHydrate({ skeletonCount: saved.shows.length, resumeUrl: true });
-				return;
+				const localCloudId = String(saved.cloudWorkspaceId ?? '').trim();
+				if (localCloudId && wasBulkWorkspaceDeletedLocally(user.id, localCloudId)) {
+					clearBulkWorkspace(user.id);
+				} else {
+					shows = dedupeShowSlides(await resignShowsMedia(saved.shows));
+					selectedShowId =
+						saved.selectedShowId && shows.some((s) => s.id === saved.selectedShowId)
+							? saved.selectedShowId
+							: shows[0]?.id ?? null;
+					if (saved.topic?.trim()) topic = saved.topic;
+					if (saved.clipProjectId) clipProjectId = saved.clipProjectId;
+					if (localCloudId) cloudWorkspaceId = localCloudId;
+					touchBulkWorkspaceSession(user.id);
+					await finishWorkspaceHydrate({ skeletonCount: saved.shows.length, resumeUrl: true });
+					return;
+				}
 			}
 
 			if (saved?.shows?.length) {
@@ -723,7 +1367,7 @@
 				clearBulkWorkspace(user.id);
 			}
 
-			const show = createBlankShow(defaultTpl, caps, slidesPerShow);
+			const show = createBlankShow(workflowTemplatesForShow(), caps, slidesPerShow);
 			shows = [show];
 			selectedShowId = show.id;
 			await finishWorkspaceHydrate({ skeletonCount: 1 });
@@ -733,7 +1377,7 @@
 				try {
 					const caps = captionDefaultsFromKit(brandKit);
 					const blank = createBlankShow(
-						coerceTemplateId(brandKit.defaultTemplateId),
+						workflowTemplatesForShow(),
 						caps,
 						slidesPerShow,
 					);
@@ -767,6 +1411,7 @@
 				selectedShowId,
 				topic,
 				clipProjectId,
+				cloudWorkspaceId,
 			});
 			// Keep F5 / Studio return on the active draft
 			if (typeof window !== 'undefined' && showsHaveContent(shows)) {
@@ -781,16 +1426,20 @@
 			}
 			// Keep the open cloud row in sync while editing /dashboard/bulk/[id]
 			if (cloudWorkspaceId && showsHaveContent(shows)) {
-				await fetch(`/api/bulk/workspaces/${cloudWorkspaceId}`, {
-					method: 'PATCH',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						topic,
-						shows: leanShowsForCloud(shows),
-						selectedShowId,
-						clipProjectId,
-					}),
-				}).catch(() => {});
+				if (wasBulkWorkspaceDeletedLocally(userId, cloudWorkspaceId)) {
+					cloudWorkspaceId = null;
+				} else {
+					await fetch(`/api/bulk/workspaces/${cloudWorkspaceId}`, {
+						method: 'PATCH',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							topic,
+							shows: leanShowsForCloud(shows),
+							selectedShowId,
+							clipProjectId,
+						}),
+					}).catch(() => {});
+				}
 			}
 		} finally {
 			workspaceSaving = false;
@@ -1029,18 +1678,24 @@
 				});
 		if (workspaceRevealReady && userId && showsHaveContent(shows)) {
 			const prevShows = shows;
-			void saveShowsToCloud(prevShows).then(() => refreshLibrary()).catch(() => {});
+			const prevSelected = selectedShowId;
+			const prevTopic = topic;
+			void archiveBulkShowsToHistory(userId, {
+				shows: prevShows,
+				selectedShowId: prevSelected,
+				topic: prevTopic,
+			}).catch(() => {});
 		}
+		const replaceCloudId = cloudWorkspaceId;
 		shows = incoming;
 		selectedShowId = incoming[0]?.id ?? null;
 		clipHandoff = null;
-		cloudWorkspaceId = null;
 		if (clipProjectId) scheduleClipProjectSave();
 		workspaceHydrated = true;
 		void persistBulkWorkspace();
 		// Same as topic generate: land clip carousels in Library / Carousels immediately.
 		if (userId && showsHaveContent(incoming)) {
-			void saveShowsToCloud(incoming)
+			void saveShowsToCloud(incoming, { updateId: replaceCloudId })
 				.then(async (id) => {
 					if (!id) return;
 					cloudWorkspaceId = id;
@@ -1049,7 +1704,11 @@
 						await goto(`/dashboard/bulk/${id}`, { replaceState: true, noScroll: true });
 					}
 				})
-				.catch(() => {});
+				.catch(() => {
+					cloudWorkspaceId = null;
+				});
+		} else {
+			cloudWorkspaceId = null;
 		}
 	}
 
@@ -1225,6 +1884,151 @@
 		}
 	}
 
+	function slugForExport(raw: string): string {
+		return (
+			String(raw ?? '')
+				.replace(/\[\[|\]\]/g, '')
+				.replace(/[^\w.-]+/g, '_')
+				.replace(/^_+|_+$/g, '')
+				.slice(0, 60) || 'slideshow'
+		);
+	}
+
+	async function waitForExportPaint() {
+		await tick();
+		await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+		try {
+			await document.fonts?.ready;
+		} catch {
+			/* ignore */
+		}
+		const host = exportHostEl;
+		if (!host) return;
+		await Promise.all(
+			Array.from(host.querySelectorAll('img')).map(
+				(img) =>
+					new Promise<void>((resolve) => {
+						if (img.complete && img.naturalWidth > 0) {
+							resolve();
+							return;
+						}
+						img.addEventListener('load', () => resolve(), { once: true });
+						img.addEventListener('error', () => resolve(), { once: true });
+						setTimeout(() => resolve(), 4000);
+					}),
+			),
+		);
+	}
+
+	async function toBulkExportSafeImageUrl(url: string): Promise<string> {
+		const src = String(url ?? '').trim();
+		if (!src) return '';
+		if (src.startsWith('data:')) return src;
+		if (src.startsWith('blob:') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/')) {
+			try {
+				const res = await fetch(src, { signal: AbortSignal.timeout(20_000) });
+				if (!res.ok) return src;
+				const blob = await res.blob();
+				return await new Promise<string>((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onload = () => resolve(String(reader.result ?? ''));
+					reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+					reader.readAsDataURL(blob);
+				});
+			} catch {
+				return src;
+			}
+		}
+		return src;
+	}
+
+	async function rasterizeBulkExportNode(node: HTMLElement): Promise<string> {
+		const w = Math.max(1, Math.round(node.offsetWidth) || STUDIO_FEED_CANVAS.w);
+		const h = Math.max(1, Math.round(node.offsetHeight) || STUDIO_FEED_CANVAS.h);
+		await Promise.all(
+			Array.from(node.querySelectorAll('video')).map(
+				(video) =>
+					new Promise<void>((resolve) => {
+						if (video.readyState >= 2 && video.videoWidth > 0) {
+							resolve();
+							return;
+						}
+						const done = () => resolve();
+						video.addEventListener('loadeddata', done, { once: true });
+						video.addEventListener('canplay', done, { once: true });
+						video.addEventListener('error', done, { once: true });
+						try {
+							void video.play?.().then(() => video.pause?.()).catch(() => {});
+						} catch {
+							/* ignore */
+						}
+						setTimeout(done, 4000);
+					}),
+			),
+		);
+		const restoreVideos = await replaceVideosWithFrameImages(node);
+		const restoreImgs = await materializeDomImagesForExport(node, toBulkExportSafeImageUrl);
+		try {
+			return await toPng(node, {
+				width: w,
+				height: h,
+				pixelRatio: 1,
+				backgroundColor: '#0a0a0a',
+				style: { transform: 'scale(1)', transformOrigin: 'top left' },
+				filter: (n: HTMLElement) => n.tagName !== 'VIDEO',
+				...SAFE_HTML_TO_IMAGE_OPTS,
+			} as Parameters<typeof toPng>[1]);
+		} finally {
+			restoreImgs();
+			restoreVideos();
+		}
+	}
+
+	async function exportShowAsZip(show: BulkShow) {
+		const slides = show.slides.length ? show.slides : [];
+		if (!slides.length) {
+			alert('This slideshow has no slides to export.');
+			return;
+		}
+		if (exportBusyShowId) return;
+		exportBusyShowId = show.id;
+		try {
+			const zip = new JSZip();
+			const folder = zip.folder(slugForExport(show.title)) ?? zip;
+			for (let i = 0; i < slides.length; i++) {
+				const slide = slides[i]!;
+				exportCaptureIndex = i;
+				exportCaptureSlide = { ...slide, videoMuted: true };
+				await waitForExportPaint();
+				const host = exportHostEl;
+				const node =
+					host?.querySelector<HTMLElement>('[data-studio-canvas-root]') ??
+					host?.querySelector<HTMLElement>('.bulk-preview > div') ??
+					null;
+				if (!node) throw new Error('Preview not ready for export');
+				const dataUrl = await rasterizeBulkExportNode(node);
+				const base64 = dataUrl.split(',')[1] ?? '';
+				if (!base64) throw new Error(`Could not capture slide ${i + 1}`);
+				folder.file(`slide-${i + 1}.png`, base64, { base64: true });
+			}
+			const blob = await zip.generateAsync({ type: 'blob' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `${slugForExport(show.title)}.zip`;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			setTimeout(() => URL.revokeObjectURL(url), 30_000);
+		} catch (e) {
+			console.warn('[bulk] slideshow export failed', e);
+			alert(formatExportError(e));
+		} finally {
+			exportCaptureSlide = null;
+			exportBusyShowId = null;
+		}
+	}
+
 	function updateActiveCaptions(showId: string, patch: Partial<BulkSlide['captions']>) {
 		const show = shows.find((s) => s.id === showId);
 		if (!show) return;
@@ -1258,6 +2062,8 @@
 
 		updateSlide(showId, slideId, {
 			template: next,
+			savedTemplateId: undefined,
+			savedTemplateName: undefined,
 			...(usesMedia ? {} : { mediaUrl: '', mediaKind: null, mediaThumb: '' }),
 		});
 
@@ -1271,9 +2077,42 @@
 		}
 	}
 
+	function setSlideTemplateFromSelect(showId: string, slideId: string, raw: string) {
+		const v = String(raw ?? '');
+		if (v.startsWith('saved:')) {
+			const id = v.slice(6);
+			const saved = savedWorkflowTemplates.find((s) => s.id === id);
+			const tpl = coerceTemplateId(
+				saved?.templates[0] ??
+					shows.find((s) => s.id === showId)?.slides.find((sl) => sl.id === slideId)?.template ??
+					'news',
+			);
+			updateSlide(showId, slideId, {
+				template: tpl,
+				savedTemplateId: id,
+				savedTemplateName: saved?.name || 'Saved template',
+			});
+			if (autoStock && templateUsesStockMedia(tpl)) {
+				void fillStockForSlide(showId, slideId);
+			}
+			return;
+		}
+		setSlideTemplate(showId, slideId, v as TemplateId);
+	}
+
+	function slideTemplateSelectValue(slide: BulkSlide): string {
+		if (slide.savedTemplateId) return `saved:${slide.savedTemplateId}`;
+		/* Infer from the current Bulk workflow so “new news” stays selected after generate. */
+		const fromFlow = slideWorkflow.find(
+			(s) => s.savedId && coerceTemplateId(s.template) === coerceTemplateId(slide.template),
+		);
+		if (fromFlow?.savedId) return `saved:${fromFlow.savedId}`;
+		return slide.template;
+	}
+
 	function addShow() {
 		const show = createBlankShow(
-			coerceTemplateId(brandKit.defaultTemplateId),
+			workflowTemplatesForShow(),
 			captionDefaultsFromKit(brandKit),
 			slidesPerShow,
 		);
@@ -1287,9 +2126,9 @@
 	function deleteShow(id: string) {
 		if (shows.length <= 1) {
 			const show = createBlankShow(
-				coerceTemplateId(brandKit.defaultTemplateId),
+				workflowTemplatesForShow(),
 				captionDefaultsFromKit(brandKit),
-				3,
+				slidesPerShow,
 			);
 			shows = [show];
 			selectedShowId = show.id;
@@ -1312,7 +2151,13 @@
 
 	function addSlideToShow(showId: string) {
 		const caps = captionDefaultsFromKit(brandKit);
-		const slide = createBlankSlide(coerceTemplateId(brandKit.defaultTemplateId), caps);
+		const show = shows.find((s) => s.id === showId);
+		const idx = show?.slides.length ?? 0;
+		const tpl =
+			workflowTemplatesForShow()[idx] ??
+			slideWorkflow[slideWorkflow.length - 1]?.template ??
+			defaultWorkflowTemplate();
+		const slide = createBlankSlide(coerceTemplateId(tpl), caps);
 		shows = shows.map((s) =>
 			s.id === showId ? { ...s, slides: [...s.slides, slide], activeSlideId: slide.id } : s,
 		);
@@ -1478,100 +2323,138 @@
 		generating = true;
 		generateError = '';
 		try {
+			const mode = newsContentMode;
+			const resolvedSteps =
+				mode === 'steps' ? parseStepsCountFromPrompt(t, stepsCount) : stepsCount;
+			if (mode === 'steps') stepsCount = resolvedSteps;
+			const syntheticHint = mode === 'news' ? '' : bulkSyntheticHint(mode, t);
+			const histQuery = mode === 'news' ? t : syntheticHint || t;
+
 			if (userId) {
 				promptHistory = pushPromptHistory(userId, {
-					query: t,
-					mode: 'general',
+					query: histQuery,
+					mode,
 					title: `${decksWanted} idea${decksWanted === 1 ? '' : 's'} · ${slidesPerShow} slides`,
 				});
 			}
-			const res = await fetch('/api/generate-slides', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					topic: t,
-					style,
-					slideCount: slidesPerShow,
-					deckCount: decksWanted,
-					imageCount: 0,
-					audience: audiencePromptText(audienceId, audience) || 'general audience',
-					emotion: emotion || undefined,
-					autoHighlight: wordHighlightsOn,
-				}),
-			});
-			const data = await res.json();
-			if (res.status === 402 || data?.code === 'LIMIT_REACHED') {
-				if (data?.usage && typeof data.usage === 'object') {
-					const u = data.usage as {
-						canGenerate?: boolean;
-						remaining?: number | null;
-						used?: number;
-						limit?: number | null;
-					};
-					if (typeof u.canGenerate === 'boolean') usageCanGenerate = u.canGenerate;
-					if (u.remaining !== undefined) usageRemaining = u.remaining;
-					if (typeof u.used === 'number') usageUsed = u.used;
-					if (u.limit !== undefined) usageLimit = u.limit;
-				} else {
-					usageCanGenerate = false;
-				}
-				openUsageUpgrade(typeof data?.error === 'string' ? data.error : undefined);
-				return;
-			}
-			if (!res.ok) throw new Error(data?.error || `Generate failed (${res.status})`);
-			if (data.usage && typeof data.usage === 'object') {
-				const u = data.usage as {
-					canGenerate?: boolean;
-					remaining?: number | null;
-					used?: number;
-					limit?: number | null;
-				};
-				if (typeof u.canGenerate === 'boolean') usageCanGenerate = u.canGenerate;
-				if (u.remaining !== undefined) usageRemaining = u.remaining;
-				if (typeof u.used === 'number') usageUsed = u.used;
-				if (u.limit !== undefined) usageLimit = u.limit;
-			} else {
-				void refreshBulkUsage();
-			}
 
 			const caps = captionDefaultsFromKit(brandKit);
-			const defaultTpl = coerceTemplateId(brandKit.defaultTemplateId);
-			let decks = Array.isArray(data.decks) ? data.decks : [];
-			// Fallback: single carousel → one show
-			if (!decks.length && Array.isArray(data.slides)) {
-				decks = [{ title: t.slice(0, 48), slides: data.slides }];
-			}
-			if (!decks.length) throw new Error('No slideshows returned');
+			const workflowTpls = await resolveWorkflowTemplatesForGenerate();
+			const defaultTpl = workflowTpls[0] ?? coerceTemplateId(brandKit.defaultTemplateId);
+			const tone = bulkTonePayload();
+			const newShows: BulkShow[] = [];
+			const deckTitlesSeen: string[] = [];
 
-			const newShows: BulkShow[] = decks.map((d: any) => {
-				const slidesRaw = Array.isArray(d.slides) ? d.slides : [];
-				let slides: BulkSlide[] = slidesRaw.map((s: any) => ({
-					id: crypto.randomUUID(),
-					// Keep the brand/default template for every beat so N slides stay one layout
-					// (e.g. News) with the idea split across them — not only slide 1.
-					template: defaultTpl || templateForSlideType(s.type),
-					headline: stripEmDashes(String(s.headline ?? '')),
-					body: stripEmDashes(String(s.body ?? s.subheadline ?? '')),
-					captions: { ...caps },
-				}));
-				while (slides.length < slidesPerShow) {
-					slides.push(createBlankSlide(defaultTpl || 'news', caps));
+			for (let d = 0; d < decksWanted; d++) {
+				const avoidHooks =
+					mode === 'news' || !userId
+						? []
+						: [...deckTitlesSeen, ...recentTitlesForQuery(userId, histQuery, 8)].slice(0, 12);
+
+				const slideN = Math.max(1, slidesPerShow);
+				const newsRes = await fetch('/api/news', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						mode,
+						storyCategory,
+						search: mode === 'news' ? t : undefined,
+						categories: mode === 'news' ? newsCategory : undefined,
+						limit: 15,
+						autoHighlight: wordHighlightsOn,
+						pick: mode === 'news' ? 'random' : 'first',
+						syntheticHint: syntheticHint || undefined,
+						stepCount: mode === 'steps' ? resolvedSteps : undefined,
+						slideCount: mode === 'news' ? undefined : slideN,
+						studioRegenAt: Date.now() + d,
+						avoidHooks: avoidHooks.length ? avoidHooks : undefined,
+						maxWords: bulkHeadlineMaxWords,
+						maxWordsSupport: bulkBodyMaxWords,
+						...tone,
+					}),
+				});
+				const newsData = await newsRes.json();
+				if (newsRes.status === 402 || newsData?.code === 'LIMIT_REACHED') {
+					if (!applyUsageFromPayload(newsData)) usageCanGenerate = false;
+					openUsageUpgrade(typeof newsData?.error === 'string' ? newsData.error : undefined);
+					break;
 				}
-				slides = slides.slice(0, slidesPerShow);
-				if (!slides.length) slides.push(createBlankSlide(defaultTpl || 'news', caps));
-				return {
+				if (!newsRes.ok) {
+					throw new Error(newsData?.error || `Generate failed (${newsRes.status})`);
+				}
+				if (!applyUsageFromPayload(newsData)) void refreshBulkUsage();
+
+				const hookText = stripEmDashes(String(newsData.text ?? ''));
+				const rawBody = stripEmDashes(String(newsData.description ?? newsData.title ?? ''));
+				const deckTitle = stripEmDashes(
+					String(newsData.title ?? hookText).replace(/\[\[|\]\]/g, ''),
+				).slice(0, 80);
+				if (deckTitle) deckTitlesSeen.push(deckTitle);
+
+				/* Same Hook → N distinct beats as Studio (`fetchDeckStoryBeats` / `/api/news/variants`). */
+				const { copyStrings, bodies: beatBodies } = await fetchDeckStoryBeats({
+					hookText: hookText || deckTitle,
+					rawText: rawBody || deckTitle || hookText || t,
+					count: slideN,
+					title: deckTitle || t.slice(0, 80),
+					sourceUrl: typeof newsData.url === 'string' ? newsData.url : undefined,
+					contentMode: mode,
+					userRequest: t,
+					stepCount: mode === 'steps' ? resolvedSteps : undefined,
+					autoHighlight: wordHighlightsOn,
+					includeBodies: true,
+					maxWords: bulkHeadlineMaxWords,
+					maxWordsSupport: bulkBodyMaxWords,
+					tone,
+					clampBody: (text) => clampBulkNewsBody(text),
+				});
+
+				const keepMarkup = wordHighlightsOn;
+				const headlines = copyStrings.map((h) =>
+					clampBulkHeadline(h || hookText || deckTitle, keepMarkup),
+				);
+				const bodies = (beatBodies.length ? beatBodies : Array.from({ length: slideN }, () => rawBody)).map(
+					(b) => clampBulkNewsBody(b || rawBody),
+				);
+
+				let slides: BulkSlide[] = Array.from({ length: slideN }, (_, i) => {
+					const step = slideWorkflow[i] ?? slideWorkflow[slideWorkflow.length - 1];
+					const savedId = String(step?.savedId ?? '').trim();
+					const savedName = String(step?.savedName ?? '').trim();
+					return {
+						id: crypto.randomUUID(),
+						template: coerceTemplateId(workflowTpls[i] ?? defaultTpl),
+						headline:
+							headlines[i] ||
+							(i === 0
+								? clampBulkHeadline(hookText, keepMarkup)
+								: clampBulkHeadline(copyStrings[i] || headlines[0] || hookText, keepMarkup)),
+						body: bodies[i] || (i === 0 ? clampBulkNewsBody(rawBody) : ''),
+						captions: { ...caps },
+						...(savedId
+							? { savedTemplateId: savedId, savedTemplateName: savedName || undefined }
+							: {}),
+					};
+				});
+				if (!slides.length) slides.push(createBlankSlide(defaultTpl, caps));
+
+				newShows.push({
 					id: crypto.randomUUID(),
-					title: stripEmDashes(String(d.title ?? '')),
+					title: deckTitle || t.slice(0, 48),
 					slides,
 					activeSlideId: slides[0]!.id,
-				};
-			});
+				});
+			}
 
-			await archiveCurrentToCloud().catch(() => {});
-			shows = newShows;
+			if (!newShows.length) {
+				if (usageBlocked) return;
+				throw new Error('No slideshows returned');
+			}
+
+			await archiveCurrentToLocalHistory().catch(() => {});
+			const replaceCloudId = cloudWorkspaceId;
+			shows = dedupeShowSlides(newShows);
 			selectedShowId = shows[0]?.id ?? null;
-			cloudWorkspaceId = null;
-			// Reveal decks immediately so filmstrip/main show loaders while stock fills
 			generating = false;
 			if (autoStock) {
 				await fillStockForShows(
@@ -1581,13 +2464,14 @@
 			}
 			await persistBulkWorkspace();
 			try {
-				// Prefer post-stock `shows` so thumbs land in the cloud library / Carousels.
-				const id = await saveShowsToCloud(shows);
+				/* Replace the open cloud row in place — don't leave deleted orphans that reappear. */
+				const id = await saveShowsToCloud(shows, { updateId: replaceCloudId });
 				if (id) {
 					cloudWorkspaceId = id;
 					void refreshLibrary();
 					await goto(`/dashboard/bulk/${id}`, { replaceState: true, noScroll: true });
 				} else {
+					cloudWorkspaceId = null;
 					generateError =
 						'Generated locally, but cloud save failed — check Carousels after fixing bulk_workspaces, or use Save in the Bulk library.';
 				}
@@ -1625,6 +2509,79 @@
 	}
 
 	const wordHighlightsOn = $derived(brandKit.textHighlightsEnabled !== false);
+	const newsSourceChromeBase = $derived(resolveNewsSourceChrome(brandKit, newsTemplateOverride));
+	/** Paint-ready chrome — `r2:` logos signed for Bulk previews. */
+	let newsSourceChrome = $state<NewsSourceChrome>(newsSourceChromeFromEmpty());
+	const newsSourceOffsets = $derived(newsSourceTextOffsets(newsSourceChrome));
+
+	function newsSourceChromeFromEmpty(): NewsSourceChrome {
+		return {
+			sourceLogoSrc: '',
+			sourceLogoWidth: 140,
+			sourceLogoPlateColor: '',
+			sourceOffsetX: 0,
+			sourceOffsetY: 0,
+			sourceLabel: '',
+			sourceBorderKind: 'none',
+			sourceBorderColor: '#ffffff',
+		};
+	}
+
+	$effect(() => {
+		const base = newsSourceChromeBase;
+		const savedIds = slideWorkflow.map((s) => String(s.savedId ?? '').trim()).filter(Boolean);
+		const savedLogo =
+			savedIds
+				.map((id) => savedWorkflowTemplates.find((t) => t.id === id)?.logoSrc?.trim())
+				.find((u) => !!u) || '';
+		const displayable =
+			base.sourceLogoSrc.startsWith('data:') ||
+			base.sourceLogoSrc.startsWith('blob:') ||
+			base.sourceLogoSrc.startsWith('http://') ||
+			base.sourceLogoSrc.startsWith('https://') ||
+			base.sourceLogoSrc.startsWith('/');
+		const withSavedLogo =
+			!displayable && savedLogo
+				? { ...base, sourceLogoSrc: savedLogo }
+				: base;
+		let cancelled = false;
+		newsSourceChrome = withSavedLogo;
+		void resolveNewsSourceChromeMedia(withSavedLogo).then((resolved) => {
+			if (!cancelled) newsSourceChrome = resolved;
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	/** Paint-ready News stickers for Bulk preview (override + saved template). */
+	let newsImageOverlaysBySlide = $state<Overlay[][]>([]);
+
+	$effect(() => {
+		const fromOverride = imageOverlaysFromNewsOverride(newsTemplateOverride);
+		const savedIds = slideWorkflow.map((s) => String(s.savedId ?? '').trim()).filter(Boolean);
+		const fromSaved =
+			savedIds
+				.map((id) => savedWorkflowTemplates.find((t) => t.id === id)?.overlaysBySlide)
+				.find((rows) => Array.isArray(rows) && rows.some((r) => r.length)) ?? [];
+		const rows: Overlay[][] =
+			fromSaved.length && fromSaved.some((r) => r.length)
+				? fromSaved
+				: fromOverride.length
+					? [fromOverride]
+					: [];
+		let cancelled = false;
+		newsImageOverlaysBySlide = rows;
+		if (rows.length) {
+			void resolveImageOverlaysBySlideMedia(rows).then((resolved) => {
+				if (!cancelled) newsImageOverlaysBySlide = resolved;
+			});
+		}
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	const brandHighlightDefaults = $derived(highlightDefaultsFromBrandKit(brandKit));
 	const brandHighlightColor = $derived(brandHighlightDefaults.color);
 	const highlightStyleKind = $derived(normalizeHighlightStyleKind(brandKit.highlightStyleKind));
@@ -1694,8 +2651,20 @@
 				maxBytes: 400_000,
 				quality: 0.82,
 			});
-			brandKit = { ...brandKit, logoUrl: dataUrl };
-			brandSavedNote = 'Logo optimized — click Save brand';
+			brandKit = {
+				...brandKit,
+				logoUrl: dataUrl,
+				sourceLabelMode: 'logo',
+				/* First upload often still has the old 260 default — snap to byline-sized mark. */
+				sourceLogoWidth:
+					Number(brandKit.sourceLogoWidth) >= 220
+						? 140
+						: Math.round(
+								Math.max(80, Math.min(400, Number(brandKit.sourceLogoWidth) || 140)),
+							),
+			};
+			if (userId) saveBrandKit(userId, brandKit);
+			brandSavedNote = 'Logo saved';
 			setTimeout(() => (brandSavedNote = ''), 2500);
 		} catch (err: unknown) {
 			brandSavedNote = err instanceof Error ? err.message : 'Logo upload failed';
@@ -1745,8 +2714,20 @@
 	}
 
 	async function openShowInStudio(show: BulkShow) {
+		const chrome = newsSourceChrome;
 		const state = buildDraftStateFromShow(show, {
-			brandCtaEnabled: !!(brandKit.cta.headline || brandKit.cta.image),
+			brandCtaEnabled: false,
+			newsChrome: {
+				sourceLogoSrc: chrome.sourceLogoSrc,
+				sourceLogoWidth: chrome.sourceLogoWidth,
+				sourceLogoPlateColor: chrome.sourceLogoPlateColor,
+				sourceOffsetX: chrome.sourceOffsetX,
+				sourceOffsetY: chrome.sourceOffsetY,
+				sourceLabel: chrome.sourceLabel,
+				sourceBorderKind: chrome.sourceBorderKind,
+				sourceBorderColor: chrome.sourceBorderColor,
+			},
+			imageOverlaysBySlide: newsImageOverlaysBySlide,
 		});
 		stashBulkImport(state);
 		await persistBulkWorkspace();
@@ -1993,10 +2974,14 @@
 									width={BULK_CAROUSEL_WIDTH}
 									loadingSlideIds={show.slides.filter((s) => s.mediaLoading).map((s) => s.id)}
 									textHighlightsEnabled={wordHighlightsOn}
-									sourceLogoSrc={brandKit.logoUrl || undefined}
-									sourceLabel={brandKit.displayName || undefined}
+									sourceLogoSrc={newsSourceChrome.sourceLogoSrc || undefined}
+									sourceLogoWidth={newsSourceChrome.sourceLogoWidth}
+									sourceLogoPlateColor={newsSourceChrome.sourceLogoPlateColor || undefined}
+									textOffsets={newsSourceOffsets}
+									sourceLabel={newsSourceChrome.sourceLabel || undefined}
 									highlightColor={brandHighlightColor}
 									highlightDefaults={brandHighlightDefaults}
+									imageOverlaysBySlide={newsImageOverlaysBySlide}
 									onselect={(slideId) => selectSlide(show.id, slideId)}
 								/>
 							{/if}
@@ -2023,10 +3008,14 @@
 												preferThumb={true}
 												mediaFetching={!!sl.mediaLoading}
 												textHighlightsEnabled={wordHighlightsOn}
-												sourceLogoSrc={brandKit.logoUrl || undefined}
-												sourceLabel={brandKit.displayName || undefined}
+												sourceLogoSrc={newsSourceChrome.sourceLogoSrc || undefined}
+												sourceLogoWidth={newsSourceChrome.sourceLogoWidth}
+												sourceLogoPlateColor={newsSourceChrome.sourceLogoPlateColor || undefined}
+												textOffsets={newsSourceOffsets}
+												sourceLabel={newsSourceChrome.sourceLabel || undefined}
 												highlightColor={brandHighlightColor}
 												highlightDefaults={brandHighlightDefaults}
+												overlays={imageOverlaysForSlide(newsImageOverlaysBySlide, si)}
 											/>
 											<span class="filmstrip-num">{si + 1}</span>
 											{#if sl.clipMeta && !sl.mediaLoading}
@@ -2257,32 +3246,72 @@
 								<NativeSelect.Root
 									id="bulk-tpl-{slide.id}"
 									class="w-full max-w-xs"
-									value={slide.template}
+									value={slideTemplateSelectValue(slide)}
 									onchange={(e) =>
-										setSlideTemplate(
+										setSlideTemplateFromSelect(
 											show.id,
 											slide.id,
-											(e.currentTarget as HTMLSelectElement).value as TemplateId,
+											(e.currentTarget as HTMLSelectElement).value,
 										)}
 								>
-									{#each STUDIO_TEMPLATES as t}
-										<NativeSelect.Option value={t.id}>{t.label}</NativeSelect.Option>
-									{/each}
+									<NativeSelect.OptGroup label="Layouts">
+										{#each STUDIO_TEMPLATES as t}
+											<NativeSelect.Option value={t.id}>{t.label}</NativeSelect.Option>
+										{/each}
+									</NativeSelect.OptGroup>
+									{#if savedWorkflowTemplates.length || slide.savedTemplateId || slideWorkflow.some((s) => s.savedId)}
+										<NativeSelect.OptGroup label="My templates">
+											{#each savedWorkflowTemplates as s}
+												<NativeSelect.Option value="saved:{s.id}">{s.name}</NativeSelect.Option>
+											{/each}
+											{#if slide.savedTemplateId && !savedWorkflowTemplates.some((s) => s.id === slide.savedTemplateId)}
+												<NativeSelect.Option value="saved:{slide.savedTemplateId}">
+													{slide.savedTemplateName || 'Saved template'}
+												</NativeSelect.Option>
+											{/if}
+											{#each slideWorkflow as step}
+												{#if step.savedId && !savedWorkflowTemplates.some((s) => s.id === step.savedId) && step.savedId !== slide.savedTemplateId}
+													<NativeSelect.Option value="saved:{step.savedId}">
+														{step.savedName || 'Saved template'}
+													</NativeSelect.Option>
+												{/if}
+											{/each}
+										</NativeSelect.OptGroup>
+									{/if}
 								</NativeSelect.Root>
 							</div>
 							</div>
 							{/key}
 
-							<Button
-								type="button"
-								size="sm"
-								class="shadow-sm self-start max-md:self-stretch"
-								onclick={() => openShowInStudio(show)}
-								title="Edit this slideshow in Studio"
-							>
-								Edit in Studio
-								<ArrowRight data-icon="inline-end" />
-							</Button>
+							<div class="flex flex-wrap items-center gap-2 self-start max-md:self-stretch">
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									class="shadow-sm max-md:flex-1"
+									disabled={!!exportBusyShowId}
+									onclick={() => void exportShowAsZip(show)}
+									title="Download this slideshow as PNGs"
+								>
+									{#if exportBusyShowId === show.id}
+										<Loader2 size={14} class="spin" />
+										Exporting…
+									{:else}
+										<Download size={14} />
+										Export
+									{/if}
+								</Button>
+								<Button
+									type="button"
+									size="sm"
+									class="shadow-sm max-md:flex-1"
+									onclick={() => openShowInStudio(show)}
+									title="Edit this slideshow in Studio"
+								>
+									Edit in Studio
+									<ArrowRight data-icon="inline-end" />
+								</Button>
+							</div>
 						</div>
 					</div>
 				</li>
@@ -2382,7 +3411,7 @@
 					{/if}
 					<input
 						bind:value={topic}
-						placeholder="Message…"
+						placeholder={topicPlaceholder}
 						onkeydown={(e) => {
 							if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
 								e.preventDefault();
@@ -2401,6 +3430,161 @@
 				</div>
 
 				<div class="prompt-bar-tools">
+					<Popover>
+						<PopoverTrigger class="prompt-chip">
+							{#if newsContentMode === 'general'}
+								<MessageSquare size={11} class="shrink-0" />
+								General
+							{:else if newsContentMode === 'news'}
+								<Newspaper size={11} class="shrink-0" />
+								News
+							{:else if newsContentMode === 'fact'}
+								<Sparkles size={11} class="shrink-0" />
+								Random fact
+							{:else if newsContentMode === 'story'}
+								<Type size={11} class="shrink-0" />
+								Random story
+							{:else if newsContentMode === 'steps'}
+								<ListOrdered size={11} class="shrink-0" />
+								Steps
+							{:else}
+								<Quote size={11} class="shrink-0" />
+								Quote
+							{/if}
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-52 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							{#each CONTENT_MODE_OPTS as opt}
+								<button
+									type="button"
+									onclick={() => (newsContentMode = opt.id)}
+									class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[12.5px] text-left transition-colors duration-100
+										{newsContentMode === opt.id
+											? 'bg-[#f0f0f0] font-semibold text-[#111]'
+											: 'font-medium text-[#555] hover:bg-[#f7f7f7]'}"
+								>
+									<opt.icon size={13} class="shrink-0" />
+									{opt.label}
+									{#if newsContentMode === opt.id}
+										<span class="ml-auto text-[#111]">✓</span>
+									{/if}
+								</button>
+							{/each}
+						</PopoverContent>
+					</Popover>
+
+					{#if newsContentMode !== 'general'}
+						<Popover>
+							<PopoverTrigger class="prompt-chip">
+								{#if newsContentMode === 'news'}
+									{NEWS_CATEGORIES.find((c) => c.id === newsCategory)?.label ?? 'Topic'}
+								{:else if newsContentMode === 'story'}
+									{STORY_THEMES.find((t) => t.id === storyCategory)?.label ?? 'Theme'}
+								{:else if newsContentMode === 'quote'}
+									{FACT_TOPICS.find((t) => t.id === quoteTopicCategory)?.label ?? 'Any'}
+								{:else if newsContentMode === 'steps'}
+									{stepsCount} steps
+								{:else}
+									{FACT_TOPICS.find((t) => t.id === factTopicCategory)?.label ?? 'Any'}
+								{/if}
+								<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+							</PopoverTrigger>
+							<PopoverContent
+								side="top"
+								sideOffset={10}
+								align="start"
+								avoidCollisions={false}
+								portalProps={{ to: 'body' }}
+								class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+							>
+								{#if newsContentMode === 'news'}
+									<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+										News Category
+									</p>
+									<div class="grid grid-cols-2 gap-1.5">
+										{#each NEWS_CATEGORIES as cat}
+											<button
+												type="button"
+												onclick={() => (newsCategory = cat.id)}
+												class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
+													{newsCategory === cat.id
+														? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+														: 'bg-[#f5f5f5] text-[#444] hover:bg-[#ececec]'}"
+											>
+												{cat.label}
+											</button>
+										{/each}
+									</div>
+								{:else if newsContentMode === 'story'}
+									<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+										Story Theme
+									</p>
+									<div class="grid grid-cols-2 gap-1.5">
+										{#each STORY_THEMES as th}
+											<button
+												type="button"
+												onclick={() => (storyCategory = th.id)}
+												class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
+													{storyCategory === th.id
+														? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+														: 'bg-[#f5f5f5] text-[#444] hover:bg-[#ececec]'}"
+											>
+												{th.label}
+											</button>
+										{/each}
+									</div>
+								{:else if newsContentMode === 'steps'}
+									<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+										Step count
+									</p>
+									<div class="grid grid-cols-3 gap-1.5">
+										{#each [3, 4, 5, 6, 7, 8] as n}
+											<button
+												type="button"
+												onclick={() => (stepsCount = n)}
+												class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
+													{stepsCount === n
+														? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+														: 'bg-[#f5f5f5] text-[#444] hover:bg-[#ececec]'}"
+											>
+												{n}
+											</button>
+										{/each}
+									</div>
+								{:else}
+									<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+										{newsContentMode === 'quote' ? 'Quote topic' : 'Fact topic'}
+									</p>
+									<div class="grid grid-cols-2 gap-1.5">
+										{#each FACT_TOPICS as ft}
+											<button
+												type="button"
+												onclick={() =>
+													newsContentMode === 'quote'
+														? (quoteTopicCategory = ft.id)
+														: (factTopicCategory = ft.id)}
+												class="rounded-xl px-3 py-2 text-[12px] font-medium text-left transition-colors duration-100
+													{(newsContentMode === 'quote' ? quoteTopicCategory : factTopicCategory) ===
+													ft.id
+														? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
+														: 'bg-[#f5f5f5] text-[#444] hover:bg-[#ececec]'}"
+											>
+												{ft.label}
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</PopoverContent>
+						</Popover>
+					{/if}
+
 					<Popover>
 						<PopoverTrigger class="prompt-chip max-w-[9.5rem]" title="Who this copy is written for">
 							<Users size={11} class="shrink-0" />
@@ -2510,6 +3694,80 @@
 					</Popover>
 
 					<Popover>
+						<PopoverTrigger class="prompt-chip" title="How long each slide’s overlay copy should be">
+							<Type size={11} class="shrink-0" />
+							<span class="truncate">{copyLengthChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Word count
+							</p>
+							<button
+								type="button"
+								onclick={() => (newsCopyLength = 'default')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsCopyLength === 'default'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Default</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]"
+										>{bulkDefaultWordBudgetLabel}</span
+									>
+								</span>
+								{#if newsCopyLength === 'default'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (newsCopyLength = 'standard')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsCopyLength === 'standard'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Standard</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]"
+										>Up to 28 words</span
+									>
+								</span>
+								{#if newsCopyLength === 'standard'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								onclick={() => (newsCopyLength = 'short')}
+								class="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-100
+									{newsCopyLength === 'short'
+										? 'bg-[#f0f0f0] text-[#111]'
+										: 'text-[#555] hover:bg-[#f7f7f7]'}"
+							>
+								<span class="min-w-0">
+									<span class="block text-[12.5px] font-semibold">Short</span>
+									<span class="mt-0.5 block text-[10.5px] font-medium leading-snug text-[#888]"
+										>≤12-word hook + 1 short body sentence</span
+									>
+								</span>
+								{#if newsCopyLength === 'short'}
+									<span class="ml-auto shrink-0 text-[#111]">✓</span>
+								{/if}
+							</button>
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
 						<PopoverTrigger class="prompt-chip" title="How many slideshow ideas to generate">
 							<Rows3 size={11} class="shrink-0" />
 							<span class="truncate">{ideaCount} idea{ideaCount === 1 ? '' : 's'}</span>
@@ -2561,8 +3819,28 @@
 						</PopoverContent>
 					</Popover>
 
+					<button
+						type="button"
+						class="prompt-bar-submit {usageBlocked ? 'opacity-50' : ''}"
+						disabled={promptSubmitDisabled}
+						title={usageBlocked
+							? usageUpgradeMessage || 'Carousel limit reached — upgrade for more'
+							: undefined}
+						aria-label={usageBlocked ? 'Limit reached' : generating ? 'Generating' : 'Generate'}
+						onclick={() => submitBulkPrompt()}
+					>
+						{#if generating}
+							<Loader2 size={15} class="spin" />
+						{:else}
+							<ArrowUp size={15} strokeWidth={2.5} />
+						{/if}
+					</button>
+				</div>
+
+				<!-- Deck structure: slides + workflow share a row -->
+				<div class="prompt-bar-tools">
 					<Popover>
-						<PopoverTrigger class="prompt-chip" title="Slides in each slideshow">
+						<PopoverTrigger class="prompt-chip max-w-[8.5rem]" title="Slides in each slideshow">
 							<Layers size={11} class="shrink-0" />
 							<span class="truncate">{slidesPerShow} slide{slidesPerShow === 1 ? '' : 's'}</span>
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
@@ -2582,7 +3860,7 @@
 								{#each [1, 2, 3, 4, 5, 6, 7, 8] as n}
 									<button
 										type="button"
-										onclick={() => (slidesPerShow = n)}
+										onclick={() => syncSlideWorkflow(n)}
 										class="rounded-xl px-3 py-2 text-[12px] font-medium text-center transition-colors duration-100
 											{slidesPerShow === n
 												? 'bg-[#7bf1a8] text-[#080808] font-semibold shadow-[inset_0_0_0_1px_rgba(8,8,8,0.06)]'
@@ -2592,6 +3870,150 @@
 									</button>
 								{/each}
 							</div>
+						</PopoverContent>
+					</Popover>
+
+					<Popover
+						onOpenChange={(o) => {
+							if (o) void refreshSavedWorkflowTemplates();
+						}}
+					>
+						<PopoverTrigger
+							class="prompt-chip max-w-[14rem]"
+							title="Template flow for each slide — e.g. News → Blank → Tweet"
+						>
+							<LayoutTemplate size={11} class="shrink-0" />
+							<span class="truncate">{workflowTemplateSummary}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] w-[min(24rem,calc(100vw-1.5rem))] gap-0 rounded-[18px] border-[#ebebeb] bg-white p-3 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Template workflow
+							</p>
+							<p class="mb-2.5 px-1 text-[10px] leading-snug text-[#999]">
+								Pick layouts or a saved Studio template. Choosing a saved template replaces the whole flow for new ideas.
+							</p>
+
+							<ul class="flex max-h-[16rem] flex-col gap-1.5 overflow-y-auto pr-0.5">
+								{#each slideWorkflow as step, i (i)}
+									<li class="flex items-center gap-2 rounded-xl bg-[#f7f7f7] px-2.5 py-2">
+										<span
+											class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white text-[10px] font-bold text-[#555] shadow-[inset_0_0_0_1px_#ebebeb]"
+										>
+											{i + 1}
+										</span>
+										<select
+											class="workflow-tpl-select min-w-0 flex-1"
+											value={workflowStepSelectValue(step)}
+											aria-label="Template for slide {i + 1}"
+											onchange={(e) =>
+												setSlideWorkflowFromSelect(
+													i,
+													(e.currentTarget as HTMLSelectElement).value,
+												)}
+										>
+											<optgroup label="Layouts">
+												{#each STUDIO_TEMPLATES as t}
+													<option value={t.id}>{t.label}</option>
+												{/each}
+											</optgroup>
+											{#if savedWorkflowTemplates.length}
+												<optgroup label="My templates">
+													{#each savedWorkflowTemplates as s}
+														<option value="saved:{s.id}">{s.name}</option>
+													{/each}
+												</optgroup>
+											{/if}
+										</select>
+										<button
+											type="button"
+											class="shrink-0 rounded-lg px-1.5 py-1 text-[#bbb] hover:bg-white hover:text-[#888] disabled:opacity-30"
+											title="Remove slide"
+											aria-label="Remove slide {i + 1}"
+											disabled={slideWorkflow.length <= 1}
+											onclick={() => removeWorkflowStep(i)}
+										>
+											<X size={12} />
+										</button>
+									</li>
+								{/each}
+							</ul>
+
+							<div class="mt-2.5 flex flex-wrap items-center gap-1.5 px-0.5">
+								<button
+									type="button"
+									class="inline-flex items-center gap-1 rounded-xl bg-[#f0f0f0] px-2.5 py-1.5 text-[11px] font-semibold text-[#333] hover:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-40"
+									disabled={slideWorkflow.length >= 8}
+									onclick={() => addWorkflowStep()}
+								>
+									<Plus size={12} />
+									Add slide
+								</button>
+								{#each STUDIO_TEMPLATES.slice(0, 6) as t}
+									<button
+										type="button"
+										class="rounded-xl bg-[#f7f7f7] px-2 py-1.5 text-[10px] font-medium text-[#666] hover:bg-[#ececec] disabled:cursor-not-allowed disabled:opacity-40"
+										disabled={slideWorkflow.length >= 8}
+										title="Append {t.label}"
+										onclick={() => addWorkflowStep(t.id)}
+									>
+										+ {t.label}
+									</button>
+								{/each}
+							</div>
+
+							{#if savedWorkflowLoading}
+								<p class="mt-2 px-1 text-[10px] text-[#aaa]">Loading your templates…</p>
+							{:else if savedWorkflowTemplates.length}
+								<p class="mb-1.5 mt-3 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+									My templates
+								</p>
+								<ul class="flex max-h-[9rem] flex-col gap-1 overflow-y-auto pr-0.5">
+									{#each savedWorkflowTemplates as s (s.id)}
+										<li
+											class="flex items-center gap-1.5 rounded-xl bg-[#f7f7f7] px-2 py-1.5"
+										>
+											<span class="min-w-0 flex-1 truncate text-[11px] font-medium text-[#333]"
+												>{s.name}</span
+											>
+											<button
+												type="button"
+												class="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-semibold text-[#444] shadow-[inset_0_0_0_1px_#ebebeb] hover:bg-[#fafafa] disabled:opacity-40"
+												disabled={slideWorkflow.length >= 8}
+												title="Add as next slide"
+												onclick={() => addSavedWorkflowStep(s)}
+											>
+												+ Add
+											</button>
+											<button
+												type="button"
+												class="shrink-0 rounded-lg bg-[#7bf1a8] px-2 py-1 text-[10px] font-semibold text-[#080808] hover:brightness-95"
+												title="Replace workflow with this template’s slides"
+												onclick={() => applySavedTemplateAsFlow(s)}
+											>
+												Use flow
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="mt-2 px-1 text-[10px] leading-snug text-[#aaa]">
+									No saved Studio templates yet. Save one in Studio (Save template) and it shows up here.
+								</p>
+							{/if}
+
+							{#if slideWorkflow.length > 1}
+								<p class="mt-2 truncate px-1 text-[10px] text-[#aaa]" title={workflowTemplateSummary}>
+									{slideWorkflow.map((step) => workflowStepLabel(step)).join(' → ')}
+								</p>
+							{/if}
 						</PopoverContent>
 					</Popover>
 
@@ -2680,23 +4102,6 @@
 							</button>
 						</PopoverContent>
 					</Popover>
-
-					<button
-						type="button"
-						class="prompt-bar-submit {usageBlocked ? 'opacity-50' : ''}"
-						disabled={promptSubmitDisabled}
-						title={usageBlocked
-							? usageUpgradeMessage || 'Carousel limit reached — upgrade for more'
-							: undefined}
-						aria-label={usageBlocked ? 'Limit reached' : generating ? 'Generating' : 'Generate'}
-						onclick={() => submitBulkPrompt()}
-					>
-						{#if generating}
-							<Loader2 size={15} class="spin" />
-						{:else}
-							<ArrowUp size={15} strokeWidth={2.5} />
-						{/if}
-					</button>
 				</div>
 			</div>
 		</div>
@@ -2980,7 +4385,7 @@
 					{usageUpgradeMessage}
 				</p>
 				<p class="mt-3 text-xs leading-relaxed text-[#888]">
-					Free: 5/mo · Hobby (${PLAN_CATALOG.hobby.monthly}/mo): 30 · Creator (${PLAN_CATALOG.creator.monthly}/mo): 100
+					Free: {PLAN_CATALOG.free.carouselsPerMonth}/mo · Hobby (${PLAN_CATALOG.hobby.monthly}/mo): {PLAN_CATALOG.hobby.carouselsPerMonth} · Creator (${PLAN_CATALOG.creator.monthly}/mo): {PLAN_CATALOG.creator.carouselsPerMonth}
 				</p>
 				<div class="mt-5 flex flex-wrap gap-2">
 					<Button href="/pricing" size="sm">View plans</Button>
@@ -2989,6 +4394,29 @@
 					</Button>
 				</div>
 			</div>
+		</div>
+	{/if}
+
+	{#if exportCaptureSlide}
+		<div
+			bind:this={exportHostEl}
+			class="pointer-events-none fixed top-0 left-[-12000px] z-[-1] overflow-hidden"
+			aria-hidden="true"
+		>
+			<BulkSlidePreview
+				slide={exportCaptureSlide}
+				width={STUDIO_FEED_CANVAS.w}
+				preferThumb={false}
+				textHighlightsEnabled={wordHighlightsOn}
+				sourceLogoSrc={newsSourceChrome.sourceLogoSrc || undefined}
+				sourceLogoWidth={newsSourceChrome.sourceLogoWidth}
+				sourceLogoPlateColor={newsSourceChrome.sourceLogoPlateColor || undefined}
+				textOffsets={newsSourceOffsets}
+				sourceLabel={newsSourceChrome.sourceLabel || undefined}
+				highlightColor={brandHighlightColor}
+				highlightDefaults={brandHighlightDefaults}
+				overlays={imageOverlaysForSlide(newsImageOverlaysBySlide, exportCaptureIndex)}
+			/>
 		</div>
 	{/if}
 </div>
@@ -3002,6 +4430,25 @@
 		background: #fff;
 		padding-bottom: var(--bulk-prompt-dock-pad);
 		transition: padding-bottom 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	:global(.workflow-tpl-select) {
+		appearance: none;
+		border: 1px solid #e8e8e8;
+		border-radius: 10px;
+		background: #fff
+			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+			no-repeat right 0.55rem center;
+		padding: 0.4rem 1.75rem 0.4rem 0.65rem;
+		font-size: 12px;
+		font-weight: 550;
+		color: #222;
+		line-height: 1.2;
+		cursor: pointer;
+	}
+	:global(.workflow-tpl-select:focus) {
+		outline: none;
+		border-color: #cfcfcf;
+		box-shadow: 0 0 0 3px rgba(123, 241, 168, 0.35);
 	}
 	.bulk--prompt-compose {
 		padding-bottom: 0;

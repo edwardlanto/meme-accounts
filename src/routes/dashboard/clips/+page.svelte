@@ -13,9 +13,12 @@
 	import { defaultThumbForTemplate } from '$lib/studio/slide-content-defaults';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
-		loadBulkHistory,
 		loadBulkWorkspace,
-		showsHaveContent,
+		clearBulkWorkspace,
+		clearBulkHistory,
+		purgeBulkHistoryByShowIds,
+		rememberDeletedBulkWorkspaceIds,
+		notifyBulkWorkspacesDeleted,
 	} from '$lib/studio/bulk-workspace';
 	import { type BulkSlide } from '$lib/studio/bulk-to-studio';
 	import BulkLibraryCover from '$lib/components/bulk/BulkLibraryCover.svelte';
@@ -298,30 +301,58 @@
 	);
 
 	const bulkShowCards = $derived(
-		topicBulkWorkspaces.flatMap((ws) => {
-			const shows = ws.shows?.length
-				? ws.shows
-				: ([
-						{
-							id: '',
-							title: ws.title || 'Bulk carousel',
-							slideCount: 0,
-							headline: '',
-							thumb: String(ws.thumbnailUrl ?? ''),
-							template: 'news',
-						},
-					] as BulkShowCard[]);
-			return shows.map((show, i) => ({
-				workspaceId: ws.id,
-				workspaceTopic: ws.topic || ws.title,
-				updatedAt: ws.updatedAt,
-				href: show.id
-					? `/dashboard/bulk/${ws.id}?show=${encodeURIComponent(show.id)}`
-					: `/dashboard/bulk/${ws.id}`,
-				show,
-				key: `bulk-${ws.id}-${show.id || i}`,
-			}));
-		}),
+		(() => {
+			const seenShowIds = new Set<string>();
+			const seenContent = new Set<string>();
+			const out: Array<{
+				workspaceId: string;
+				workspaceTopic: string;
+				updatedAt: string;
+				href: string;
+				show: BulkShowCard;
+				key: string;
+			}> = [];
+			for (const ws of topicBulkWorkspaces) {
+				const shows = ws.shows?.length
+					? ws.shows
+					: ([
+							{
+								id: '',
+								title: ws.title || 'Bulk carousel',
+								slideCount: 0,
+								headline: '',
+								thumb: String(ws.thumbnailUrl ?? ''),
+								template: 'news',
+							},
+						] as BulkShowCard[]);
+				for (let i = 0; i < shows.length; i++) {
+					const show = shows[i]!;
+					const showId = String(show.id ?? '').trim();
+					if (showId && seenShowIds.has(showId)) continue;
+					const contentKey = [
+						String(ws.topic ?? '').trim().toLowerCase(),
+						String(show.headline ?? show.title ?? '')
+							.trim()
+							.toLowerCase(),
+						String(show.thumb ?? '').trim(),
+					].join('|');
+					if (contentKey.replace(/\|/g, '') && seenContent.has(contentKey)) continue;
+					if (showId) seenShowIds.add(showId);
+					if (contentKey.replace(/\|/g, '')) seenContent.add(contentKey);
+					out.push({
+						workspaceId: ws.id,
+						workspaceTopic: ws.topic || ws.title,
+						updatedAt: ws.updatedAt,
+						href: showId
+							? `/dashboard/bulk/${ws.id}?show=${encodeURIComponent(showId)}`
+							: `/dashboard/bulk/${ws.id}`,
+						show,
+						key: `bulk-${ws.id}-${showId || i}`,
+					});
+				}
+			}
+			return out;
+		})(),
 	);
 
 	const libraryEmpty = $derived(clipVideoCards.length === 0);
@@ -640,9 +671,21 @@
 	}
 
 	async function deleteWorkspaceAndClipProject(workspaceId: string, clipPid: string) {
+		const ws = bulkWorkspaces.find((w) => w.id === workspaceId);
+		const showIds = (ws?.shows ?? []).map((s) => String(s.id ?? '').trim()).filter(Boolean);
 		const res = await fetch(`/api/bulk/workspaces/${workspaceId}`, { method: 'DELETE' });
 		if (!res.ok) throw new Error('Could not delete workspace');
 		bulkWorkspaces = bulkWorkspaces.filter((w) => w.id !== workspaceId);
+		if (userId) {
+			rememberDeletedBulkWorkspaceIds(userId, [workspaceId]);
+			if (showIds.length) purgeBulkHistoryByShowIds(userId, showIds);
+			else clearBulkHistory(userId);
+			const local = loadBulkWorkspace(userId);
+			if (local?.cloudWorkspaceId && local.cloudWorkspaceId === workspaceId) {
+				clearBulkWorkspace(userId);
+			}
+			notifyBulkWorkspacesDeleted([workspaceId]);
+		}
 		if (clipPid) {
 			await fetch(`/api/videos/clip-projects/${clipPid}`, { method: 'DELETE' }).catch(() => {});
 			clipProjects = clipProjects.filter((p) => p.id !== clipPid);
@@ -896,96 +939,27 @@
 			}
 			userId = user.id;
 
-			// Promote orphan clip projects in the background — never block first paint.
-			void (async () => {
-				await syncOrphanClipProjectsIntoCloud();
-				try {
-					const [bulkRefresh, clipRefresh] = await Promise.all([
-						fetch('/api/bulk/workspaces')
-							.then(async (res) =>
-								res.ok ? ((await res.json()) as { workspaces?: BulkWorkspaceCard[] }) : null,
-							)
-							.catch(() => null),
-						fetch('/api/videos/clip-projects')
-							.then(async (res) =>
-								res.ok ? ((await res.json()) as { projects?: ClipProjectCard[] }) : null,
-							)
-							.catch(() => null),
-					]);
-					if (bulkRefresh?.workspaces) bulkWorkspaces = bulkRefresh.workspaces;
-					if (clipRefresh?.projects) clipProjects = clipRefresh.projects;
-				} catch {
-					/* ignore */
-				}
-			})();
-		})();
-	});
-
-	async function syncLocalBulkIntoCloud(uid: string) {
-		const history = loadBulkHistory(uid);
-		for (const entry of history) {
-			if (!showsHaveContent(entry.shows)) continue;
-			await postBulkWorkspace({
-				topic: entry.topic,
-				shows: entry.shows,
-				selectedShowId: entry.selectedShowId,
-			});
-		}
-		const local = loadBulkWorkspace(uid);
-		if (local && showsHaveContent(local.shows)) {
-			await postBulkWorkspace({
-				topic: local.topic,
-				shows: local.shows,
-				selectedShowId: local.selectedShowId,
-			});
-		}
-	}
-
-	async function syncOrphanClipProjectsIntoCloud() {
-		const linked = new Set(
-			bulkWorkspaces.map((ws) => String(ws.clipProjectId ?? '').trim()).filter(Boolean),
-		);
-		for (const project of clipProjects) {
-			if (linked.has(project.id)) continue;
-			if (!project.hasBulkShows || !project.shows?.length) continue;
+			// Do not auto-create Bulk library rows from orphan clips — that resurrected deleted carousels.
 			try {
-				const res = await fetch(`/api/videos/clip-projects/${project.id}`);
-				if (!res.ok) continue;
-				const json = (await res.json()) as {
-					project?: { bulkShows?: unknown[]; title?: string; source?: { title?: string } };
-				};
-				const shows = Array.isArray(json.project?.bulkShows) ? json.project!.bulkShows! : [];
-				if (!shows.length) continue;
-				await postBulkWorkspace({
-					topic: json.project?.title || json.project?.source?.title || project.title,
-					shows,
-					clipProjectId: project.id,
-				});
+				const [bulkRefresh, clipRefresh] = await Promise.all([
+					fetch('/api/bulk/workspaces')
+						.then(async (res) =>
+							res.ok ? ((await res.json()) as { workspaces?: BulkWorkspaceCard[] }) : null,
+						)
+						.catch(() => null),
+					fetch('/api/videos/clip-projects')
+						.then(async (res) =>
+							res.ok ? ((await res.json()) as { projects?: ClipProjectCard[] }) : null,
+						)
+						.catch(() => null),
+				]);
+				if (bulkRefresh?.workspaces) bulkWorkspaces = bulkRefresh.workspaces;
+				if (clipRefresh?.projects) clipProjects = clipRefresh.projects;
 			} catch {
 				/* ignore */
 			}
-		}
-	}
-
-	async function postBulkWorkspace(payload: {
-		topic?: string;
-		shows: unknown[];
-		selectedShowId?: string | null;
-		clipProjectId?: string | null;
-	}): Promise<string | null> {
-		try {
-			const res = await fetch('/api/bulk/workspaces', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
-			});
-			if (!res.ok) return null;
-			const json = (await res.json()) as { id?: string };
-			return json.id ?? null;
-		} catch {
-			return null;
-		}
-	}
+		})();
+	});
 
 	const allBulkSelected = $derived(
 		bulkShowCards.length > 0 && selectedBulkKeys.length === bulkShowCards.length,

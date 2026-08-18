@@ -17,6 +17,7 @@
 	import { cn } from '$lib/utils.js';
 	import BrandOnboarding from '$lib/components/BrandOnboarding.svelte';
 	import { STARTER_TEMPLATES } from '$lib/templates';
+	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
 
 	const TEMPLATE_NAV_LABELS: Record<string, string> = {
 		empty: 'Blank',
@@ -50,7 +51,11 @@
 				{ href: '/dashboard/clips', label: 'Clips', icon: Clapperboard },
 				{ href: '/dashboard/bulk', label: 'Bulk', icon: Rows3 },
 				{ href: '/dashboard/videos', label: 'Videos', icon: Video },
-			],
+			].filter(
+				(item) =>
+					CLIP_FINDER_ENABLED
+					|| (item.href !== '/dashboard/clips' && item.href !== '/dashboard/videos'),
+			),
 		},
 	];
 

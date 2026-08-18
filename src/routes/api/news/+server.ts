@@ -5,6 +5,7 @@ import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords, ensureCompleteThought } from '$lib/studio/fit-copy';
 import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
+import { sanitizeOverlayLine } from '$lib/studio/overlay-copy';
 import {
 	assessUserTopicSafety,
 	scrubGeneratedCopy,
@@ -432,12 +433,14 @@ async function syntheticContent(
 	maxWordsSupport = 0,
 	tone: { audience?: string; emotion?: string; style?: string } = {},
 	avoidHooks: string[] = [],
+	slideCount = 0,
 ) {
 	const theme = (storyCategory || 'health').trim() || 'health';
 	const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).toLowerCase();
 	const hintSafe = syntheticHint.trim().replace(/"/g, "'").slice(0, 600);
 	const hasHint = hintSafe.length > 0;
 	const stepsN = clampStepCount(stepCount);
+	const slidesN = Math.max(0, Math.min(10, Math.floor(Number(slideCount)) || 0));
 	const supportCap =
 		maxWordsSupport > 0
 			? Math.max(6, Math.min(120, maxWordsSupport))
@@ -489,7 +492,8 @@ async function syntheticContent(
 - Good: name God, faith, belief, prayer, creation, or the claim itself — then make it punchy.
 - EYE-CATCHING: pattern interrupt + specificity. Prefer a bold claim, tension, or concrete image OVER soft poetic scenes.
 - Front-load the subject in the first 4–6 words when the request is a short claim or topic.
-- One complete thought. No hashtags, no emojis.`;
+- One complete grammatical thought. Contrast needs a comma ("FAST, NOT EVERYTHING" not "FAST NOT EVERYTHING").
+- No hashtags, no emojis.`;
 
 	const userPrompt =
 		mode === 'general'
@@ -511,9 +515,16 @@ Rules for "hook":
 - Make it feel like a cover line people screenshot — not a caption under a stock photo
 
 Rules for "context":
-- 6–12 full sentences in normal sentence case
+- ${slidesN > 1 ? `Write about ${Math.max(6, slidesN + 3)}–${Math.max(10, slidesN * 2)} full sentences` : `6–12 full sentences`} in normal sentence case
 - Bible for later slides: concrete details, angles, examples, and beats about THE SAME topic as the hook
-- Match the shape they implied (tips → numbered ideas; claim/belief → proof, tension, stakes; product/topic → facets; story → beats)
+${
+	slidesN > 1
+		? `- DECK PACING: this bible must support exactly ${slidesN} carousel slides — order sentences as a clear arc ` +
+			`(lede under the hook → evidence/example → implication/stakes` +
+			(slidesN > 3 ? ` → extra distinct facets` : '') +
+			` → landing/takeaway). Each beat should be usable as its own slide without repeating earlier claims.\n`
+		: ''
+}- Match the shape they implied (tips → numbered ideas; claim/belief → proof, tension, stakes; product/topic → facets; story → beats)
 - Do not paste the hook verbatim
 - Prefer specific nouns, numbers, and images over vague advice
 - Sentence 1 is the on-canvas paragraph under the headline — sharp lede of at most ${supportCap} words (1–2 complete sentences). Remaining sentences are bible only.
@@ -616,7 +627,7 @@ Rules for "context":
 		[{ role: 'user', content: userPromptWithTone }],
 		temperature,
 		mode === 'general'
-			? 700
+			? Math.min(1100, 700 + (slidesN > 1 ? slidesN * 40 : 0))
 			: mode === 'story'
 				? 720
 				: mode === 'steps'
@@ -678,7 +689,7 @@ Rules for "context":
 	}
 
 	return {
-		text: overlayText,
+		text: sanitizeOverlayLine(overlayText),
 		imageUrl: null,
 		title: stripEmDashes(title),
 		description,
@@ -737,6 +748,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		emotion: body.emotion,
 		style: body.style,
 	};
+	const slideCountRaw = Number(body.slideCount);
+	const requestedSlides =
+		Number.isFinite(slideCountRaw) && slideCountRaw > 0
+			? Math.max(1, Math.min(10, Math.floor(slideCountRaw)))
+			: mode === 'steps'
+				? stepCount
+				: 1;
 
 	const topicSafety = assessUserTopicSafety(search, syntheticHint, storyCategory);
 	if (!topicSafety.ok) {
@@ -765,7 +783,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	async function billedJson(payload: Record<string, unknown>, opts?: { demo?: boolean }) {
 		if (opts?.demo) return json(payload);
-		const billed = await consumeCarouselTokens(userId, 1);
+		const billed = await consumeCarouselTokens(userId, 1, { slides: requestedSlides });
 		if (!billed.ok) {
 			return json(
 				{ error: billed.error, code: billed.code, usage: billed.status },
@@ -802,6 +820,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const avoidHooks = Array.isArray(body.avoidHooks)
 			? body.avoidHooks.map((h) => String(h ?? '').trim()).filter(Boolean).slice(0, 12)
 			: [];
+		const slideCount =
+			Number.isFinite(slideCountRaw) && slideCountRaw > 0 ? requestedSlides : 0;
 		return billedJson(
 			(await syntheticContent(
 				mode,
@@ -814,6 +834,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				maxWordsSupport,
 				tone,
 				avoidHooks,
+				slideCount,
 			)) as Record<string, unknown>,
 		);
 	}
@@ -896,12 +917,14 @@ Rules:
 - ALL CAPS (the template will uppercase it, but write in caps anyway)
 - No hashtags, no emojis
 - ONE complete grammatical sentence (or two short clauses joined by a comma or colon)
+- Contrast needs a comma: "READ THE RIGHT THINGS FAST, NOT EVERYTHING" — never "FAST NOT EVERYTHING"
 - Never mash two unrelated claims together without punctuation
 - NEVER use em dashes (—) or en dashes (–). Use commas, periods, or a plain hyphen (-) only.
 - MUST END WITH A COMPLETE THOUGHT — do not cut off mid-sentence or mid-clause
 - If the full story won't fit in ${maxWords} words, write a shorter complete hook instead
 - Keep the SAME news subject — do not swap in a prettier unrelated metaphor
 - Start with the most shocking/interesting fact; front-load specificity
+- NEVER wrap the sentence in quotation marks (no leading or trailing quotes)
 
 Headline & snippet: "${snippet}"
 ${generationTonePromptSuffix(tone)}
@@ -913,7 +936,7 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 			0.8,
 			150,
 		);
-		if (candidate) overlayText = candidate;
+		if (candidate) overlayText = sanitizeOverlayLine(candidate, article.title ?? '');
 
 		overlayText = ensureCompleteThought(
 			clampToCompleteWords(
@@ -924,6 +947,7 @@ Return ONLY the rewritten text. No quotes, no explanation.`;
 
 		if (autoHighlight && overlayText) {
 			overlayText = await applyHighlightMarkup(overlayText);
+			overlayText = sanitizeOverlayLine(overlayText, overlayText);
 		}
 
 		const supportCap = supportWordCap(maxWords);
@@ -954,7 +978,12 @@ Return ONLY the supporting paragraph.`;
 			0.55,
 			supportCap <= 16 ? 60 : supportCap <= 28 ? 100 : Math.min(200, 40 + supportCap * 3),
 		);
-		if (support) supportingCopy = stripEmDashes(support.replace(/\u2026/g, '').trim());
+		if (support) {
+			supportingCopy = sanitizeOverlayLine(
+				stripEmDashes(support.replace(/\u2026/g, '').trim()),
+				stripEmDashes(String(article.description ?? '').trim()),
+			);
+		}
 		// Keep supporting copy in the same ballpark as the word-count chip.
 		{
 			supportingCopy = ensureCompleteThought(
@@ -976,10 +1005,13 @@ Return ONLY the supporting paragraph.`;
 	}
 
 	return billedJson({
-		text: stripEmDashes(overlayText),
+		text: sanitizeOverlayLine(stripEmDashes(overlayText), stripEmDashes(article.title ?? '')),
 		imageUrl: article.image_url ?? null,
 		title: stripEmDashes(article.title ?? ''),
-		description: supportingCopy,
+		description: sanitizeOverlayLine(
+			supportingCopy,
+			stripEmDashes(String(article.description ?? '').trim()),
+		),
 		source: article.source ?? null,
 		url: article.url ?? null,
 		uuid: article.uuid ?? null,

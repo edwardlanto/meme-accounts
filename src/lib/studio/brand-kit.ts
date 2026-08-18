@@ -54,6 +54,8 @@ export type BrandKitSettings = {
 	/** News branding uses logo only; kept for older saved kits. */
 	sourceLabelMode: 'text' | 'logo';
 	sourceLogoWidth: number;
+	/** Optional plate color behind the News logo (hex). Empty = none. */
+	sourceLogoPlateColor: string;
 	sourceBorderKind: 'none' | 'rules' | 'box';
 	sourceBorderColor: string;
 	/** Last drag position for the News logo (template px). */
@@ -91,7 +93,8 @@ export const DEFAULT_BRAND_KIT: BrandKitSettings = {
 	displayName: '',
 	handle: '',
 	sourceLabelMode: 'logo',
-	sourceLogoWidth: 260,
+		sourceLogoWidth: 140,
+	sourceLogoPlateColor: '',
 	sourceBorderKind: 'none',
 	sourceBorderColor: '',
 	sourceOffsetX: 0,
@@ -163,6 +166,10 @@ function normalizeKit(parsed: Partial<BrandKitSettings> | null | undefined, ctaF
 			const w = Number(parsed?.sourceLogoWidth);
 			return Number.isFinite(w) ? Math.round(Math.max(80, Math.min(400, w))) : DEFAULT_BRAND_KIT.sourceLogoWidth;
 		})(),
+		sourceLogoPlateColor: String(
+			(parsed as { sourceLogoPlateColor?: unknown })?.sourceLogoPlateColor ??
+				DEFAULT_BRAND_KIT.sourceLogoPlateColor,
+		).trim(),
 		sourceBorderKind:
 			parsed?.sourceBorderKind === 'rules' || parsed?.sourceBorderKind === 'box'
 				? parsed.sourceBorderKind
@@ -237,6 +244,8 @@ async function toStoredBrandUrl(
 ): Promise<string> {
 	const cur = String(current ?? '').trim();
 	const prev = String(previousStored ?? '').trim();
+	/* Empty is an explicit clear — do not restore the previous `r2:` object. */
+	if (!cur) return '';
 	if (isDataImageUrl(cur)) {
 		if (typeof window === 'undefined') return isR2Ref(prev) ? prev : '';
 		try {
@@ -251,9 +260,13 @@ async function toStoredBrandUrl(
 	}
 	if (isR2Ref(cur)) return cur;
 	if (cur.startsWith('blob:')) return isR2Ref(prev) ? prev : '';
-	// Signed R2 URLs expire — keep the canonical key already in the DB.
-	if (isR2Ref(prev)) return prev;
-	if (cur.startsWith('http://') || cur.startsWith('https://')) return cur;
+	if (cur.startsWith('http://') || cur.startsWith('https://')) {
+		// Presigned GET links are not durable — keep the canonical key already in the DB.
+		if (/[?&]X-Amz-Signature=/i.test(cur) || /[?&]X-Amz-Credential=/i.test(cur)) {
+			return isR2Ref(prev) ? prev : '';
+		}
+		return cur;
+	}
 	return '';
 }
 

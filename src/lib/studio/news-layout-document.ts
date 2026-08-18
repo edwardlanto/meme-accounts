@@ -65,6 +65,8 @@ export type NewsLayoutGeometry = {
 	sourceLabelMode: 'text' | 'logo';
 	sourceLogoSrc: string;
 	sourceLogoWidth: number;
+	/** Optional plate behind the logo (hex). Empty = no plate. */
+	sourceLogoPlateColor: string;
 	sourceBorderKind: 'none' | 'rules' | 'box';
 	sourceBorderColor: string;
 };
@@ -143,9 +145,10 @@ export function defaultNewsLayoutGeometry(): NewsLayoutGeometry {
 		circle2BorderColor: '#ffffff',
 		circleShadow: { ...DEFAULT_CIRCLE_SHADOW },
 		circle2Shadow: { ...DEFAULT_CIRCLE_SHADOW },
-		sourceLabelMode: 'logo',
+		sourceLabelMode: 'text',
 		sourceLogoSrc: '',
-		sourceLogoWidth: 160,
+		sourceLogoWidth: 140,
+		sourceLogoPlateColor: '',
 		sourceBorderKind: 'none',
 		sourceBorderColor: '#ffffff',
 	};
@@ -272,6 +275,11 @@ export function normalizeNewsLayoutGeometry(
 		sourceLabelMode,
 		sourceLogoSrc: String(partial.sourceLogoSrc ?? ''),
 		sourceLogoWidth: Number(partial.sourceLogoWidth) || base.sourceLogoWidth,
+		sourceLogoPlateColor: String(
+			(partial as { sourceLogoPlateColor?: unknown }).sourceLogoPlateColor ??
+				base.sourceLogoPlateColor ??
+				'',
+		).trim(),
 		sourceBorderKind,
 		sourceBorderColor: String(partial.sourceBorderColor ?? base.sourceBorderColor),
 	};

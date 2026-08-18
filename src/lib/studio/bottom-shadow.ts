@@ -83,6 +83,15 @@ function shadowRgba(hex: string, alpha: number): string {
  */
 const SHADOW_FADE_MAX_PCT = 48;
 
+/** Shared News autofit — Studio + Bulk must use the same numbers after generate. */
+export const NEWS_SHADOW_AUTOFIT = {
+	/** Clears the soft top of the News fade above the first headline line. */
+	padAbove: 22,
+	padBelow: 6,
+	min: 56,
+	max: 88,
+} as const;
+
 /** Split total shadow height into fade band + solid black floor. */
 export function splitBottomShadowBands(heightPct: number): { fadePct: number; solidPct: number } {
 	const sh = Math.max(0, Math.min(100, heightPct));
@@ -172,18 +181,17 @@ export function bottomShadowHeightForTextStack(
 	/**
 	 * Pad must clear the soft top of the fade, not just the geometric start.
 	 * News/natural curves stay ~transparent for the first ~40% of the fade band,
-	 * so ~22% above the headline puts solid-enough black behind the first line.
+	 * so pad well above the headline puts solid-enough black behind the first line.
 	 */
-	const padAbove = opts?.padAbove ?? 22;
-	const padBelow = opts?.padBelow ?? 6;
-	/** Floor matches the News default — short slides stay readable without a tall vignette. */
-	const min = opts?.min ?? 56;
-	const max = opts?.max ?? 88;
+	const padAbove = opts?.padAbove ?? NEWS_SHADOW_AUTOFIT.padAbove;
+	const padBelow = opts?.padBelow ?? NEWS_SHADOW_AUTOFIT.padBelow;
+	const min = opts?.min ?? NEWS_SHADOW_AUTOFIT.min;
+	const max = opts?.max ?? NEWS_SHADOW_AUTOFIT.max;
 
 	const top = Math.max(0, Math.min(100, info.topPct));
 	const height = Math.max(0, Math.min(100, info.heightPct));
 	const fadeStart = Math.max(0, top - padAbove);
-	const tallBoost = Math.max(0, height - 26) * 0.12;
+	const tallBoost = Math.max(0, height - 24) * 0.2;
 	const textBottomPad = Math.max(0, top + height + padBelow - 100);
 
 	let cover = 100 - fadeStart + tallBoost + textBottomPad;

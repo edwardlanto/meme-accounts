@@ -25,7 +25,9 @@ import {
 } from '$lib/video-clips/transcript-segments';
 import { saveVideoClipProject } from '$lib/server/video-clip-projects';
 import { attachClipSceneStills } from '$lib/server/clip-stills';
+import { canConsumeClipMinutes, consumeClipMinutes } from '$lib/server/usage';
 import type { VideoClip, VideoImportMeta } from '$lib/video-clips/types';
+import type { UsageStatus } from '$lib/server/usage';
 
 const analyzeSchema = z.object({
 	source: z.enum(['youtube', 'upload']),
@@ -52,6 +54,52 @@ function clipAnalyzeOpts(data: z.infer<typeof analyzeSchema>) {
 }
 
 const MAX_MULTIMODAL_BYTES = 18 * 1024 * 1024;
+
+function clipLimitJson(
+	gate: Awaited<ReturnType<typeof canConsumeClipMinutes>>,
+) {
+	if (gate.ok) return null;
+	const status = gate.code === 'CLIP_TOO_LONG' ? 400 : 402;
+	return json(
+		{
+			error: gate.error,
+			code: gate.code,
+			usage: {
+				clipMinutesUsed: gate.status.clipMinutesUsed,
+				clipMinutesLimit: gate.status.clipMinutesLimit,
+				clipMinutesRemaining: gate.status.clipMinutesRemaining,
+				maxClipVideoMinutes: gate.status.maxClipVideoMinutes,
+				plan: gate.status.plan,
+			},
+		},
+		{ status },
+	);
+}
+
+function clipUsagePayload(status: UsageStatus, minutesBilled?: number) {
+	return {
+		clipMinutesUsed: status.clipMinutesUsed,
+		clipMinutesLimit: status.clipMinutesLimit,
+		clipMinutesRemaining: status.clipMinutesRemaining,
+		maxClipVideoMinutes: status.maxClipVideoMinutes,
+		plan: status.plan,
+		...(typeof minutesBilled === 'number' ? { minutesBilled } : {}),
+	};
+}
+
+async function billSuccessfulAnalyze(userId: string, durationSec: number) {
+	const billed = await consumeClipMinutes(userId, durationSec);
+	if (!billed.ok) {
+		return {
+			errorResponse: clipLimitJson(billed),
+			usage: null as ReturnType<typeof clipUsagePayload> | null,
+		};
+	}
+	return {
+		errorResponse: null,
+		usage: clipUsagePayload(billed.status, billed.minutes),
+	};
+}
 
 async function persistClipProject(
 	userId: string,
@@ -157,6 +205,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					ytDuration = (await ytDlpPrintDuration(url)) || ytDuration || 1;
 				}
 
+				{
+					const gate = await canConsumeClipMinutes(user.id, ytDuration);
+					const blocked = clipLimitJson(gate);
+					if (blocked) return blocked;
+				}
+
 				console.info('[api/videos/analyze] running clip AI…');
 				const analyzed = await analyzeVideoForClips({
 					title: ytTitle,
@@ -219,6 +273,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					analyzed.model,
 				);
 
+				const billed = await billSuccessfulAnalyze(user.id, ytDuration);
+				if (billed.errorResponse) return billed.errorResponse;
+
 				return json({
 					source: sourceMeta,
 					clips,
@@ -226,12 +283,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					demo: analyzed.demo,
 					model: analyzed.model,
 					projectId,
+					usage: billed.usage,
 					...(downloadWarning ? { warning: downloadWarning } : {}),
 				});
 			}
 
 			// Fallback without yt-dlp: captions-only analysis (no full download)
 			const yt = await importYoutubeVideo(url);
+			{
+				const gate = await canConsumeClipMinutes(user.id, yt.durationSec);
+				const blocked = clipLimitJson(gate);
+				if (blocked) return blocked;
+			}
 			const analyzed = await analyzeVideoForClips({
 				title: yt.title,
 				description: yt.description,
@@ -284,6 +347,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				analyzed.demo,
 				analyzed.model,
 			);
+			const billed = await billSuccessfulAnalyze(user.id, yt.durationSec);
+			if (billed.errorResponse) return billed.errorResponse;
 			return json({
 				source: sourceMeta,
 				clips,
@@ -291,6 +356,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				demo: analyzed.demo,
 				model: analyzed.model,
 				projectId,
+				usage: billed.usage,
 				warning:
 					'Install yt-dlp for full video download and MP4 export (brew install yt-dlp).',
 			});
@@ -323,6 +389,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			});
 		}
 		if (!effectiveDuration || effectiveDuration <= 1) effectiveDuration = durationSec ?? 1;
+
+		{
+			const gate = await canConsumeClipMinutes(user.id, effectiveDuration);
+			const blocked = clipLimitJson(gate);
+			if (blocked) return blocked;
+		}
 
 		const uploadTitle = title?.trim() || 'Uploaded video';
 		const uploadTranscript =
@@ -372,6 +444,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			analyzed.model,
 		);
 
+		const billed = await billSuccessfulAnalyze(user.id, effectiveDuration);
+		if (billed.errorResponse) return billed.errorResponse;
+
 		return json({
 			source: sourceMeta,
 			clips,
@@ -379,6 +454,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			demo: analyzed.demo,
 			model: analyzed.model,
 			projectId,
+			usage: billed.usage,
 		});
 	} catch (e: unknown) {
 		const message = e instanceof Error ? e.message : String(e);

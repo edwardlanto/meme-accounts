@@ -38,8 +38,32 @@ export type TemplateDevNewsLayout = {
 	sourceLabelMode?: 'text' | 'logo';
 	sourceLogoSrc?: string;
 	sourceLogoWidth?: number;
+	sourceLogoPlateColor?: string;
 	sourceBorderKind?: 'none' | 'rules' | 'box';
 	sourceBorderColor?: string;
+};
+
+/**
+ * Shared canvas chrome for any template (pan/zoom, circles, panel).
+ * News prefers `newsDocument`; other templates use this so overrides keep moves/size.
+ */
+export type TemplateDevCanvasLayout = {
+	bgOffsetX?: number;
+	bgOffsetY?: number;
+	bgZoom?: number;
+	bgFitMode?: 'cover' | 'contain';
+	bgContainMagnify?: number;
+	textPanelOffsetY?: number;
+	circleX?: number;
+	circleY?: number;
+	circleSize?: number;
+	circle2X?: number;
+	circle2Y?: number;
+	circle2Size?: number;
+	circleBorderColor?: string;
+	circle2BorderColor?: string;
+	circleShadow?: CircleShadow;
+	circle2Shadow?: CircleShadow;
 };
 
 /** Copy + media used when opening a fresh deck of this template (replaces built-in demo). */
@@ -50,6 +74,7 @@ export type TemplateDevStarterContent = {
 	sourceLabelMode?: 'text' | 'logo';
 	sourceLogoSrc?: string;
 	sourceLogoWidth?: number;
+	sourceLogoPlateColor?: string;
 	sourceBorderKind?: 'none' | 'rules' | 'box';
 	sourceBorderColor?: string;
 	bgImages?: string[];
@@ -85,6 +110,8 @@ export type TemplateDevOverride = {
 	 * Save-template / account default / generate all read/write this.
 	 */
 	newsDocument?: NewsLayoutDocument;
+	/** Canvas pan/zoom / circles for non-News templates (and News fallback). */
+	canvasLayout?: TemplateDevCanvasLayout;
 	/** Free overlays for any template (Gamma-style: keep stickers when regenerating into a default). */
 	textOverlays?: TextOverlay[];
 	imageOverlays?: Overlay[];

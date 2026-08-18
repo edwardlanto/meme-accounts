@@ -15,7 +15,7 @@ supabase/
 2. Run each file **in order** (000 → 001 → ...)
 3. Each file is safe to re-run (uses `if not exists` / `on conflict do nothing`)
 
-Latest: `023_ai_images_used.sql` — monthly AI image counter (`ai_images_used`) + protect from client writes.
+Latest: `024_clip_minutes_used.sql` — monthly video clipping minutes (`clip_minutes_used`) + protect from client writes.
 
 ## Adding a new migration
 

@@ -26,7 +26,46 @@ export type BulkWorkspaceSnapshot = {
 	topic?: string;
 	shows: BulkShow[];
 	clipProjectId?: string | null;
+	/** Cloud library row id — used to drop the local draft when Carousels deletes it. */
+	cloudWorkspaceId?: string | null;
 };
+
+export const BULK_WORKSPACE_DELETED_EVENT = 'bulk-workspace-deleted';
+const BULK_DELETED_IDS_PREFIX = 'bulk_deleted_workspace_ids_v1';
+
+export function rememberDeletedBulkWorkspaceIds(userId: string, ids: string[]): void {
+	if (typeof localStorage === 'undefined' || !userId || !ids.length) return;
+	try {
+		const key = `${BULK_DELETED_IDS_PREFIX}:${userId}`;
+		const prev = JSON.parse(localStorage.getItem(key) || '[]') as unknown;
+		const merged = [
+			...ids.map((id) => String(id ?? '').trim()).filter(Boolean),
+			...(Array.isArray(prev) ? prev.map((x) => String(x ?? '').trim()).filter(Boolean) : []),
+		];
+		localStorage.setItem(key, JSON.stringify([...new Set(merged)].slice(0, 80)));
+	} catch {
+		/* ignore */
+	}
+}
+
+export function wasBulkWorkspaceDeletedLocally(userId: string, id: string): boolean {
+	if (typeof localStorage === 'undefined' || !userId || !id) return false;
+	try {
+		const key = `${BULK_DELETED_IDS_PREFIX}:${userId}`;
+		const prev = JSON.parse(localStorage.getItem(key) || '[]') as unknown;
+		return Array.isArray(prev) && prev.some((x) => String(x ?? '').trim() === id);
+	} catch {
+		return false;
+	}
+}
+
+export function notifyBulkWorkspacesDeleted(ids: string[]): void {
+	const clean = ids.map((id) => String(id ?? '').trim()).filter(Boolean);
+	if (!clean.length || typeof window === 'undefined') return;
+	window.dispatchEvent(
+		new CustomEvent(BULK_WORKSPACE_DELETED_EVENT, { detail: { ids: clean } }),
+	);
+}
 
 /** One archived generation / workspace snapshot for later reopen. */
 export type BulkHistoryEntry = {
@@ -191,6 +230,7 @@ export async function saveBulkWorkspace(
 			topic: snapshot.topic,
 			shows,
 			clipProjectId: snapshot.clipProjectId ?? null,
+			cloudWorkspaceId: snapshot.cloudWorkspaceId ?? null,
 		};
 		localStorage.setItem(bulkWorkspaceStorageKey(userId), JSON.stringify(payload));
 		touchBulkWorkspaceSession(userId);
@@ -218,6 +258,7 @@ export async function saveBulkWorkspace(
 				topic: snapshot.topic,
 				shows: smaller,
 				clipProjectId: snapshot.clipProjectId ?? null,
+				cloudWorkspaceId: snapshot.cloudWorkspaceId ?? null,
 			};
 			localStorage.setItem(bulkWorkspaceStorageKey(userId), JSON.stringify(payload));
 			touchBulkWorkspaceSession(userId);
@@ -418,6 +459,36 @@ export function deleteBulkHistoryEntry(userId: string, entryId: string): BulkHis
 	const next = loadBulkHistory(userId).filter((e) => e.id !== entryId);
 	writeBulkHistory(userId, next);
 	return next;
+}
+
+/** Drop local history rows that still hold any of these show ids (stops Carousels re-upload). */
+export function purgeBulkHistoryByShowIds(userId: string, showIds: Iterable<string>): BulkHistoryEntry[] {
+	const ban = new Set(
+		[...showIds].map((id) => String(id ?? '').trim()).filter(Boolean),
+	);
+	if (!ban.size) return loadBulkHistory(userId);
+	const next = loadBulkHistory(userId)
+		.map((entry) => {
+			const shows = (entry.shows ?? []).filter((s) => !ban.has(String(s.id ?? '').trim()));
+			if (!shows.length) return null;
+			return {
+				...entry,
+				shows,
+				showCount: shows.length,
+				titles: shows.map((s) => String(s.title ?? '').trim() || 'Untitled'),
+				selectedShowId:
+					entry.selectedShowId && ban.has(entry.selectedShowId)
+						? shows[0]?.id ?? null
+						: entry.selectedShowId,
+			};
+		})
+		.filter((e): e is BulkHistoryEntry => !!e);
+	writeBulkHistory(userId, next);
+	return next;
+}
+
+export function clearBulkHistory(userId: string): void {
+	writeBulkHistory(userId, []);
 }
 
 export function getBulkHistoryEntry(userId: string, entryId: string): BulkHistoryEntry | null {

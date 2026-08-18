@@ -42,6 +42,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { topic, style, slideCount, imageCount, audience, emotion, deckCount, autoHighlight } =
 		parsed.data;
 	const decksWanted = Math.max(1, Math.min(10, deckCount ?? 1));
+	const slidesPerDeck = Math.max(1, Math.min(20, Math.floor(Number(slideCount) || 8)));
+	const billedSlides = decksWanted * slidesPerDeck;
 	const wantHighlights = autoHighlight === true;
 
 	const topicSafety = assessUserTopicSafety(topic, audience);
@@ -63,14 +65,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	if (!env.OPENROUTER_API_KEY) {
 		if (decksWanted > 1) {
-			const billed = await consumeCarouselTokens(user.id, decksWanted);
+			const billed = await consumeCarouselTokens(user.id, decksWanted, { slides: billedSlides });
 			return json({
 				decks: getDemoDecks(decksWanted, slideCount, imageCount, wantHighlights),
 				demo: true,
 				usage: billed.ok ? billed.status : undefined,
 			});
 		}
-		const billed = await consumeCarouselTokens(user.id, decksWanted);
+		const billed = await consumeCarouselTokens(user.id, decksWanted, { slides: billedSlides });
 		return json({
 			slides: getDemoSlides(slideCount, imageCount, wantHighlights),
 			demo: true,
@@ -163,7 +165,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		if (wantHighlights) {
 			decks = await highlightDeckNewsHeadlines(decks);
 		}
-		const billed = await consumeCarouselTokens(user.id, decksWanted);
+		const billed = await consumeCarouselTokens(user.id, decksWanted, { slides: billedSlides });
 		return json({ decks, usage: billed.ok ? billed.status : undefined });
 	}
 
@@ -179,7 +181,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (wantHighlights) {
 		slides = await highlightNewsHeadlines(slides);
 	}
-	const billed = await consumeCarouselTokens(user.id, decksWanted);
+	const billed = await consumeCarouselTokens(user.id, decksWanted, { slides: billedSlides });
 	return json({ slides, usage: billed.ok ? billed.status : undefined });
 	} catch (err: any) {
 		console.error('[generate-slides]', err.message);

@@ -14,9 +14,12 @@
 	import { defaultThumbForTemplate } from '$lib/studio/slide-content-defaults';
 	import { r2DeleteObject, r2SignRead } from '$lib/r2Client';
 	import {
-		loadBulkHistory,
 		loadBulkWorkspace,
-		showsHaveContent,
+		clearBulkWorkspace,
+		clearBulkHistory,
+		purgeBulkHistoryByShowIds,
+		rememberDeletedBulkWorkspaceIds,
+		notifyBulkWorkspacesDeleted,
 	} from '$lib/studio/bulk-workspace';
 	import { type BulkSlide } from '$lib/studio/bulk-to-studio';
 	import BulkLibraryCover from '$lib/components/bulk/BulkLibraryCover.svelte';
@@ -313,30 +316,58 @@
 	);
 
 	const bulkShowCards = $derived(
-		bulkWorkspaces.flatMap((ws) => {
-			const shows = ws.shows?.length
-				? ws.shows
-				: ([
-						{
-							id: '',
-							title: ws.title || 'Bulk carousel',
-							slideCount: 0,
-							headline: '',
-							thumb: String(ws.thumbnailUrl ?? ''),
-							template: 'news',
-						},
-					] as BulkShowCard[]);
-			return shows.map((show, i) => ({
-				workspaceId: ws.id,
-				workspaceTopic: ws.topic || ws.title,
-				updatedAt: ws.updatedAt,
-				href: show.id
-					? `/dashboard/bulk/${ws.id}?show=${encodeURIComponent(show.id)}`
-					: `/dashboard/bulk/${ws.id}`,
-				show,
-				key: `bulk-${ws.id}-${show.id || i}`,
-			}));
-		}),
+		(() => {
+			const seenShowIds = new Set<string>();
+			const seenContent = new Set<string>();
+			const out: Array<{
+				workspaceId: string;
+				workspaceTopic: string;
+				updatedAt: string;
+				href: string;
+				show: BulkShowCard;
+				key: string;
+			}> = [];
+			for (const ws of bulkWorkspaces) {
+				const shows = ws.shows?.length
+					? ws.shows
+					: ([
+							{
+								id: '',
+								title: ws.title || 'Bulk carousel',
+								slideCount: 0,
+								headline: '',
+								thumb: String(ws.thumbnailUrl ?? ''),
+								template: 'news',
+							},
+						] as BulkShowCard[]);
+				for (let i = 0; i < shows.length; i++) {
+					const show = shows[i]!;
+					const showId = String(show.id ?? '').trim();
+					if (showId && seenShowIds.has(showId)) continue;
+					const contentKey = [
+						String(ws.topic ?? '').trim().toLowerCase(),
+						String(show.headline ?? show.title ?? '')
+							.trim()
+							.toLowerCase(),
+						String(show.thumb ?? '').trim(),
+					].join('|');
+					if (contentKey.replace(/\|/g, '') && seenContent.has(contentKey)) continue;
+					if (showId) seenShowIds.add(showId);
+					if (contentKey.replace(/\|/g, '')) seenContent.add(contentKey);
+					out.push({
+						workspaceId: ws.id,
+						workspaceTopic: ws.topic || ws.title,
+						updatedAt: ws.updatedAt,
+						href: showId
+							? `/dashboard/bulk/${ws.id}?show=${encodeURIComponent(showId)}`
+							: `/dashboard/bulk/${ws.id}`,
+						show,
+						key: `bulk-${ws.id}-${showId || i}`,
+					});
+				}
+			}
+			return out;
+		})(),
 	);
 
 	const libraryEmpty = $derived(
@@ -737,16 +768,19 @@
 	}
 
 	async function deleteWorkspaceAndClipProject(workspaceId: string, clipPid: string) {
+		const ws = bulkWorkspaces.find((w) => w.id === workspaceId);
+		const showIds = (ws?.shows ?? []).map((s) => String(s.id ?? '').trim()).filter(Boolean);
 		const res = await fetch(`/api/bulk/workspaces/${workspaceId}`, { method: 'DELETE' });
 		if (!res.ok) throw new Error('Could not delete workspace');
 		bulkWorkspaces = bulkWorkspaces.filter((w) => w.id !== workspaceId);
+		purgeLocalBulkAfterDelete(workspaceId, showIds, true);
 		if (clipPid) {
 			await fetch(`/api/videos/clip-projects/${clipPid}`, { method: 'DELETE' }).catch(() => {});
 			clipProjects = clipProjects.filter((p) => p.id !== clipPid);
 		}
 	}
 
-	/** Remove one or more shows from a bulk YouTube workspace (PATCH), or delete the stack. */
+	/** Remove one or more shows from a bulk workspace (PATCH), or delete the stack. */
 	async function removeShowsFromWorkspace(workspaceId: string, showIds: string[]) {
 		const ws = bulkWorkspaces.find((w) => w.id === workspaceId);
 		const clipPid = String(ws?.clipProjectId ?? '').trim();
@@ -765,6 +799,16 @@
 		const fullShows = Array.isArray(payload.workspace?.shows) ? payload.workspace!.shows! : [];
 		const remaining = fullShows.filter((s) => !ids.has(String(s.id ?? '').trim()));
 
+		/* Id mismatch or empty library cards — if this was the only visible card, drop the workspace. */
+		if (remaining.length === fullShows.length) {
+			const visible = bulkShowCards.filter((c) => c.workspaceId === workspaceId);
+			if (visible.length <= 1 || fullShows.length <= 1) {
+				await deleteWorkspaceAndClipProject(workspaceId, clipPid);
+				return;
+			}
+			throw new Error('Could not find that carousel in the workspace');
+		}
+
 		if (remaining.length === 0) {
 			await deleteWorkspaceAndClipProject(workspaceId, clipPid);
 			return;
@@ -782,10 +826,11 @@
 						: undefined,
 			}),
 		});
-		if (!patchRes.ok) throw new Error('Could not delete clip');
+		if (!patchRes.ok) throw new Error('Could not delete carousel');
 
 		const nextLocal = (ws?.shows ?? []).filter((s) => !ids.has(String(s.id ?? '').trim()));
 		syncWorkspaceShowsLocal(workspaceId, nextLocal, clipPid);
+		purgeLocalBulkAfterDelete(workspaceId, [...ids], false);
 	}
 
 	/** Remove shows from an orphan clip project, or delete the project. */
@@ -1039,90 +1084,36 @@
 
 			void hydrateStudioDraftThumbs();
 			void hydrateSavedTemplateThumbs();
-
-			// Recover local Bulk history/workspace into cloud so those carousels appear here too.
-			await syncLocalBulkIntoCloud(user.id);
-			try {
-				const res = await fetch('/api/bulk/workspaces');
-				if (res.ok) {
-					const json = (await res.json()) as { workspaces?: BulkWorkspaceCard[] };
-					if (Array.isArray(json.workspaces) && json.workspaces.length) {
-						bulkWorkspaces = json.workspaces;
-					}
-				}
-			} catch {
-				/* ignore */
-			}
+			/* Do NOT re-upload local Bulk history into cloud here — that resurrected deleted From Bulk cards. */
 		})().finally(() => {
 			loading = false;
 			libraryHydratedFromClient = true;
 		});
 	});
 
-	async function syncLocalBulkIntoCloud(uid: string) {
-		const history = loadBulkHistory(uid);
-		for (const entry of history) {
-			if (!showsHaveContent(entry.shows)) continue;
-			await postBulkWorkspace({
-				topic: entry.topic,
-				shows: entry.shows,
-				selectedShowId: entry.selectedShowId,
-			});
+	/** After a From Bulk delete — never let local history / draft resurrect cloud rows. */
+	function purgeLocalBulkAfterDelete(
+		workspaceId: string,
+		showIds: string[],
+		deletedWholeWorkspace: boolean,
+	) {
+		if (!userId) return;
+		rememberDeletedBulkWorkspaceIds(userId, [workspaceId]);
+		if (showIds.length) purgeBulkHistoryByShowIds(userId, showIds);
+		else if (deletedWholeWorkspace) clearBulkHistory(userId);
+		const local = loadBulkWorkspace(userId);
+		if (
+			deletedWholeWorkspace &&
+			local?.cloudWorkspaceId &&
+			local.cloudWorkspaceId === workspaceId
+		) {
+			clearBulkWorkspace(userId);
+		} else if (local && showIds.length) {
+			const ban = new Set(showIds);
+			const nextShows = (local.shows ?? []).filter((s) => !ban.has(String(s.id ?? '').trim()));
+			if (!nextShows.length) clearBulkWorkspace(userId);
 		}
-		const local = loadBulkWorkspace(uid);
-		if (local && showsHaveContent(local.shows)) {
-			await postBulkWorkspace({
-				topic: local.topic,
-				shows: local.shows,
-				selectedShowId: local.selectedShowId,
-			});
-		}
-	}
-
-	async function syncOrphanClipProjectsIntoCloud() {
-		const linked = new Set(
-			bulkWorkspaces.map((ws) => String(ws.clipProjectId ?? '').trim()).filter(Boolean),
-		);
-		for (const project of clipProjects) {
-			if (linked.has(project.id)) continue;
-			if (!project.hasBulkShows || !project.shows?.length) continue;
-			try {
-				const res = await fetch(`/api/videos/clip-projects/${project.id}`);
-				if (!res.ok) continue;
-				const json = (await res.json()) as {
-					project?: { bulkShows?: unknown[]; title?: string; source?: { title?: string } };
-				};
-				const shows = Array.isArray(json.project?.bulkShows) ? json.project!.bulkShows! : [];
-				if (!shows.length) continue;
-				await postBulkWorkspace({
-					topic: json.project?.title || json.project?.source?.title || project.title,
-					shows,
-					clipProjectId: project.id,
-				});
-			} catch {
-				/* ignore */
-			}
-		}
-	}
-
-	async function postBulkWorkspace(payload: {
-		topic?: string;
-		shows: unknown[];
-		selectedShowId?: string | null;
-		clipProjectId?: string | null;
-	}): Promise<string | null> {
-		try {
-			const res = await fetch('/api/bulk/workspaces', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
-			});
-			if (!res.ok) return null;
-			const json = (await res.json()) as { id?: string };
-			return json.id ?? null;
-		} catch {
-			return null;
-		}
+		notifyBulkWorkspacesDeleted([workspaceId]);
 	}
 
 	const allBulkSelected = $derived(
@@ -1353,7 +1344,7 @@
 				<Empty.Title>No carousels yet</Empty.Title>
 				<Empty.Description>
 					Bulk posts and saved Studio templates land here. Generate in Bulk or edit in Studio, then
-					Save template. YouTube clips live on Clips.
+					Save template.
 				</Empty.Description>
 			</Empty.Header>
 			<Empty.Content class="flex flex-wrap justify-center gap-2">
@@ -1362,7 +1353,6 @@
 					Open Bulk
 				</Button>
 				<Button href="/dashboard/studio?template=news" variant="outline">Open Studio</Button>
-				<Button href="/dashboard/clips" variant="outline">View clips</Button>
 			</Empty.Content>
 		</Empty.Root>
 	{/if}
@@ -1501,7 +1491,7 @@
 					<div>
 						<h2 class="studio-drafts-title">From Bulk</h2>
 						<p class="studio-drafts-sub">
-							Carousels from Bulk (including ones made from YouTube clips). Open one to keep editing,
+							Carousels from Bulk. Open one to keep editing, or select several to delete.
 							or select several to delete.
 						</p>
 					</div>

@@ -6,7 +6,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import {
 		SectionHeader,
-		SectionEyebrow,
 		PhoneMarquee,
 		FeatureTile,
 		BentoMediaCard,
@@ -121,80 +120,57 @@
 
 	const proofPosts: ProofItem[] = [
 		{
-			id: 'news',
+			id: 'size',
 			layout: 'featured',
-			tag: 'News Studio',
-			metric: 'AI images + auto highlights',
-			title: 'Headline in → full news carousel out',
+			index: '01',
+			title: 'Text sizes itself so you can stop nudging',
 			description:
-				'Fal-generated images, auto-sized type, and [[keyword]] highlights on every slide. Drop a URL or topic and export a feed-ready carousel.',
-			format: 'News Studio',
-			platform: 'Instagram · Facebook',
-			image: '/templates/demos/news.jpg',
+				'Headlines, hooks, and body copy grow or shrink to the slide. Long lines wrap cleanly. Short ones don\'t look stranded. You write. The template keeps it readable.',
+			formatLabel: 'You do',
+			format: 'The words',
+			platformLabel: 'Studio does',
+			platform: 'The sizing',
+			href: '/dashboard/studio',
+		},
+		{
+			id: 'fill',
+			layout: 'side',
+			index: '02',
+			title: 'Fill a deck without losing the thread',
+			description:
+				'Give it a topic or a URL and it drafts the slides. Each one follows the last, so the story still makes sense when someone swipes through.',
+			formatLabel: 'You give',
+			format: 'Topic or URL',
+			platformLabel: 'You get',
+			platform: 'A full deck',
 			href: '/dashboard/studio?template=news',
 		},
 		{
-			id: 'creator',
-			layout: 'side',
-			tag: 'Creator hook',
-			metric: 'Stock video built in',
-			title: 'Profile row + bold hook above a letterboxed clip',
-			description:
-				'Verified badge, two-line headline with [[emphasis]], and Pexels stock footage — text auto-fits the letterbox band.',
-			format: 'Creator hook',
-			platform: 'TikTok · Reels',
-			image: '/templates/demos/video-creator-poster.jpg',
-			href: '/dashboard/studio?template=creator',
-		},
-		{
-			id: 'highlight',
-			layout: 'side',
-			tag: 'Highlight',
-			metric: 'Neon keyword pop',
-			title: 'One highlighted word over a full-width clip',
-			description:
-				'Hook copy up top, one [[keyword]] in brand color, stock or uploaded video below — sized for vertical feeds.',
-			format: 'Highlight',
-			platform: 'Reels · TikTok',
-			image: '/templates/demos/highlight-hook-poster.jpg',
-			href: '/dashboard/studio?template=highlight',
-		},
-		{
-			id: 'text',
-			layout: 'tile',
-			tag: 'Text carousel',
-			title: 'Dark branded slides for meme & niche pages',
-			description:
-				'Profile header, long-form story beats, auto-fit type — finance threads, local lore, or hot takes.',
-			format: 'Text carousel',
-			platform: 'Instagram',
-			image: '/placeholders/carousel/text-cover.png',
-			href: '/dashboard/studio?template=text',
-		},
-		{
-			id: 'pov',
-			layout: 'tile',
-			tag: 'Text on video',
-			title: 'POV copy on full-bleed stock clip',
-			description:
-				'Centered outlined text with shadow presets, 10M+ stock videos, and type that scales to your aspect ratio.',
-			format: 'Text on video',
-			platform: 'TikTok',
-			image: '/templates/demos/video-text-poster.jpg',
-			href: '/dashboard/studio?template=pov',
-		},
-		{
 			id: 'bulk',
-			layout: 'tile',
-			tag: 'Bulk studio',
-			metric: '7 posts / run',
-			title: 'One topic → a week of meme posts',
+			layout: 'side',
+			index: '03',
+			title: 'Batch the slides people already know',
 			description:
-				'Batch-generate concepts across templates, then polish winners in Studio and export PNG or MP4.',
-			format: 'Bulk studio',
-			platform: 'Multi-platform',
-			image: '/placeholders/home/feat-carousels.png',
+				'Make a stack of hooks, quote slides, and text posts. These are the formats people already swipe. You\'re filling a look they trust, not inventing a new one.',
+			formatLabel: 'Pace',
+			format: "A week's stack",
+			platformLabel: 'Look',
+			platform: 'Already familiar',
 			href: '/dashboard/bulk',
+		},
+		{
+			id: 'mix',
+			layout: 'wide',
+			visual: 'mix',
+			index: '04',
+			title: 'Mix cover pictures with slides that are just type',
+			description:
+				'Open with a photo. Follow with a text beat. Drop in a hook. The set can feel like a real account, not one template on repeat.',
+			formatLabel: 'From',
+			format: 'Photo covers',
+			platformLabel: 'To',
+			platform: 'Plain type',
+			href: '/dashboard/studio',
 		},
 	];
 
@@ -374,7 +350,6 @@
 		<div class="marketing-container mk-usecase-section">
 			<div class="mk-usecase-section-head mk-reveal">
 				<div>
-					<SectionEyebrow index="02" label="Use cases" />
 					<h2 class="mk-section-title">Built for how<br />creators actually ship.</h2>
 				</div>
 				<p class="mk-section-desc">
@@ -391,8 +366,6 @@
 	<section id="studio" class="marketing-section marketing-section--soft">
 		<div class="marketing-container">
 			<SectionHeader
-				index="03"
-				label="The studio"
 				title="Every part of the post,<br />on one canvas."
 				description="News, templates, captions, stock media. All composable. All editable. No Canva rabbit holes required."
 			/>
@@ -444,8 +417,6 @@
 	<section id="workflow" class="marketing-section">
 		<div class="marketing-container">
 			<SectionHeader
-				index="04"
-				label="Workflow"
 				title="Workflows to go viral."
 				description="From niche to exported post in four steps. Build an audience before launching a product."
 			/>
@@ -463,14 +434,12 @@
 		</div>
 	</section>
 
-	<!-- §05 Proof (dark) -->
+	<!-- §05 Benefits (dark) -->
 	<section id="proof" class="marketing-section marketing-section--dark">
 		<div class="marketing-container">
 			<SectionHeader
-				index="05"
-				label="Proof"
-				title="Evidence,<br />not inventory."
-				description="Every card opens a real Meme Accounts template — News Studio, Creator hook, Highlight, Text carousel, POV video, and Bulk. Same layouts you edit in Studio."
+				title={'Less layout work.<br /><span class="mk-title-mark">More posting.</span>'}
+				description="These are the bits you notice after a few days. Type sizes itself. Copy fills in and stays on the same story. You can batch slides people already know how to swipe, and mix photo covers with plain text when you want a quieter beat."
 			/>
 
 			<ProofShowcase items={proofPosts} />
@@ -481,8 +450,6 @@
 	<section id="pricing" class="marketing-section">
 		<div class="marketing-container">
 			<SectionHeader
-				index="06"
-				label="Plans"
 				title="Pick a plan.<br />Ship more posts."
 				description="Start free. Upgrade when unlimited carousels, news-to-post, and faceless reels earn their keep."
 			/>
@@ -494,8 +461,6 @@
 	<section id="faq" class="marketing-section marketing-section--soft">
 		<div class="marketing-container">
 			<SectionHeader
-				index=""
-				label="FAQ"
 				title="Questions,<br />answered."
 				description="Straight answers for creators running meme and niche pages."
 				stacked

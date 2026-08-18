@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { BulkSlide } from '$lib/studio/bulk-to-studio';
 	import type { HighlightDefaults } from '$lib/highlight';
+	import type { Overlay } from '$lib/types';
 	import { viralityScoreLabel, viralityScoreTone } from '$lib/studio/bulk-video-clips';
+	import { imageOverlaysForSlide } from '$lib/studio/bulk-image-overlays';
 	import BulkSlidePreview from '$lib/components/bulk/BulkSlidePreview.svelte';
 
 	type Props = {
@@ -14,12 +16,20 @@
 		loadingSlideIds?: string[];
 		/** When false, BulkSlidePreview strips `[[…]]` word highlights */
 		textHighlightsEnabled?: boolean;
-		/** News source logo URL from brand kit */
+		/** News source logo URL from brand kit / override */
 		sourceLogoSrc?: string;
+		/** News source logo max width from brand kit / override */
+		sourceLogoWidth?: number;
+		/** Optional plate behind the News logo */
+		sourceLogoPlateColor?: string;
+		/** News logo drag offsets */
+		textOffsets?: Record<string, { x: number; y: number }>;
 		/** News text byline when no logo (brand display name) */
 		sourceLabel?: string;
 		highlightColor?: string;
 		highlightDefaults?: HighlightDefaults;
+		/** Per-slide News stickers (resolved for display). */
+		imageOverlaysBySlide?: Overlay[][];
 	};
 
 	let {
@@ -30,9 +40,13 @@
 		loadingSlideIds = [],
 		textHighlightsEnabled = true,
 		sourceLogoSrc,
+		sourceLogoWidth = 140,
+		sourceLogoPlateColor = '',
+		textOffsets = {},
 		sourceLabel,
 		highlightColor,
 		highlightDefaults,
+		imageOverlaysBySlide = [],
 	}: Props = $props();
 
 	const previewWidth = $derived(width);
@@ -294,9 +308,13 @@
 								mediaFetching={true}
 								{textHighlightsEnabled}
 								{sourceLogoSrc}
+								{sourceLogoWidth}
+								{sourceLogoPlateColor}
+								{textOffsets}
 								{sourceLabel}
 								{highlightColor}
 								{highlightDefaults}
+								overlays={imageOverlaysForSlide(imageOverlaysBySlide, si)}
 							/>
 						{:else}
 							<BulkSlidePreview
@@ -307,9 +325,13 @@
 								width={previewWidth}
 								{textHighlightsEnabled}
 								{sourceLogoSrc}
+								{sourceLogoWidth}
+								{sourceLogoPlateColor}
+								{textOffsets}
 								{sourceLabel}
 								{highlightColor}
 								{highlightDefaults}
+								overlays={imageOverlaysForSlide(imageOverlaysBySlide, si)}
 							/>
 						{/if}
 					</div>

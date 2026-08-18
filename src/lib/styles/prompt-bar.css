@@ -81,6 +81,11 @@
 	flex-wrap: wrap;
 }
 
+/* Second tools row (e.g. Bulk slides + workflow) sits tighter under the first. */
+.prompt-bar-tools + .prompt-bar-tools {
+	padding-top: 0;
+}
+
 .prompt-bar-icon-btn {
 	display: inline-flex;
 	align-items: center;

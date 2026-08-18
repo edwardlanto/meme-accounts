@@ -15,6 +15,13 @@ export const GET: RequestHandler = async ({ locals }) => {
 			aiImagesLimit: 0,
 			aiImagesRemaining: 0,
 			canGenerateAiImage: false,
+			clipMinutesUsed: 0,
+			clipMinutesLimit: 60,
+			clipMinutesRemaining: 60,
+			canAnalyzeClips: true,
+			maxClipVideoMinutes: 20,
+			slideshowsGenerated: 0,
+			slidesGenerated: 0,
 		});
 	}
 
@@ -34,5 +41,12 @@ export const GET: RequestHandler = async ({ locals }) => {
 		aiImagesLimit: status.aiImagesLimit,
 		aiImagesRemaining: status.aiImagesRemaining,
 		canGenerateAiImage: status.canGenerateAiImage,
+		clipMinutesUsed: status.clipMinutesUsed,
+		clipMinutesLimit: status.clipMinutesLimit,
+		clipMinutesRemaining: status.clipMinutesRemaining,
+		canAnalyzeClips: status.canAnalyzeClips,
+		maxClipVideoMinutes: status.maxClipVideoMinutes,
+		slideshowsGenerated: status.slideshowsGenerated,
+		slidesGenerated: status.slidesGenerated,
 	});
 };

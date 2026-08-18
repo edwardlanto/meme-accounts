@@ -71,7 +71,7 @@
 
 <svelte:head>
 	<title>Pricing | Meme Accounts</title>
-	<meta name="description" content="Simple creator-first pricing. Start free with 5 carousels/month, upgrade to Creator at $24/mo when you grow." />
+	<meta name="description" content="Simple creator-first pricing. Start free with 5 carousels/month, upgrade to Creator at $29/mo when you grow." />
 </svelte:head>
 
 <div class="marketing-page">

@@ -1,4 +1,5 @@
 /** Shared plan catalog for client pages (mirrors server catalog — prices only; Stripe price IDs stay server-side). */
+/** Clip-minute bullets omitted while `CLIP_FINDER_ENABLED` is false — restore from plan-entitlements when shipping Clips. */
 import { PLAN_ENTITLEMENTS } from '$lib/plan-entitlements';
 
 export const PLAN_CATALOG = {
@@ -22,11 +23,11 @@ export const PLAN_CATALOG = {
 		id: 'hobby' as const,
 		name: 'Hobby',
 		tagline: 'For creators posting a few times a week.',
-		monthly: 15,
-		yearly: 124,
+		monthly: 19,
+		yearly: 157,
 		carouselsPerMonth: PLAN_ENTITLEMENTS.hobby.carouselsPerMonth!,
 		features: [
-			'30 carousels / month',
+			'50 carousels / month',
 			'50 AI images / month',
 			'5 caption styles',
 			'AI script writer',
@@ -38,8 +39,8 @@ export const PLAN_CATALOG = {
 		id: 'creator' as const,
 		name: 'Creator',
 		tagline: 'For creators who ship every week.',
-		monthly: 24,
-		yearly: 199,
+		monthly: 29,
+		yearly: 239,
 		carouselsPerMonth: PLAN_ENTITLEMENTS.creator.carouselsPerMonth!,
 		features: [
 			'100 carousels / month',

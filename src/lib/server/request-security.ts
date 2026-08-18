@@ -338,6 +338,11 @@ export const newsBodySchema = z.object({
 		(val) => (val === undefined || val === null ? 5 : Number(val)),
 		z.number().finite().int().min(3).max(8),
 	),
+	/** Target carousel length — helps general/story bibles pace beats across N slides. */
+	slideCount: z.preprocess(
+		(val) => (val === undefined || val === null ? undefined : Number(val)),
+		z.number().finite().int().min(1).max(10).optional(),
+	),
 	studioRegenAt: z.number().finite().optional(),
 	/** Prior hooks/titles for this query — model must not repeat them. */
 	avoidHooks: z.array(z.string().max(200)).max(12).optional(),

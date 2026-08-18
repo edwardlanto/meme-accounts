@@ -7,11 +7,12 @@
 		description: string;
 		format: string;
 		platform: string;
-		image: string;
-		tag?: string;
-		metric?: string;
+		formatLabel?: string;
+		platformLabel?: string;
 		href?: string;
-		layout?: 'featured' | 'side' | 'tile';
+		layout?: 'featured' | 'side' | 'tile' | 'wide';
+		visual?: 'mix';
+		index?: string;
 	};
 
 	let {
@@ -25,6 +26,7 @@
 	const layoutClass = (layout: ProofItem['layout']) => {
 		if (layout === 'featured') return 'mk-proof-slot--featured';
 		if (layout === 'side') return 'mk-proof-slot--side';
+		if (layout === 'wide') return 'mk-proof-slot--wide';
 		return 'mk-proof-slot--tile';
 	};
 </script>
@@ -40,11 +42,13 @@
 				description={item.description}
 				format={item.format}
 				platform={item.platform}
-				image={item.image}
-				tag={item.tag}
-				metric={item.metric}
+				formatLabel={item.formatLabel}
+				platformLabel={item.platformLabel}
 				href={item.href}
 				featured={item.layout === 'featured'}
+				wide={item.layout === 'wide'}
+				visual={item.visual ?? ''}
+				index={item.index}
 			/>
 		</div>
 	{/each}

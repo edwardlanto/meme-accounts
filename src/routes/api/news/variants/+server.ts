@@ -6,6 +6,11 @@ import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords, ensureCompleteThought } from '$lib/studio/fit-copy';
 import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
 import {
+	looksLikeModelJsonLeak,
+	parseModelOverlayJson,
+	sanitizeOverlayLine,
+} from '$lib/studio/overlay-copy';
+import {
 	assessUserTopicSafety,
 	filterUnsafeGeneratedStrings,
 	withCopySafetyRules,
@@ -111,6 +116,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const noEmDash =
 			` NEVER use em dashes (—) or en dashes (–); use commas, periods, or a plain hyphen (-) only.` +
 			` Each string MUST be a COMPLETE grammatical thought that starts and finishes — never cut mid-sentence or mid-clause, never use ellipsis (…).` +
+			` GRAMMAR: it must read aloud as a real sentence. Contrast needs a comma ` +
+			`(good: "READ THE RIGHT THINGS FAST, NOT EVERYTHING." bad: "READ THE RIGHT THINGS FAST NOT EVERYTHING."). ` +
+			` Join clauses with a comma, colon, or period — never mash two thoughts together.` +
 			` Never end on dangling words like "that", "and", "to", or "a".` +
 			` If it will not fit in ${MAX_WORDS} words, write a shorter finished line instead.`;
 		// ── Generate all slide texts in one call ──────────────────────────────
@@ -123,7 +131,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			`Each supporting slide must be a DIFFERENT support type — never a rewrite of a previous slide. ` +
 			`Preferred order: slide 2 = concrete evidence/stat/example, slide 3 = why it matters/implication, slide 4 = action/lesson, remaining = distinct angles. ` +
 			`Each slide feels like the NEXT PANEL in the same carousel. ` +
-			`No near-duplicates. No quotes, markdown, emojis, or hashtags.` +
+			`No near-duplicates. No quotation marks around any slide. No markdown, emojis, or hashtags.` +
 			noEmDash;
 
 		const generalSystem =
@@ -131,10 +139,22 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			`Return a JSON array of exactly ${slideCount} strings. Each string must be ≤ ${MAX_WORDS} words (strict). ` +
 			`The user asked casually (e.g. "god is real", "japan", "beds") — write ABOUT that topic, not about how to post. ` +
 			`Ban meta advice: no algorithms, feeds, "carousels", "hooks", "creators", "stop the scroll", or posting tips. ` +
-			`RELEVANCE: every slide must be unmistakably about the request. Ban distant metaphors that never name the subject. ` +
-			`Slide 1 = strongest scroll-stopping hook matching their request (front-load the subject). ` +
-			`If slide 1 is already provided as a HOOK in the user message, keep its claim — polish for punch, do not change the topic. ` +
-			`Slides 2–N each add a NEW facet, tip, example, or beat about the subject — never paraphrase slide 1. ` +
+			`TOPIC LOCK: every slide must name or unmistakably reference the same subject as the user request. ` +
+			`Ban distant metaphors that never mention the subject. Ban pivoting to a different theme mid-deck. ` +
+			`ONE CAROUSEL ARC (not ${slideCount} unrelated posts): ` +
+			(slideCount === 1
+				? `Only slide 1 = the strongest on-topic hook.`
+				: slideCount === 2
+					? `Slide 1 = hook. Slide 2 = the single strongest support beat (proof, example, or implication) — not a paraphrase.`
+					: slideCount === 3
+						? `Slide 1 = hook. Slide 2 = concrete evidence / example / mechanism. Slide 3 = stakes, takeaway, or next move.`
+						: `Slide 1 = strongest scroll-stopping hook (front-load the subject). ` +
+							`Slide 2 = concrete evidence, example, or vivid detail. ` +
+							`Slide 3 = why it matters / tension / implication. ` +
+							`Slides 4–${slideCount - 1 || 4} = distinct new facets (never rewrite earlier slides). ` +
+							`Final slide = clear takeaway, CTA, or landing beat on the SAME topic.`) +
+			` If slide 1 is already provided as a HOOK in the user message, keep its claim — polish for punch, do not change the topic. ` +
+			`Each supporting slide must feel like the NEXT PANEL — new information, not a synonym of slide 1. ` +
 			`Match implied format (tips → concrete tips; claim/belief → proof/tension/stakes; product/topic → facets; story → beats). ` +
 			`ALL CAPS. No near-duplicates. No quotes, markdown, emojis, or hashtags.` +
 			noEmDash;
@@ -236,9 +256,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 							`Do not pivot into tips, statistics, or unrelated angles unless they appear inside the scene.`
 						: contentMode === 'general'
 							? `User request / title: ${title || 'Untitled'}\n\nContext bible (interpret and deliver what they asked for):\n${text.slice(0, 12000)}\n\n` +
-								`Write all ${slideCount} slides as ONE carousel ABOUT THE TOPIC. Slide 1 = the strongest on-topic hook (name the subject). ` +
+								`Write all ${slideCount} slides as ONE continuous carousel ABOUT THE SAME TOPIC. ` +
+								`Slide count is FIXED at ${slideCount} — split the idea across exactly that many panels with even pacing (do not dump everything on slide 1 or repeat the hook). ` +
+								`Slide 1 = the strongest on-topic hook (name the subject in the first few words). ` +
 								`If a HOOK line is already in the context, keep that claim — make it punchier, do not swap topics. ` +
-								`Every later slide must add NEW information or a new angle on the SAME subject. ` +
+								(slideCount >= 3
+									? `Progression: hook → evidence/example → implication/stakes` +
+										(slideCount > 3 ? ` → extra distinct facets` : '') +
+										` → landing/takeaway on the final slide. `
+									: slideCount === 2
+										? `Progression: hook → one fresh support beat. `
+										: ``) +
+								`Every later slide must add NEW information or a new angle on the SAME subject — never paraphrase an earlier slide. ` +
 								`Ban distant metaphors that never mention the request. Never write meta tips about posting, algorithms, carousels, hooks, or the feed.`
 							: `Source: ${sourceUrl}\nTitle: ${title}\n\nArticle text:\n${text.slice(0, 12000)}\n\n` +
 								`Write the carousel overlay copy for all ${slideCount} slides following the structure rules. ` +
@@ -287,11 +316,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 								? 1600
 								: 1100
 							: includeBodies || includeReplies
-								? 1800
+								? contentMode === 'general'
+									? Math.min(2400, 900 + slideCount * 220)
+									: 1800
 								: contentMode === 'quote'
 									? 1000
 									: contentMode === 'general'
-										? 1100
+										? Math.min(1600, 700 + slideCount * 160)
 										: 1000,
 			}),
 		});
@@ -307,34 +338,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		let variants: string[] = [];
 		let replies: string[] = [];
 		let bodies: string[] = [];
-		try {
-			const parsed = JSON.parse(content);
-			if (Array.isArray(parsed)) {
-				variants = parsed.map((x: unknown) => truncate(String(x ?? '').trim(), MAX_WORDS)).filter(Boolean);
-			} else if (parsed && typeof parsed === 'object') {
-				const v = (parsed as { variants?: unknown }).variants;
-				const r = (parsed as { replies?: unknown }).replies;
-				const b = (parsed as { bodies?: unknown }).bodies;
-				if (Array.isArray(v)) {
-					variants = v.map((x: unknown) => truncate(String(x ?? '').trim(), MAX_WORDS)).filter(Boolean);
-				}
-				if (Array.isArray(r)) {
-					replies = r
-						.map((x: unknown) => truncate(String(x ?? '').trim(), 16))
-						.filter(Boolean);
-				}
-				if (Array.isArray(b)) {
-					bodies = b
-						.map((x: unknown) => truncate(String(x ?? '').trim().replace(/\[\[|\]\]/g, ''), SUPPORT_WORDS))
-						.filter(Boolean);
-				}
-			} else {
-				throw new Error('Unexpected JSON shape');
-			}
-		} catch {
-			// Fallback: treat whole response as slide 1
-			variants = [truncate(content, MAX_WORDS)];
+		const extracted = parseModelOverlayJson(content);
+		if (extracted) {
+			variants = extracted.variants
+				.map((x) => truncate(sanitizeOverlayLine(x), MAX_WORDS))
+				.filter(Boolean);
+			replies = extracted.replies
+				.map((x) => truncate(sanitizeOverlayLine(x), 16))
+				.filter(Boolean);
+			bodies = extracted.bodies
+				.map((x) =>
+					truncate(sanitizeOverlayLine(x).replace(/\[\[|\]\]/g, ''), SUPPORT_WORDS),
+				)
+				.filter(Boolean);
 		}
+		/* Never stamp raw model JSON onto a slide. */
+		variants = variants.filter((v) => !looksLikeModelJsonLeak(v));
+		replies = replies.filter((v) => !looksLikeModelJsonLeak(v));
+		bodies = bodies.filter((v) => !looksLikeModelJsonLeak(v));
 
 		// Ensure we have exactly slideCount items
 		variants = filterUnsafeGeneratedStrings(variants);
@@ -371,11 +392,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		// ── Optional second pass: add [[highlights]] to each slide ───────────
 		if (autoHighlight && variants.length > 0) {
 			const highlighted = await addHighlights(variants, title, contentMode, MAX_WORDS);
-			variants = highlighted;
+			variants = highlighted.map((v, i) =>
+				looksLikeModelJsonLeak(v) ? (variants[i] ?? '') : v,
+			).filter(Boolean);
 		}
-		variants = variants.map((v) => stripEmDashes(v));
-		replies = replies.map((r) => stripEmDashes(r));
-		bodies = bodies.map((b) => stripEmDashes(b));
+		variants = variants.map((v) => sanitizeOverlayLine(stripEmDashes(v)));
+		replies = replies.map((r) => sanitizeOverlayLine(stripEmDashes(r)));
+		bodies = bodies.map((b) => sanitizeOverlayLine(stripEmDashes(b)));
 		return json({
 			variants,
 			...(includeBodies ? { bodies } : {}),
