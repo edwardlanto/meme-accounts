@@ -19,7 +19,7 @@ const CAROUSEL_PROMPT_FILES = import.meta.glob(
 		'../../../../lib/prompts/carousel/instagram-carousel-prompt2.md',
 		'../../../../lib/prompts/brand-images/CAROUSEL_STRATEGY.md',
 	],
-	{ as: 'raw', eager: true },
+	{ query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>;
 
 function loadCarouselSystemPrompt(): string {

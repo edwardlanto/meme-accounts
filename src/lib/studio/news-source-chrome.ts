@@ -48,8 +48,7 @@ function isDisplayableMediaUrl(u: string): boolean {
 
 export function newsSourceChromeFromBrandKit(kit: BrandKitSettings): NewsSourceChrome {
 	return {
-		/* Default News is logoless — brand `logoUrl` is for avatars / explicit Add logo. */
-		sourceLogoSrc: '',
+		sourceLogoSrc: String(kit.logoUrl ?? '').trim(),
 		sourceLogoWidth: clampLogoWidth(kit.sourceLogoWidth, 140),
 		sourceLogoPlateColor: String(
 			(kit as { sourceLogoPlateColor?: string }).sourceLogoPlateColor ?? '',
@@ -95,10 +94,8 @@ function chromeFromNewsDocument(
  * hydrated brand-kit logo with an account-override key that still needs signing.
  */
 function pickLogoSrc(candidate: unknown, fallback: string): string {
-	if (candidate === undefined || candidate === null) return fallback;
-	const next = String(candidate).trim();
-	/* Explicit empty means the logo was removed — do not fall back to the brand kit. */
-	if (!next) return '';
+	const next = String(candidate ?? '').trim();
+	if (!next) return fallback;
 	if (isR2Ref(next) && isDisplayableMediaUrl(fallback)) return fallback;
 	return next;
 }

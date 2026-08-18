@@ -512,6 +512,12 @@
 		}));
 		slidesPerShow = slideWorkflow.length;
 		persistSlideWorkflow();
+		/* Pull the saved template’s News logo into the brand kit so Bulk keeps it. */
+		const logo = String(saved.logoSrc ?? '').trim();
+		if (logo && userId && !String(brandKit.logoUrl ?? '').trim()) {
+			brandKit = { ...brandKit, logoUrl: logo, sourceLabelMode: 'logo' };
+			saveBrandKit(userId, brandKit);
+		}
 	}
 
 	function removeWorkflowStep(index: number) {

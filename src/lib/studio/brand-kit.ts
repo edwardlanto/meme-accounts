@@ -244,8 +244,6 @@ async function toStoredBrandUrl(
 ): Promise<string> {
 	const cur = String(current ?? '').trim();
 	const prev = String(previousStored ?? '').trim();
-	/* Empty is an explicit clear — do not restore the previous `r2:` object. */
-	if (!cur) return '';
 	if (isDataImageUrl(cur)) {
 		if (typeof window === 'undefined') return isR2Ref(prev) ? prev : '';
 		try {
@@ -260,8 +258,10 @@ async function toStoredBrandUrl(
 	}
 	if (isR2Ref(cur)) return cur;
 	if (cur.startsWith('blob:')) return isR2Ref(prev) ? prev : '';
+	// Signed R2 URLs expire — keep the canonical key already in the DB.
+	if (isR2Ref(prev)) return prev;
 	if (cur.startsWith('http://') || cur.startsWith('https://')) {
-		// Presigned GET links are not durable — keep the canonical key already in the DB.
+		// Presigned GET links are not durable — don’t replace a missing r2 key with one.
 		if (/[?&]X-Amz-Signature=/i.test(cur) || /[?&]X-Amz-Credential=/i.test(cur)) {
 			return isR2Ref(prev) ? prev : '';
 		}

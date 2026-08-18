@@ -12,8 +12,9 @@ import { enforceAiHeavyRateLimit, rateLimitedJson } from '$lib/server/rate-limit
  * `src/lib/prompts/brand-images/`. Bundled as raw strings at build time.
  */
 const PROMPT_FILES = import.meta.glob('../../../lib/prompts/brand-images/*.md', {
-	as: 'raw',
-	eager: true
+	query: '?raw',
+	import: 'default',
+	eager: true,
 }) as Record<string, string>;
 
 function buildSystemPrompt() {

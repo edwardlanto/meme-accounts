@@ -3738,7 +3738,8 @@ import JSZip from 'jszip';
 	// Post data
 	let source = $state('');
 	let sourceLogoSrc = $state('');
-	let sourceLabelMode = $state<'text' | 'logo'>('text');
+	/** Always logo for News branding (text byline removed from UI). */
+	let sourceLabelMode = $state<'text' | 'logo'>('logo');
 	/** Legacy chrome — kept for saved kits; branding UI no longer exposes these. */
 	let sourceBorderKind = $state<'none' | 'rules' | 'box'>('none');
 	let sourceBorderColor = $state('');
@@ -6699,8 +6700,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			case 'source':
 				if (sourceLabelMode === 'logo') {
 					sourceLogoSrc = '';
-					sourceLabelMode = 'text';
-					persistNewsSourceChrome({ sourceLogoSrc: '', sourceLabelMode: 'text' });
 				} else {
 					source = '';
 				}
@@ -7987,12 +7986,16 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (name && (isPlaceholderNewsSource(source) || !String(source ?? '').trim())) {
 			source = name;
 		}
-		if (kit.sourceLabelMode === 'text' && !String(sourceLogoSrc ?? '').trim()) {
-			sourceLabelMode = 'text';
+		if (kit.sourceLabelMode === 'logo' || kit.sourceLabelMode === 'text') {
+			/* Prefer logo whenever a brand mark exists — text label mode is retired in the UI. */
+			sourceLabelMode = String(kit.logoUrl ?? '').trim() ? 'logo' : kit.sourceLabelMode;
 		}
-		/* Do not paint brand-kit `logoUrl` onto default News — only saved layouts / Add logo. */
-		if (typeof kit.logoUrl === 'string' && String(kit.logoUrl).trim()) {
-			void ensureR2Resolved(String(kit.logoUrl).trim());
+		if (typeof kit.logoUrl === 'string') {
+			sourceLogoSrc = String(kit.logoUrl).trim();
+			if (sourceLogoSrc) {
+				sourceLabelMode = 'logo';
+				void ensureR2Resolved(sourceLogoSrc);
+			}
 		}
 		const avatar = String(kit.avatarUrl ?? '').trim() || String(kit.logoUrl ?? '').trim();
 		if (avatar) {
@@ -8037,7 +8040,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		try {
 			const kit = loadBrandKit(userId);
 			const mode = extra?.sourceLabelMode ?? sourceLabelMode;
-			const nextLogo =
+			const logo =
 				extra && Object.prototype.hasOwnProperty.call(extra, 'sourceLogoSrc')
 					? String(extra.sourceLogoSrc ?? '').trim()
 					: String(sourceLogoSrc ?? '').trim();
@@ -8054,11 +8057,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			saveBrandKit(userId, {
 				...kit,
 				displayName: String(extra?.displayName ?? brandDisplayName ?? kit.displayName).trim() || kit.displayName,
-				/* Clearing News chrome must not wipe the brand-kit mark (avatars / later Add logo). */
-				logoUrl:
-					extra && Object.prototype.hasOwnProperty.call(extra, 'sourceLogoSrc')
-						? (nextLogo || kit.logoUrl)
-						: (nextLogo || kit.logoUrl),
+				logoUrl: logo,
 				sourceLabelMode: mode,
 				sourceLogoWidth: extra?.sourceLogoWidth ?? sourceLogoWidth,
 				sourceLogoPlateColor: plate,
@@ -8608,9 +8607,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			source = defaultNewsSource();
 		}
 		if (force) {
+			/* Brand kit decides logo vs text — don't force empty logo mode.
+			   Account / DEV News overrides own position, size, and plate. */
 			sourceBorderKind = 'none';
-			sourceLogoSrc = '';
-			sourceLabelMode = 'text';
 			if (userId) {
 				try {
 					const preserve = !!resolveTemplateOverride('news');
@@ -8825,7 +8824,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		circleShadow = layout.circleShadow;
 		circle2Shadow = layout.circle2Shadow;
 		sourceLabelMode = layout.sourceLabelMode;
-		sourceLogoSrc = String(layout.sourceLogoSrc ?? '').trim();
+		if (layout.sourceLogoSrc) sourceLogoSrc = layout.sourceLogoSrc;
 		sourceLogoWidth = layout.sourceLogoWidth;
 		if (typeof (layout as { sourceLogoPlateColor?: unknown }).sourceLogoPlateColor === 'string') {
 			sourceLogoPlateColor = String(
@@ -9463,10 +9462,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			if (layout.sourceLabelMode === 'text' || layout.sourceLabelMode === 'logo') {
 				sourceLabelMode = layout.sourceLabelMode;
 			}
-			if (typeof layout.sourceLogoSrc === 'string') {
+			if (typeof layout.sourceLogoSrc === 'string' && layout.sourceLogoSrc.trim()) {
 				sourceLogoSrc = layout.sourceLogoSrc.trim();
-				if (sourceLogoSrc) sourceLabelMode = 'logo';
-				else if (sourceLabelMode === 'logo') sourceLabelMode = 'text';
 			}
 			if (typeof layout.sourceLogoWidth === 'number' && Number.isFinite(layout.sourceLogoWidth)) {
 				sourceLogoWidth = Math.round(Math.max(80, Math.min(400, layout.sourceLogoWidth)));
@@ -15729,8 +15726,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 							{#if sourceLogoSrc}
 								<Button type="button" variant="ghost" size="sm" class="h-8 rounded-lg text-[11px]" onclick={() => {
 									sourceLogoSrc = '';
-									sourceLabelMode = 'text';
-									persistNewsSourceChrome({ sourceLogoSrc: '', sourceLabelMode: 'text' });
+									persistNewsSourceChrome({ sourceLogoSrc: '' });
 								}}>Remove</Button>
 								<div class="ml-auto h-8 w-8 rounded-lg border border-[#ebebeb] overflow-hidden grid place-items-center">
 									<img src={sourceLogoSrc} alt="" class="h-full w-full object-contain p-1" draggable="false" />
@@ -15980,10 +15976,10 @@ showSubjectCutout={canvasShowCutout}
 					onSourceLogoChange={(src) => {
 						if (!canvasInteractive) return;
 						sourceLogoSrc = src;
-						sourceLabelMode = src ? 'logo' : 'text';
+						if (src) sourceLabelMode = 'logo';
 						persistNewsSourceChrome({
 							sourceLogoSrc: src,
-							sourceLabelMode: src ? 'logo' : 'text',
+							sourceLabelMode: src ? 'logo' : sourceLabelMode,
 						});
 					}}
 					onSourceLogoWidthChange={(w) => {
