@@ -591,7 +591,7 @@
 		>
 			<PopoverTrigger
 				class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 transition-colors ftb-btn"
-				title="Font weight"
+				title="Font weight — applies to the selected letters when a range is highlighted"
 			>
 				<Bold size={14} class="ftb-muted" />
 				<span class="ftb-strong min-w-[30px] text-center text-xs tabular-nums">
@@ -609,6 +609,7 @@
 					{#each FONT_WEIGHT_PRESETS as w}
 						<button
 							type="button"
+							onmousedown={(e) => e.preventDefault()}
 							onclick={() => {
 								onChange({ fontWeight: w });
 								fontWeightOpen = false;
@@ -624,6 +625,7 @@
 
 				<button
 					type="button"
+					onmousedown={(e) => e.preventDefault()}
 					onclick={() => {
 						onChange({ fontWeight: undefined });
 						fontWeightOpen = false;

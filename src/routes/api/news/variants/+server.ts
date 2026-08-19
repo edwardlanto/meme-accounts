@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
-import { newsVariantsBodySchema, parseJsonBody } from '$lib/server/request-security';
+import { MAX_STUDIO_SLIDE_COUNT } from '$lib/studio/compose-prefs';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords, ensureCompleteThought } from '$lib/studio/fit-copy';
 import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
@@ -77,7 +77,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		return json({ error: topicSafety.error, code: topicSafety.code }, { status: 400 });
 	}
 
-	const slideCount = Math.max(1, Math.min(10, Math.floor(Number(count))));
+	const slideCount = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(count))));
 	const contentMode: VariantContentMode =
 		contentModeRaw === 'general' ||
 		contentModeRaw === 'fact' ||

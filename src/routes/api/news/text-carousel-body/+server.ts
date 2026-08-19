@@ -5,6 +5,7 @@ import {
 	fitTextCarouselBodyToCanvas,
 	joinTextCarouselParagraphs,
 	textCarouselBudgetFromMaxWords,
+	uniqueTextCarouselParagraphs,
 } from '$lib/studio/text-carousel-body';
 import { newsTextCarouselBodySchema, parseJsonBody } from '$lib/server/request-security';
 import {
@@ -55,7 +56,12 @@ function demoBody(
 }
 
 function wordCapPrompt(maxWords: number, paragraphCount: number): string {
-	if (maxWords <= 16) {
+	const minWords = Math.max(8, Math.floor(maxWords * 0.7));
+	const distinct =
+		paragraphCount > 1
+			? `Each paragraph must be a NEW thought — never repeat or lightly paraphrase the previous one. `
+			: '';
+	if (maxWords <= 20) {
 		return (
 			`HARD CAP: at most ${maxWords} words TOTAL for this slide. ` +
 			`One short punchy paragraph only (${paragraphCount} item in the array). ` +
@@ -66,16 +72,25 @@ function wordCapPrompt(maxWords: number, paragraphCount: number): string {
 		const per = Math.max(8, Math.ceil(maxWords / Math.max(1, paragraphCount)));
 		return (
 			`HARD CAP: at most ${maxWords} words TOTAL across ${paragraphCount} paragraph(s). ` +
-			`About ~${per} words per paragraph. 1–2 short sentences each. Do not pad.`
+			`Write at least ${minWords} words. About ~${per} words per paragraph. 1–2 short sentences each. ` +
+			distinct
 		);
 	}
 	if (paragraphCount === 1) {
-		return `One short paragraph only (~${Math.min(65, maxWords)} words). Prefer 2–3 punchy sentences.`;
+		return `One paragraph (~${Math.min(65, maxWords)} words). Prefer 2–3 punchy sentences. Write at least ${minWords} words.`;
 	}
 	if (paragraphCount === 2) {
-		return `Two short paragraphs (~${Math.min(45, Math.ceil(maxWords / 2))} words each). 1–2 sentences per paragraph. Stay under ${maxWords} words total.`;
+		return (
+			`Two distinct paragraphs (~${Math.min(45, Math.ceil(maxWords / 2))} words each). ` +
+			`1–2 sentences per paragraph. Write at least ${minWords} words and stay under ${maxWords} total. ` +
+			distinct
+		);
 	}
-	return `Three short paragraphs (~${Math.min(35, Math.ceil(maxWords / 3))} words each). 1–2 sentences per paragraph. Stay under ${maxWords} words total.`;
+	return (
+		`Three distinct paragraphs (~${Math.min(35, Math.ceil(maxWords / 3))} words each). ` +
+		`1–2 sentences per paragraph. Write at least ${minWords} words and stay under ${maxWords} total. ` +
+		distinct
+	);
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -151,11 +166,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		`You write body copy for ONE Instagram text-carousel slide (profile header is separate). ` +
 		`This is slide ${slideIndex + 1} of ${slideCount}: ${slideRole}. ` +
 		`Output ONLY valid JSON: {"paragraphs":["paragraph one","paragraph two"]}. ` +
-		`You MUST return exactly ${paragraphCount} paragraph(s) in the array — no more, no fewer. ` +
+		`Return ${paragraphCount} DISTINCT paragraph(s) — never repeat or lightly paraphrase the same line. ` +
 		`${wordCap} ` +
-		`Expand ONLY the slide angle / beat you are given into the requested length. ` +
+		`Expand the slide angle / beat into the requested length with NEW sentences. ` +
 		`Do NOT retell the entire article. Do NOT reuse wording from other slides. ` +
-		`Visual rhythm matters: stay within the word budget — never pad to fill space. ` +
+		`Do NOT return the same sentence twice. ` +
+		`Use the word budget — when ${paragraphCount} paragraphs are requested, write that many distinct paragraphs, not a one-line hook copied twice. ` +
 		`Rules: normal sentence case; separate array items ARE the paragraph breaks (blank lines on the card); ` +
 		`never smash all sentences into one long paragraph; never join paragraphs with spaces only; ` +
 		`no hashtags, emojis, markdown, or [[highlight]] markup; stay faithful to the source; ` +
@@ -171,7 +187,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			? `THIS SLIDE'S BEAT (expand this — do not invent a different topic):\n${angle.slice(0, 600)}\n\n`
 			: '') +
 		`Source material (context only):\n${(text || title).slice(0, 12000)}\n\n` +
-		`Remember: return ${paragraphCount} paragraph(s) totaling ≤ ${maxWords} words for THIS slide only.`;
+		`Remember: return ${paragraphCount} distinct paragraph(s) totaling at least ${Math.max(8, Math.floor(maxWords * 0.7))} and ≤ ${maxWords} words for THIS slide only.`;
 
 	try {
 		const res = await fetch(OPENROUTER_API, {
@@ -189,7 +205,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					{ role: 'user', content: userPrompt },
 				],
 				temperature: 0.88,
-				max_tokens: maxWords <= 16 ? 220 : maxWords <= 36 ? 450 : 900,
+				max_tokens: maxWords <= 20 ? 220 : maxWords <= 36 ? 450 : 900,
 			}),
 		});
 
@@ -223,14 +239,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			);
 		}
 
-		while (paragraphs.length < paragraphCount) {
-			paragraphs.push(
-				(paragraphs[paragraphs.length - 1] ?? angle ?? title) || 'Follow for more context.',
-			);
-		}
+		paragraphs = uniqueTextCarouselParagraphs(paragraphs, paragraphCount, angle);
 
 		const fitted = fitTextCarouselBodyToCanvas(
-			joinTextCarouselParagraphs(paragraphs.slice(0, paragraphCount)),
+			joinTextCarouselParagraphs(paragraphs),
 			{
 				randomizeParagraphCount: false,
 				maxParagraphs: paragraphCount,

@@ -6,7 +6,7 @@ import { stripMarkup } from '$lib/highlight';
 import { splitIntoSentences } from '$lib/studio/fit-copy';
 import { looksLikeModelJsonLeak, sanitizeOverlayLine } from '$lib/studio/overlay-copy';
 import { stripEmDashes } from '$lib/strip-em-dashes';
-import type { NewsStudioContentMode } from '$lib/studio/compose-prefs';
+import { MAX_STUDIO_SLIDE_COUNT, type NewsStudioContentMode } from '$lib/studio/compose-prefs';
 
 export type DeckStoryBeatsResult = {
 	copyStrings: string[];
@@ -48,7 +48,7 @@ export function buildVariantBodyText(opts: {
 	const body = String(opts.body ?? '').trim();
 	const title = String(opts.title ?? '').trim();
 	const request = String(opts.userRequest ?? '').trim();
-	const n = Math.max(1, Math.min(10, Math.floor(Number(opts.slideCount)) || 0));
+	const n = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(opts.slideCount)) || 0));
 	if (opts.mode === 'story') {
 		return `HOOK (slide 1 overlay):\n${hook}\n\nNARRATIVE CONTEXT (continue this story across slides; do not turn it into a news explainer):\n${body}`;
 	}
@@ -296,7 +296,7 @@ function dedupeBodies(
 export async function fetchDeckStoryBeats(
 	opts: FetchDeckStoryBeatsOpts,
 ): Promise<DeckStoryBeatsResult> {
-	const n = Math.max(1, Math.min(10, Math.floor(Number(opts.count)) || 1));
+	const n = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(opts.count)) || 1));
 	const hook = sanitizeOverlayLine(stripEmDashes(String(opts.hookText ?? '').trim()));
 	const body = sanitizeOverlayLine(stripEmDashes(String(opts.rawText ?? '').trim()));
 	const title = stripEmDashes(String(opts.title ?? '').trim());

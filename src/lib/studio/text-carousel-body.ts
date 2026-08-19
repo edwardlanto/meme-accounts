@@ -105,7 +105,7 @@ export function autoTextCarouselFontPx(body: string, toolbarFontPx?: number | nu
 }
 
 /**
- * Map Studio word-count chip (Short≈12 / Standard≈28 / Default≈placeholder) onto
+ * Map Studio word-count chip (Short≈12 / Standard≈28 / Default≈52 on carousel) onto
  * paragraph count + per-para budgets for text-carousel body copy.
  */
 export type TextCarouselCopyBudget = {
@@ -114,11 +114,14 @@ export type TextCarouselCopyBudget = {
 	maxWordsPerPara: number;
 };
 
+/** Default chip for text carousel: longer than Standard (28), two distinct paragraphs. */
+export const TEXT_CAROUSEL_DEFAULT_BODY_WORDS = 52;
+
 export function textCarouselBudgetFromMaxWords(maxWords?: number | null): TextCarouselCopyBudget {
 	const w = Math.floor(Number(maxWords));
 	const capped = Number.isFinite(w) && w > 0 ? Math.max(6, Math.min(120, w)) : 56;
-	// Short — one tight punchline, not a wall of text.
-	if (capped <= 16) {
+	// Short — one tight punchline, not a wall of text. Studio Short chip is 18 words.
+	if (capped <= 20) {
 		return { paragraphCount: 1, maxWordsTotal: capped, maxWordsPerPara: capped };
 	}
 	// Standard — two short beats.
@@ -168,6 +171,46 @@ function clampJoinedToTotalWords(
 		used += next.split(/\s+/).filter(Boolean).length;
 	}
 	return joinTextCarouselParagraphs(out);
+}
+
+/**
+ * Keep unique paragraphs only — never clone the last one to hit a count.
+ * Optionally pull extra distinct sentences from `fallbackSource`.
+ */
+export function uniqueTextCarouselParagraphs(
+	paragraphs: string[],
+	want: number,
+	fallbackSource?: string,
+): string[] {
+	const n = Math.max(1, Math.min(3, Math.floor(want)));
+	const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+	const seen: string[] = [];
+	const out: string[] = [];
+	const push = (raw: string): boolean => {
+		const t = String(raw ?? '').replace(/\s+/g, ' ').trim();
+		const k = norm(t);
+		if (!t || k.length < 8) return false;
+		if (seen.some((s) => s === k || s.includes(k) || k.includes(s))) return false;
+		seen.push(k);
+		out.push(t);
+		return true;
+	};
+	for (const p of paragraphs) {
+		if (out.length >= n) break;
+		push(p);
+	}
+	if (out.length < n && fallbackSource) {
+		const extras = String(fallbackSource)
+			.replace(/\r\n/g, '\n')
+			.split(/(?<=[.!?])\s+/)
+			.map((s) => s.trim())
+			.filter(Boolean);
+		for (const s of extras) {
+			if (out.length >= n) break;
+			push(s);
+		}
+	}
+	return out;
 }
 
 /** Trim from the end until the body fits at min font size. Never use ellipsis. */

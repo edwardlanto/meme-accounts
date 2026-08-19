@@ -64,6 +64,20 @@ export function highlightEmphasisCss(baseWeight?: number | string | null): strin
 	return bits.join(' ');
 }
 
+export function normalizeInlineFontWeight(raw: number | string | null | undefined): number | undefined {
+	const n = typeof raw === 'string' ? Number.parseFloat(raw) : Number(raw);
+	if (!Number.isFinite(n)) return undefined;
+	const rounded = Math.round(n);
+	if (rounded < 100 || rounded > 900) return undefined;
+	return rounded;
+}
+
+/** Inline CSS for a `[[w(800): …]]` span. Inherit when the span has no own weight. */
+export function highlightWeightCss(fontWeight?: number | null): string {
+	if (fontWeight == null) return 'font-weight: inherit; font-style: inherit; text-decoration: inherit;';
+	return `font-weight: ${fontWeight}; font-style: inherit; text-decoration: inherit;`;
+}
+
 /** Apply the same emphasis rules to a live DOM node (HighlightEditor). */
 export function applyHighlightEmphasisToElement(
 	el: HTMLElement,
@@ -144,6 +158,15 @@ const HIGHLIGHT_GRAD_INNER_RE =
 	/^\s*grad\(\s*(#[0-9a-fA-F]{3,8})\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s?(.*)$/is;
 /** `[[#hex: phrase]]` — only one whitespace after `:` is delimiter; phrase may start with spaces (split tokens). */
 const HIGHLIGHT_HEX_PREFIX_RE = /^\s*(#[0-9a-fA-F]{3,8})\s*:\s?(.*)$/is;
+/** `[[w(800): phrase]]` — inline weight; rest of inner may still carry paint (`#hex:`, grad, …). */
+const HIGHLIGHT_WEIGHT_PREFIX_RE = /^\s*w\(\s*(\d{2,3})\s*\)\s*:\s?(.*)$/is;
+
+function parseWeightPrefix(inner: string): { fontWeight?: number; rest: string } {
+	const wm = inner.match(HIGHLIGHT_WEIGHT_PREFIX_RE);
+	if (!wm) return { rest: inner };
+	const fontWeight = normalizeInlineFontWeight(wm[1]);
+	return { fontWeight, rest: wm[2] ?? '' };
+}
 
 export interface HighlightRange {
 	start: number;
@@ -155,6 +178,13 @@ export interface HighlightRange {
 	patternImage?: string;
 	/** Solid background behind text (not text-fill). */
 	markerBg?: string;
+	/** Inline font-weight for this span (100–900). Independent of color paint. */
+	fontWeight?: number;
+	/**
+	 * True when this span has color / gradient / pattern / marker / default highlight paint.
+	 * Weight-only spans (`[[w(800): met]]`) keep surrounding ink.
+	 */
+	painted?: boolean;
 }
 
 export interface ParsedText {
@@ -174,6 +204,9 @@ export interface TextSegment {
 	pattern?: string;
 	patternImage?: string;
 	markerBg?: string;
+	fontWeight?: number;
+	/** False for weight-only spans (bold part of a word without recoloring). */
+	painted?: boolean;
 }
 
 /**
@@ -183,6 +216,9 @@ export interface TextSegment {
  *   [[grad(#FF0000,#FFFF00): WORD]] → gradient
  *   [[pattern(waves,#00CED1): WORD]] → pattern fill
  *   [[marker(#hex): WORD]]          → background chip behind phrase
+ *   [[w(800): WORD]]                → bold/weight only (keeps surrounding ink)
+ *   [[w(800):hl: WORD]]             → weight + default highlight paint
+ *   [[w(800):#hex: WORD]]           → weight + solid color
  */
 export function parseHighlightMarkup(
 	raw: string,
@@ -204,7 +240,14 @@ export function parseHighlightMarkup(
 
 		// Do NOT trim inner — trailing/leading spaces belong to the visible phrase (e.g. after
 		// splitting one highlight into [[… WILL ]][[… APPEAR]] the space must survive parse).
-		const inner = raw.slice(open + 2, close);
+		let inner = raw.slice(open + 2, close);
+		let fontWeight: number | undefined;
+		const weightPrefix = inner.match(/^\s*w\(\s*(\d{2,3})\s*\)\s*:\s?(.*)$/is);
+		if (weightPrefix) {
+			fontWeight = normalizeInlineFontWeight(weightPrefix[1]);
+			inner = weightPrefix[2] ?? '';
+		}
+
 		let phrase = inner;
 		let color = defaultColor;
 		let gradientFrom: string | undefined;
@@ -213,10 +256,18 @@ export function parseHighlightMarkup(
 		let patternImage: string | undefined;
 		let markerBg: string | undefined;
 		let styledExplicitly = false;
+		let forceDefaultPaint = false;
+
+		const hlBare = inner.match(/^\s*hl\s*:\s?(.*)$/is);
+		if (hlBare) {
+			phrase = hlBare[1];
+			styledExplicitly = true;
+			forceDefaultPaint = true;
+		}
 
 		// pattern(name): phrase  — any name, optional ,#hex suffix ignored (image-based)
 		const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s?(.*)$/is;
-		const pm = inner.match(patternRe);
+		const pm = !hlBare ? inner.match(patternRe) : null;
 		if (pm) {
 			pattern = pm[1].toLowerCase();
 			phrase = pm[2];
@@ -225,7 +276,7 @@ export function parseHighlightMarkup(
 		}
 
 		// grad(#from, #to): phrase
-		const gm = !pm ? inner.match(HIGHLIGHT_GRAD_INNER_RE) : null;
+		const gm = !hlBare && !pm ? inner.match(HIGHLIGHT_GRAD_INNER_RE) : null;
 		if (gm) {
 			gradientFrom = gm[1];
 			gradientTo = gm[2];
@@ -236,7 +287,7 @@ export function parseHighlightMarkup(
 
 		// marker(#hex): phrase — background chip (toolbar BG)
 		const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s?(.*)$/is;
-		const mm = !pm && !gm ? inner.match(markerRe) : null;
+		const mm = !hlBare && !pm && !gm ? inner.match(markerRe) : null;
 		if (mm) {
 			markerBg = mm[1];
 			phrase = mm[2];
@@ -245,15 +296,17 @@ export function parseHighlightMarkup(
 		}
 
 		// #hex: phrase — phrase capture keeps leading/trailing spaces (boundary chars between splits).
-		const cm = !pm && !gm && !mm ? inner.match(HIGHLIGHT_HEX_PREFIX_RE) : null;
+		const cm = !hlBare && !pm && !gm && !mm ? inner.match(HIGHLIGHT_HEX_PREFIX_RE) : null;
 		if (cm) {
 			color = cm[1];
 			phrase = cm[2];
 			styledExplicitly = true;
 		}
 
-		// Bare `[[phrase]]` — apply Studio default gradient / pattern when set.
-		if (!styledExplicitly) {
+		const painted = styledExplicitly || !fontWeight;
+
+		// Bare `[[phrase]]` or `[[w(800):hl: phrase]]` — apply Studio default gradient / pattern when set.
+		if (painted && (!styledExplicitly || forceDefaultPaint)) {
 			if (defaults.pattern) {
 				pattern = defaults.pattern;
 				patternImage = getPatternImage(pattern);
@@ -266,7 +319,18 @@ export function parseHighlightMarkup(
 
 		const start = plain.length;
 		plain += phrase;
-		ranges.push({ start, end: plain.length, color, gradientFrom, gradientTo, pattern, patternImage, markerBg });
+		ranges.push({
+			start,
+			end: plain.length,
+			color,
+			gradientFrom,
+			gradientTo,
+			pattern,
+			patternImage,
+			markerBg,
+			fontWeight,
+			painted,
+		});
 		i = close + 2;
 	}
 
@@ -291,7 +355,7 @@ export function segmentText(parsed: ParsedText): TextSegment[] {
 		}
 		segments.push({
 			text: parsed.plain.slice(range.start, range.end),
-			highlighted: true,
+			highlighted: range.painted !== false || range.fontWeight != null,
 			start: range.start,
 			end: range.end,
 			color: range.color,
@@ -300,6 +364,8 @@ export function segmentText(parsed: ParsedText): TextSegment[] {
 			pattern: range.pattern,
 			patternImage: range.patternImage,
 			markerBg: range.markerBg,
+			fontWeight: range.fontWeight,
+			painted: range.painted !== false && (range.painted === true || range.fontWeight == null),
 		});
 		cursor = range.end;
 	}
@@ -343,6 +409,7 @@ export function stripAdvancedHighlightMarkup(raw: string): string {
 			break;
 		}
 		const inner = raw.slice(open + 2, close);
+		const weightParsed = parseWeightPrefix(inner);
 		let phrase = phraseFromHighlightInner(inner);
 		if (
 			phrase === inner &&
@@ -354,7 +421,8 @@ export function stripAdvancedHighlightMarkup(raw: string): string {
 				if (tail.trim()) phrase = tail;
 			}
 		}
-		out += '[[' + phrase + ']]';
+		const wPre = weightParsed.fontWeight != null ? `w(${weightParsed.fontWeight}): ` : '';
+		out += '[[' + wPre + phrase + ']]';
 		i = close + 2;
 	}
 	return out;
@@ -362,17 +430,20 @@ export function stripAdvancedHighlightMarkup(raw: string): string {
 
 /** Visible phrase inside a [[…]] token (must stay aligned with parseHighlightMarkup). */
 export function phraseFromHighlightInner(inner: string): string {
+	const rest = parseWeightPrefix(inner).rest;
+	const hlBare = rest.match(/^\s*hl\s*:\s?(.*)$/is);
+	if (hlBare) return hlBare[1];
 	const patternRe = /^\s*pattern\(\s*([\w-]+)\s*(?:,\s*#[0-9a-fA-F]{3,8})?\s*\)\s*:\s?(.*)$/is;
-	const pm = inner.match(patternRe);
+	const pm = rest.match(patternRe);
 	if (pm) return pm[2];
-	const gm = inner.match(HIGHLIGHT_GRAD_INNER_RE);
+	const gm = rest.match(HIGHLIGHT_GRAD_INNER_RE);
 	if (gm) return gm[3];
 	const markerRe = /^\s*marker\(\s*(#[0-9a-fA-F]{3,8})\s*\)\s*:\s?(.*)$/is;
-	const mm = inner.match(markerRe);
+	const mm = rest.match(markerRe);
 	if (mm) return mm[2];
-	const cm = inner.match(HIGHLIGHT_HEX_PREFIX_RE);
+	const cm = rest.match(HIGHLIGHT_HEX_PREFIX_RE);
 	if (cm) return cm[2];
-	return inner;
+	return rest;
 }
 
 // ── Raw-markup <-> plain-text offset mapping ──────────────────────────────
@@ -444,6 +515,7 @@ export type HighlightSpec =
 	| { kind: 'gradient'; from: string; to: string }     // [[grad(#a,#b): WORD]]
 	| { kind: 'pattern'; name: string }                  // [[pattern(name): WORD]]
 	| { kind: 'marker'; color: string }                  // [[marker(#hex): WORD]]
+	| { kind: 'weight'; weight: number | undefined }     // [[w(800): WORD]] — undefined clears weight
 	| { kind: 'clear' };                                 // remove highlight for that range
 
 /**
@@ -453,6 +525,7 @@ export type HighlightSpec =
  * overlaps an existing `[[...]]` token, the parts of that token outside the
  * selection are PRESERVED (with their original color / gradient / marker / pattern).
  * Only the overlapping middle is replaced with the new spec (or removed for `clear`).
+ * Weight specs merge onto existing paint instead of replacing it.
  */
 export function applyHighlight(
 	raw: string,
@@ -469,13 +542,19 @@ export function applyHighlight(
 	plainEnd = Math.max(0, Math.min(plain.length, plainEnd));
 	if (plainStart >= plainEnd) return raw;
 
+	if (spec.kind === 'weight') {
+		return applyWeightToPlainRange(parsed, plainStart, plainEnd, spec.weight, defaultHighlight);
+	}
+
 	const kept: HighlightRange[] = [];
+	let inheritedWeight: number | undefined;
 	for (const r of parsed.ranges) {
 		// Token fully outside selection — keep as-is.
 		if (r.end <= plainStart || r.start >= plainEnd) {
 			kept.push(r);
 			continue;
 		}
+		if (r.fontWeight != null) inheritedWeight = r.fontWeight;
 		// Token fully inside selection — drop (will be replaced by the new spec).
 		if (r.start >= plainStart && r.end <= plainEnd) continue;
 		// Partial overlap — keep the non-overlapping side(s) with the original spec.
@@ -484,11 +563,116 @@ export function applyHighlight(
 	}
 
 	if (spec.kind !== 'clear') {
-		kept.push(rangeFromSpec(plainStart, plainEnd, spec, defaultHighlight));
+		const next = rangeFromSpec(plainStart, plainEnd, spec, defaultHighlight);
+		if (inheritedWeight != null) next.fontWeight = inheritedWeight;
+		kept.push(next);
 	}
 
 	kept.sort((a, b) => a.start - b.start || a.end - b.end);
 	return emitMarkupFromRanges(plain, kept, defaultHighlight);
+}
+
+function rangeHasPaint(r: HighlightRange): boolean {
+	return r.painted !== false;
+}
+
+function applyWeightToPlainRange(
+	parsed: ParsedText,
+	plainStart: number,
+	plainEnd: number,
+	weight: number | undefined,
+	defaultHighlight: string,
+): string {
+	const next: HighlightRange[] = [];
+	for (const r of parsed.ranges) {
+		if (r.end <= plainStart || r.start >= plainEnd) {
+			next.push(r);
+			continue;
+		}
+		if (r.start < plainStart) next.push({ ...r, end: plainStart });
+		const mid: HighlightRange = {
+			...r,
+			start: Math.max(r.start, plainStart),
+			end: Math.min(r.end, plainEnd),
+		};
+		if (weight == null) {
+			delete mid.fontWeight;
+			if (rangeHasPaint(mid)) next.push(mid);
+		} else {
+			mid.fontWeight = weight;
+			next.push(mid);
+		}
+		if (r.end > plainEnd) next.push({ ...r, start: plainEnd });
+	}
+
+	if (weight != null) {
+		const covering = next
+			.filter((r) => r.end > plainStart && r.start < plainEnd)
+			.sort((a, b) => a.start - b.start);
+		let cursor = plainStart;
+		for (const r of covering) {
+			if (r.start > cursor) {
+				next.push({
+					start: cursor,
+					end: r.start,
+					color: defaultHighlight,
+					fontWeight: weight,
+					painted: false,
+				});
+			}
+			cursor = Math.max(cursor, r.end);
+		}
+		if (cursor < plainEnd) {
+			next.push({
+				start: cursor,
+				end: plainEnd,
+				color: defaultHighlight,
+				fontWeight: weight,
+				painted: false,
+			});
+		}
+	}
+
+	next.sort((a, b) => a.start - b.start || a.end - b.end);
+	return emitMarkupFromRanges(parsed.plain, next, defaultHighlight);
+}
+
+/**
+ * Re-wrap highlight phrases from `sourceWithMarkup` if they still appear in `expanded`.
+ * Used after text-carousel body expansion so Highlights can stay on while copy gets longer.
+ */
+export function reapplyHighlightPhrases(
+	expanded: string,
+	sourceWithMarkup: string,
+	defaultHighlight: string = '#F59E0B',
+): string {
+	if (!expanded || !sourceWithMarkup?.includes('[[')) return expanded;
+	const { plain, ranges } = parseHighlightMarkup(sourceWithMarkup, defaultHighlight);
+	let out = expanded;
+	for (const r of ranges) {
+		const phrase = plain.slice(r.start, r.end);
+		if (!phrase.trim()) continue;
+		const target = stripMarkup(out);
+		const idx = target.toLowerCase().indexOf(phrase.toLowerCase());
+		if (idx < 0) continue;
+		const spec: HighlightSpec = r.markerBg
+			? { kind: 'marker', color: r.markerBg }
+			: r.gradientFrom && r.gradientTo
+				? { kind: 'gradient', from: r.gradientFrom, to: r.gradientTo }
+				: r.pattern
+					? { kind: 'pattern', name: r.pattern }
+					: r.painted === false
+						? { kind: 'weight', weight: r.fontWeight }
+						: r.color &&
+							  normalizePaintColorKey(r.color) !== normalizePaintColorKey(defaultHighlight)
+							? { kind: 'color', color: r.color }
+							: { kind: 'default' };
+		out = applyHighlight(out, idx, idx + phrase.length, spec, defaultHighlight);
+		if (r.fontWeight != null && spec.kind !== 'weight') {
+			out = applyHighlight(out, idx, idx + phrase.length, { kind: 'weight', weight: r.fontWeight }, defaultHighlight);
+		}
+	}
+	return out;
 }
 
 function rangeFromSpec(
@@ -498,25 +682,32 @@ function rangeFromSpec(
 	defaultHighlight: string,
 ): HighlightRange {
 	switch (spec.kind) {
-		case 'color':    return { start, end, color: spec.color };
-		case 'gradient': return { start, end, color: spec.from, gradientFrom: spec.from, gradientTo: spec.to };
-		case 'pattern':  return { start, end, color: defaultHighlight, pattern: spec.name, patternImage: getPatternImage(spec.name) };
-		case 'marker':   return { start, end, color: defaultHighlight, markerBg: spec.color };
+		case 'color':    return { start, end, color: spec.color, painted: true };
+		case 'gradient': return { start, end, color: spec.from, gradientFrom: spec.from, gradientTo: spec.to, painted: true };
+		case 'pattern':  return { start, end, color: defaultHighlight, pattern: spec.name, patternImage: getPatternImage(spec.name), painted: true };
+		case 'marker':   return { start, end, color: defaultHighlight, markerBg: spec.color, painted: true };
 		case 'default':
 		case 'clear':
-		default:         return { start, end, color: defaultHighlight };
+		default:         return { start, end, color: defaultHighlight, painted: true };
 	}
 }
 
 /** Re-emit a parsed range as `[[…]]` markup, picking the right spec form (marker / grad / pattern / #hex / default). */
 function emitRangeMarkup(range: HighlightRange, phrase: string, defaultHighlight: string): string {
-	if (range.markerBg) return `[[marker(${range.markerBg}): ${phrase}]]`;
-	if (range.gradientFrom && range.gradientTo) return `[[grad(${range.gradientFrom},${range.gradientTo}): ${phrase}]]`;
-	if (range.pattern) return `[[pattern(${range.pattern}): ${phrase}]]`;
-	if (range.color && normalizePaintColorKey(range.color) !== normalizePaintColorKey(defaultHighlight)) {
-		return `[[${range.color}: ${phrase}]]`;
+	const weight = normalizeInlineFontWeight(range.fontWeight);
+	const painted = range.painted !== false;
+	let inner = phrase;
+	if (range.markerBg) inner = `marker(${range.markerBg}): ${phrase}`;
+	else if (range.gradientFrom && range.gradientTo) inner = `grad(${range.gradientFrom},${range.gradientTo}): ${phrase}`;
+	else if (range.pattern) inner = `pattern(${range.pattern}): ${phrase}`;
+	else if (range.color && normalizePaintColorKey(range.color) !== normalizePaintColorKey(defaultHighlight)) {
+		inner = `${range.color}: ${phrase}`;
+	} else if (painted && weight != null) {
+		inner = `hl: ${phrase}`;
 	}
-	return `[[${phrase}]]`;
+	if (weight != null) inner = `w(${weight}): ${inner}`;
+	else if (!painted) return phrase;
+	return `[[${inner}]]`;
 }
 
 function emitMarkupFromRanges(
@@ -528,6 +719,8 @@ function emitMarkupFromRanges(
 	let cursor = 0;
 	for (const r of ranges) {
 		if (r.start >= r.end) continue;
+		const weight = normalizeInlineFontWeight(r.fontWeight);
+		if (r.painted === false && weight == null) continue;
 		if (r.start > cursor) result += plain.slice(cursor, r.start);
 		const phrase = plain.slice(r.start, r.end);
 		if (phrase.length === 0) {
@@ -630,8 +823,8 @@ export function plainRangeHasMixedForegroundPaint(
 		const lo = Math.max(a, pos);
 		const hi = Math.min(b, segEnd);
 		if (lo < hi) {
-			if (seg.gradientFrom || seg.gradientTo || seg.patternImage) return true;
-			const fill = seg.highlighted
+			if (seg.painted !== false && (seg.gradientFrom || seg.gradientTo || seg.patternImage)) return true;
+			const fill = seg.highlighted && seg.painted !== false
 				? normalizePaintColorKey(seg.color ?? defHi)
 				: base;
 			paints.add(fill);
@@ -671,9 +864,10 @@ export function rangeForegroundSwatchColor(
 		const lo = Math.max(a, pos);
 		const hi = Math.min(b, segEnd);
 		if (lo < hi) {
-			if (seg.gradientFrom || seg.gradientTo || seg.patternImage) return undefined;
-			if (seg.markerBg) samples.push(markerChipInk);
-			else if (seg.highlighted) samples.push(seg.color ?? defaultHighlight);
+			if (seg.painted === false) samples.push(blockInk);
+			else if (seg.gradientFrom || seg.gradientTo || seg.patternImage) return undefined;
+			else if (seg.markerBg) samples.push(markerChipInk);
+			else if (seg.highlighted && seg.painted !== false) samples.push(seg.color ?? defaultHighlight);
 			else samples.push(blockInk);
 		}
 		pos = segEnd;
@@ -735,7 +929,9 @@ export function inspectPlainRangePaint(
 		const hi = Math.min(b, segEnd);
 		if (lo < hi) {
 			const markerBg = String(seg.markerBg ?? '').trim() || undefined;
-			if (seg.pattern || seg.patternImage) {
+			if (seg.painted === false) {
+				samples.push({ kind: 'none', color: blockInk, markerBg });
+			} else if (seg.pattern || seg.patternImage) {
 				samples.push({
 					kind: 'pattern',
 					pattern: String(seg.pattern ?? '').toLowerCase() || undefined,
@@ -818,6 +1014,46 @@ export function inspectPlainRangePaint(
 		return { styleKind: 'none', markerBg: uniformMarker };
 	}
 	return { styleKind: 'none', color: first.color, markerBg: uniformMarker };
+}
+
+/**
+ * Uniform inline `[[w(N): …]]` weight in a plain-text selection.
+ * Inherit / mixed / empty → undefined (toolbar should show the block weight).
+ */
+export function inspectPlainRangeWeight(
+	raw: string,
+	plainStart: number,
+	plainEnd: number,
+	defaultHighlight: string | HighlightDefaults = '#F59E0B',
+): number | undefined {
+	if (plainStart === plainEnd) return undefined;
+	let a = plainStart;
+	let b = plainEnd;
+	if (a > b) [a, b] = [b, a];
+	const segs = segmentText(parseHighlightMarkup(raw, defaultHighlight));
+	const weights: Array<number | null> = [];
+	let pos = 0;
+	for (const seg of segs) {
+		const segEnd = pos + seg.text.length;
+		const lo = Math.max(a, pos);
+		const hi = Math.min(b, segEnd);
+		if (lo < hi) weights.push(seg.fontWeight ?? null);
+		pos = segEnd;
+	}
+	if (weights.length === 0) return undefined;
+	const first = weights[0];
+	if (first == null) return undefined;
+	if (!weights.every((w) => w === first)) return undefined;
+	return first;
+}
+
+/** Foreground + weight CSS for HTML overlay renderers. */
+export function highlightForegroundCss(
+	seg: Pick<TextSegment, 'color' | 'fontWeight' | 'painted'>,
+): string {
+	const w = highlightWeightCss(seg.fontWeight);
+	if (seg.painted === false) return `color: inherit; ${w}`;
+	return `color: ${seg.color}; ${w}`;
 }
 
 // ── DOM selection ↔ plain headline offsets (for floating toolbar) ───────

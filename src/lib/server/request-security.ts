@@ -3,6 +3,7 @@
  * All API handlers should validate here — never trust the browser.
  */
 import { z } from 'zod';
+import { MAX_STUDIO_SLIDE_COUNT } from '$lib/studio/compose-prefs';
 
 /** Default max JSON POST size (octets interpreted from body string length). */
 export const DEFAULT_MAX_JSON_BODY = 1_048_576; // 1 MiB
@@ -222,8 +223,8 @@ export const generateSlidesBodySchema = z.object({
 				: 'bold'
 		),
 	slideCount: z.preprocess(
-		(val) => (val === undefined || val === null ? 8 : Number(val)),
-		z.number().finite().int().min(1).max(20),
+		(val) => (val === undefined || val === null ? MAX_STUDIO_SLIDE_COUNT : Number(val)),
+		z.number().finite().int().min(1).max(MAX_STUDIO_SLIDE_COUNT),
 	),
 	imageCount: z.preprocess(
 		(val) => (val === undefined || val === null ? 0 : Number(val)),
@@ -341,7 +342,7 @@ export const newsBodySchema = z.object({
 	/** Target carousel length — helps general/story bibles pace beats across N slides. */
 	slideCount: z.preprocess(
 		(val) => (val === undefined || val === null ? undefined : Number(val)),
-		z.number().finite().int().min(1).max(10).optional(),
+		z.number().finite().int().min(1).max(MAX_STUDIO_SLIDE_COUNT).optional(),
 	),
 	studioRegenAt: z.number().finite().optional(),
 	/** Prior hooks/titles for this query — model must not repeat them. */
@@ -371,7 +372,7 @@ export const newsBodySchema = z.object({
 export const newsVariantsBodySchema = z.object({
 	count: z.preprocess(
 		(val) => (val === undefined || val === null ? 3 : Number(val)),
-		z.number().finite().int().min(1).max(10),
+		z.number().finite().int().min(1).max(MAX_STUDIO_SLIDE_COUNT),
 	),
 	title: z.string().max(500).optional(),
 	text: z.string().min(1).max(50_000),

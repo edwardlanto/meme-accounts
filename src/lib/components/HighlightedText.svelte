@@ -10,13 +10,15 @@
 	 *   [[grad(#a,#b): WORD]]     → linear gradient fill on the text
 	 *   [[pattern(name): WORD]]   → image/pattern fill on the text
 	 *   [[marker(#hex): WORD]]  → solid background behind phrase
+	 *   [[w(800): WORD]]        → heavier weight, same ink (mid-word OK)
 	 *
-	 * Color / marker / pattern / gradient spans inherit the parent font-weight so
-	 * toolbar Bold / weight presets unbold the whole field. Relative weight bump
-	 * is only applied when `emphasisBold` (Creator-hook weight-only markup).
+	 * Color / marker / pattern / gradient spans inherit the parent font-weight unless
+	 * the span has its own `[[w(N): …]]`. Bare `[[phrase]]` only bumps weight when
+	 * `emphasisBold` (Creator-hook).
 	 */
 	import {
 		highlightEmphasisCss,
+		highlightWeightCss,
 		parseHighlightMarkup,
 		segmentText,
 		type HighlightDefaults,
@@ -60,9 +62,12 @@
 		class: klass = '',
 	}: Props = $props();
 
-	const inheritWeightCss = 'font-weight: inherit; font-style: inherit; text-decoration: inherit;';
 	const emphasisCss = $derived(highlightEmphasisCss(baseFontWeight));
 	const boldSpanStyle = $derived(`color: inherit; ${emphasisCss}`);
+
+	function spanWeightCss(seg: { fontWeight?: number }): string {
+		return highlightWeightCss(seg.fontWeight);
+	}
 
 	const segments = $derived(
 		parseHighlights
@@ -70,12 +75,12 @@
 			: [{ text, highlighted: false as const, start: 0, end: text.length }],
 	);
 
-	function patternStyle(img: string | undefined): string {
+	function patternStyle(img: string | undefined, fontWeight?: number): string {
 		if (!img) return '';
-		return `${patternStyleForUrl(img)}${inheritWeightCss} pointer-events: none;`;
+		return `${patternStyleForUrl(img)}${highlightWeightCss(fontWeight)} pointer-events: none;`;
 	}
 
-	function markerStyle(bg: string): string {
+	function markerStyle(bg: string, fontWeight?: number): string {
 		return (
 			`background-color: ${bg};` +
 			`background-image: none;` +
@@ -83,7 +88,7 @@
 			`${TEXT_BG_CHIP_BOX_CSS}` +
 			`text-box: normal; text-box-trim: none;` +
 			`isolation: isolate;` +
-			`color: inherit; ${inheritWeightCss}`
+			`color: inherit; ${highlightWeightCss(fontWeight)}`
 		);
 	}
 </script>
@@ -94,20 +99,22 @@
 			<span
 				data-hl-plain-start={seg.start ?? ''}
 				data-hl-plain-end={seg.end ?? ''}
-				style="cursor: text; pointer-events: auto; {seg.patternImage || (seg.gradientFrom && seg.gradientTo)
+				style="cursor: text; user-select: text; pointer-events: auto; {seg.patternImage || (seg.gradientFrom && seg.gradientTo)
 					? CLIPPED_TEXT_SHADOW_WRAP_CSS
 					: 'display: inline;'}"
 			>
-				{#if seg.markerBg}
-					<span style={markerStyle(seg.markerBg)}>{seg.text}</span>
+				{#if seg.painted === false}
+					<span style="color: inherit; {spanWeightCss(seg)}">{seg.text}</span>
+				{:else if seg.markerBg}
+					<span style={markerStyle(seg.markerBg, seg.fontWeight)}>{seg.text}</span>
 				{:else if seg.patternImage}
-					<span style={patternStyle(seg.patternImage)}>{seg.text}</span>
+					<span style={patternStyle(seg.patternImage, seg.fontWeight)}>{seg.text}</span>
 				{:else if seg.gradientFrom && seg.gradientTo}
-					<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)} {inheritWeightCss} pointer-events: none;">{seg.text}</span>
-				{:else if emphasisBold}
+					<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)} {spanWeightCss(seg)} pointer-events: none;">{seg.text}</span>
+				{:else if emphasisBold && seg.fontWeight == null}
 					<span style={boldSpanStyle}>{seg.text}</span>
 				{:else}
-					<span style="color: {seg.color}; {inheritWeightCss}">{seg.text}</span>
+					<span style="color: {seg.color}; {spanWeightCss(seg)}">{seg.text}</span>
 				{/if}
 			</span>
 		{:else}

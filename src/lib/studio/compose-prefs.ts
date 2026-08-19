@@ -35,6 +35,10 @@ export type StudioComposePrefs = {
 	stepsTopicPrompt: string;
 };
 
+/** Max slides in a generated Studio / Bulk deck (picker + generate). */
+export const MAX_STUDIO_SLIDE_COUNT = 6;
+export const STUDIO_SLIDE_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6] as const;
+
 export const DEFAULT_STUDIO_COMPOSE_PREFS: StudioComposePrefs = {
 	formatId: 'feed',
 	search: '',
@@ -77,7 +81,7 @@ const EMOTION_IDS = new Set(BULK_EMOTIONS.map((e) => e.id));
 function clampSlideCount(n: unknown): number {
 	const v = Number(n);
 	if (!Number.isFinite(v)) return DEFAULT_STUDIO_COMPOSE_PREFS.slideCount;
-	return Math.max(3, Math.min(8, Math.floor(v)));
+	return Math.max(3, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(v)));
 }
 
 function clampStepsCount(n: unknown): number {

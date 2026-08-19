@@ -215,12 +215,15 @@
 				span.setAttribute('data-hl-kind', 'gradient');
 				span.setAttribute('data-hl-from', s.gradientFrom);
 				span.setAttribute('data-hl-to', s.gradientTo);
+			} else if (s.painted === false) {
+				span.setAttribute('data-hl-kind', 'weight');
 			} else if (s.color && s.color.toLowerCase() !== defaultColor.toLowerCase()) {
 				span.setAttribute('data-hl-kind', 'color');
 				span.setAttribute('data-hl-color', s.color);
 			} else {
 				span.setAttribute('data-hl-kind', 'default');
 			}
+			if (s.fontWeight != null) span.setAttribute('data-hl-weight', String(s.fontWeight));
 			// Visual style (inside the editor — NOT what the template renders).
 			appendHighlightedWithBreaks(span, s.text, (next) => applySpanVisualStyle(next, s));
 		}
@@ -232,14 +235,19 @@
 		span.style.padding = '0';
 		span.style.borderRadius = '0';
 
-		const applyWeight = () => {
-			if (emphasisBold) {
-				applyHighlightEmphasisToElement(span, emphasisBaseWeight);
+		const applyWeight = (target: HTMLElement = span) => {
+			if (s.fontWeight != null) {
+				target.style.fontWeight = String(s.fontWeight);
+				target.style.removeProperty('font-synthesis');
+				target.style.removeProperty('-webkit-text-stroke');
+				target.style.removeProperty('paint-order');
+			} else if (emphasisBold) {
+				applyHighlightEmphasisToElement(target, emphasisBaseWeight);
 			} else {
-				span.style.fontWeight = 'inherit';
-				span.style.removeProperty('font-synthesis');
-				span.style.removeProperty('-webkit-text-stroke');
-				span.style.removeProperty('paint-order');
+				target.style.fontWeight = 'inherit';
+				target.style.removeProperty('font-synthesis');
+				target.style.removeProperty('-webkit-text-stroke');
+				target.style.removeProperty('paint-order');
 			}
 		};
 
@@ -274,17 +282,14 @@
 			fill.style.textShadow = 'none';
 			fill.style.filter = 'none';
 			fill.style.display = 'inline';
-			if (emphasisBold) {
-				applyHighlightEmphasisToElement(fill, emphasisBaseWeight);
-			} else {
-				fill.style.fontWeight = 'inherit';
-			}
+			applyWeight(fill);
 			span.appendChild(fill);
 			applyWeight();
 		} else {
-			// Color highlight, or creator-hook emphasisBold (weight bump, keep surrounding ink).
+			// Color highlight, weight-only, or creator-hook emphasisBold.
 			span.style.background = 'transparent';
-			span.style.color = emphasisBold ? 'inherit' : (s.color ?? defaultColor);
+			span.style.color =
+				emphasisBold || s.painted === false ? 'inherit' : (s.color ?? defaultColor);
 			applyWeight();
 		}
 	}
@@ -338,29 +343,41 @@
 		// Highlight span?
 		if (el.hasAttribute('data-hl')) {
 			const kind = el.getAttribute('data-hl-kind') ?? 'default';
+			const weightAttr = el.getAttribute('data-hl-weight');
 			const inner = serializeSiblingNodes(el.childNodes).replace(/\[\[|\]\]/g, '');
 			if (!inner) return '';
+			let body = inner;
 			switch (kind) {
 				case 'marker': {
 					const c = el.getAttribute('data-hl-marker') ?? '#FFFFFF';
-					return `[[marker(${c}): ${inner}]]`;
+					body = `marker(${c}): ${inner}`;
+					break;
 				}
 				case 'color': {
 					const c = el.getAttribute('data-hl-color') ?? defaultColor;
-					return `[[${c}: ${inner}]]`;
+					body = `${c}: ${inner}`;
+					break;
 				}
 				case 'gradient': {
 					const a = el.getAttribute('data-hl-from') ?? '#000000';
 					const b = el.getAttribute('data-hl-to') ?? '#ffffff';
-					return `[[grad(${a},${b}): ${inner}]]`;
+					body = `grad(${a},${b}): ${inner}`;
+					break;
 				}
 				case 'pattern': {
 					const n = el.getAttribute('data-hl-name') ?? 'dots';
-					return `[[pattern(${n}): ${inner}]]`;
+					body = `pattern(${n}): ${inner}`;
+					break;
 				}
+				case 'weight':
+					body = inner;
+					break;
 				default:
-					return `[[${inner}]]`;
+					body = weightAttr ? `hl: ${inner}` : inner;
+					break;
 			}
+			if (weightAttr) body = `w(${weightAttr}): ${body}`;
+			return `[[${body}]]`;
 		}
 		// Other elements (DIV/P from Enter, inline wrappers, etc.)
 		return serializeSiblingNodes(el.childNodes);

@@ -3,7 +3,7 @@
 	import { canvasFontFamilyStack, loadGoogleFont } from '$lib/fonts';
 	import { tick } from 'svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
-	import { parseHighlightMarkup as parseHighlightToSegments, segmentText } from '$lib/highlight';
+	import { parseHighlightMarkup as parseHighlightToSegments, segmentText, highlightForegroundCss, highlightWeightCss } from '$lib/highlight';
 	import type { TextOverlay } from '$lib/types';
 	import { gradientTextFillCss, patternStyleForUrl, wrapClippedFillHtml } from '$lib/components/textOverlayPattern';
 	import { textBgCss, textShadowStyleAttr } from '$lib/textStyleCss';
@@ -661,12 +661,18 @@
 								if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 								const esc = seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 								if (seg.patternImage) {
-									return wrapClippedFillHtml(patternStyleForUrl(seg.patternImage).replace(/\n/g,' '), esc);
+									return wrapClippedFillHtml(
+										patternStyleForUrl(seg.patternImage).replace(/\n/g,' ') + highlightWeightCss(seg.fontWeight),
+										esc,
+									);
 								}
 								if (seg.gradientFrom && seg.gradientTo) {
-									return wrapClippedFillHtml(gradientTextFillCss(seg.gradientFrom, seg.gradientTo), esc);
+									return wrapClippedFillHtml(
+										gradientTextFillCss(seg.gradientFrom, seg.gradientTo) + highlightWeightCss(seg.fontWeight),
+										esc,
+									);
 								}
-								return `<span style="color: ${seg.color};">${seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+								return `<span style="${highlightForegroundCss(seg)}">${esc}</span>`;
 							}).join('')}
 						{:else}
 							{t.text}

@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { generateSlidesBodySchema, parseJsonBody, sandboxUserPlaintext } from '$lib/server/request-security';
+import { MAX_STUDIO_SLIDE_COUNT } from '$lib/studio/compose-prefs';
 import { canConsumeCarouselTokens, consumeCarouselTokens } from '$lib/server/usage';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { fitCopyBudget } from '$lib/studio/fit-copy';
@@ -42,7 +43,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { topic, style, slideCount, imageCount, audience, emotion, deckCount, autoHighlight } =
 		parsed.data;
 	const decksWanted = Math.max(1, Math.min(10, deckCount ?? 1));
-	const slidesPerDeck = Math.max(1, Math.min(20, Math.floor(Number(slideCount) || 8)));
+	const slidesPerDeck = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(slideCount) || 6)));
 	const billedSlides = decksWanted * slidesPerDeck;
 	const wantHighlights = autoHighlight === true;
 

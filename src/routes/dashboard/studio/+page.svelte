@@ -78,6 +78,8 @@ import JSZip from 'jszip';
 	} from '$lib/studio/bulk-to-studio';
 	import {
 		loadStudioComposePrefs,
+		MAX_STUDIO_SLIDE_COUNT,
+		STUDIO_SLIDE_COUNT_OPTIONS,
 		type StudioComposePrefs,
 	} from '$lib/studio/compose-prefs';
 	import {
@@ -141,6 +143,7 @@ import JSZip from 'jszip';
 	import { move } from '@dnd-kit/helpers';
 	import {
 		applyHighlight,
+		reapplyHighlightPhrases,
 		type HighlightSpec,
 		type StudioHighlightStyleKind,
 		type HighlightDefaults,
@@ -148,6 +151,7 @@ import JSZip from 'jszip';
 		plainRangeHasMixedForegroundPaint,
 		rangeForegroundSwatchColor,
 		inspectPlainRangePaint,
+		inspectPlainRangeWeight,
 		stripMarkup,
 		stripMarkerBackgrounds,
 		AVAILABLE_PATTERNS,
@@ -237,6 +241,7 @@ import JSZip from 'jszip';
 	import { ensureFirstWordHighlight } from '$lib/video-clips/video-hook';
 	import {
 		fitTextCarouselBodyToCanvas,
+		TEXT_CAROUSEL_DEFAULT_BODY_WORDS,
 		textCarouselBudgetFromMaxWords,
 	} from '$lib/studio/text-carousel-body';
 	import {
@@ -600,7 +605,9 @@ import JSZip from 'jszip';
 							? IMAGE_QUOTE_DEFAULTS.body
 							: placeholderCopyForWordBudget();
 		const n = countPlainWords(sample);
-		return Math.max(6, Math.min(80, n || 24));
+		const floor =
+			tpl === 'textCarousel' || isWhitePostFamily(tpl) ? TEXT_CAROUSEL_DEFAULT_BODY_WORDS : 6;
+		return Math.max(floor, Math.min(80, n || 24));
 	});
 
 	/** Chip label: field-aware when a slot is selected; otherwise body budget. */
@@ -620,6 +627,20 @@ import JSZip from 'jszip';
 	});
 
 	const studioDefaultWordBudgetLabel = $derived.by(() => {
+		const kind = selectedText;
+		const isHeadlineKind =
+			kind === 'headline' ||
+			kind === 'blackTextHeadline' ||
+			kind === 'videoStoryHeadline' ||
+			kind === 'tweetTopText';
+		if (isHeadlineKind) return `Match placeholder — ${studioMaxWords} words`;
+		const tpl = previewTemplate;
+		if (tpl === 'textCarousel' || isWhitePostFamily(tpl)) {
+			const paras = textCarouselBudgetFromMaxWords(studioBodyMaxWords).paragraphCount;
+			const paraLabel =
+				paras === 1 ? 'One paragraph' : paras === 2 ? 'Two paragraphs' : `${paras} paragraphs`;
+			return `${paraLabel} · up to ${studioMaxWords} words`;
+		}
 		return `Match placeholder — ${studioMaxWords} words`;
 	});
 
@@ -949,7 +970,7 @@ import JSZip from 'jszip';
 	/** Recent Generate queries (local) — titles only, no images. */
 	let promptHistory = $state<StudioPromptHistoryEntry[]>([]);
 	let promptHistoryOpen = $state(false);
-	let slideCount = $state(DEFAULT_STUDIO_SLIDE_COUNT); // 1–10
+	let slideCount = $state(DEFAULT_STUDIO_SLIDE_COUNT); // 1–6
 
 	function activeSyntheticQuery(): string {
 		if (newsContentMode === 'general') return generalTopicPrompt.trim();
@@ -1040,7 +1061,7 @@ import JSZip from 'jszip';
 		return Math.max(3, Math.min(8, Math.floor(fallback) || 5));
 	}
 	function stepsDeckLength(stepCount: number): number {
-		return Math.max(3, Math.min(10, Math.max(3, Math.min(8, stepCount)) + 2));
+		return Math.max(3, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.max(3, Math.min(8, stepCount)) + 2));
 	}
 
 	// Preview/edit view toggle for the canvas area.
@@ -4959,7 +4980,7 @@ import JSZip from 'jszip';
 		/** When false, grow the deck without stealing focus (Generate / setDeckSlideCount). */
 		select?: boolean;
 	}) {
-		if (slides.length >= 10) return;
+		if (slides.length >= MAX_STUDIO_SLIDE_COUNT) return;
 		const fromIdx = Math.max(
 			0,
 			Math.min(slides.length - 1, opts?.copyClipFrom ?? activeSlide),
@@ -5474,7 +5495,7 @@ import JSZip from 'jszip';
 
 	/** Filmstrip +: clone the focused slide (media, copy, styles) instead of a blank default. */
 	function duplicateActiveSlide() {
-		if (slides.length >= 10) return;
+		if (slides.length >= MAX_STUDIO_SLIDE_COUNT) return;
 		const fromIdx = Math.max(0, Math.min(slides.length - 1, activeSlide));
 		const tpl = coerceTemplateId(slideTemplates[fromIdx] ?? lastTemplateUsed);
 		const srcHeadline = String(slides[fromIdx] ?? '');
@@ -5991,12 +6012,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	}
 
 	/**
-	 * Resize the real deck to `n` slides (1–10). The prompt chip must call this —
+	 * Resize the real deck to `n` slides (1–6). The prompt chip must call this —
 	 * assigning `slideCount` alone only pads filmstrip ids and leaves `slides[]` stale,
 	 * so Generate fills the old length and snaps the chip back.
 	 */
 	function setDeckSlideCount(n: number) {
-		const target = Math.max(1, Math.min(10, Math.floor(Number(n) || 1)));
+		const target = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(n) || 1)));
 		const prevActive = activeSlide;
 		if (target === slides.length) {
 			slideCount = target;
@@ -6288,6 +6309,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		) {
 			base = { ...VIDEO_TEXT_HEADLINE_STYLE, ...base };
 		}
+		if (hasRangeSelection && studioInlineMarkupFieldActive()) {
+			const raw = toolbarHighlightableRaw();
+			const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+			if (raw && range && range.end > range.start) {
+				const w = inspectPlainRangeWeight(raw, range.start, range.end, studioHighlightDefaults);
+				if (w != null) base = { ...base, fontWeight: w };
+			}
+		}
 		const paint = toolbarSelectionPaint;
 		if (paint?.markerBg) {
 			return { ...base, bgColor: paint.markerBg };
@@ -6482,18 +6511,26 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	function onHighlight(spec: HighlightSpec) {
 		const boldMarkupField =
 			selectedText === 'videoStoryHeadline' || selectedText === 'brandStackBrand';
-		if (!studioTextHighlightsEnabled && !boldMarkupField) return;
+		const isWeight = spec.kind === 'weight';
+		if (!studioTextHighlightsEnabled && !boldMarkupField && !isWeight) return;
 		// Update Branding / Settings highlight as soon as a swatch is picked
 		// (even if the range apply below bails) so both UIs stay in sync.
-		if (studioTextHighlightsEnabled) syncBrandHighlightFromToolbar(spec);
+		if (studioTextHighlightsEnabled && !isWeight) syncBrandHighlightFromToolbar(spec);
 		const raw = toolbarHighlightableRaw();
-		const range = resolveMarkupRange(raw);
+		if (isWeight) {
+			ensurePlainRangeForMarkupTools(raw);
+			const live = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+			if (!live || live.end <= live.start) return;
+		}
+		const range = isWeight
+			? (selectedText === 'textOverlay' ? textOverlayRange : headlineRange)
+			: resolveMarkupRange(raw);
 		if (!range) return;
 		const start = range.start;
 		const end = range.end;
 		if (!(Number.isFinite(start) && Number.isFinite(end) && end > start)) return;
 
-		const appliesMarkup = studioMarkupFieldActive();
+		const appliesMarkup = studioInlineMarkupFieldActive();
 		if (!appliesMarkup) return;
 
 		pushUndo(activeTemplate, activeSlide);
@@ -6886,6 +6923,20 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		)
 			return;
 		const raw = toolbarHighlightableRaw();
+		if (studioInlineMarkupFieldActive() && raw && 'fontWeight' in patch) {
+			ensurePlainRangeForMarkupTools(raw);
+			const range = selectedText === 'textOverlay' ? textOverlayRange : headlineRange;
+			if (range && range.end > range.start) {
+				onHighlight({ kind: 'weight', weight: patch.fontWeight });
+				const family =
+					getActiveStyleForSelection().fontFamily ??
+					(kindAtStart === 'textCarouselBody' ? 'Lexend' : FONT_TEMPLATE_DEFAULT);
+				if (family && patch.fontWeight != null) {
+					void tick().then(() => void loadGoogleFont(family, patch.fontWeight));
+				}
+				return;
+			}
+		}
 		if (studioTextHighlightsEnabled && studioMarkupFieldActive() && raw && kindAtStart !== 'textOverlay') {
 			if ('color' in patch && patch.color !== undefined) {
 				ensurePlainRangeForMarkupTools(raw);
@@ -7326,13 +7377,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			: textColor,
 	);
 
-	function studioMarkupFieldActive(): boolean {
+	function studioInlineMarkupFieldActive(): boolean {
 		const k = selectedText;
 		if (!k) return false;
-		// Creator / hook headlines use [[…]] as bold emphasis — keep markup tools
-		// available even when Branding “Highlight” (color accents) is off.
-		const boldMarkupField = k === 'videoStoryHeadline' || k === 'brandStackBrand';
-		if (!studioTextHighlightsEnabled && !boldMarkupField) return false;
 		if (k === 'textOverlay') return !!selectedTextOverlayId;
 		return (
 			k === 'headline' ||
@@ -7347,6 +7394,16 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			k === 'blackTextHeadline' ||
 			k === 'blackTextBody'
 		);
+	}
+
+	function studioMarkupFieldActive(): boolean {
+		const k = selectedText;
+		if (!k) return false;
+		// Creator / hook headlines use [[…]] as bold emphasis — keep markup tools
+		// available even when Branding “Highlight” (color accents) is off.
+		const boldMarkupField = k === 'videoStoryHeadline' || k === 'brandStackBrand';
+		if (!studioTextHighlightsEnabled && !boldMarkupField) return false;
+		return studioInlineMarkupFieldActive();
 	}
 
 	/** Full-canvas loading overlay: generate/fetch, variant pass, paint flush, bg gen, media apply/load, or export. */
@@ -7418,7 +7475,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		studioDraftWasRestored = true;
 		if (typeof s.formatId === 'string') formatId = normalizeStudioFormatId(s.formatId);
 		if (typeof s.slideCount === 'number' && Number.isFinite(s.slideCount)) {
-			slideCount = Math.max(1, Math.min(8, Math.floor(s.slideCount)));
+			slideCount = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(s.slideCount)));
 		}
 		if (typeof s.lastTemplateUsed === 'string') lastTemplateUsed = coerceTemplateId(s.lastTemplateUsed);
 		if (Array.isArray(s.slides)) slides = s.slides.map((x: unknown) => stripEmDashes(String(x ?? '')));
@@ -11056,7 +11113,7 @@ tweetTopImagePanYBySlide,
 							const deckLen = Math.max(1, slides.length);
 							applyStudioComposePrefs(loadStudioComposePrefs());
 							if (studioDraftWasRestored) {
-								slideCount = Math.max(1, Math.min(8, deckLen));
+								slideCount = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, deckLen));
 							}
 						}
 						draftRestoring = false;
@@ -11603,9 +11660,8 @@ tweetTopImagePanYBySlide,
 			includeBodies: false,
 		});
 		const beatFor = (i: number) => String(beats[i] ?? (i === 0 ? hookText : source));
-		// Highlights: keep [[…]] from beats — text-carousel-body rewrite strips markup.
 		// Short: put the beat on the card — expanding into "airy paragraphs" fights the word chip.
-		if (studioTextHighlightsEnabled || budget.maxWordsTotal <= 16) {
+		if (newsCopyLength === 'short' || budget.paragraphCount <= 1) {
 			const bodies = Array.from({ length: n }, (_, i) =>
 				studioTextHighlightsEnabled
 					? beatFor(i)
@@ -11622,9 +11678,17 @@ tweetTopImagePanYBySlide,
 					slideIndex: i,
 					slideCount: n,
 					paragraphCount: budget.paragraphCount,
-				}).catch(() =>
-					clampFetchedTextCarouselBody(beatFor(i), FETCH_TEXT_CLIP.textCarousel),
-				),
+				})
+					.then((expanded) =>
+						studioTextHighlightsEnabled
+							? reapplyHighlightPhrases(expanded, beatFor(i))
+							: expanded,
+					)
+					.catch(() =>
+						studioTextHighlightsEnabled
+							? beatFor(i)
+							: clampFetchedTextCarouselBody(beatFor(i), FETCH_TEXT_CLIP.textCarousel),
+					),
 			),
 		);
 		applyHeadlineStringsToTemplate(template, bodies);
@@ -12390,43 +12454,45 @@ tweetTopImagePanYBySlide,
 				if (longBodyTargets.length) {
 					try {
 						const carouselBudget = textCarouselBudgetFromMaxWords(studioBodyMaxWords);
-						// Keep [[…]] from beats when highlights are on — body rewrite strips markup.
-						if (studioTextHighlightsEnabled) {
+						if (newsCopyLength === 'short' || carouselBudget.paragraphCount <= 1) {
 							for (const t of longBodyTargets) {
-								longBodyBySlide.set(
-									t.slide,
-									String(
-										copyStrings[t.slide] ??
-											(t.slide === 0 ? hookText : sourceForCarousel),
-									),
+								const beat = String(
+									copyStrings[t.slide] ?? (t.slide === 0 ? hookText : sourceForCarousel),
 								);
-							}
-						} else if (carouselBudget.maxWordsTotal <= 16) {
-							for (const t of longBodyTargets) {
 								longBodyBySlide.set(
 									t.slide,
-									clampFetchedTextCarouselBody(
-										String(copyStrings[t.slide] ?? (t.slide === 0 ? hookText : sourceForCarousel)),
-										FETCH_TEXT_CLIP.textCarousel,
-									),
+									studioTextHighlightsEnabled
+										? beat
+										: clampFetchedTextCarouselBody(beat, FETCH_TEXT_CLIP.textCarousel),
 								);
 							}
 						} else {
 							const carouselBodies = await Promise.all(
-								longBodyTargets.map((t) =>
-									fetchTextCarouselBody({
+								longBodyTargets.map((t) => {
+									const beat = String(
+										copyStrings[t.slide] ?? (t.slide === 0 ? hookText : sourceForCarousel),
+									);
+									return fetchTextCarouselBody({
 										text: sourceForCarousel,
-										angle: copyStrings[t.slide] ?? (t.slide === 0 ? hookText : sourceForCarousel),
+										angle: beat,
 										slideIndex: t.slide,
 										slideCount: n,
 										paragraphCount: carouselBudget.paragraphCount,
-									}).catch(() =>
-										clampFetchedTextCarouselBody(
-											String(copyStrings[t.slide] ?? hookText),
-											FETCH_TEXT_CLIP.textCarousel,
-										),
-									),
-								),
+									})
+										.then((expanded) =>
+											studioTextHighlightsEnabled
+												? reapplyHighlightPhrases(expanded, beat)
+												: expanded,
+										)
+										.catch(() =>
+											studioTextHighlightsEnabled
+												? beat
+												: clampFetchedTextCarouselBody(
+														beat,
+														FETCH_TEXT_CLIP.textCarousel,
+													),
+										);
+								}),
 							);
 							longBodyTargets.forEach((t, i) => {
 								longBodyBySlide.set(t.slide, carouselBodies[i] ?? '');
@@ -12982,7 +13048,7 @@ tweetTopImagePanYBySlide,
 				return;
 			}
 			// One generated slide can provide multiple lines (headline/subheadline/body).
-			const count = Math.max(1, Math.min(8, slots.length));
+			const count = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, slots.length));
 			const res = await fetch('/api/generate-slides', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -18540,7 +18606,7 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 						>
 							<p class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">Slides / show</p>
 							<div class="grid grid-cols-4 gap-1.5">
-								{#each [1, 2, 3, 4, 5, 6, 7, 8] as n}
+								{#each STUDIO_SLIDE_COUNT_OPTIONS as n}
 									<button
 										type="button"
 										onclick={() => setDeckSlideCount(n)}

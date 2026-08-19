@@ -391,7 +391,7 @@
 					: ''}
 			"
 			title={canEdit && !editing
-				? 'Drag to move · Double-click to edit · Shift+drag to highlight'
+				? 'Drag to highlight any letters · hold to move · double-click to edit'
 				: undefined}
 		>
 			{#if fontSize != null && Number.isFinite(fontSize)}

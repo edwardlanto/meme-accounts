@@ -1,11 +1,13 @@
 <script lang="ts">
 	/**
 	 * Hold-to-drag wrapper for template text elements.
-	 * - Drag on markup text → native highlight / selection (block does not steal the gesture).
+	 * - Drag on markup text → native highlight / selection, including mid-word
+	 *   (block does not steal the gesture).
 	 * - Hold still on text (~holdMs), then drag → move the block (when holdDragFromText).
 	 * - Alt+drag on text → move the block immediately.
-	 * - When `immediateTextDrag` is set (element already selected): drag moves the block;
-	 *   Shift+drag still highlights text; double-click still edits.
+	 * - When `immediateTextDrag` is set (element already selected): drag on chrome
+	 *   moves the block; drag on letters still highlights. Hold still on text to move.
+	 * - Shift+drag still highlights; double-click still edits.
 	 * - Never steals gestures from an active contenteditable.
 	 * - Pointer down on chrome / padding: small move or hold begins dragging dx/dy (template px).
 	 * - Optional center snap: when the block’s center nears `snapRoot`’s center, offsets lock
@@ -123,7 +125,7 @@
 		);
 		// Shift forces highlight even when the block is in move-on-drag mode.
 		const forceTextSelect = !!e.shiftKey;
-		startedOnText = onSelectableText && (!immediateTextDrag || forceTextSelect);
+		startedOnText = onSelectableText && !e.altKey;
 		startedWithAlt = !!e.altKey;
 
 		// Text without Alt: either allow still-hold-to-drag, move-on-drag, or leave to selection.

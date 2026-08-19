@@ -85,6 +85,8 @@
 	import type { TemplateDevOverride } from '$lib/studio/template-dev-override';
 	import {
 		DEFAULT_STUDIO_COMPOSE_PREFS,
+		MAX_STUDIO_SLIDE_COUNT,
+		STUDIO_SLIDE_COUNT_OPTIONS,
 		type NewsCopyLength,
 		type NewsStudioContentMode,
 		type StockMediaKind,
@@ -421,7 +423,7 @@
 			if (!steps.length) return false;
 			const n = Math.max(
 				1,
-				Math.min(8, Math.floor(Number(parsed.slidesPerShow)) || steps.length),
+				Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(parsed.slidesPerShow)) || steps.length),
 			);
 			slideWorkflow = Array.from({ length: n }, (_, i) => {
 				const cur = steps[i] ?? steps[steps.length - 1]!;
@@ -440,7 +442,7 @@
 	}
 
 	function syncSlideWorkflow(count = slidesPerShow) {
-		const n = Math.max(1, Math.min(8, Math.floor(Number(count)) || 1));
+		const n = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(count)) || 1));
 		const fallback: BulkWorkflowStep = { template: defaultWorkflowTemplate() };
 		const prev = slideWorkflow;
 		const next = Array.from({ length: n }, (_, i) => {
@@ -3903,7 +3905,7 @@
 								Slides / show
 							</p>
 							<div class="grid grid-cols-4 gap-1.5">
-								{#each [1, 2, 3, 4, 5, 6, 7, 8] as n}
+								{#each STUDIO_SLIDE_COUNT_OPTIONS as n}
 									<button
 										type="button"
 										onclick={() => syncSlideWorkflow(n)}

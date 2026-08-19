@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
-import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
+import { MAX_STUDIO_SLIDE_COUNT } from '$lib/studio/compose-prefs';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords, ensureCompleteThought } from '$lib/studio/fit-copy';
 import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
@@ -440,7 +440,7 @@ async function syntheticContent(
 	const hintSafe = syntheticHint.trim().replace(/"/g, "'").slice(0, 600);
 	const hasHint = hintSafe.length > 0;
 	const stepsN = clampStepCount(stepCount);
-	const slidesN = Math.max(0, Math.min(10, Math.floor(Number(slideCount)) || 0));
+	const slidesN = Math.max(0, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(slideCount)) || 0));
 	const supportCap =
 		maxWordsSupport > 0
 			? Math.max(6, Math.min(120, maxWordsSupport))
@@ -751,7 +751,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const slideCountRaw = Number(body.slideCount);
 	const requestedSlides =
 		Number.isFinite(slideCountRaw) && slideCountRaw > 0
-			? Math.max(1, Math.min(10, Math.floor(slideCountRaw)))
+			? Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(slideCountRaw)))
 			: mode === 'steps'
 				? stepCount
 				: 1;

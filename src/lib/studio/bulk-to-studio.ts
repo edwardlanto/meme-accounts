@@ -367,7 +367,7 @@ export function createBlankShow(
 	captionDefaults?: Partial<BulkRowCaptions>,
 	slideCount = 3,
 ): BulkShow {
-	const n = Math.max(1, Math.min(12, Math.floor(Number(slideCount)) || 3));
+	const n = Math.max(1, Math.min(6, Math.floor(Number(slideCount)) || 3));
 	const templates = Array.isArray(template)
 		? template.map((t) => coerceTemplateId(t))
 		: null;

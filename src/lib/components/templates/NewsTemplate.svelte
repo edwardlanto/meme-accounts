@@ -2,7 +2,7 @@
 	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
 	import { onDestroy, tick } from 'svelte';
 	import { sanitizeOverlayLine } from '$lib/studio/overlay-copy';
-	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection, type HighlightDefaults } from '$lib/highlight';
+	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection, highlightWeightCss, highlightForegroundCss, type HighlightDefaults } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
 	import { canvasFontFamilyCss, canvasFontFamilyStack, loadGoogleFont } from '$lib/fonts';
@@ -2313,12 +2313,18 @@
 							if (!seg.highlighted) return seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 							const esc = seg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 							if (seg.patternImage) {
-								return wrapClippedFillHtml(patternStyle(seg.patternImage).replace(/\n/g,' '), esc);
+								return wrapClippedFillHtml(
+									patternStyle(seg.patternImage).replace(/\n/g,' ') + highlightWeightCss(seg.fontWeight),
+									esc,
+								);
 							}
 							if (seg.gradientFrom && seg.gradientTo) {
-								return wrapClippedFillHtml(gradientTextFillCss(seg.gradientFrom, seg.gradientTo), esc);
+								return wrapClippedFillHtml(
+									gradientTextFillCss(seg.gradientFrom, seg.gradientTo) + highlightWeightCss(seg.fontWeight),
+									esc,
+								);
 							}
-							return `<span style="color: ${seg.color}; font-weight: inherit;">${esc}</span>`;
+							return `<span style="${highlightForegroundCss(seg)}">${esc}</span>`;
 						}).join('')}
 					</div>
 				{/if}
@@ -3323,9 +3329,9 @@
 									: 'display: inline;'}"
 							>
 							{#if seg.patternImage}
-								<span style="{patternStyle(seg.patternImage)}; font-weight: inherit; pointer-events: none;">{seg.text}</span>
+								<span style="{patternStyle(seg.patternImage)}; {highlightWeightCss(seg.fontWeight)} pointer-events: none;">{seg.text}</span>
 							{:else if seg.gradientFrom && seg.gradientTo}
-								<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)}; font-weight: inherit; pointer-events: none;">{seg.text}</span>
+								<span style="{gradientTextFillCss(seg.gradientFrom, seg.gradientTo)}; {highlightWeightCss(seg.fontWeight)} pointer-events: none;">{seg.text}</span>
 							{:else if seg.markerBg}
 								<span
 									style="
@@ -3334,15 +3340,17 @@
 										-webkit-background-clip: border-box;
 										background-clip: border-box;
 										color: {textColor};
-										font-weight: inherit;
+										{highlightWeightCss(seg.fontWeight)}
 										{TEXT_BG_CHIP_BOX_CSS}
 										text-box: normal; text-box-trim: none;
 										isolation: isolate;
 										{textPaddingCss(headlineStyle)}
 									"
 								>{seg.text}</span>
+							{:else if seg.painted === false}
+								<span style="color: inherit; {highlightWeightCss(seg.fontWeight)}">{seg.text}</span>
 							{:else}
-								<span style="color: {seg.color}; font-weight: inherit;">{seg.text}</span>
+								<span style="color: {seg.color}; {highlightWeightCss(seg.fontWeight)}">{seg.text}</span>
 							{/if}
 							</span>
 						{:else}
@@ -3449,7 +3457,7 @@
 							pointer-events: {interactive && editingSubtext ? 'none' : 'auto'};
 							{interactive ? 'user-select: text !important; -webkit-user-select: text !important; cursor: text;' : ''}
 						"
-					>{#each subtextSegments as seg}{#if seg.highlighted}<span data-hl-plain-start={seg.start ?? ''} data-hl-plain-end={seg.end ?? ''} style="cursor:text;pointer-events:auto;display:inline;">{#if seg.markerBg}<span style="background-color:{seg.markerBg};background-image:none;-webkit-background-clip:border-box;background-clip:border-box;color:{textColor};font-weight:inherit;{TEXT_BG_CHIP_BOX_CSS}text-box:normal;text-box-trim:none;isolation:isolate;{textPaddingCss(subtextStyle)}">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;pointer-events:none;font-weight:inherit;">{seg.text}</span>{:else}<span style="color:{seg.color};font-weight:inherit;">{seg.text}</span>{/if}</span>{:else}{seg.text}{/if}{/each}</p>
+					>{#each subtextSegments as seg}{#if seg.highlighted}<span data-hl-plain-start={seg.start ?? ''} data-hl-plain-end={seg.end ?? ''} style="cursor:text;pointer-events:auto;display:inline;">{#if seg.markerBg}<span style="background-color:{seg.markerBg};background-image:none;-webkit-background-clip:border-box;background-clip:border-box;color:{textColor};{highlightWeightCss(seg.fontWeight)}{TEXT_BG_CHIP_BOX_CSS}text-box:normal;text-box-trim:none;isolation:isolate;{textPaddingCss(subtextStyle)}">{seg.text}</span>{:else if seg.gradientFrom && seg.gradientTo}<span style="background:linear-gradient(90deg,{seg.gradientFrom},{seg.gradientTo});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;pointer-events:none;{highlightWeightCss(seg.fontWeight)}">{seg.text}</span>{:else if seg.painted === false}<span style="color:inherit;{highlightWeightCss(seg.fontWeight)}">{seg.text}</span>{:else}<span style="color:{seg.color};{highlightWeightCss(seg.fontWeight)}">{seg.text}</span>{/if}</span>{:else}{seg.text}{/if}{/each}</p>
 					{#if editingSubtext && interactive}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
