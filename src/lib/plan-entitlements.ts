@@ -36,7 +36,7 @@ export type PlanEntitlements = {
 
 export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	free: {
-		carouselsPerMonth: 5,
+		carouselsPerMonth: 3,
 		aiImagesPerMonth: 0,
 		clipMinutesPerMonth: 60,
 		maxClipVideoMinutes: 20,
@@ -45,7 +45,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 		competitorTracks: 3,
 	},
 	hobby: {
-		carouselsPerMonth: 50,
+		carouselsPerMonth: 45,
 		aiImagesPerMonth: 50,
 		clipMinutesPerMonth: 180,
 		maxClipVideoMinutes: 60,
@@ -103,4 +103,19 @@ export function isPaidPlanActive(
 	const id = normalizePlanId(plan);
 	if (id === 'free') return false;
 	return ['active', 'trialing'].includes(planStatus ?? '');
+}
+
+/**
+ * Account deletion is allowed only on Free with no Stripe subscription.
+ * Cancel-at-period-end still has a subscription id until the period ends.
+ */
+export function canDeleteAccount(opts: {
+	plan?: string | null;
+	planStatus?: string | null;
+	hasSubscription?: boolean;
+}): boolean {
+	if (opts.hasSubscription) return false;
+	if (normalizePlanId(opts.plan) !== 'free') return false;
+	const status = String(opts.planStatus ?? '').toLowerCase();
+	return !['active', 'trialing', 'past_due'].includes(status);
 }

@@ -2,6 +2,12 @@
 	import { FONT_TEMPLATE_DEFAULT, FONT_UI_STACK } from '$lib/fonts/brand-fonts';
 	import { supabase } from '$lib/supabase';
 	import { fetchDraftLibraryRows } from '$lib/studio/draft-library';
+	import {
+		isSavedStudioTemplateSelectId,
+		savedStudioTemplateIdFromSelectId,
+		savedStudioTemplateMetaFromRow,
+		type SavedStudioTemplateMeta,
+	} from '$lib/studio/saved-template-library';
 	import { onMount, tick, untrack } from 'svelte';
 	import { goto, afterNavigate, beforeNavigate } from '$app/navigation';
 import { toPng } from 'html-to-image';
@@ -1126,13 +1132,48 @@ import JSZip from 'jszip';
 	// ── Per-slide template selection (ids + labels live in `$lib/studio`) ──
 	type TemplateDef = StudioTemplateDef;
 	const TEMPLATES: TemplateDef[] = STUDIO_TEMPLATES;
-	/** Options for the floating template dock (dropdown). Legacy templates omitted from `STUDIO_TEMPLATES` but injected when a slide still uses them. */
+	/** Options for the floating template dock (dropdown). Legacy templates omitted from `STUDIO_TEMPLATES` but injected when a slide still uses them. Saved templates appear under their base type (e.g. News). */
 	const templateDockTabs = $derived.by(() => {
-		const rows = TEMPLATES.map((t) => ({
-			id: t.id,
-			label: t.label,
-			title: `${t.label} — all slides`,
-		}));
+		const savedByBase = new Map<TemplateId, SavedStudioTemplateMeta[]>();
+		for (const row of savedStudioTemplates) {
+			const list = savedByBase.get(row.baseTemplate) ?? [];
+			list.push(row);
+			savedByBase.set(row.baseTemplate, list);
+		}
+		const curSavedId = String(savedTemplateIdBySlide[activeSlide] ?? '').trim();
+		if (
+			curSavedId &&
+			!savedStudioTemplates.some((s) => s.id === curSavedId)
+		) {
+			const base = coerceTemplateId(slideTemplates[activeSlide]);
+			const list = savedByBase.get(base) ?? [];
+			list.push({
+				id: curSavedId,
+				name: String(savedTemplateNameBySlide[activeSlide] ?? '').trim() || 'Saved template',
+				baseTemplate: base,
+				updatedAt: '',
+			});
+			savedByBase.set(base, list);
+		}
+
+		const rows: { id: string; label: string; title: string; separatorBefore?: boolean }[] = [];
+		for (const t of TEMPLATES) {
+			rows.push({
+				id: t.id,
+				label: t.label,
+				title: `${t.label} — all slides`,
+			});
+			const saved = savedByBase.get(t.id) ?? [];
+			for (const s of saved) {
+				rows.push({
+					id: `saved:${s.id}`,
+					label: s.name,
+					title: `${s.name} — saved layout`,
+					separatorBefore: saved.indexOf(s) === 0,
+				});
+			}
+		}
+
 		const cur = slideTemplates[activeSlide];
 		const legacy: TemplateDef[] = [];
 		if (cur === 'article' && !rows.some((r) => r.id === 'article')) {
@@ -1173,6 +1214,11 @@ import JSZip from 'jszip';
 			];
 		}
 		return rows;
+	});
+	const templateDockSelectedId = $derived.by(() => {
+		const savedId = String(savedTemplateIdBySlide[activeSlide] ?? '').trim();
+		if (savedId) return `saved:${savedId}`;
+		return activeTemplate;
 	});
 	let slideTemplates = $state<TemplateId[]>(emptySlides(() => 'blank'));
 	let lastTemplateUsed = $state<TemplateId>('news');
@@ -6226,9 +6272,17 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	const toolbarFloatingStyle = $derived.by(() => {
 		let base = getActiveStyleForSelection() ?? {};
-		/* POV defaults live in VIDEO_TEXT_HEADLINE_STYLE — surface them in SH so Strong
-		   matches the canvas when the slide style map is still empty / partial. */
-		if (
+		/* Template defaults live on the canvas via `{...TEMPLATE_STYLE, ...saved}`.
+		   Surface them in the toolbar so the font label matches what's painted
+		   (empty style map used to show Plus Jakarta while News was Bebas). */
+		if (previewTemplate === 'news' && (selectedText === 'headline' || selectedText === null)) {
+			base = { ...NEWS_HEADLINE_STYLE, ...base };
+		} else if (
+			previewTemplate === 'photoTopic' &&
+			(selectedText === 'blackTextHeadline' || selectedText === null)
+		) {
+			base = { ...PHOTO_TOPIC_HEADLINE_STYLE, ...base };
+		} else if (
 			previewTemplate === 'videoText' &&
 			(selectedText === 'videoStoryHeadline' || selectedText === null)
 		) {
@@ -6824,14 +6878,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 	/** Routes text color to `[[…]]` markup when a phrase is selected; BG always paints the whole field. */
 	function onFloatingToolbarChange(patch: Partial<TextStyle>) {
+		const kindAtStart = selectedText;
 		if (
-			selectedText === 'articleImage' ||
-			selectedText === 'articleLogo' ||
-			selectedText === 'videoStoryMedia'
+			kindAtStart === 'articleImage' ||
+			kindAtStart === 'articleLogo' ||
+			kindAtStart === 'videoStoryMedia'
 		)
 			return;
 		const raw = toolbarHighlightableRaw();
-		if (studioTextHighlightsEnabled && studioMarkupFieldActive() && raw && selectedText !== 'textOverlay') {
+		if (studioTextHighlightsEnabled && studioMarkupFieldActive() && raw && kindAtStart !== 'textOverlay') {
 			if ('color' in patch && patch.color !== undefined) {
 				ensurePlainRangeForMarkupTools(raw);
 				if (headlineRange) {
@@ -6856,13 +6911,13 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 						...patch,
 						...(clear ? { padding: undefined } : nextPad != null ? { padding: nextPad } : {}),
 					},
-					{ skipUndo: true },
+					{ skipUndo: true, kind: kindAtStart },
 				);
 				return;
 			}
 		} else if (
 			studioTextHighlightsEnabled &&
-			selectedText === 'textOverlay' &&
+			kindAtStart === 'textOverlay' &&
 			raw &&
 			'bgColor' in patch
 		) {
@@ -6881,11 +6936,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					...patch,
 					...(clear ? { padding: undefined } : nextPad != null ? { padding: nextPad } : {}),
 				},
-				{ skipUndo: true },
+				{ skipUndo: true, kind: kindAtStart },
 			);
 			return;
 		}
-		patchActiveStyle(patch);
+		patchActiveStyle(patch, { kind: kindAtStart });
 	}
 
 	/** Patch News source-label styles from the settings panel (no canvas selection required). */
@@ -6910,23 +6965,34 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (family) void tick().then(() => void loadGoogleFont(family, weight));
 	}
 
-	function patchActiveStyle(patch: Partial<TextStyle>, opts?: { skipUndo?: boolean }) {
+	function patchActiveStyle(
+		patch: Partial<TextStyle>,
+		opts?: { skipUndo?: boolean; kind?: TextElementKind | null },
+	) {
+		const selected =
+			opts && 'kind' in opts ? opts.kind : selectedText;
 		if (
-			selectedText === 'articleImage' ||
-			selectedText === 'articleLogo' ||
-			selectedText === 'videoStoryMedia'
+			selected === 'articleImage' ||
+			selected === 'articleLogo' ||
+			selected === 'videoStoryMedia'
 		)
 			return;
 		if (
-			selectedText === 'textCarouselAvatar' ||
-			selectedText === 'tweetTopAvatar' ||
-			selectedText === 'tweetBottomAvatar' ||
-			selectedText === 'tweetTopMedia'
+			selected === 'textCarouselAvatar' ||
+			selected === 'tweetTopAvatar' ||
+			selected === 'tweetBottomAvatar' ||
+			selected === 'tweetTopMedia'
 		)
 			return;
 		if (!opts?.skipUndo) pushUndo(previewTemplate, paintSlide);
-		const kindPre = selectedText;
-		const slotPre = kindPre ? canvasStyleMap[kindPre] : undefined;
+		const kindPre =
+			selected ??
+			(previewTemplate === 'photoTopic'
+				? 'blackTextHeadline'
+				: previewTemplate === 'news' || previewTemplate === 'blank'
+					? 'headline'
+					: 'headline');
+		const slotPre = canvasStyleMap[kindPre];
 
 		/** Typography that should stay consistent across analogous fields / templates. */
 		const TYPO_KEYS = [
@@ -6966,22 +7032,22 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			return null;
 		}
 
-		if (isTweetKind(selectedText)) {
+		if (isTweetKind(kindPre)) {
 			tweetStylesBySlide = tweetStylesBySlide.map((s, i) => {
 				if (i !== paintSlide) return s;
 				const cur = s ?? {};
-				const k: TweetKind = selectedText as TweetKind;
+				const k: TweetKind = kindPre as TweetKind;
 				return { ...cur, [k]: { ...((cur as any)[k] ?? {}), ...patch } };
 			});
-		} else if (selectedText === 'textOverlay' && selectedTextOverlayId) {
+		} else if (kindPre === 'textOverlay' && selectedTextOverlayId) {
 			const current = (slideTextOverlaysByTemplate[previewTemplate] ?? [])[paintSlide] ?? [];
 			setSlideTextOverlays(
 				paintSlide,
 				current.map((o) => (o.id === selectedTextOverlayId ? { ...o, style: { ...(o.style ?? {}), ...patch } } : o)),
 				previewTemplate,
 			);
-		} else if (selectedText) {
-			const k = selectedText as TextElementKind;
+		} else if (kindPre) {
+			const k = kindPre as TextElementKind;
 			const tpl = previewTemplate;
 			const n = slides.length;
 			const prevRow = stylesByTemplateBySlide[tpl] ?? [];
@@ -7037,7 +7103,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		}
 
 		/* Tweet selection: still mirror body typography into other templates’ body slots. */
-		if (hasTypo && isTweetKind(selectedText) && BODY_KINDS.has(selectedText as TextElementKind)) {
+		if (hasTypo && isTweetKind(kindPre) && BODY_KINDS.has(kindPre as TextElementKind)) {
 			const slide = paintSlide;
 			const nextMap = { ...stylesByTemplateBySlide };
 			for (const t of Object.keys(nextMap) as TemplateId[]) {
@@ -7315,6 +7381,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	let studioTemplateName = $state('');
 	let studioTemplateSaving = $state(false);
 	let studioTemplateFeedback = $state('');
+	let savedStudioTemplates = $state<SavedStudioTemplateMeta[]>([]);
+	let savedStudioTemplatesLoading = $state(false);
+	/** Per-slide saved layout id from Save template (shown in template dropdown). */
+	let savedTemplateIdBySlide = $state<string[]>(emptySlides(() => ''));
+	let savedTemplateNameBySlide = $state<string[]>(emptySlides(() => ''));
+	let savedTemplateStateCache = $state<Record<string, Record<string, unknown>>>({});
 	let draftSaving = $state(false);
 	let draftError = $state('');
 	/** True after local edits until Save template (or intentional discard). */
@@ -7397,6 +7469,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		if (Array.isArray(s.slideTemplates)) {
 			slideTemplates = (s.slideTemplates as unknown[]).map((t) => coerceTemplateId(t));
+		}
+		if (Array.isArray((s as any).savedTemplateIdBySlide)) {
+			savedTemplateIdBySlide = (s as any).savedTemplateIdBySlide.map((x: unknown) => String(x ?? ''));
+		}
+		if (Array.isArray((s as any).savedTemplateNameBySlide)) {
+			savedTemplateNameBySlide = (s as any).savedTemplateNameBySlide.map((x: unknown) =>
+				String(x ?? ''),
+			);
 		}
 		// Do not force `?template=` over a restored deck — that wiped per-slide mixes.
 		// Starter deep links seed via `seedFreshTemplateSession` / onMount, then clear.
@@ -9714,6 +9794,235 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			.filter((row) => row.id);
 	}
 
+	async function refreshSavedStudioTemplates() {
+		if (!userId) {
+			savedStudioTemplates = [];
+			return;
+		}
+		savedStudioTemplatesLoading = true;
+		try {
+			const data = await fetchDraftLibraryRows(supabase, {
+				userId,
+				kind: STUDIO_SAVED_TEMPLATE_KIND,
+				limit: 40,
+			});
+			savedStudioTemplates = data
+				.map((row) =>
+					savedStudioTemplateMetaFromRow({
+						id: String(row.id ?? ''),
+						state: row.state ?? null,
+						updated_at: String(row.updated_at ?? ''),
+					}),
+				)
+				.filter((row): row is SavedStudioTemplateMeta => !!row);
+		} catch {
+			savedStudioTemplates = [];
+		} finally {
+			savedStudioTemplatesLoading = false;
+		}
+	}
+
+	async function loadSavedTemplateStateFull(savedId: string): Promise<Record<string, unknown> | null> {
+		const id = String(savedId ?? '').trim();
+		if (!id) return null;
+		const cached = savedTemplateStateCache[id];
+		if (cached) return cached;
+		const { data, error } = await (supabase as any)
+			.from('drafts')
+			.select('state')
+			.eq('user_id', userId)
+			.eq('id', id)
+			.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
+			.maybeSingle();
+		if (error || !data?.state) return null;
+		const state = { ...(data.state ?? {}) } as Record<string, unknown>;
+		delete state._templateName;
+		savedTemplateStateCache = { ...savedTemplateStateCache, [id]: state };
+		return state;
+	}
+
+	function copySavedNewsShadowFromSlide(
+		state: Record<string, unknown>,
+		srcIdx: number,
+		targetIdxs: number[],
+	) {
+		padShadowBySlide();
+		const patchAt = (i: number) => {
+			const patch: {
+				height?: number;
+				strength?: number;
+				curve?: BottomShadowCurve;
+				color?: string;
+				autoFit?: boolean;
+			} = {};
+			const hRow = state.shadowHeightBySlide as unknown[] | undefined;
+			const sRow = state.shadowStrengthBySlide as unknown[] | undefined;
+			const cRow = state.shadowCurveBySlide as unknown[] | undefined;
+			const colRow = state.shadowColorBySlide as unknown[] | undefined;
+			const aRow = state.shadowAutoFitBySlide as unknown[] | undefined;
+			if (Array.isArray(hRow) && typeof hRow[srcIdx] === 'number') {
+				patch.height = hRow[srcIdx] as number;
+			} else if (typeof state.shadowHeight === 'number') {
+				patch.height = state.shadowHeight;
+			}
+			if (Array.isArray(sRow) && typeof sRow[srcIdx] === 'number') {
+				patch.strength = sRow[srcIdx] as number;
+			} else if (typeof state.shadowStrength === 'number') {
+				patch.strength = state.shadowStrength;
+			}
+			if (Array.isArray(cRow) && cRow[srcIdx] != null) {
+				patch.curve = normalizeBottomShadowCurve(cRow[srcIdx]);
+			} else if (state.shadowCurve != null) {
+				patch.curve = normalizeBottomShadowCurve(state.shadowCurve);
+			}
+			if (Array.isArray(colRow) && typeof colRow[srcIdx] === 'string') {
+				patch.color = normalizeBottomShadowColor(colRow[srcIdx]);
+			} else if (typeof state.shadowColor === 'string') {
+				patch.color = normalizeBottomShadowColor(state.shadowColor);
+			}
+			if (Array.isArray(aRow) && typeof aRow[srcIdx] === 'boolean') {
+				patch.autoFit = aRow[srcIdx] as boolean;
+			} else if (typeof state.shadowAutoFit === 'boolean') {
+				patch.autoFit = state.shadowAutoFit;
+			}
+			if (Object.keys(patch).length) setSlideShadow(i, patch);
+		};
+		for (const i of targetIdxs) {
+			if (i < 0 || i >= slides.length) continue;
+			patchAt(i);
+		}
+	}
+
+	async function applySavedStudioTemplateToSlides(savedId: string, idxs: number[]) {
+		commitInlineTextEditsBeforeSave();
+		const state = await loadSavedTemplateStateFull(savedId);
+		if (!state) {
+			setFlashToast('Could not load that saved template');
+			return;
+		}
+		const savedName =
+			savedStudioTemplates.find((s) => s.id === savedId)?.name ||
+			String(savedTemplateNameBySlide[idxs[0] ?? activeSlide] ?? '').trim() ||
+			'Saved template';
+		const base = savedStudioTemplateMetaFromRow({
+			id: savedId,
+			state: { ...state, _templateName: savedName },
+		})?.baseTemplate ?? 'news';
+		const srcIdx = 0;
+		const targets = idxs.filter((i) => i >= 0 && i < slides.length);
+		if (!targets.length) return;
+
+		if (base === 'news') {
+			const bySlide = Array.isArray(state.newsLayoutBySlide)
+				? (state.newsLayoutBySlide as unknown[])
+				: null;
+			const doc = parseNewsLayoutDocument(bySlide?.[srcIdx] ?? state.newsLayoutDocument);
+			if (doc) {
+				applyNewsLayoutDocumentToStudio(doc, { slides: targets, overlays: true });
+			} else {
+				const savedStyles = (
+					(state.stylesByTemplateBySlide as Record<string, unknown[]> | undefined)?.news ?? []
+				)[srcIdx];
+				if (savedStyles && typeof savedStyles === 'object') {
+					const row = [...(stylesByTemplateBySlide.news ?? [])];
+					while (row.length < slides.length) row.push({});
+					for (const i of targets) row[i] = cloneDevJson(savedStyles);
+					stylesByTemplateBySlide = { ...stylesByTemplateBySlide, news: row };
+				}
+				const savedImgOverlays = (
+					(state.slideOverlaysByTemplate as Record<string, unknown[][]> | undefined)?.news ?? []
+				)[srcIdx];
+				const savedTextOverlays = (
+					(state.slideTextOverlaysByTemplate as Record<string, unknown[][]> | undefined)?.news ??
+					[]
+				)[srcIdx];
+				if (Array.isArray(savedImgOverlays) || Array.isArray(savedTextOverlays)) {
+					const imgRows = [...(slideOverlaysByTemplate.news ?? [])];
+					const textRows = [...(slideTextOverlaysByTemplate.news ?? [])];
+					while (imgRows.length < slides.length) imgRows.push([]);
+					while (textRows.length < slides.length) textRows.push([]);
+					for (const i of targets) {
+						if (Array.isArray(savedImgOverlays)) imgRows[i] = cloneDevJson(savedImgOverlays);
+						if (Array.isArray(savedTextOverlays)) textRows[i] = cloneDevJson(savedTextOverlays);
+					}
+					slideOverlaysByTemplate = { ...slideOverlaysByTemplate, news: imgRows };
+					slideTextOverlaysByTemplate = { ...slideTextOverlaysByTemplate, news: textRows };
+				}
+			}
+			copySavedNewsShadowFromSlide(state, srcIdx, targets);
+		} else {
+			const savedStyles = (
+				(state.stylesByTemplateBySlide as Record<string, unknown[]> | undefined)?.[base] ?? []
+			)[srcIdx];
+			if (savedStyles && typeof savedStyles === 'object') {
+				const row = [...(stylesByTemplateBySlide[base] ?? [])];
+				while (row.length < slides.length) row.push({});
+				for (const i of targets) row[i] = cloneDevJson(savedStyles);
+				stylesByTemplateBySlide = { ...stylesByTemplateBySlide, [base]: row };
+			}
+		}
+
+		let nextSavedIds = savedTemplateIdBySlide.slice();
+		let nextSavedNames = savedTemplateNameBySlide.slice();
+		while (nextSavedIds.length < slides.length) nextSavedIds.push('');
+		while (nextSavedNames.length < slides.length) nextSavedNames.push('');
+		let nextSlideTemplates = slideTemplates.slice();
+
+		for (const i of targets) {
+			const from = coerceTemplateId(nextSlideTemplates[i]);
+			if (from !== base) {
+				nextSlideTemplates[i] = base;
+				ensureTemplateDefaultsForSlide(base, i);
+				applyTemplateDevOverride(base, { slides: [i] });
+				finalizeTemplateSwitch(from, base, i);
+			} else if (base === 'news') {
+				reapplyBrandChromeForTemplate('news', i);
+			}
+			nextSavedIds[i] = savedId;
+			nextSavedNames[i] = savedName;
+		}
+		slideTemplates = nextSlideTemplates;
+		savedTemplateIdBySlide = nextSavedIds;
+		savedTemplateNameBySlide = nextSavedNames;
+		lastTemplateUsed = base;
+		studioHasUnsavedChanges = true;
+		try {
+			await resolveAllR2RefsInStudioState();
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function clearSavedTemplateForSlide(slideIdx: number) {
+		if (slideIdx < 0 || slideIdx >= slides.length) return;
+		if (!String(savedTemplateIdBySlide[slideIdx] ?? '').trim()) return;
+		savedTemplateIdBySlide = savedTemplateIdBySlide.map((id, i) => (i === slideIdx ? '' : id));
+		savedTemplateNameBySlide = savedTemplateNameBySlide.map((name, i) =>
+			i === slideIdx ? '' : name,
+		);
+	}
+
+	function selectTemplateFromDock(raw: string) {
+		if (isSavedStudioTemplateSelectId(raw)) {
+			void applySavedStudioTemplateToSlides(savedStudioTemplateIdFromSelectId(raw), [activeSlide]);
+			return;
+		}
+		clearSavedTemplateForSlide(activeSlide);
+		setActiveTemplate(raw as TemplateId);
+	}
+
+	function applyTemplateDockToAll() {
+		const savedId = String(savedTemplateIdBySlide[activeSlide] ?? '').trim();
+		if (savedId) {
+			void applySavedStudioTemplateToSlides(
+				savedId,
+				Array.from({ length: slides.length }, (_, i) => i),
+			);
+			return;
+		}
+		applyTemplateToAll(activeTemplate, { skipNewsSeed: true });
+	}
+
 	async function saveStudioTemplateNamed(
 		nameOverride?: string,
 		opts?: { overwriteId?: string; leaveAfter?: boolean; leaveHref?: string },
@@ -9885,6 +10194,15 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			console.warn('[studio] account template override after save failed', e);
 		}
 		setFlashToast(savedLabel);
+		void refreshSavedStudioTemplates();
+		if (templateId) {
+			savedTemplateIdBySlide = savedTemplateIdBySlide.map((id, i) =>
+				i === activeSlide ? templateId : id,
+			);
+			savedTemplateNameBySlide = savedTemplateNameBySlide.map((rowName, i) =>
+				i === activeSlide ? name : rowName,
+			);
+		}
 
 		if (opts?.leaveAfter) {
 			allowStudioLeave = true;
@@ -10216,6 +10534,8 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			activeSlide,
 			slides,
 			slideTemplates,
+			savedTemplateIdBySlide,
+			savedTemplateNameBySlide,
 			bgImagesByTemplate: pruneMediaMap(bgImagesByTemplate as any),
 			bgVideosByTemplate: pruneMediaMap(bgVideosByTemplate as any),
 			newsSolidBgBySlide,
@@ -10635,6 +10955,7 @@ tweetTopImagePanYBySlide,
 		userId = user.id;
 		refreshPromptHistory();
 		void refreshStudioUsage();
+		void refreshSavedStudioTemplates();
 		await loadAccountTemplateOverrides();
 		const kit = await hydrateBrandKit(user.id);
 		const profile = brandProfile(kit);
@@ -13505,6 +13826,15 @@ tweetTopImagePanYBySlide,
 		if (slideTemplates.length !== n) {
 			slideTemplates = Array.from({ length: n }, (_, i) => slideTemplates[i] ?? lastTemplateUsed);
 		}
+		if (savedTemplateIdBySlide.length !== n) {
+			savedTemplateIdBySlide = Array.from({ length: n }, (_, i) => savedTemplateIdBySlide[i] ?? '');
+		}
+		if (savedTemplateNameBySlide.length !== n) {
+			savedTemplateNameBySlide = Array.from(
+				{ length: n },
+				(_, i) => savedTemplateNameBySlide[i] ?? '',
+			);
+		}
 		// Ensure style maps have entries for each slide per template.
 		// IMPORTANT: only assign when a length mismatch exists (avoid infinite $effect loop).
 		let stylesNeedSync = false;
@@ -15274,7 +15604,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 			<DockToolbar items={dockItems} inline />
 			<TemplateDockToolbar
 				templates={templateDockTabs}
-				selectedId={activeTemplate}
+				selectedId={templateDockSelectedId}
 				selectedLabelOverride={forcedBlankFromQuery &&
 				slides.length === 1 &&
 				!String(slides[0] ?? '').trim() &&
@@ -15282,8 +15612,8 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				!String(backgroundVideo ?? '').trim()
 					? 'Blank'
 					: ''}
-				onSelect={(id) => setActiveTemplate(id as TemplateId)}
-				onApplyAll={() => applyTemplateToAll(activeTemplate, { skipNewsSeed: true })}
+				onSelect={selectTemplateFromDock}
+				onApplyAll={applyTemplateDockToAll}
 			/>
 			<ButtonGroup.Root title="Canvas background">
 				<ButtonGroup.Text class="studio-canvas-bg-toggle">
@@ -15315,13 +15645,14 @@ if (tweetTopImageHeightBySlide.length !== n) {
 				</PopoverTrigger>
 				<PopoverContent
 					side="bottom"
-					sideOffset={10}
-					align="center"
+					sideOffset={8}
+					align="start"
+					avoidCollisions={false}
 					trapFocus={false}
 					portalProps={{ to: 'body' }}
-					class="studio-dock-popover w-[312px]"
+					class="studio-dock-popover studio-shadow-popover w-[312px]"
 				>
-					<div class="mb-3 flex items-center justify-between gap-2">
+					<div class="mb-2.5 flex items-center justify-between gap-2">
 						<p class="text-[12px] font-semibold tracking-tight">Bottom shadow</p>
 						<button
 							type="button"
@@ -15338,7 +15669,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 						</button>
 					</div>
 					<div
-						class="relative mb-3 h-14 overflow-hidden rounded-xl border border-black/10"
+						class="relative mb-2.5 h-10 overflow-hidden rounded-xl border border-black/10"
 						style="background-image: linear-gradient(135deg, #c9c4b8 0%, #9a958c 48%, #7a756c 100%);"
 						aria-hidden="true"
 					>
@@ -17101,8 +17432,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 					{@const isVideo = !!item.vid || hasMusic}
 					{@const thumbFontFamily =
 						tplate === 'news'
-							? `'Bebas Neue', Impact, ui-sans-serif, sans-serif`
-							: `FONT_UI_STACK`}
+							? `'Bebas Neue', ui-sans-serif, sans-serif`
+							: FONT_UI_STACK}
 					{@const thumbFontSize = tplate === 'news' ? '8px' : '7.5px'}
 					{@const thumbImgOpacity = tplate === 'tweet' && item.img ? '0.92' : '0.78'}
 					{@const rasterThumb = filmstripPreviewUrls[item.slideIndex] ?? ''}
@@ -17299,8 +17630,8 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{@const tDrag = slideTemplates[di.slideIndex] ?? 'news'}
 							{@const dragFont =
 								tDrag === 'news'
-									? `'Bebas Neue', Impact, ui-sans-serif, sans-serif`
-									: `FONT_UI_STACK`}
+									? `'Bebas Neue', ui-sans-serif, sans-serif`
+									: FONT_UI_STACK}
 							{@const dragFs = tDrag === 'news' ? '8px' : '7.5px'}
 							{@const dragImgOp = tDrag === 'tweet' && di.img ? '0.92' : '0.78'}
 							{@const dragRaster = filmstripPreviewUrls[di.slideIndex] ?? ''}
@@ -19070,6 +19401,14 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 			0 2px 8px rgba(0, 0, 0, 0.06);
 	}
 
+	/* Stay parked under the dock so the canvas letterbox stays visible while editing. */
+	:global(.studio-shadow-popover) {
+		max-height: min(46vh, 26rem);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: thin;
+	}
+
 	.studio-dock-inner :global(.studio-dock-tool-group [data-slot='button']) {
 		border-radius: 0;
 		transform: none;
@@ -19197,6 +19536,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 		:global(.studio-dock-popover) {
 			width: min(92vw, 320px) !important;
 			max-height: min(70vh, 520px);
+		}
+		:global(.studio-shadow-popover) {
+			max-height: min(38vh, 20rem) !important;
 		}
 	}
 

@@ -5,7 +5,7 @@
 		tag,
 		title,
 		description,
-		image,
+		image = '',
 		href = '',
 		ctaLabel = '',
 		class: className = '',
@@ -13,15 +13,17 @@
 		tag: string;
 		title: string;
 		description: string;
-		image: string;
+		image?: string;
 		href?: string;
 		ctaLabel?: string;
 		class?: string;
 	} = $props();
 </script>
 
-<div class="mk-media-card mk-bento-studio-main mk-reveal {className}">
-	<img src={image} alt="" loading="lazy" />
+<div class="mk-media-card mk-bento-studio-main mk-reveal {image ? '' : 'mk-media-card--plain'} {className}">
+	{#if image}
+		<img src={image} alt="" loading="lazy" />
+	{/if}
 	<div class="mk-media-card-content">
 		<span class="mk-media-tag">{tag}</span>
 		<h3 class="mk-media-title">{title}</h3>

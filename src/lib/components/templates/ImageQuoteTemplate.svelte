@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
-	import { canvasFontFamilyCss, loadGoogleFont } from '$lib/fonts';
+	import { canvasFontFamilyCss, canvasFontFamilyStack, loadGoogleFont } from '$lib/fonts';
 	import HighlightedText from '$lib/components/HighlightedText.svelte';
 	import CanvasMarkupTextBlock from '$lib/components/CanvasMarkupTextBlock.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
@@ -80,6 +80,7 @@
 		const s = headlineStyle;
 		const bits: string[] = [];
 		if (s.fontFamily) bits.push(canvasFontFamilyCss(s.fontFamily));
+		else bits.push(canvasFontFamilyCss('Impact'));
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -91,6 +92,11 @@
 		appendTextShadowCss(bits, s);
 		appendTextBgCss(bits, s);
 		return bits.join(' ');
+	});
+
+	const quoteFamily = $derived(headlineStyle.fontFamily ?? 'Impact');
+	$effect(() => {
+		void loadGoogleFont(quoteFamily, headlineStyle.fontWeight ?? 900);
 	});
 
 	const BASE_W = 1080;
@@ -125,11 +131,6 @@
 		return 38;
 	});
 	const quoteSize = $derived(headlineStyle.fontSize ?? autoQuoteSize);
-
-	$effect(() => {
-		const family = headlineStyle.fontFamily ?? 'Impact';
-		void loadGoogleFont(family, headlineStyle.fontWeight ?? 900);
-	});
 
 	const mediaStretch = $derived(
 		Math.max(0.4, Math.min(1.75, Number(textOffsets.articleImageSize?.x ?? 1) || 1)),
@@ -175,7 +176,7 @@
 			transform: scale({scale});
 			transform-origin: top left;
 			background: {baseBg};
-			font-family: Impact, 'Anton', system-ui, sans-serif;
+			font-family: {canvasFontFamilyStack(quoteFamily)};
 			overflow: hidden;
 		"
 	>
@@ -284,7 +285,7 @@
 							rows={6}
 							uppercase={true}
 							ariaLabel="Quote text"
-							fontFamily={headlineStyle.fontFamily ?? 'Impact'}
+							fontFamily={quoteFamily}
 							fontSize={quoteSize}
 							{showToolbar}
 							onTextChange={onTextChange}
@@ -306,7 +307,7 @@
 										line-height: 1.12;
 										font-size: {quoteSize}px;
 										text-align: center;
-										font-family: Impact, 'Anton', system-ui, sans-serif;
+										font-family: {canvasFontFamilyStack(quoteFamily)};
 										white-space: pre-wrap;
 										overflow-wrap: break-word;
 										word-break: normal;
@@ -349,7 +350,7 @@
 								toolbarKind="imageQuoteFooterLeft"
 								selected={selectedText === 'imageQuoteFooterLeft'}
 								ariaLabel="Footer left"
-								fontFamily={headlineStyle.fontFamily ?? 'Impact'}
+								fontFamily={quoteFamily}
 								fontSize={44}
 								onTextChange={onFooterLeftChange}
 								onTextSelect={onTextSelect}
@@ -360,7 +361,7 @@
 											font-size: 44px;
 											font-weight: 900;
 											color: {baseText};
-											font-family: Impact, 'Anton', system-ui, sans-serif;
+											font-family: {canvasFontFamilyStack(quoteFamily)};
 											line-height: 1;
 											display: inline-block;
 											min-height: 1em;

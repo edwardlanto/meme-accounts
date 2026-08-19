@@ -1,13 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { adminClient } from '$lib/server/auth';
-import { getStripe } from '$lib/server/stripe';
+import { canDeleteAccount } from '$lib/plan-entitlements';
 import { r2DeleteOwnerPrefix } from '$lib/server/r2';
 
 /**
  * Permanently delete the signed-in user.
- * Cancels Stripe subscriptions when possible, purges R2 uploads under `{userId}/`,
- * then removes auth.users (public.users and related rows cascade).
+ * Requires a canceled / Free account with no Stripe subscription.
+ * Purges R2 uploads under `{userId}/`, then removes auth.users
+ * (public.users and related rows cascade).
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
@@ -34,24 +35,26 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const supabase = adminClient();
 	const { data: profile } = await supabase
 		.from('users')
-		.select('stripe_customer_id, stripe_subscription_id')
+		.select('plan, plan_status, stripe_subscription_id')
 		.eq('id', user.id)
 		.maybeSingle();
 
-	if (profile?.stripe_subscription_id || profile?.stripe_customer_id) {
-		try {
-			const stripe = getStripe();
-			if (profile.stripe_subscription_id) {
-				try {
-					await stripe.subscriptions.cancel(profile.stripe_subscription_id);
-				} catch (e) {
-					console.warn('[account/delete] subscription cancel', e);
-				}
-			}
-		} catch (e) {
-			/* Stripe not configured — still delete the account */
-			console.warn('[account/delete] stripe unavailable', e);
-		}
+	if (
+		!canDeleteAccount({
+			plan: profile?.plan,
+			planStatus: profile?.plan_status,
+			hasSubscription: Boolean(profile?.stripe_subscription_id),
+		})
+	) {
+		return json(
+			{
+				ok: false,
+				error:
+					'Cancel your subscription first. You can delete your account after you are back on the Free plan.',
+				code: 'PLAN_ACTIVE',
+			},
+			{ status: 403 },
+		);
 	}
 
 	// Purge uploaded media before auth delete (keys are `{userId}/…`).

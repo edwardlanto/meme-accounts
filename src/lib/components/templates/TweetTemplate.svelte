@@ -5,6 +5,7 @@ import HighlightedText from '$lib/components/HighlightedText.svelte';
 import { TWEET_DEFAULTS } from '$lib/studio/slide-content-defaults';
 import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 import type { TextElementKind, TextStyle } from '$lib/types';
+import { canvasFontFamilyCss, loadGoogleFont } from '$lib/fonts';
 import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
 import { Move } from 'lucide-svelte';
 
@@ -359,7 +360,7 @@ let {
 
 	function styleCss(s: TextStyle) {
 		const bits: string[] = [];
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', FONT_TEMPLATE_DEFAULT, system-ui, sans-serif;`);
+		if (s.fontFamily) bits.push(canvasFontFamilyCss(s.fontFamily));
 		if (s.fontSize) bits.push(`font-size: ${s.fontSize}px;`);
 		if (s.fontWeight != null) bits.push(`font-weight: ${s.fontWeight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -381,6 +382,19 @@ let {
 	const bottomNameCss = $derived(styleCss(tweetStyles.tweetBottomName ?? {}));
 	const bottomHandleCss = $derived(styleCss(tweetStyles.tweetBottomHandle ?? {}));
 	const bottomTextCss = $derived(styleCss(tweetStyles.tweetBottomText ?? {}));
+
+	$effect(() => {
+		for (const s of [
+			tweetStyles.tweetTopName,
+			tweetStyles.tweetTopHandle,
+			tweetStyles.tweetTopText,
+			tweetStyles.tweetBottomName,
+			tweetStyles.tweetBottomHandle,
+			tweetStyles.tweetBottomText,
+		]) {
+			if (s?.fontFamily) void loadGoogleFont(s.fontFamily, s.fontWeight ?? 400);
+		}
+	});
 	const BASE_W = 1080;
 	const BASE_H = 1350;
 	const W = $derived(Math.max(320, Number(canvasW) || BASE_W));
@@ -559,7 +573,7 @@ let {
 										minHeight="0px"
 										{showToolbar}
 										ariaLabel="Top name"
-										fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+										fontFamily={tweetStyles.tweetTopName?.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 										fontSize={tweetStyles.tweetTopName?.fontSize ?? 36}
 										onTextChange={onTopNameChange}
 									>
@@ -600,7 +614,7 @@ let {
 								minHeight="0px"
 								{showToolbar}
 								ariaLabel="Top handle"
-								fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontFamily={tweetStyles.tweetTopHandle?.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 								fontSize={tweetStyles.tweetTopHandle?.fontSize ?? 28}
 								onTextChange={onTopHandleChange}
 							>
@@ -638,7 +652,7 @@ let {
 							minHeight="0px"
 							{showToolbar}
 							ariaLabel="Tweet text"
-							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? "FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+							fontFamily={(tweetStyles.tweetTopText?.fontFamily ?? headlineStyle.fontFamily) ?? FONT_TEMPLATE_DEFAULT}
 							fontSize={tweetStyles.tweetTopText?.fontSize ?? 42}
 							onTextChange={onTopTextChange}
 						>
@@ -828,7 +842,7 @@ let {
 								minHeight="0px"
 								{showToolbar}
 								ariaLabel={metric.label}
-								fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, sans-serif"
+								fontFamily={FONT_TEMPLATE_DEFAULT}
 								fontSize={26}
 								onTextChange={metric.onChange}
 							>
@@ -925,7 +939,7 @@ let {
 									minHeight="0px"
 									{showToolbar}
 									ariaLabel="Bottom name"
-									fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+									fontFamily={tweetStyles.tweetBottomName?.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 									fontSize={tweetStyles.tweetBottomName?.fontSize ?? 34}
 									onTextChange={onBottomNameChange}
 								>
@@ -965,7 +979,7 @@ let {
 								minHeight="0px"
 								{showToolbar}
 								ariaLabel="Bottom handle"
-								fontFamily="FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+								fontFamily={tweetStyles.tweetBottomHandle?.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 								fontSize={tweetStyles.tweetBottomHandle?.fontSize ?? 26}
 								onTextChange={onBottomHandleChange}
 							>
@@ -1002,7 +1016,7 @@ let {
 						minHeight="0px"
 						{showToolbar}
 						ariaLabel="Reply text"
-						fontFamily={headlineStyle.fontFamily ?? "FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"}
+						fontFamily={headlineStyle.fontFamily ?? FONT_TEMPLATE_DEFAULT}
 						fontSize={tweetStyles.tweetBottomText?.fontSize ?? headlineStyle.fontSize ?? 40}
 						onTextChange={onBottomTextChange}
 					>

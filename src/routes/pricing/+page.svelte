@@ -71,7 +71,7 @@
 
 <svelte:head>
 	<title>Pricing | Meme Accounts</title>
-	<meta name="description" content="Simple creator-first pricing. Start free with 5 carousels/month, upgrade to Creator at $29/mo when you grow." />
+	<meta name="description" content="Simple creator-first pricing. Start free with 3 carousels/month, upgrade to Hobby at $19/mo to unlock bulk generate and more." />
 </svelte:head>
 
 <div class="marketing-page">
@@ -87,7 +87,7 @@
 						<em class="mk-hero-accent mk-hero-line not-italic">Pay for what scales.</em>
 					</h1>
 					<p class="mk-hero-sub mx-0 text-left">
-						Start free with 5 carousels per month. Upgrade when news-to-post, captions, and bulk workflows earn their keep.
+						Start free with 3 carousels per month. Upgrade to Hobby for bulk generate, AI images, and more.
 					</p>
 					<BillingIntervalToggle bind:interval savePercent={yearlySave} align="start" class="mk-pricing-toggle--hero" />
 				</div>

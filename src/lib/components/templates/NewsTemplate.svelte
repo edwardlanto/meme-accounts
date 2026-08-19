@@ -5,7 +5,7 @@
 	import { parseHighlightMarkup, segmentText, plainRangeFromSelection, restorePlainSelection, type HighlightDefaults } from '$lib/highlight';
 	import { removeBackground } from '$lib/backgroundRemoval';
 	import type { Overlay, TextOverlay, TextStyle, TextElementKind } from '$lib/types';
-	import { canvasFontFamilyCss, loadGoogleFont } from '$lib/fonts';
+	import { canvasFontFamilyCss, canvasFontFamilyStack, loadGoogleFont } from '$lib/fonts';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import ImageStickerOverlayBox from '$lib/components/ImageStickerOverlayBox.svelte';
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
@@ -2297,7 +2297,7 @@
 							background: transparent;
 							border: 1px dashed rgba(255,255,255,0.28);
 							color: {css.color ?? '#FFFFFF'};
-							font-family: {css.fontFamily ? `'${css.fontFamily}', system-ui, -apple-system, sans-serif` : `FONT_TEMPLATE_DEFAULT, system-ui, -apple-system, sans-serif`};
+							font-family: {css.fontFamily ? canvasFontFamilyStack(css.fontFamily) : canvasFontFamilyStack(FONT_TEMPLATE_DEFAULT)};
 							font-size: {css.fontSize ?? 36}px;
 							font-weight: {css.fontWeight ?? 600};
 							text-align: {css.align ?? 'left'};

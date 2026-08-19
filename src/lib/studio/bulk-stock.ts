@@ -343,8 +343,128 @@ export async function fetchStockImagePool(query: string, limit = 24): Promise<St
 
 /** Fetch best still from Pexels. */
 export async function fetchStockImage(query: string): Promise<StockPick | null> {
-	const pool = await fetchStockImagePool(query, 1);
+	const pool = await getStockPool(query, false, 1);
 	return pool[0] ?? null;
+}
+
+/** In-flight + short-lived cache so identical queries don't hit Pexels repeatedly. */
+const stockPoolCache = new Map<string, Promise<StockPick[]>>();
+
+function stockPoolCacheKey(query: string, wantVideo: boolean, limit: number): string {
+	return `${wantVideo ? 'video' : 'photo'}::${query.trim().toLowerCase()}::${limit}`;
+}
+
+async function getStockPool(query: string, wantVideo: boolean, limit: number): Promise<StockPick[]> {
+	const q = query.trim();
+	if (!q) return [];
+	const key = stockPoolCacheKey(q, wantVideo, limit);
+	let pending = stockPoolCache.get(key);
+	if (!pending) {
+		pending = wantVideo ? fetchStockMediaPool(q, limit) : fetchStockImagePool(q, limit);
+		stockPoolCache.set(key, pending);
+		void pending.finally(() => {
+			setTimeout(() => {
+				if (stockPoolCache.get(key) === pending) stockPoolCache.delete(key);
+			}, 120_000);
+		});
+	}
+	return pending;
+}
+
+export function pickFromStockPool(
+	pool: StockPick[],
+	preferVideo: boolean,
+	offset = 0,
+): StockPick | null {
+	if (!pool.length) return null;
+	const base = ((offset % pool.length) + pool.length) % pool.length;
+	for (let k = 0; k < pool.length; k++) {
+		const pick = pool[(base + k) % pool.length]!;
+		if (preferVideo) {
+			if (pick.kind === 'video') return pick;
+		} else if (pick.kind === 'image') {
+			return pick;
+		}
+	}
+	return pool[base] ?? null;
+}
+
+export type StockFillSlideInput = {
+	template: TemplateId;
+	headline: string;
+	body: string;
+};
+
+/**
+ * Resolve stock for many slides in one deck with ONE `/api/stock/query` call
+ * and ONE Pexels fetch per unique search query (Studio-style batching).
+ */
+export async function resolveStockPicksForSlides(
+	slides: StockFillSlideInput[],
+	topicHint: string,
+	opts?: { preferredKind?: 'photo' | 'video' },
+): Promise<(StockPick | null)[]> {
+	const preferred = opts?.preferredKind;
+	const out: (StockPick | null)[] = slides.map(() => null);
+	const stockIdx: number[] = [];
+	const stockSlides: StockFillSlideInput[] = [];
+	const wantVideoByIdx: boolean[] = [];
+
+	slides.forEach((slide, index) => {
+		if (!templateUsesStockMedia(slide.template)) return;
+		const wantVideo =
+			preferred === 'video'
+				? true
+				: preferred === 'photo'
+					? false
+					: templateUsesStockVideo(slide.template);
+		stockIdx.push(index);
+		stockSlides.push(slide);
+		wantVideoByIdx.push(wantVideo);
+	});
+
+	if (!stockSlides.length) return out;
+
+	// Bulk uses one Stock photos / Stock videos chip for the whole run.
+	const wantVideo = wantVideoByIdx[0] ?? false;
+
+	const plan = await resolveStockSearchQueries({
+		topic: topicHint,
+		kind: wantVideo ? 'video' : 'photo',
+		slides: stockSlides.map((s) => ({ headline: s.headline, body: s.body })),
+	});
+
+	const deckQuery =
+		plan.query.trim() ||
+		topicHint.trim() ||
+		stockQueryFromSlide(stockSlides[0]!.headline, stockSlides[0]!.body, topicHint) ||
+		'editorial photo';
+
+	const queryBySlide = stockSlides.map((s, i) => {
+		const fromPlan = String(plan.queries[i] ?? plan.queries[0] ?? deckQuery).trim();
+		return (
+			fromPlan ||
+			stockQueryFromSlide(s.headline, s.body, topicHint) ||
+			deckQuery
+		);
+	});
+
+	const uniqueQueries = [...new Set([deckQuery, ...queryBySlide])];
+	const poolLimit = Math.max(24, stockSlides.length + 4);
+	const pools = new Map<string, StockPick[]>();
+	await Promise.all(
+		uniqueQueries.map(async (q) => {
+			pools.set(q, await getStockPool(q, wantVideo, poolLimit));
+		}),
+	);
+
+	stockIdx.forEach((outIndex, i) => {
+		const q = queryBySlide[i]!;
+		const pool = pools.get(q) ?? pools.get(deckQuery) ?? [];
+		out[outIndex] = pickFromStockPool(pool, wantVideo, i);
+	});
+
+	return out;
 }
 
 /** Pexels photos ranked for square circle badges. */
@@ -469,44 +589,12 @@ export async function resolveStockForTemplate(
 	topicHint = '',
 	opts?: { preferredKind?: 'photo' | 'video' },
 ): Promise<StockPick | null> {
-	if (!templateUsesStockMedia(template)) return null;
-	const preferred = opts?.preferredKind;
-	const wantVideo =
-		preferred === 'video'
-			? true
-			: preferred === 'photo'
-				? false
-				: templateUsesStockVideo(template);
-	const plan = await resolveStockSearchQueries({
-		topic: topicHint,
-		kind: wantVideo ? 'video' : 'photo',
-		slides: [{ headline, body }],
-	});
-	const fallbackQ =
-		stockQueryFromSlide(headline, body, topicHint) ||
-		String(topicHint ?? '').trim() ||
-		'editorial photo';
-	const query = plan.query || fallbackQ;
-	const tryQueries = [
-		query,
-		...plan.queries,
-		String(topicHint ?? '').trim(),
-		fallbackQ,
-	].filter((q, i, arr) => q && arr.indexOf(q) === i);
-
-	if (wantVideo) {
-		for (const q of tryQueries) {
-			const video = await fetchStockVideo(q);
-			if (video) return video;
-		}
-		// Video preferred but unavailable — still try photos for image-capable templates.
-		if (!templateUsesStockImage(template)) return null;
-	}
-	for (const q of tryQueries) {
-		const photo = await fetchStockImage(q);
-		if (photo) return photo;
-	}
-	return null;
+	const [pick] = await resolveStockPicksForSlides(
+		[{ template, headline, body }],
+		topicHint,
+		opts,
+	);
+	return pick;
 }
 
 /** Run stock picks with limited concurrency (keeps Pexels happy). */

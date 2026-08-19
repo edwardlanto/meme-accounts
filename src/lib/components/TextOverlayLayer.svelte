@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { FONT_TEMPLATE_DEFAULT } from '$lib/fonts/brand-fonts';
+	import { canvasFontFamilyStack, loadGoogleFont } from '$lib/fonts';
 	import { tick } from 'svelte';
 	import HighlightEditor from '$lib/components/HighlightEditor.svelte';
 	import { parseHighlightMarkup as parseHighlightToSegments, segmentText } from '$lib/highlight';
@@ -65,6 +66,13 @@
 	const SNAP_OUT_PX = 16;
 	const ps = $derived(Math.max(0.001, pointerScale ?? scale));
 	const PAD = CANVAS_TEXT_OVERLAY_PAD_PX;
+
+	$effect(() => {
+		for (const o of textOverlays) {
+			const family = o.style?.fontFamily;
+			if (family) void loadGoogleFont(family, o.style?.fontWeight ?? 600);
+		}
+	});
 	const MIN_BOX_W = 80 + PAD * 2;
 	const MIN_BOX_H = 40 + PAD * 2;
 	const HANDLE = 10;
@@ -458,8 +466,8 @@
 			{@const tracking =
 				css.letterSpacing != null ? `${css.letterSpacing}em` : '-0.015em'}
 			{@const family = css.fontFamily
-				? `'${css.fontFamily}', var(--font-sans), system-ui, -apple-system, sans-serif`
-				: `FONT_TEMPLATE_DEFAULT, var(--font-sans), system-ui, -apple-system, sans-serif`}
+				? canvasFontFamilyStack(css.fontFamily)
+				: canvasFontFamilyStack(FONT_TEMPLATE_DEFAULT)}
 			{@const blockBg = String(css.bgColor ?? '').trim()}
 			{@const hasBlockBg =
 				!!blockBg && blockBg !== 'transparent' && blockBg !== 'none'}

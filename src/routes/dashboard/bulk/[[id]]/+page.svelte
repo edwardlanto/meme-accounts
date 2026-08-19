@@ -62,6 +62,7 @@
 	import {
 		templateUsesStockMedia,
 		templateUsesStockVideo,
+		resolveStockPicksForSlides,
 		resolveStockForTemplate,
 		mapPool,
 	} from '$lib/studio/bulk-stock';
@@ -322,7 +323,8 @@
 	let usageCanGenerate = $state<boolean | null>(null);
 	let usageRemaining = $state<number | null>(null);
 	let usageUsed = $state(0);
-	let usageLimit = $state<number | null>(5);
+	let usageLimit = $state<number | null>(3);
+	let usageIsPaid = $state<boolean | null>(null);
 	let usageUpgradeOpen = $state(false);
 	let usageUpgradeMessage = $state('');
 
@@ -702,8 +704,10 @@
 			const s = await refreshUsageStatus();
 			if (!s.signedIn) {
 				usageCanGenerate = false;
+				usageIsPaid = false;
 				return;
 			}
+			usageIsPaid = s.isPaid === true;
 			usageCanGenerate = s.canGenerate !== false;
 			usageRemaining = s.remaining ?? null;
 			usageUsed = typeof s.used === 'number' ? s.used : usageUsed;
@@ -2220,18 +2224,33 @@
 		}));
 
 		const topicHint = topic.trim();
-		const results = await mapPool(targets, 3, async ({ showId, slideId, slide, showTitle }) => {
-			try {
-				const pick = await resolveStockForTemplate(
-					slide.template,
-					slide.headline || showTitle,
-					slide.body,
-					[topicHint, showTitle].filter(Boolean).join(' '),
-					{ preferredKind },
-				);
+		const byShow = new Map<
+			string,
+			{ showId: string; slideId: string; slide: BulkSlide; showTitle: string }[]
+		>();
+		for (const t of targets) {
+			const list = byShow.get(t.showId) ?? [];
+			list.push(t);
+			byShow.set(t.showId, list);
+		}
+
+		const deckResults = await mapPool([...byShow.entries()], 2, async ([showId, group]) => {
+			const showTitle = group[0]?.showTitle ?? '';
+			const topicForShow = [topicHint, showTitle].filter(Boolean).join(' ');
+			const picks = await resolveStockPicksForSlides(
+				group.map((t) => ({
+					template: t.slide.template,
+					headline: t.slide.headline || showTitle,
+					body: t.slide.body,
+				})),
+				topicForShow,
+				{ preferredKind },
+			);
+			return group.map((t, i) => {
+				const pick = picks[i];
 				return {
-					showId,
-					slideId,
+					showId: t.showId,
+					slideId: t.slideId,
 					ok: !!pick?.url,
 					error: pick?.url ? '' : 'no match',
 					patch: {
@@ -2241,16 +2260,9 @@
 						mediaThumb: pick?.thumb ?? '',
 					} satisfies Partial<BulkSlide>,
 				};
-			} catch (e: unknown) {
-				return {
-					showId,
-					slideId,
-					ok: false,
-					error: e instanceof Error ? e.message : 'stock failed',
-					patch: { mediaLoading: false } satisfies Partial<BulkSlide>,
-				};
-			}
+			});
 		});
+		const results = deckResults.flat();
 
 		// Apply all patches in one write so concurrent fills don't clobber each other.
 		const bySlide = new Map(results.map((r) => [`${r.showId}:${r.slideId}`, r.patch]));
@@ -2763,7 +2775,24 @@
 
 <div class="bulk dash-page" class:bulk--prompt-compose={promptCompose}>
 
-	{#if !promptCompose}
+	{#if usageIsPaid === false}
+		<div class="flex min-h-[60vh] flex-col items-center justify-center gap-6 px-6 py-20 text-center">
+			<div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f4f4f5]">
+				<Layers size={28} class="text-[#888]" />
+			</div>
+			<div class="max-w-sm">
+				<h1 class="text-xl font-semibold tracking-tight text-[#111]">Bulk generate is a paid feature</h1>
+				<p class="mt-2 text-sm leading-relaxed text-[#666]">
+					Generate multiple carousels at once with AI-powered bulk workflows. Upgrade to Hobby or higher to unlock it.
+				</p>
+			</div>
+			<div class="flex flex-wrap justify-center gap-3">
+				<Button href="/pricing" size="sm">See plans — from $19/mo</Button>
+				<Button variant="outline" size="sm" href="/dashboard/studio">Open Studio instead</Button>
+			</div>
+			<p class="text-xs text-[#aaa]">Hobby: 45 carousels/mo · Creator: 100/mo · Business: unlimited</p>
+		</div>
+	{:else if !promptCompose}
 	<section
 		class="stack-wrap"
 		aria-label="Slideshow stack"
@@ -3336,6 +3365,7 @@
 	</section>
 	{/if}
 
+	{#if usageIsPaid !== false}
 	<section
 		class="bulk-prompt-chrome"
 		class:bulk-prompt-chrome--compose={promptCompose}
@@ -4126,6 +4156,7 @@
 	{/if}
 	{#if stockNote}
 		<p class="stock-note" role="status">{stockNote}</p>
+	{/if}
 	{/if}
 
 	{#if popoverSlide}

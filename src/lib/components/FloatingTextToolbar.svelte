@@ -267,9 +267,8 @@
 	const isSizeOverridden = $derived(style.fontSize !== undefined);
 
 	function pickFont(family: string) {
-		// Pre-load so preview swaps instantly when user hovers next time.
-		void loadGoogleFont(family);
 		onChange({ fontFamily: family });
+		void loadGoogleFont(family);
 		fontPickerOpen = false;
 		fontSearch = '';
 	}

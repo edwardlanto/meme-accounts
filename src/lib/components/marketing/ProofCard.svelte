@@ -36,8 +36,6 @@
 	<a
 		{href}
 		class="mk-proof-card mk-proof-card--text {className}"
-		class:mk-proof-card--featured={featured}
-		class:mk-proof-card--wide={wide}
 		style="--mk-delay:{delay}"
 		aria-label={title}
 	>
@@ -46,8 +44,6 @@
 {:else}
 	<div
 		class="mk-proof-card mk-proof-card--text {className}"
-		class:mk-proof-card--featured={featured}
-		class:mk-proof-card--wide={wide}
 		style="--mk-delay:{delay}"
 	>
 		{@render cardBody()}

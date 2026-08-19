@@ -5,7 +5,7 @@
 	import DraggableBlock from '$lib/components/DraggableBlock.svelte';
 	import DraggableMediaFrame from '$lib/components/DraggableMediaFrame.svelte';
 	import type { TextElementKind, TextStyle } from '$lib/types';
-	import { appendTextBgCss, appendTextShadowCss } from '$lib/textStyleCss';
+	import { canvasFontFamilyCss, loadGoogleFont } from '$lib/fonts';
 	import { stripMarkup, type HighlightDefaults } from '$lib/highlight';
 	import {
 		FILM_STRIP_MAX_SIDE_PCT,
@@ -320,12 +320,12 @@
 		s: TextStyle,
 		baseSize: number,
 		weight = 600,
-		baseFamily = `FONT_UI_STACK`,
+		baseFamily = FONT_UI_STACK,
 		defaultInk = HEADLINE_INK,
 	) {
 		const bits: string[] = [];
 		bits.push(`font-family: ${baseFamily};`);
-		if (s.fontFamily) bits.push(`font-family: '${s.fontFamily}', ${baseFamily};`);
+		if (s.fontFamily) bits.push(canvasFontFamilyCss(s.fontFamily));
 		bits.push(`font-size: ${s.fontSize ?? baseSize}px;`);
 		bits.push(`font-weight: ${s.fontWeight ?? weight};`);
 		if (s.italic) bits.push('font-style: italic;');
@@ -343,8 +343,15 @@
 	/** POV / text-on-video — normal TextStyle pipeline (SH presets), not a hardcoded stroke. */
 	const textOnVideoCss = $derived(hlCss(headlineStyle, textOnVideoFontSize, 800));
 	const watermarkCss = $derived(
-		hlCss(watermarkStyle, 22, 600, `FONT_UI_STACK`, WATERMARK_INK),
+		hlCss(watermarkStyle, 22, 600, FONT_UI_STACK, WATERMARK_INK),
 	);
+
+	$effect(() => {
+		const family = headlineStyle.fontFamily;
+		if (family) void loadGoogleFont(family, headlineStyle.fontWeight ?? 600);
+		const wm = watermarkStyle.fontFamily;
+		if (wm) void loadGoogleFont(wm, watermarkStyle.fontWeight ?? 600);
+	});
 
 	const subtitleWords = $derived(
 		String(watermark ?? '')

@@ -57,13 +57,14 @@ export function isAiHeavyPath(pathname: string): boolean {
 export const RATE_LIMITS = {
 	/** General authenticated API traffic. */
 	api: { max: 120, windowMs: 60_000 },
-	/** All AI routes (global handle). */
-	ai: { max: 20, windowMs: 60_000 },
+	/** All AI routes (global handle). Includes stock/query + Pexels orchestration. */
+	ai: { max: 40, windowMs: 60_000 },
 	/**
 	 * Extra burst cap for expensive copy/vision calls.
-	 * Applied in handlers (and optionally hooks) keyed by user id.
+	 * Applied in handlers keyed by user id.
+	 * Bulk: each deck = `/api/news` + `/api/news/variants` (2 slots). 10 ideas ⇒ 20/min.
 	 */
-	aiHeavy: { max: 8, windowMs: 60_000 },
+	aiHeavy: { max: 24, windowMs: 60_000 },
 } as const;
 
 export function rateLimitedJson(retryAfterSec: number) {

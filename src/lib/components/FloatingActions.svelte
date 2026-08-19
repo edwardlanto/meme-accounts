@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { Music, Calendar, X, Send, LoaderCircle, Download, Bookmark, Plus } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
@@ -44,10 +45,21 @@
 
 	/** Host for fixed mode — portaled to `document.body` so nothing clips or re-parents the float. */
 	let rootEl = $state<HTMLDivElement | null>(null);
+	let saveModalEl = $state<HTMLDivElement | null>(null);
+	let saveNameInputEl = $state<HTMLInputElement | null>(null);
 
 	$effect(() => {
 		if (inline) return;
 		const el = rootEl;
+		if (!el || typeof document === 'undefined') return;
+		document.body.appendChild(el);
+		return () => {
+			el.remove();
+		};
+	});
+
+	$effect(() => {
+		const el = saveModalEl;
 		if (!el || typeof document === 'undefined') return;
 		document.body.appendChild(el);
 		return () => {
@@ -81,6 +93,7 @@
 	let overwriteId = $state('');
 
 	const overwriteTarget = $derived(savedTemplates.find((t) => t.id === overwriteId) ?? null);
+	const canSaveTemplate = $derived(!!saveTemplateName.trim() && !saveTemplateSaving);
 
 	function formatTemplateTime(iso: string): string {
 		if (!iso) return '';
@@ -121,23 +134,20 @@
 	}
 
 	function openSavePanel() {
-		showSavePanel = !showSavePanel;
+		showSavePanel = true;
 		showPostPanel = false;
 		showMusicPanel = false;
 		saveTemplateError = '';
-		if (showSavePanel) {
-			if (!saveTemplateName.trim()) {
-				saveTemplateName = defaultTemplateName.trim() || 'My carousel layout';
-			}
-			overwriteId = '';
-			void refreshSavedTemplates();
-		}
+		overwriteId = '';
+		saveTemplateName = '';
+		void refreshSavedTemplates();
 	}
 
 	function closeSavePanel() {
 		showSavePanel = false;
 		saveTemplateError = '';
 		overwriteId = '';
+		saveTemplateName = '';
 	}
 
 	async function refreshSavedTemplates() {
@@ -158,19 +168,43 @@
 
 	function chooseNewTemplate() {
 		overwriteId = '';
-		if (!saveTemplateName.trim()) {
-			saveTemplateName = defaultTemplateName.trim() || 'My carousel layout';
-		}
+		saveTemplateName = '';
+		saveTemplateError = '';
+		void tick().then(() => saveNameInputEl?.focus());
 	}
 
 	function chooseOverwrite(row: { id: string; name: string }) {
 		overwriteId = row.id;
 		saveTemplateName = row.name;
+		saveTemplateError = '';
+		void tick().then(() => {
+			saveNameInputEl?.focus();
+			saveNameInputEl?.select();
+		});
 	}
+
+	$effect(() => {
+		if (!showSavePanel || typeof document === 'undefined') return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape' && !saveTemplateSaving) closeSavePanel();
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
+
+	$effect(() => {
+		if (!showSavePanel) return;
+		void tick().then(() => saveNameInputEl?.focus());
+	});
 
 	async function confirmSaveTemplate() {
 		if (!onSaveTemplate || saveTemplateSaving) return;
-		const name = saveTemplateName.trim() || defaultTemplateName.trim() || 'My carousel layout';
+		const name = saveTemplateName.trim();
+		if (!name) {
+			saveTemplateError = 'Enter a template name to save.';
+			saveNameInputEl?.focus();
+			return;
+		}
 		if (overwriteId) {
 			const ok = confirm(
 				`Replace “${overwriteTarget?.name || name}” with this design? This only updates your saved template.`,
@@ -179,10 +213,10 @@
 		}
 		saveTemplateSaving = true;
 		saveTemplateError = '';
+		const toast = overwriteId ? `Updated “${name}”` : `Saved “${name}”`;
 		try {
 			await onSaveTemplate(name, overwriteId ? { overwriteId } : undefined);
 			closeSavePanel();
-			const toast = overwriteId ? `Updated “${name}”` : `Saved “${name}”`;
 			setFlashToast(toast);
 			showToast(toast);
 		} catch (e: unknown) {
@@ -206,121 +240,18 @@
 	>
 		<!-- Save template -->
 		{#if typeof onSaveTemplate === 'function'}
-			<div class="relative">
-				{#if showSavePanel}
-					<div class="panel absolute bottom-0 right-full mr-2 w-[min(320px,calc(100vw-24px))] overflow-hidden z-10">
-						<div class="panel-header">
-							<div class="flex items-center gap-2">
-								<Bookmark size={13} class="text-[#7c3aed]" />
-								<span class="panel-title">Save template</span>
-							</div>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon-xs"
-								onclick={closeSavePanel}
-								aria-label="Close"
-							>
-								<X />
-							</Button>
-						</div>
-						<div class="p-4 flex flex-col gap-3">
-							<div>
-								<p class="panel-label">Your templates</p>
-								<div class="tpl-list" role="listbox" aria-label="Saved templates">
-									<button
-										type="button"
-										class="tpl-row"
-										class:tpl-row--on={!overwriteId}
-										disabled={saveTemplateSaving}
-										onclick={chooseNewTemplate}
-									>
-										<span class="tpl-ico"><Plus size={12} /></span>
-										<span class="tpl-copy">
-											<span class="tpl-name">New template</span>
-											<span class="tpl-meta">Saved to your account</span>
-										</span>
-									</button>
-									{#if savedTemplatesLoading}
-										<p class="tpl-empty">Loading…</p>
-									{:else if savedTemplates.length === 0}
-										<p class="tpl-empty">None yet — this will be your first.</p>
-									{:else}
-										{#each savedTemplates as row (row.id)}
-											<button
-												type="button"
-												class="tpl-row"
-												class:tpl-row--on={overwriteId === row.id}
-												disabled={saveTemplateSaving}
-												onclick={() => chooseOverwrite(row)}
-											>
-												<span class="tpl-copy">
-													<span class="tpl-name">{row.name}</span>
-													<span class="tpl-meta">{formatTemplateTime(row.updatedAt) || 'Saved'}</span>
-												</span>
-											</button>
-										{/each}
-									{/if}
-								</div>
-							</div>
-							<div>
-								<p class="panel-label">
-									{overwriteId ? 'Replace as' : 'Template name'}
-								</p>
-								<input
-									type="text"
-									bind:value={saveTemplateName}
-									placeholder="My carousel layout"
-									class="panel-input"
-									disabled={saveTemplateSaving}
-									onkeydown={(e) => {
-										if (e.key === 'Enter') void confirmSaveTemplate();
-										if (e.key === 'Escape') closeSavePanel();
-									}}
-								/>
-							</div>
-							{#if saveTemplateError}
-								<p class="text-[11px] leading-snug text-red-600/90">{saveTemplateError}</p>
-							{/if}
-							<Button
-								type="button"
-								class="w-full"
-								disabled={saveTemplateSaving}
-								onclick={() => void confirmSaveTemplate()}
-							>
-								{#if saveTemplateSaving}
-									<LoaderCircle class="animate-spin" />
-									Saving…
-								{:else if overwriteId}
-									<Bookmark />
-									Replace template
-								{:else}
-									<Bookmark />
-									Save new template
-								{/if}
-							</Button>
-							<p class="text-[10px] leading-snug text-[rgba(10,10,10,0.38)]">
-								{#if overwriteId}
-									Overwrites that named template on your account only.
-								{:else}
-									Saves a named template to your account under Carousels.
-								{/if}
-							</p>
-						</div>
-					</div>
-				{/if}
-				<Button
-					variant={showSavePanel ? 'default' : 'outline'}
-					size="sm"
-					onclick={openSavePanel}
-					class="w-full justify-start shadow-sm"
-					aria-expanded={showSavePanel}
-					title="Save current layout as a reusable template"
-				>
-					<Bookmark />
-					Save template
-				</Button>
-			</div>
+			<Button
+				variant={showSavePanel ? 'default' : 'outline'}
+				size="sm"
+				onclick={openSavePanel}
+				class="w-full justify-start shadow-sm"
+				aria-expanded={showSavePanel}
+				aria-haspopup="dialog"
+				title="Save current layout as a reusable template"
+			>
+				<Bookmark />
+				Save template
+			</Button>
 		{/if}
 
 		<!-- EXPORT ZIP -->
@@ -345,6 +276,126 @@
 		{#if toastMessage}
 			<div class="fa-toast" role="status" aria-live="polite">{toastMessage}</div>
 		{/if}
+	</div>
+{/if}
+
+{#if showSavePanel}
+	<div bind:this={saveModalEl} class="save-root">
+		<div
+			class="save-backdrop"
+			role="presentation"
+			onclick={(e) => {
+				if (e.target === e.currentTarget && !saveTemplateSaving) closeSavePanel();
+			}}
+		>
+			<div
+				class="save-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="save-template-title"
+				tabindex="-1"
+			>
+				<button
+					type="button"
+					class="save-close"
+					onclick={closeSavePanel}
+					disabled={saveTemplateSaving}
+					aria-label="Close"
+				>
+					<X size={18} />
+				</button>
+
+				<p class="save-kicker">Studio</p>
+				<h2 id="save-template-title" class="save-title">Save template</h2>
+				<p class="save-sub">
+					Name this layout to reuse it later, or replace one you already saved.
+				</p>
+
+				<label class="save-label" for="save-template-name">
+					{overwriteId ? 'Replace as' : 'Template name'}
+				</label>
+				<input
+					id="save-template-name"
+					bind:this={saveNameInputEl}
+					class="save-input"
+					type="text"
+					bind:value={saveTemplateName}
+					placeholder="Name this template"
+					disabled={saveTemplateSaving}
+					autocomplete="off"
+					onkeydown={(e) => {
+						if (e.key === 'Enter') {
+							e.preventDefault();
+							void confirmSaveTemplate();
+						}
+					}}
+				/>
+
+				<p class="save-label save-label--list">Your templates</p>
+				<div class="tpl-list" role="listbox" aria-label="Saved templates">
+					<button
+						type="button"
+						class="tpl-row"
+						class:tpl-row--on={!overwriteId}
+						disabled={saveTemplateSaving}
+						onclick={chooseNewTemplate}
+					>
+						<span class="tpl-ico"><Plus size={13} strokeWidth={2.4} /></span>
+						<span class="tpl-copy">
+							<span class="tpl-name">New template</span>
+							<span class="tpl-meta">Create a new save</span>
+						</span>
+					</button>
+					{#if savedTemplatesLoading}
+						<p class="tpl-empty">Loading…</p>
+					{:else if savedTemplates.length === 0}
+						<p class="tpl-empty">None yet — this will be your first.</p>
+					{:else}
+						{#each savedTemplates as row (row.id)}
+							<button
+								type="button"
+								class="tpl-row"
+								class:tpl-row--on={overwriteId === row.id}
+								disabled={saveTemplateSaving}
+								onclick={() => chooseOverwrite(row)}
+							>
+								<span class="tpl-copy">
+									<span class="tpl-name">{row.name}</span>
+									<span class="tpl-meta">{formatTemplateTime(row.updatedAt) || 'Saved'}</span>
+								</span>
+							</button>
+						{/each}
+					{/if}
+				</div>
+
+				{#if saveTemplateError}
+					<p class="save-error" role="alert">{saveTemplateError}</p>
+				{/if}
+
+				<button
+					type="button"
+					class="save-submit"
+					disabled={!canSaveTemplate}
+					onclick={() => void confirmSaveTemplate()}
+				>
+					{#if saveTemplateSaving}
+						<span class="save-spinner" aria-hidden="true"></span>
+						Saving…
+					{:else if overwriteId}
+						Replace template
+					{:else}
+						Save new template
+					{/if}
+				</button>
+				<p class="save-hint">
+					{#if overwriteId}
+						Overwrites that named template on your account only.
+					{:else}
+						Saves to your account under Carousels.
+					{/if}
+				</p>
+			</div>
+		</div>
 	</div>
 {/if}
 
@@ -379,123 +430,225 @@
 		}
 	}
 
-	/* ── Floating panel ── */
-	.panel {
-		border-radius: 18px;
-		background: rgba(255, 255, 255, 0.94);
-		border: 1px solid rgba(10, 10, 10, 0.08);
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.13), 0 2px 8px rgba(0,0,0,0.06);
-		backdrop-filter: blur(20px);
-		-webkit-backdrop-filter: blur(20px);
-	}
-
-	.panel-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-		border-bottom: 1px solid rgba(10, 10, 10, 0.07);
-	}
-
-	.panel-title {
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: rgba(10, 10, 10, 0.55);
-	}
-
-	.panel-close {
-		width: 24px;
-		height: 24px;
-		border-radius: 8px;
-		border: none;
-		background: rgba(10, 10, 10, 0.05);
-		color: rgba(10, 10, 10, 0.40);
+	.save-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 9999;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		cursor: pointer;
-		transition: background 120ms ease, color 120ms ease;
+		padding: 16px;
+		background: rgba(8, 8, 8, 0.48);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		animation: saveFadeIn 0.18s ease;
 	}
-
-	.panel-close:hover {
-		background: rgba(10, 10, 10, 0.09);
-		color: rgba(10, 10, 10, 0.75);
+	@keyframes saveFadeIn {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
 	}
-
-	.panel-label {
-		font-size: 9px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: rgba(10, 10, 10, 0.35);
-		margin-bottom: 8px;
+	.save-modal {
+		position: relative;
+		width: min(440px, 100%);
+		max-height: min(86vh, 640px);
+		overflow: auto;
+		padding: 28px 24px 22px;
+		border-radius: 20px;
+		background: #ffffff;
+		border: 1px solid rgba(8, 8, 8, 0.1);
+		color: #080808;
+		font-family: var(--font-body, system-ui, sans-serif);
+		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.7) inset,
+			0 28px 72px rgba(8, 8, 8, 0.22);
+		animation: savePopIn 0.22s ease;
 	}
-
-	.panel-input {
-		width: 100%;
-		background: rgba(10, 10, 10, 0.04);
-		border: 1px solid rgba(10, 10, 10, 0.09);
-		border-radius: 10px;
-		padding: 7px 10px;
-		font-size: 12px;
-		color: rgba(10, 10, 10, 0.65);
-		outline: none;
-		transition: border-color 120ms ease;
+	@keyframes savePopIn {
+		from {
+			opacity: 0;
+			transform: translateY(10px) scale(0.98);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
 	}
-
-	.panel-input:focus {
-		border-color: rgba(10, 10, 10, 0.22);
-	}
-
-	.panel-action-btn {
-		width: 100%;
-		display: flex;
+	.save-close {
+		position: absolute;
+		top: 12px;
+		right: 12px;
+		width: 36px;
+		height: 36px;
+		display: inline-flex;
 		align-items: center;
-		gap: 8px;
-		padding: 10px 14px;
-		border-radius: 11px;
-		font-size: 12.5px;
-		font-weight: 600;
-		font-family: inherit;
-		color: rgba(10, 10, 10, 0.35);
-		background: rgba(10, 10, 10, 0.04);
-		border: 1px solid rgba(10, 10, 10, 0.08);
+		justify-content: center;
+		border: none;
+		border-radius: 10px;
+		background: transparent;
+		color: rgba(8, 8, 8, 0.42);
+		cursor: pointer;
+	}
+	.save-close:hover:not(:disabled) {
+		background: rgba(8, 8, 8, 0.05);
+		color: #080808;
+	}
+	.save-close:disabled {
+		opacity: 0.5;
 		cursor: not-allowed;
+	}
+	.save-kicker {
+		margin: 0 0 6px;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: rgba(8, 8, 8, 0.42);
+	}
+	.save-title {
+		margin: 0 0 6px;
+		padding-right: 36px;
+		font-size: 28px;
+		font-weight: 700;
+		letter-spacing: -0.03em;
+		line-height: 1.12;
+		color: #080808;
+	}
+	.save-sub {
+		margin: 0 0 20px;
+		font-size: 14px;
+		line-height: 1.45;
+		color: #5b5b62;
+	}
+	.save-label {
+		display: block;
+		margin: 0 0 8px;
+		font-size: 12px;
+		font-weight: 600;
+		color: #5b5b62;
+	}
+	.save-label--list {
+		margin-top: 18px;
+	}
+	.save-input {
+		width: 100%;
+		height: 48px;
+		padding: 0 14px;
+		box-sizing: border-box;
+		background: #fff;
+		border: 1px solid rgba(8, 8, 8, 0.14);
+		border-radius: 12px;
+		color: #080808;
+		font: inherit;
+		font-size: 15px;
+		outline: none;
+	}
+	.save-input:focus {
+		border-color: #080808;
+		box-shadow: 0 0 0 3px rgba(232, 255, 72, 0.55);
+	}
+	.save-input:disabled {
+		opacity: 0.65;
+	}
+	.save-input::placeholder {
+		color: #9a9aa1;
+	}
+	.save-error {
+		margin: 12px 0 0;
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: rgba(239, 68, 68, 0.08);
+		border: 1px solid rgba(239, 68, 68, 0.22);
+		font-size: 13px;
+		color: #b91c1c;
+	}
+	.save-submit {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		width: 100%;
+		height: 50px;
+		margin-top: 16px;
+		border: 1px solid #e8ff48;
+		border-radius: 999px;
+		background: #e8ff48;
+		color: #080808;
+		font: inherit;
+		font-size: 15px;
+		font-weight: 700;
+		cursor: pointer;
+		transition:
+			background 0.2s ease,
+			border-color 0.2s ease,
+			transform 0.2s ease;
+	}
+	.save-submit:hover:not(:disabled) {
+		background: #f3ff8a;
+		border-color: #f3ff8a;
+		transform: translateY(-1px);
+	}
+	.save-submit:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+		transform: none;
+	}
+	.save-spinner {
+		width: 16px;
+		height: 16px;
+		border: 2px solid rgba(8, 8, 8, 0.2);
+		border-top-color: #080808;
+		border-radius: 999px;
+		animation: saveSpin 0.7s linear infinite;
+	}
+	@keyframes saveSpin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.save-hint {
+		margin: 10px 0 0;
+		font-size: 12px;
+		line-height: 1.4;
+		color: rgba(8, 8, 8, 0.4);
+		text-align: center;
 	}
 
 	.tpl-list {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
-		max-height: 168px;
+		gap: 6px;
+		max-height: min(28vh, 220px);
 		overflow-y: auto;
 		padding: 2px;
 		margin: 0 -2px;
+		scrollbar-width: thin;
 	}
 
 	.tpl-row {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 10px;
 		width: 100%;
 		text-align: left;
-		padding: 7px 8px;
-		border-radius: 10px;
+		padding: 10px 12px;
+		border-radius: 12px;
 		border: 1px solid transparent;
-		background: rgba(10, 10, 10, 0.03);
+		background: rgba(8, 8, 8, 0.03);
 		cursor: pointer;
 		font-family: inherit;
 	}
 
-	.tpl-row:hover:not(:disabled) {
-		background: rgba(10, 10, 10, 0.06);
+	.tpl-row:hover:not(:disabled):not(.tpl-row--on) {
+		background: rgba(8, 8, 8, 0.06);
 	}
 
 	.tpl-row--on {
-		border-color: rgba(124, 58, 237, 0.35);
-		background: rgba(124, 58, 237, 0.08);
+		border-color: #080808;
+		background: #e8ff48;
 	}
 
 	.tpl-row:disabled {
@@ -507,12 +660,17 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
-		border-radius: 7px;
-		background: rgba(10, 10, 10, 0.06);
-		color: rgba(10, 10, 10, 0.55);
+		width: 28px;
+		height: 28px;
+		border-radius: 8px;
+		background: #080808;
+		color: #e8ff48;
 		flex-shrink: 0;
+	}
+
+	.tpl-row--on .tpl-ico {
+		background: #080808;
+		color: #e8ff48;
 	}
 
 	.tpl-copy {
@@ -523,53 +681,23 @@
 	}
 
 	.tpl-name {
-		font-size: 12px;
-		font-weight: 600;
-		color: rgba(10, 10, 10, 0.78);
+		font-size: 13px;
+		font-weight: 650;
+		color: #080808;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
 	.tpl-meta {
-		font-size: 10px;
-		color: rgba(10, 10, 10, 0.38);
+		font-size: 11px;
+		color: rgba(8, 8, 8, 0.42);
 	}
 
 	.tpl-empty {
 		margin: 4px 2px 0;
-		font-size: 11px;
-		color: rgba(10, 10, 10, 0.4);
-	}
-
-	.panel-save-btn {
-		width: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		padding: 10px 14px;
-		border-radius: 999px;
-		font-size: 12.5px;
-		font-weight: 600;
-		font-family: inherit;
-		color: #0f0f10;
-		background: #7bf1a8;
-		border: 1px solid #7bf1a8;
-		cursor: pointer;
-		transition: background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
-	}
-	.panel-save-btn:hover:not(:disabled) {
-		background: #a7f7c6;
-		border-color: #a7f7c6;
-		box-shadow: 0 8px 24px rgba(123, 241, 168, 0.35);
-	}
-	.panel-save-btn:active:not(:disabled) {
-		transform: scale(0.98);
-	}
-	.panel-save-btn:disabled {
-		opacity: 0.55;
-		cursor: not-allowed;
+		font-size: 12px;
+		color: rgba(8, 8, 8, 0.4);
 	}
 
 	.soon-badge {
@@ -655,17 +783,6 @@
 			bottom: auto !important;
 			right: 10px !important;
 			width: min(10.5rem, calc(100vw - 1.25rem)) !important;
-		}
-		.floating-actions:not(.inline) :global(.panel) {
-			right: 0;
-			left: auto;
-			bottom: auto;
-			top: calc(100% + 8px);
-			margin-right: 0;
-			margin-left: 0;
-			width: min(20rem, calc(100vw - 1.5rem)) !important;
-			max-height: min(70vh, 28rem);
-			overflow: auto;
 		}
 		.floating-actions :global(button) {
 			min-height: 40px;

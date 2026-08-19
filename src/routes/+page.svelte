@@ -121,11 +121,9 @@
 	const proofPosts: ProofItem[] = [
 		{
 			id: 'size',
-			layout: 'featured',
 			index: '01',
-			title: 'Text sizes itself so you can stop nudging',
-			description:
-				'Headlines, hooks, and body copy grow or shrink to the slide. Long lines wrap cleanly. Short ones don\'t look stranded. You write. The template keeps it readable.',
+			title: 'Text sizes itself',
+			description: 'Headlines and body grow or shrink to the slide. You write. The template keeps it readable.',
 			formatLabel: 'You do',
 			format: 'The words',
 			platformLabel: 'Studio does',
@@ -134,11 +132,9 @@
 		},
 		{
 			id: 'fill',
-			layout: 'side',
 			index: '02',
-			title: 'Fill a deck without losing the thread',
-			description:
-				'Give it a topic or a URL and it drafts the slides. Each one follows the last, so the story still makes sense when someone swipes through.',
+			title: 'Fill a deck, keep the thread',
+			description: 'Give it a topic or URL. Each slide follows the last, so the swipe still reads as one story.',
 			formatLabel: 'You give',
 			format: 'Topic or URL',
 			platformLabel: 'You get',
@@ -147,11 +143,9 @@
 		},
 		{
 			id: 'bulk',
-			layout: 'side',
 			index: '03',
-			title: 'Batch the slides people already know',
-			description:
-				'Make a stack of hooks, quote slides, and text posts. These are the formats people already swipe. You\'re filling a look they trust, not inventing a new one.',
+			title: 'Batch the slides people know',
+			description: 'Hooks, quote slides, and text posts. Formats people already swipe, filled in a stack.',
 			formatLabel: 'Pace',
 			format: "A week's stack",
 			platformLabel: 'Look',
@@ -160,12 +154,9 @@
 		},
 		{
 			id: 'mix',
-			layout: 'wide',
-			visual: 'mix',
 			index: '04',
-			title: 'Mix cover pictures with slides that are just type',
-			description:
-				'Open with a photo. Follow with a text beat. Drop in a hook. The set can feel like a real account, not one template on repeat.',
+			title: 'Mix photos with plain type',
+			description: 'Open on a cover. Follow with a text beat. The set feels like an account, not one template.',
 			formatLabel: 'From',
 			format: 'Photo covers',
 			platformLabel: 'To',
@@ -376,7 +367,6 @@
 						tag="News Studio"
 						title="Any story, any city, from any headline."
 						description="Drop in a news URL or topic. Our AI builds a full carousel with hooks, highlights, and brand chrome ready to export."
-						image="/placeholders/home/feat-news-studio.png"
 						href="/dashboard/studio?template=news"
 						ctaLabel="Explore news studio"
 					/>
@@ -434,12 +424,13 @@
 		</div>
 	</section>
 
-	<!-- §05 Benefits (dark) -->
-	<section id="proof" class="marketing-section marketing-section--dark">
+	<!-- §05 Benefits -->
+	<section id="proof" class="marketing-section mk-proof-section">
 		<div class="marketing-container">
 			<SectionHeader
+				class="mk-proof-head"
 				title={'Less layout work.<br /><span class="mk-title-mark">More posting.</span>'}
-				description="These are the bits you notice after a few days. Type sizes itself. Copy fills in and stays on the same story. You can batch slides people already know how to swipe, and mix photo covers with plain text when you want a quieter beat."
+				description="Type sizes itself. Copy stays on the story. Batch slides people already swipe."
 			/>
 
 			<ProofShowcase items={proofPosts} />

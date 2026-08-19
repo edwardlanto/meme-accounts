@@ -13,19 +13,29 @@ export type GoogleFont = {
 
 /**
  * Local-only faces (Impact, Arial Black) are often blocked by browser
- * anti-fingerprinting — Studio would keep showing Bebas/system and look like
- * font-family “does nothing”. Anton is the Google stand-in we actually load.
+ * anti-fingerprinting. Anton is the Google stand-in we actually load.
  */
 export const IMPACT_WEBFONT_STANDIN = 'Anton';
 
 export const GOOGLE_FONTS: GoogleFont[] = [
-	{ family: FONT_TEMPLATE_DEFAULT, category: 'sans', weights: [300, 400, 500, 700, 900], italic: true },
+	{ family: FONT_TEMPLATE_DEFAULT, category: 'sans', weights: [300, 400, 500, 700, 800], italic: true },
 	{ family: FONT_BODY, category: 'sans', weights: [400, 500, 600, 700], italic: true },
 	{ family: 'Lexend', category: 'sans', weights: [400] },
-	{ family: 'Impact', category: 'display', weights: [400] },
-	{ family: IMPACT_WEBFONT_STANDIN, category: 'display', weights: [400] },
+	{ family: 'Montserrat', category: 'sans', weights: [400, 500, 700, 900], italic: true },
+	{ family: 'Poppins', category: 'sans', weights: [400, 500, 600, 700, 900], italic: true },
+	{ family: 'Oswald', category: 'sans', weights: [400, 500, 700] },
 	{ family: 'Bebas Neue', category: 'sans', weights: [400] },
-	{ family: 'Montserrat', category: 'sans', weights: [400, 500, 600] },
+	{ family: 'DM Sans', category: 'sans', weights: [400, 500, 700, 900], italic: true },
+	{ family: IMPACT_WEBFONT_STANDIN, category: 'display', weights: [400] },
+	{ family: 'Impact', category: 'display', weights: [400] },
+	{ family: 'Archivo Black', category: 'display', weights: [400] },
+	{ family: 'Playfair Display', category: 'serif', weights: [400, 500, 700, 900], italic: true },
+	{ family: 'DM Serif Display', category: 'serif', weights: [400], italic: true },
+	{ family: 'Lora', category: 'serif', weights: [400, 500, 700], italic: true },
+	{ family: 'Instrument Serif', category: 'serif', weights: [400], italic: true },
+	{ family: 'Space Grotesk', category: 'sans', weights: [400, 500, 700] },
+	{ family: 'IBM Plex Mono', category: 'mono', weights: [400, 500, 700] },
+	{ family: 'Caveat', category: 'handwriting', weights: [400, 600, 700] },
 ];
 
 const loadedFonts = new Set<string>();
@@ -39,10 +49,16 @@ function buildCssUrl(font: GoogleFont): string {
 	if (font.family === FONT_BODY) {
 		return `https://fonts.googleapis.com/css2?family=${family}:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap`;
 	}
+	if (font.family === FONT_TEMPLATE_DEFAULT) {
+		return `https://fonts.googleapis.com/css2?family=${family}:ital,wght@0,200..800;1,200..800&display=swap`;
+	}
 	const weights = font.weights.length ? font.weights : [400];
 	if (font.italic) {
 		const axis = weights.flatMap((w) => [`0,${w}`, `1,${w}`]).join(';');
 		return `https://fonts.googleapis.com/css2?family=${family}:ital,wght@${axis}&display=swap`;
+	}
+	if (weights.length === 1 && weights[0] === 400) {
+		return `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
 	}
 	const axis = weights.join(';');
 	return `https://fonts.googleapis.com/css2?family=${family}:wght@${axis}&display=swap`;
@@ -50,36 +66,34 @@ function buildCssUrl(font: GoogleFont): string {
 
 async function ensureFontFaceReady(family: string, weight: number): Promise<void> {
 	try {
-		if ((document as any).fonts?.load) {
-			await (document as any).fonts.load(`${weight} 72px "${family}"`);
+		const fonts = document.fonts;
+		if (fonts?.load) {
+			await fonts.load(`${weight} 72px "${family}"`);
+			if (fonts.ready) await fonts.ready;
 		}
 	} catch {
 		/* ignore */
 	}
 }
 
-function scheduleFontFaceHint(family: string, weight: number): void {
-	queueMicrotask(() => void ensureFontFaceReady(family, weight));
-}
-
-function injectStylesheet(family: string, href: string): Promise<void> {
+function injectStylesheet(family: string, href: string): Promise<boolean> {
 	return new Promise((resolve) => {
-		if (document.querySelector(`link[data-gfont="${family}"]`)) {
-			resolve();
+		if (document.querySelector(`link[data-gfont="${family.replace(/"/g, '')}"]`)) {
+			resolve(true);
 			return;
 		}
 		const link = document.createElement('link');
 		link.rel = 'stylesheet';
 		link.href = href;
 		link.setAttribute('data-gfont', family);
-		link.onload = () => resolve();
-		link.onerror = () => resolve();
+		link.onload = () => resolve(true);
+		link.onerror = () => resolve(false);
 		document.head.appendChild(link);
 	});
 }
 
 /** Preloaded via app.html — hint only, no extra stylesheet. */
-const APP_PRELOADED = new Set([FONT_TEMPLATE_DEFAULT, FONT_BODY]);
+const APP_PRELOADED = new Set([FONT_TEMPLATE_DEFAULT, FONT_BODY, 'Bebas Neue']);
 
 function isLocalOnlyDisplayFont(family: string): boolean {
 	return family === 'Impact' || family === 'Arial Black';
@@ -88,13 +102,13 @@ function isLocalOnlyDisplayFont(family: string): boolean {
 /**
  * CSS `font-family` value (no property name) for canvas text.
  * Avoids chaining Bebas/Impact as generic fallbacks — those hid failed local fonts
- * (Impact often blocked) so the toolbar label changed but the canvas didn't.
+ * so the toolbar label changed but the canvas didn't.
  */
 export function canvasFontFamilyStack(family: string): string {
 	if (isLocalOnlyDisplayFont(family)) {
-		return `${family}, '${IMPACT_WEBFONT_STANDIN}', system-ui, sans-serif`;
+		return `"${family}", "${IMPACT_WEBFONT_STANDIN}", system-ui, sans-serif`;
 	}
-	return `'${family}', system-ui, -apple-system, sans-serif`;
+	return `"${family}", system-ui, -apple-system, sans-serif`;
 }
 
 export function canvasFontFamilyCss(family: string): string {
@@ -104,38 +118,32 @@ export function canvasFontFamilyCss(family: string): string {
 export function loadGoogleFont(family: string, weightHint?: number): Promise<void> {
 	if (typeof document === 'undefined') return Promise.resolve();
 	const w = weightHint ?? 400;
+	const name = family.trim();
+	if (!name) return Promise.resolve();
 
-	if (isLocalOnlyDisplayFont(family)) {
-		scheduleFontFaceHint(family, w);
-		// Always pull the webfont stand-in so the picker choice is visible.
-		return loadGoogleFont(IMPACT_WEBFONT_STANDIN, w);
+	if (isLocalOnlyDisplayFont(name)) {
+		return loadGoogleFont(IMPACT_WEBFONT_STANDIN, w).then(() => ensureFontFaceReady(name, w));
 	}
-	if (APP_PRELOADED.has(family)) {
-		scheduleFontFaceHint(family, w);
-		return Promise.resolve();
-	}
-
-	const font = GOOGLE_FONTS.find((f) => f.family === family);
-	if (!font) {
-		scheduleFontFaceHint(family, w);
-		return Promise.resolve();
+	if (APP_PRELOADED.has(name)) {
+		return ensureFontFaceReady(name, w);
 	}
 
-	if (loadedFonts.has(family)) {
-		scheduleFontFaceHint(family, w);
-		return Promise.resolve();
-	}
-	if (loadPromises.has(family)) {
-		return loadPromises.get(family)!.then(() => {
-			scheduleFontFaceHint(family, w);
-		});
-	}
+	const font =
+		GOOGLE_FONTS.find((f) => f.family === name) ??
+		({ family: name, category: 'sans', weights: [400] } satisfies GoogleFont);
 
-	const p = injectStylesheet(family, buildCssUrl(font)).then(() => {
-		loadedFonts.add(family);
-		scheduleFontFaceHint(family, w);
+	if (loadedFonts.has(name)) {
+		return ensureFontFaceReady(name, w);
+	}
+	const pending = loadPromises.get(name);
+	if (pending) return pending.then(() => ensureFontFaceReady(name, w));
+
+	const p = injectStylesheet(name, buildCssUrl(font)).then(async (ok) => {
+		await ensureFontFaceReady(name, w);
+		if (ok) loadedFonts.add(name);
+		else loadPromises.delete(name);
 	});
-	loadPromises.set(family, p);
+	loadPromises.set(name, p);
 	return p;
 }
 

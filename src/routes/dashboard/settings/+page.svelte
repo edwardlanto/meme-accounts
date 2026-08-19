@@ -4,6 +4,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { passwordResetRedirectTo } from '$lib/auth-modal';
 	import { PLAN_CATALOG } from '$lib/pricing-catalog';
+	import { canDeleteAccount } from '$lib/plan-entitlements';
 	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
 	import {
 		DEFAULT_BRAND_KIT,
@@ -499,6 +500,15 @@
 		return status === 'inactive' || status === 'canceled' ? 'Free' : `${name} · ${statusLabel}`;
 	});
 
+	const accountDeletable = $derived(
+		!!billing &&
+			canDeleteAccount({
+				plan: billing.plan,
+				planStatus: billing.planStatus,
+				hasSubscription: billing.hasSubscription,
+			}),
+	);
+
 	async function openPortal(flow: 'manage' | 'cancel' = 'manage') {
 		billingBusy = true;
 		billingError = null;
@@ -981,57 +991,74 @@
 
 			<div class="settings-card">
 				<h2 class="card-title">Danger Zone</h2>
-				<p class="card-desc">
-					Permanently delete your account, drafts, uploaded media, and connected data. We purge
-					files stored for your account and cancel active Stripe subscriptions when possible. This cannot be undone.
-				</p>
-				{#if !showDeleteConfirm}
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						class="danger-delete-btn self-start w-auto"
-						onclick={() => { showDeleteConfirm = true; deleteErr = ''; }}
-					>
-						<AlertTriangle />
-						Delete account
-					</Button>
-				{:else}
-					<div class="form-field">
-						<Label class="form-label" for="delete-confirm">Type {userEmail} to confirm</Label>
-						<Input
-							id="delete-confirm"
-							type="email"
-							bind:value={deleteConfirm}
-							placeholder={userEmail}
-							autocomplete="off"
-						/>
-					</div>
-					{#if deleteErr}
-						<p class="billing-error" role="alert">{deleteErr}</p>
-					{/if}
-					<div class="account-actions">
-						<Button
-							type="button"
-							size="sm"
-							variant="destructive"
-							class="self-start w-auto"
-							disabled={deleteBusy}
-							onclick={deleteAccount}
-						>
-							{deleteBusy ? 'Deleting…' : 'Permanently delete'}
-						</Button>
+				{#if accountDeletable}
+					<p class="card-desc">
+						Permanently delete your account, drafts, uploaded media, and connected data. This cannot be undone.
+					</p>
+					{#if !showDeleteConfirm}
 						<Button
 							type="button"
 							variant="outline"
 							size="sm"
-							class="self-start w-auto"
-							disabled={deleteBusy}
-							onclick={() => { showDeleteConfirm = false; deleteConfirm = ''; deleteErr = ''; }}
+							class="danger-delete-btn self-start w-auto"
+							onclick={() => { showDeleteConfirm = true; deleteErr = ''; }}
 						>
-							Cancel
+							<AlertTriangle />
+							Delete account
 						</Button>
-					</div>
+					{:else}
+						<div class="form-field">
+							<Label class="form-label" for="delete-confirm">Type {userEmail} to confirm</Label>
+							<Input
+								id="delete-confirm"
+								type="email"
+								bind:value={deleteConfirm}
+								placeholder={userEmail}
+								autocomplete="off"
+							/>
+						</div>
+						{#if deleteErr}
+							<p class="billing-error" role="alert">{deleteErr}</p>
+						{/if}
+						<div class="account-actions">
+							<Button
+								type="button"
+								size="sm"
+								variant="destructive"
+								class="self-start w-auto"
+								disabled={deleteBusy}
+								onclick={deleteAccount}
+							>
+								{deleteBusy ? 'Deleting…' : 'Permanently delete'}
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								class="self-start w-auto"
+								disabled={deleteBusy}
+								onclick={() => { showDeleteConfirm = false; deleteConfirm = ''; deleteErr = ''; }}
+							>
+								Cancel
+							</Button>
+						</div>
+					{/if}
+				{:else}
+					<p class="card-desc">
+						You can delete your account after you cancel your subscription and you are back on the Free plan.
+						{#if billing?.hasSubscription || (billing?.plan && billing.plan !== 'free')}
+							If you already canceled, wait until the current period ends.
+						{/if}
+					</p>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="self-start w-auto"
+						onclick={() => { activeTab = 'billing'; }}
+					>
+						Go to billing to cancel
+					</Button>
 				{/if}
 			</div>
 		</div>
@@ -1546,7 +1573,7 @@
 						{#if billing?.plan === 'creator'}
 							Unlimited carousels, team workspace, and API access — ${PLAN_CATALOG.business.monthly}/mo.
 						{:else}
-							{PLAN_CATALOG.creator.carouselsPerMonth} carousels/month, all caption styles, no watermark — ${PLAN_CATALOG.creator.monthly}/mo.
+							{PLAN_CATALOG.creator.carouselsPerMonth} carousels/month, no watermark, HD export — ${PLAN_CATALOG.creator.monthly}/mo.
 						{/if}
 					</p>
 					<Button href={`/checkout?plan=${billing?.plan === 'creator' ? 'business' : 'creator'}`}>
@@ -1607,7 +1634,7 @@
 				<h2 class="card-title">Your data rights</h2>
 				<p class="card-desc">
 					You may access or correct your profile in Account settings. To permanently delete your account,
-					uploads, and data, use <strong>Danger Zone</strong> on the Account tab, or email
+					uploads, and data, cancel any paid plan first, then use <strong>Danger Zone</strong> on the Account tab, or email
 					<a href="mailto:support@memeaccounts.com" class="inline-link">support@memeaccounts.com</a>
 					from the address on your account. Residual backups may clear within 30 days.
 				</p>

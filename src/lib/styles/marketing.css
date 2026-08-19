@@ -365,54 +365,79 @@
 	}
 }
 
-/* ─── Proof showcase (evidence grid) ────────────────────── */
-.mk-proof-showcase {
-	display: grid;
-	gap: 14px;
-	margin-top: 8px;
+/* ─── Proof carousel ─────────────────────────────────────── */
+.mk-proof-section {
+	padding-top: 56px;
+	padding-bottom: 56px;
+	background: var(--mk-bg);
 }
 
-@media (min-width: 768px) {
-	.mk-proof-showcase {
-		grid-template-columns: repeat(12, minmax(0, 1fr));
-		grid-auto-rows: minmax(200px, auto);
-		gap: 16px;
-	}
+.mk-proof-head {
+	margin-bottom: 24px;
+}
 
-	.mk-proof-slot--featured {
-		grid-column: 1 / span 7;
-		grid-row: 1 / span 2;
-	}
+.mk-proof-carousel {
+	position: relative;
+}
 
-	.mk-proof-slot--side {
-		grid-column: 8 / span 5;
-	}
+.mk-proof-carousel-nav {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin: -8px 0 12px;
+}
 
-	.mk-proof-showcase .mk-proof-slot:nth-child(2) {
-		grid-row: 1;
-	}
+.mk-proof-nav-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 999px;
+	border: 1px solid var(--mk-line-2);
+	background: #fff;
+	color: var(--mk-text);
+	cursor: pointer;
+	transition: background 0.2s ease, border-color 0.2s ease;
+}
 
-	.mk-proof-showcase .mk-proof-slot:nth-child(3) {
-		grid-row: 2;
-	}
+.mk-proof-nav-btn:hover {
+	background: var(--mk-soft);
+	border-color: var(--mk-text);
+}
 
-	.mk-proof-slot--tile {
-		grid-column: span 4;
-	}
+.mk-proof-showcase {
+	display: flex;
+	gap: 14px;
+	overflow-x: auto;
+	scroll-snap-type: x mandatory;
+	scroll-padding-inline: 2px;
+	padding-bottom: 4px;
+	margin-top: 0;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
 
-	.mk-proof-slot--wide {
-		grid-column: 1 / -1;
-	}
+.mk-proof-showcase::-webkit-scrollbar {
+	display: none;
 }
 
 .mk-proof-slot {
+	flex: 0 0 min(272px, 78vw);
 	min-height: 0;
 	display: flex;
+	scroll-snap-align: start;
 }
 
 .mk-proof-slot .mk-proof-card {
 	flex: 1;
 	width: 100%;
+}
+
+@media (min-width: 1100px) {
+	.mk-proof-slot {
+		flex-basis: calc((100% - 42px) / 4);
+	}
 }
 
 .mk-steps {
@@ -500,6 +525,11 @@
 	background: #1a1a1c;
 }
 
+.mk-media-card--plain {
+	background: var(--mk-dark);
+	border: 1px solid var(--mk-dark-border);
+}
+
 .mk-media-card img,
 .mk-media-card video {
 	position: absolute;
@@ -517,6 +547,10 @@
 	background: linear-gradient(180deg, transparent 20%, rgba(0, 0, 0, 0.75) 100%);
 	z-index: 1;
 	pointer-events: none;
+}
+
+.mk-media-card--plain::after {
+	display: none;
 }
 
 .mk-media-card-content {
@@ -557,32 +591,32 @@
 /* ─── Proof cards (text-only) ─────────────────────────────── */
 .mk-proof-card {
 	position: relative;
-	border-radius: 20px;
+	border-radius: 18px;
 	overflow: hidden;
-	min-height: 220px;
+	min-height: 0;
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	background: var(--mk-dark-card);
-	border: 1px solid var(--mk-dark-border);
+	background: #fff;
+	border: 1px solid var(--mk-line);
 	text-decoration: none;
-	color: inherit;
+	color: var(--mk-text);
 	transition:
-		border-color 0.28s ease,
-		transform 0.28s ease,
-		box-shadow 0.28s ease;
+		border-color 0.22s ease,
+		transform 0.22s ease,
+		box-shadow 0.22s ease;
 }
 
 .mk-proof-card--text {
 	background:
-		radial-gradient(90% 70% at 0% 0%, color-mix(in oklab, var(--mk-accent) 16%, transparent), transparent 58%),
-		var(--mk-dark-card);
+		radial-gradient(80% 60% at 0% 0%, color-mix(in oklab, var(--mk-accent) 22%, transparent), transparent 62%),
+		#fff;
 }
 
 a.mk-proof-card:hover {
-	border-color: rgba(123, 241, 168, 0.35);
+	border-color: color-mix(in oklab, var(--mk-accent) 55%, var(--mk-line-2));
 	transform: translateY(-2px);
-	box-shadow: 0 20px 48px -28px rgba(0, 0, 0, 0.65);
+	box-shadow: 0 16px 36px -24px rgba(15, 15, 16, 0.28);
 }
 
 a.mk-proof-card:hover .mk-proof-link-icon {
@@ -590,35 +624,17 @@ a.mk-proof-card:hover .mk-proof-link-icon {
 	color: #0f0f10;
 }
 
-.mk-proof-card--featured {
-	min-height: 240px;
-}
-
-.mk-proof-card--wide {
-	min-height: 0;
-}
-
-.mk-proof-card--wide .mk-proof-index {
-	display: none;
-}
-
-@media (min-width: 768px) {
-	.mk-proof-card--featured {
-		min-height: 100%;
-	}
-}
-
 .mk-proof-index {
 	position: absolute;
-	top: 12px;
-	right: 16px;
+	top: 8px;
+	right: 12px;
 	z-index: 0;
 	font-family: var(--font-display);
 	font-weight: 800;
-	font-size: clamp(64px, 9vw, 120px);
+	font-size: 56px;
 	line-height: 0.78;
 	letter-spacing: -0.07em;
-	color: color-mix(in oklab, var(--mk-accent) 14%, transparent);
+	color: color-mix(in oklab, var(--mk-accent) 28%, transparent);
 	pointer-events: none;
 	user-select: none;
 }
@@ -629,135 +645,81 @@ a.mk-proof-card:hover .mk-proof-link-icon {
 	height: 100%;
 	display: flex;
 	flex-direction: column;
-	padding: 22px;
-	gap: 16px;
-}
-
-.mk-proof-card--featured .mk-proof-card-content {
-	padding: 28px;
+	padding: 18px;
+	gap: 12px;
 }
 
 .mk-proof-card-body {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
+	gap: 10px;
 	min-height: 0;
 }
 
 .mk-proof-card-main {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 8px;
 	min-width: 0;
-}
-
-.mk-proof-card:not(.mk-proof-card--wide) .mk-proof-card-main {
 	flex: 1;
 }
 
 .mk-proof-title {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: 1.25rem;
-	line-height: 1.35;
-	letter-spacing: -0.015em;
+	font-size: 1.05rem;
+	line-height: 1.3;
+	letter-spacing: -0.02em;
 	margin: 0;
-	max-width: 28ch;
+	max-width: 16ch;
 }
 
 .mk-proof-desc {
 	margin: 0;
-	font-size: 1rem;
-	line-height: 1.65;
-	color: rgba(255, 255, 255, 0.72);
-	max-width: 48ch;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	color: var(--mk-text-2);
+	max-width: 28ch;
 }
 
 .mk-proof-mix {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 8px;
-}
-
-.mk-proof-mix-pane {
-	display: flex;
-	flex-direction: column;
-	justify-content: space-between;
-	gap: 18px;
-	min-height: 108px;
-	padding: 14px 12px;
-	border-radius: 14px;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	background: rgba(255, 255, 255, 0.04);
-	transition: border-color 0.22s ease;
-}
-
-a.mk-proof-card:hover .mk-proof-mix-pane {
-	border-color: rgba(123, 241, 168, 0.28);
-}
-
-.mk-proof-mix-kicker {
-	font-size: 0.75rem;
-	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	line-height: 1.4;
-	color: var(--mk-accent);
-}
-
-.mk-proof-mix-copy {
-	font-family: var(--font-display);
-	font-weight: 700;
-	font-size: 1rem;
-	letter-spacing: -0.01em;
-	line-height: 1.4;
-	margin: 0;
-	color: #fff;
-}
-
-@media (min-width: 768px) {
-	.mk-proof-card--wide .mk-proof-card-body {
-		display: grid;
-		grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-		align-items: end;
-		gap: 28px;
-	}
+	display: none;
 }
 
 .mk-proof-card-foot {
 	display: flex;
 	align-items: flex-end;
 	justify-content: space-between;
-	gap: 16px;
+	gap: 12px;
 	margin-top: auto;
-	padding-top: 8px;
-	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	padding-top: 10px;
+	border-top: 1px solid var(--mk-line);
 }
 
 .mk-proof-stats {
 	display: flex;
-	gap: 28px;
+	gap: 16px;
 	flex-wrap: wrap;
 }
 
 .mk-proof-stat-label {
-	font-size: 0.75rem;
+	font-size: 0.68rem;
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	line-height: 1.4;
-	color: rgba(255, 255, 255, 0.45);
-	margin: 0 0 6px;
+	color: var(--mk-text-3);
+	margin: 0 0 4px;
 }
 
 .mk-proof-stat-value {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: 1rem;
-	line-height: 1.4;
+	font-size: 0.88rem;
+	line-height: 1.3;
 	margin: 0;
-	color: #fff;
+	color: var(--mk-text);
 	letter-spacing: -0.01em;
 }
 
@@ -765,12 +727,12 @@ a.mk-proof-card:hover .mk-proof-mix-pane {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 36px;
-	height: 36px;
+	width: 32px;
+	height: 32px;
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.1);
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	color: #fff;
+	background: var(--mk-soft);
+	border: 1px solid var(--mk-line);
+	color: var(--mk-text);
 	flex-shrink: 0;
 	transition:
 		background 0.22s ease,
@@ -1413,35 +1375,18 @@ a.mk-proof-card:hover .mk-proof-link-icon {
 		width: 100%;
 	}
 
-	.mk-proof-card {
-		min-height: 0;
-	}
-
 	.mk-proof-card-content {
-		padding: 18px;
-	}
-
-	.mk-proof-card--featured .mk-proof-card-content {
-		padding: 20px;
+		padding: 16px;
 	}
 
 	.mk-proof-index {
-		font-size: 72px;
-		top: 8px;
-		right: 12px;
+		font-size: 48px;
+		top: 6px;
+		right: 10px;
 	}
 
 	.mk-proof-title {
 		max-width: none;
-	}
-
-	.mk-proof-mix {
-		gap: 6px;
-	}
-
-	.mk-proof-mix-pane {
-		min-height: 92px;
-		padding: 12px 10px;
 	}
 
 	.mk-proof-stats {

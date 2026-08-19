@@ -213,10 +213,6 @@
 			aria-hidden="true"
 		></div>
 		<Card.Content class="relative z-10 flex min-h-[180px] flex-col justify-center gap-5 px-5 py-7 sm:min-h-[220px] sm:px-10 sm:py-9">
-			<Badge variant="secondary" class="w-fit gap-1.5 rounded-full px-3 py-1">
-				<span class="size-1.5 rounded-full bg-primary" aria-hidden="true"></span>
-				Studio
-			</Badge>
 			<h1 class="dash-page-title text-foreground">Create your next post</h1>
 			<div class="flex flex-wrap gap-2.5">
 				<Button href="/dashboard/templates" size="lg">

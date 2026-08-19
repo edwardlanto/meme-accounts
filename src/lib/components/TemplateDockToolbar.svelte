@@ -8,7 +8,7 @@
 	} from '$lib/components/ui/select';
 	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 
-	export type TemplateTab = { id: string; label: string; title?: string };
+	export type TemplateTab = { id: string; label: string; title?: string; separatorBefore?: boolean };
 
 	const APPLY_ALL_VALUE = '__apply_template_all_slides__';
 
@@ -59,6 +59,9 @@
 			sideOffset={8}
 		>
 			{#each templates as t (t.id)}
+				{#if t.separatorBefore}
+					<SelectSeparator />
+				{/if}
 				<SelectItem value={t.id} label={t.label} title={t.title ?? t.label}>
 					{t.label}
 				</SelectItem>

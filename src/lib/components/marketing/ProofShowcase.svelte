@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ArrowLeft, ArrowRight } from 'lucide-svelte';
 	import ProofCard from './ProofCard.svelte';
 
 	export type ProofItem = {
@@ -23,33 +24,51 @@
 		class?: string;
 	} = $props();
 
-	const layoutClass = (layout: ProofItem['layout']) => {
-		if (layout === 'featured') return 'mk-proof-slot--featured';
-		if (layout === 'side') return 'mk-proof-slot--side';
-		if (layout === 'wide') return 'mk-proof-slot--wide';
-		return 'mk-proof-slot--tile';
-	};
+	let track: HTMLDivElement | null = $state(null);
+
+	function scrollByDir(dir: -1 | 1) {
+		const el = track;
+		if (!el) return;
+		const card = el.querySelector('.mk-proof-slot') as HTMLElement | null;
+		const gap = 14;
+		const w = card ? card.offsetWidth + gap : Math.round(el.clientWidth * 0.82);
+		el.scrollBy({ left: dir * w, behavior: 'smooth' });
+	}
 </script>
 
-<div class="mk-proof-showcase {className}">
-	{#each items as item, i (item.id)}
-		<div
-			class="mk-proof-slot mk-reveal {layoutClass(item.layout)}"
-			style="--mk-delay:{i * 0.06}s"
+<div class="mk-proof-carousel {className}">
+	<div class="mk-proof-carousel-nav" aria-hidden={items.length < 2}>
+		<button
+			type="button"
+			class="mk-proof-nav-btn"
+			aria-label="Previous benefit"
+			onclick={() => scrollByDir(-1)}
 		>
-			<ProofCard
-				title={item.title}
-				description={item.description}
-				format={item.format}
-				platform={item.platform}
-				formatLabel={item.formatLabel}
-				platformLabel={item.platformLabel}
-				href={item.href}
-				featured={item.layout === 'featured'}
-				wide={item.layout === 'wide'}
-				visual={item.visual ?? ''}
-				index={item.index}
-			/>
-		</div>
-	{/each}
+			<ArrowLeft size={16} />
+		</button>
+		<button
+			type="button"
+			class="mk-proof-nav-btn"
+			aria-label="Next benefit"
+			onclick={() => scrollByDir(1)}
+		>
+			<ArrowRight size={16} />
+		</button>
+	</div>
+	<div class="mk-proof-showcase" bind:this={track}>
+		{#each items as item, i (item.id)}
+			<div class="mk-proof-slot mk-reveal" style="--mk-delay:{i * 0.06}s">
+				<ProofCard
+					title={item.title}
+					description={item.description}
+					format={item.format}
+					platform={item.platform}
+					formatLabel={item.formatLabel}
+					platformLabel={item.platformLabel}
+					href={item.href}
+					index={item.index}
+				/>
+			</div>
+		{/each}
+	</div>
 </div>
