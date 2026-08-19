@@ -324,7 +324,8 @@
 	let usageRemaining = $state<number | null>(null);
 	let usageUsed = $state(0);
 	let usageLimit = $state<number | null>(3);
-	let usageIsPaid = $state<boolean | null>(null);
+	// Initialise from server data so the paywall renders on first paint — no flash.
+	let usageIsPaid = $state<boolean | null>(data.isPaid ?? null);
 	let usageUpgradeOpen = $state(false);
 	let usageUpgradeMessage = $state('');
 

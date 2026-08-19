@@ -62,7 +62,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		name: 'Text Carousel',
 		description: 'Dark branded text carousels for any niche',
 		href: '/dashboard/studio?template=text',
-		previewBg: '/placeholders/carousel/text-cover.png',
+		previewBg: '/placeholders/carousel/text-cover-image.png',
 		previewText: '',
 		previewSource: '',
 		badge: 'Text',

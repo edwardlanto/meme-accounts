@@ -31,7 +31,7 @@
 
 	const handleBare = $derived(handle.trim().replace(/^@+/, ''));
 	const canSave = $derived(
-		name.trim().length >= 2 && handleBare.length >= 2 && logoUrl.trim().length > 0 && !saving,
+		name.trim().length >= 2 && handleBare.length >= 2 && !saving,
 	);
 
 	onMount(() => {
@@ -41,10 +41,15 @@
 			if (kit.onboardingComplete) return;
 			const hasRequired =
 				kit.displayName.trim().length >= 2 &&
-				normalizeBrandHandle(kit.handle).replace(/^@+/, '').length >= 2 &&
-				String(kit.logoUrl ?? '').trim().length > 0;
+				normalizeBrandHandle(kit.handle).replace(/^@+/, '').length >= 2;
 			if (hasRequired) {
-				saveBrandKit(userId, { ...kit, onboardingComplete: true });
+				const hasLogo = String(kit.logoUrl ?? '').trim().length > 0;
+				saveBrandKit(userId, {
+					...kit,
+					// Keep label mode consistent with whether a logo actually exists.
+					sourceLabelMode: hasLogo ? 'logo' : 'text',
+					onboardingComplete: true,
+				});
 				return;
 			}
 			name = kit.displayName;
@@ -106,10 +111,6 @@
 			error = 'Add a handle — it shows under your name on profile slides.';
 			return;
 		}
-		if (!nextLogo) {
-			error = 'Upload a logo — it appears on News slides.';
-			return;
-		}
 		error = '';
 		saving = true;
 		const kit = loadBrandKit(userId);
@@ -119,7 +120,8 @@
 			handle: nextHandle,
 			logoUrl: nextLogo,
 			avatarUrl: avatarUrl.trim(),
-			sourceLabelMode: 'logo',
+			// If no logo, fall back to text labels. This matches `normalizeKit()` behavior.
+			sourceLabelMode: nextLogo ? 'logo' : 'text',
 			onboardingComplete: true,
 		};
 		saveBrandKit(userId, saved);
@@ -168,7 +170,9 @@
 					aria-required="true"
 				/>
 
-				<p class="ob-label" id="ob-logo-label">Logo <span class="ob-req">Required</span></p>
+				<p class="ob-label" id="ob-logo-label">
+					Logo <span class="ob-opt">Optional</span>
+				</p>
 				<input
 					bind:this={logoInput}
 					type="file"

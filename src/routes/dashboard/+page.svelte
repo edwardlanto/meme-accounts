@@ -25,6 +25,8 @@
 	import { defaultThumbForTemplate } from '$lib/studio/slide-content-defaults';
 	import { libraryCardImageUrl } from '$lib/client/optimize-image-url';
 	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
+	import { STARTER_TEMPLATES } from '$lib/templates';
+	import StarterTemplateGrid from '$lib/components/templates/StarterTemplateGrid.svelte';
 
 	let { data } = $props();
 
@@ -257,14 +259,35 @@
 		</Card.Root>
 	</section>
 
+	{#if !loading && studioSavedTemplates.length === 0}
+		<!-- Start from a template — shown for new users who haven't saved anything yet -->
+		<section class="flex flex-col gap-4" aria-labelledby="starter-templates-heading">
+			<div class="flex flex-wrap items-end justify-between gap-3">
+				<div class="min-w-0 space-y-1">
+					<h2 id="starter-templates-heading" class="text-base font-semibold tracking-tight">
+						Start from a template
+					</h2>
+					<p class="text-sm text-muted-foreground">
+						Pick a layout and jump straight into Studio.
+					</p>
+				</div>
+				<Button href="/dashboard/templates" variant="outline" size="sm">
+					View all
+					<ArrowRight data-icon="inline-end" />
+				</Button>
+			</div>
+			<StarterTemplateGrid templates={STARTER_TEMPLATES} />
+		</section>
+	{/if}
+
 	<!-- Quick actions -->
-	<section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+	<section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 items-stretch">
 		{#each visiblePrimaryCards as c (c.href)}
 			{@const Icon = c.icon}
-			<a href={c.href} class="group block outline-none">
+			<a href={c.href} class="group block w-full outline-none">
 				<Card.Root
 					size="sm"
-					class="h-full transition-colors group-hover:bg-muted/50 group-focus-visible:ring-2 group-focus-visible:ring-ring"
+					class="h-full w-full transition-colors group-hover:bg-muted/50 group-focus-visible:ring-2 group-focus-visible:ring-ring"
 				>
 					<Card.Content class="flex items-center gap-3 py-1">
 						<div
@@ -370,18 +393,19 @@
 					</Card.Root>
 				{/each}
 			</div>
-		{:else}
-			<Empty.Root class="border border-dashed">
-				<Empty.Header>
-					<Empty.Title>No saved templates yet</Empty.Title>
-					<Empty.Description>
-						In Studio, save a layout and it will show up here.
-					</Empty.Description>
-				</Empty.Header>
-				<Empty.Content>
-					<Button href="/dashboard/studio" variant="outline" size="sm">Open Studio</Button>
-				</Empty.Content>
-			</Empty.Root>
-		{/if}
-	</section>
+	{:else}
+		<Empty.Root class="border border-dashed">
+			<Empty.Header>
+				<Empty.Title>No saved templates yet</Empty.Title>
+				<Empty.Description>
+					In Studio, save a layout and it will show up here.
+				</Empty.Description>
+			</Empty.Header>
+			<Empty.Content>
+				<Button href="/dashboard/studio" variant="outline" size="sm">Open Studio</Button>
+			</Empty.Content>
+		</Empty.Root>
+	{/if}
+</section>
+
 </div>
