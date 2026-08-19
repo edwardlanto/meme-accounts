@@ -140,8 +140,6 @@
 		<button onclick={() => goto('/dashboard/post-scheduler')} class="flex items-center gap-2 pl-3 pr-4 py-2.5 min-h-11 rounded-2xl text-xs font-semibold font-body shadow-lg transition-all bg-[#1a1a1a] border border-white/[0.12] text-white/70 hover:text-white hover:border-cyan-500/40 hover:bg-[#1e1e1e]">
 			<Calendar size={14} /> Post
 		</button>
-			<Calendar size={14} /> Post
-		</button>
 		<div class="relative">
 			{#if showMusicPanel}
 				<div class="absolute bottom-full mb-2 right-0 w-[min(400px,calc(100vw-1.5rem))] rounded-2xl bg-[#111] border border-white/[0.1] shadow-2xl overflow-hidden">
