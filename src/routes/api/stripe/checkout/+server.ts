@@ -86,6 +86,39 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 	}
 
+	// Guard: if this customer already has an active/trialing subscription, don't create
+	// a second one — send them to the billing portal to upgrade/switch instead.
+	const existingSubs = await stripe.subscriptions.list({
+		customer: customerId,
+		status: 'active',
+		limit: 1,
+	});
+	const trialingSubs = existingSubs.data.length === 0
+		? await stripe.subscriptions.list({ customer: customerId, status: 'trialing', limit: 1 })
+		: { data: [] };
+
+	if (existingSubs.data.length > 0 || trialingSubs.data.length > 0) {
+		const origin = new URL(request.url).origin;
+		try {
+			const portalSession = await stripe.billingPortal.sessions.create({
+				customer: customerId,
+				return_url: appUrl('/dashboard/settings?tab=billing', origin),
+			});
+			// Signal the client to redirect to the portal for plan changes.
+			return json({ ok: true, url: portalSession.url, sessionId: null, portal: true });
+		} catch {
+			// Portal not configured — fall through and surface a clear message.
+			return json(
+				{
+					ok: false,
+					error:
+						'You already have an active subscription. Go to Settings → Billing to change your plan.',
+				},
+				{ status: 409 },
+			);
+		}
+	}
+
 	if (!/^price_/.test(priceId)) {
 		return json(
 			{

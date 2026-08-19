@@ -20,7 +20,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import {
 		AlertTriangle, CheckCircle2, ExternalLink, KeyRound,
@@ -104,9 +103,6 @@
 
 	let displayNameDraft = $state('');
 	let profileBusy = $state(false);
-
-	let marketingEmails = $state(false);
-	let marketingBusy = $state(false);
 
 	let newPassword = $state('');
 	let confirmPassword = $state('');
@@ -239,8 +235,6 @@
 		}
 
 		displayNameDraft = userName;
-		marketingEmails = data.profile?.marketingEmails === true;
-
 		const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
 			if (event === 'PASSWORD_RECOVERY') {
 				passwordRecoveryMode = true;
@@ -252,7 +246,6 @@
 
 	$effect(() => {
 		displayNameDraft = userName;
-		marketingEmails = data.profile?.marketingEmails === true;
 	});
 
 	async function loadIntegrations() {
@@ -408,30 +401,6 @@
 			return;
 		}
 		accountMsg = 'Display name saved.';
-		await invalidateAll();
-	}
-
-	async function saveMarketingEmails(on: boolean) {
-		if (!userId) return;
-		marketingEmails = on;
-		marketingBusy = true;
-		accountErr = '';
-		const { error: dbErr } = await supabase
-			.from('users')
-			.update({ marketing_emails: on, updated_at: new Date().toISOString() })
-			.eq('id', userId);
-		if (!dbErr) {
-			await supabase.auth.updateUser({
-				data: { marketing_emails: on },
-			});
-		}
-		marketingBusy = false;
-		if (dbErr) {
-			marketingEmails = !on;
-			accountErr = dbErr.message;
-			return;
-		}
-		accountMsg = on ? 'Marketing emails enabled.' : 'Marketing emails disabled.';
 		await invalidateAll();
 	}
 
@@ -898,19 +867,6 @@
 			<div class="settings-card">
 				<h2 class="card-title">Email preferences</h2>
 				<div class="pref-list">
-					<div class="pref-row">
-						<div>
-							<p class="pref-label">Marketing emails</p>
-							<p class="pref-sub">Product updates and tips — not required for your account</p>
-						</div>
-						<Switch
-							id="settings-marketing"
-							size="sm"
-							checked={marketingEmails}
-							disabled={marketingBusy}
-							onCheckedChange={(v) => void saveMarketingEmails(!!v)}
-						/>
-					</div>
 					<div class="pref-row">
 						<div>
 							<p class="pref-label">Current plan</p>
