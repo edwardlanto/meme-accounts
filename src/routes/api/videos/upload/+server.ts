@@ -5,8 +5,8 @@ import type { RequestHandler } from './$types';
 import { r2PutObject, r2SignGet } from '$lib/server/r2';
 import { isValidOwnerR2Key, sniffStrictVideoMime } from '$lib/server/request-security';
 import { bytesForR2Storage, withTempDir } from '$lib/server/video-pipeline';
-
-const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+import { getUserPlan } from '$lib/server/usage';
+import { maxUploadBytesForPlan, formatUploadLimit } from '$lib/plan-entitlements';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const { user } = await locals.safeGetSession();
@@ -21,9 +21,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!isValidOwnerR2Key(user.id, key)) return json({ error: 'Forbidden key' }, { status: 403 });
 	if (!file || !(file instanceof File)) return json({ error: 'Missing file' }, { status: 400 });
 
+	const plan = await getUserPlan(user.id);
+	const maxBytes = maxUploadBytesForPlan(plan);
+
 	const buf = new Uint8Array(await file.arrayBuffer());
-	if (buf.byteLength > MAX_VIDEO_BYTES) {
-		return json({ error: 'Video must be under 200MB' }, { status: 413 });
+	if (buf.byteLength > maxBytes) {
+		return json(
+			{ error: `Video too large. Your plan allows uploads up to ${formatUploadLimit(maxBytes)}.` },
+			{ status: 413 },
+		);
 	}
 	const sniffed = sniffStrictVideoMime(buf);
 	if (!sniffed) return json({ error: 'Unsupported video format (use MP4, WebM, or MOV)' }, { status: 400 });

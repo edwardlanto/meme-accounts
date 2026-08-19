@@ -388,6 +388,13 @@ function emptyStatus(overrides?: Partial<UsageStatus>): UsageStatus {
 	};
 }
 
+/** Lightweight plan lookup — avoids full usage calculation when only the plan tier is needed. */
+export async function getUserPlan(userId: string): Promise<import('$lib/plan-entitlements').PlanId> {
+	const supabase = adminClient();
+	const { data } = await supabase.from('users').select('plan').eq('id', userId).maybeSingle();
+	return normalizePlanId((data as { plan?: string } | null)?.plan);
+}
+
 export async function getUsageStatus(userId: string): Promise<UsageStatus> {
 	const row = await ensureCurrentPeriod(userId);
 	if (!row) return emptyStatus();

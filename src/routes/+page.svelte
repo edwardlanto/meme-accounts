@@ -306,9 +306,6 @@
 					Create my first post
 					<ArrowRight size={16} />
 				</Button>
-				<Button href="#studio" variant="outline" size="marketing-lg">
-					See the studio
-				</Button>
 			</div>
 			<div class="mk-hero-trust">
 				<span>Start free</span>
@@ -430,7 +427,6 @@
 			<SectionHeader
 				class="mk-proof-head"
 				title={'Less layout work.<br /><span class="mk-title-mark">More posting.</span>'}
-				description="Type sizes itself. Copy stays on the story. Batch slides people already swipe."
 			/>
 
 			<ProofShowcase items={proofPosts} />

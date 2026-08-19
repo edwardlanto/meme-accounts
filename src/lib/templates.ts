@@ -32,18 +32,6 @@ export interface StarterTemplate {
 
 export const STARTER_TEMPLATES: StarterTemplate[] = [
 	{
-		id: 'empty',
-		studioId: 'blank',
-		name: 'Empty canvas',
-		description: 'Start from a blank slide — add media, text, and overlays yourself',
-		href: '/dashboard/studio?blank=1',
-		previewBg: '',
-		previewText: '',
-		previewSource: '',
-		badge: 'Blank',
-		badgeColor: 'text-neutral-400',
-	},
-	{
 		id: 'news',
 		studioId: 'news',
 		name: 'News Studio',
@@ -118,6 +106,18 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 		previewSource: '',
 		badge: 'Video',
 		badgeColor: 'text-fuchsia-400',
+	},
+	{
+		id: 'empty',
+		studioId: 'blank',
+		name: 'Empty canvas',
+		description: 'Start from a blank slide — add media, text, and overlays yourself',
+		href: '/dashboard/studio?blank=1',
+		previewBg: '',
+		previewText: '',
+		previewSource: '',
+		badge: 'Blank',
+		badgeColor: 'text-neutral-400',
 	},
 	// {
 	// 	id: 'video-hook',

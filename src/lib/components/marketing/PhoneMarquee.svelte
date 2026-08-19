@@ -34,8 +34,7 @@
 									<img src={marqueeAssetPath(slide.file)} alt="" draggable="false" />
 								{/if}
 							</div>
-							<div class="phone-bar"></div>
-							<div class="phone-pill">{slide.tag}</div>
+						<div class="phone-bar"></div>
 						</div>
 					</div>
 				{/each}

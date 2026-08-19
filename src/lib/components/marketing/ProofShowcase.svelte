@@ -37,24 +37,6 @@
 </script>
 
 <div class="mk-proof-carousel {className}">
-	<div class="mk-proof-carousel-nav" aria-hidden={items.length < 2}>
-		<button
-			type="button"
-			class="mk-proof-nav-btn"
-			aria-label="Previous benefit"
-			onclick={() => scrollByDir(-1)}
-		>
-			<ArrowLeft size={16} />
-		</button>
-		<button
-			type="button"
-			class="mk-proof-nav-btn"
-			aria-label="Next benefit"
-			onclick={() => scrollByDir(1)}
-		>
-			<ArrowRight size={16} />
-		</button>
-	</div>
 	<div class="mk-proof-showcase" bind:this={track}>
 		{#each items as item, i (item.id)}
 			<div class="mk-proof-slot mk-reveal" style="--mk-delay:{i * 0.06}s">

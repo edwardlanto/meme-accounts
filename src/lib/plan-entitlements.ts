@@ -32,6 +32,8 @@ export type PlanEntitlements = {
 	captionStyles: number | 'all';
 	watermark: boolean;
 	competitorTracks: number | null;
+	/** Max bytes for a single file upload (images or videos). */
+	maxUploadBytes: number;
 };
 
 export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
@@ -43,6 +45,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 		captionStyles: 1,
 		watermark: true,
 		competitorTracks: 3,
+		maxUploadBytes: 25 * 1024 * 1024, // 25 MB
 	},
 	hobby: {
 		carouselsPerMonth: 45,
@@ -52,6 +55,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 		captionStyles: 5,
 		watermark: true,
 		competitorTracks: 10,
+		maxUploadBytes: 150 * 1024 * 1024, // 150 MB
 	},
 	creator: {
 		carouselsPerMonth: 100,
@@ -61,6 +65,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 		captionStyles: 'all',
 		watermark: false,
 		competitorTracks: 25,
+		maxUploadBytes: 350 * 1024 * 1024, // 350 MB
 	},
 	business: {
 		carouselsPerMonth: null,
@@ -70,6 +75,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 		captionStyles: 'all',
 		watermark: false,
 		competitorTracks: null,
+		maxUploadBytes: 500 * 1024 * 1024, // 500 MB
 	},
 };
 
@@ -87,6 +93,14 @@ export function clipMinutesLimitForPlan(plan: string | null | undefined): number
 
 export function maxClipVideoMinutesForPlan(plan: string | null | undefined): number {
 	return PLAN_ENTITLEMENTS[normalizePlanId(plan)].maxClipVideoMinutes;
+}
+
+export function maxUploadBytesForPlan(plan: string | null | undefined): number {
+	return PLAN_ENTITLEMENTS[normalizePlanId(plan)].maxUploadBytes;
+}
+
+export function formatUploadLimit(bytes: number): string {
+	return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
 /** Billable minutes for a source duration (always ≥ 1 when duration > 0). */

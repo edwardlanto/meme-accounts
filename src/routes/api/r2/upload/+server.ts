@@ -2,8 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { r2PutObject } from '$lib/server/r2';
 import { isValidOwnerR2Key, sniffStrictImageMime, sniffStrictVideoMime } from '$lib/server/request-security';
-
-const MAX_UPLOAD_BYTES = 35 * 1024 * 1024;
+import { getUserPlan } from '$lib/server/usage';
+import { maxUploadBytesForPlan, formatUploadLimit } from '$lib/plan-entitlements';
 
 /** Same-origin upload — avoids browser CORS when PUT-ing directly to R2. */
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -20,9 +20,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!isValidOwnerR2Key(user.id, key)) return json({ error: 'Forbidden key' }, { status: 403 });
 	if (!file || !(file instanceof File)) return json({ error: 'Missing file' }, { status: 400 });
 
+	const plan = await getUserPlan(user.id);
+	const maxBytes = maxUploadBytesForPlan(plan);
+
 	const buf = new Uint8Array(await file.arrayBuffer());
-	if (buf.byteLength > MAX_UPLOAD_BYTES) {
-		return json({ error: 'File too large' }, { status: 413 });
+	if (buf.byteLength > maxBytes) {
+		return json(
+			{ error: `File too large. Your plan allows uploads up to ${formatUploadLimit(maxBytes)}.` },
+			{ status: 413 },
+		);
 	}
 	const imageMime = sniffStrictImageMime(buf);
 	const videoMime = imageMime ? null : sniffStrictVideoMime(buf);
