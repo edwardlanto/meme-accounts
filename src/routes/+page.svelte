@@ -57,7 +57,7 @@
 			id: 'news',
 			title: 'News & local brands',
 			description:
-				'Paste a headline or URL — AI drafts the carousel, generates on-brand images, and wraps it in News Studio chrome. Build a city page or niche news brand that funnels attention back to what you sell.',
+				'Paste a headline or URL. AI drafts the carousel, generates on-brand images, and wraps it in News Studio chrome. Build a city page or niche news brand that funnels attention back to what you sell.',
 			ctaLabel: 'Explore News Studio',
 			href: '/dashboard/studio?template=news',
 			image: '/placeholders/home/home-news.png',
@@ -82,7 +82,7 @@
 			id: 'bulk',
 			title: 'Bulk concept testing',
 			description:
-				'Spin up a week of meme posts in one pass — mix templates, stock media, and AI images, then refine winners in Studio before you launch or scale spend.',
+				'Spin up a week of meme posts in one pass. Mix templates, stock media, and AI images, then refine winners in Studio before you launch or scale spend.',
 			ctaLabel: 'Try bulk studio',
 			href: '/dashboard/bulk',
 			image: '/placeholders/home/feat-carousels.png',
@@ -344,8 +344,8 @@
 					<h2 class="mk-section-title">Built for how<br />creators actually ship.</h2>
 				</div>
 				<p class="mk-section-desc">
-					Pick a workflow — news carousels, local business attraction, or bulk runs. Type auto-fits your
-					canvas, keywords highlight automatically, and AI images sit alongside stock photos and video.
+				Pick a workflow: news carousels, local business attraction, or bulk runs. Type auto-fits your
+				canvas, keywords highlight automatically, and AI images sit alongside stock photos and video.
 				</p>
 			</div>
 
