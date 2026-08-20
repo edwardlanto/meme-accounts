@@ -47,8 +47,6 @@
 			Pricing
 		</a>
 		<div class="secure-chip">
-			<Lock size={13} />
-			Secure checkout
 		</div>
 	</header>
 
