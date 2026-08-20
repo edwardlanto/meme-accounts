@@ -49,7 +49,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	},
 	hobby: {
 		carouselsPerMonth: 45,
-		aiImagesPerMonth: 50,
+		aiImagesPerMonth: 30,
 		clipMinutesPerMonth: 180,
 		maxClipVideoMinutes: 60,
 		captionStyles: 5,
@@ -59,7 +59,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	},
 	creator: {
 		carouselsPerMonth: 100,
-		aiImagesPerMonth: 120,
+		aiImagesPerMonth: 80,
 		clipMinutesPerMonth: 600,
 		maxClipVideoMinutes: 180,
 		captionStyles: 'all',
@@ -69,7 +69,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanId, PlanEntitlements> = {
 	},
 	business: {
 		carouselsPerMonth: null,
-		aiImagesPerMonth: 400,
+		aiImagesPerMonth: 200,
 		clipMinutesPerMonth: 2000,
 		maxClipVideoMinutes: 240,
 		captionStyles: 'all',

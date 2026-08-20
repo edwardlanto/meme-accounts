@@ -8903,7 +8903,12 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 	/** Apply a NewsLayoutDocument onto studio state (layout chrome + overlays + present). */
 	function applyNewsLayoutDocumentToStudio(
 		doc: NewsLayoutDocument,
-		opts?: { slides?: 'all' | 'active' | number[]; overlays?: boolean },
+		opts?: {
+			slides?: 'all' | 'active' | number[];
+			overlays?: boolean;
+			/** When false, keep the current source logo (don’t inject one from the layout). */
+			applySourceLogo?: boolean;
+		},
 	) {
 		const patch = newsDocumentToApplyPatch(doc);
 		const n = Math.max(1, slides.length);
@@ -8914,6 +8919,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 					? opts.slides
 					: Array.from({ length: n }, (_, i) => i);
 		const applyOverlays = opts?.overlays !== false;
+		const applySourceLogo = opts?.applySourceLogo !== false;
 
 		const layout = patch.layout;
 		circleX = layout.circleX;
@@ -8964,8 +8970,10 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		circle2BorderColor = layout.circle2BorderColor;
 		circleShadow = layout.circleShadow;
 		circle2Shadow = layout.circle2Shadow;
-		sourceLabelMode = layout.sourceLabelMode;
-		if (layout.sourceLogoSrc) sourceLogoSrc = layout.sourceLogoSrc;
+		if (applySourceLogo) {
+			sourceLabelMode = layout.sourceLabelMode;
+			if (layout.sourceLogoSrc) sourceLogoSrc = layout.sourceLogoSrc;
+		}
 		sourceLogoWidth = layout.sourceLogoWidth;
 		if (typeof (layout as { sourceLogoPlateColor?: unknown }).sourceLogoPlateColor === 'string') {
 			sourceLogoPlateColor = String(
@@ -12701,6 +12709,8 @@ tweetTopImagePanYBySlide,
 			}
 
 		// Keep source logo/byline + last drag position after generate (don't reset to category tags).
+		// Never inject a brand logo the deck didn't already have — Generate fills copy/media only.
+		const hadSourceLogo = !!String(sourceLogoSrc ?? '').trim();
 		source = resolveNewsSourceAfterFetch();
 		if (userId) {
 			try {
@@ -12717,6 +12727,7 @@ tweetTopImagePanYBySlide,
 				/* ignore */
 			}
 		}
+		if (!hadSourceLogo) sourceLogoSrc = '';
 
 		// Restore moves / styles / overlay frames for every template after copy fill.
 		if (deckStructureLock.length) restoreDeckStructureLocks(deckStructureLock);
@@ -12726,10 +12737,21 @@ tweetTopImagePanYBySlide,
 			for (let i = 0; i < newsLayoutLockBySlide.length; i++) {
 				const doc = newsLayoutLockBySlide[i];
 				if (!doc) continue;
-				applyNewsLayoutDocumentToStudio(doc, { slides: [i], overlays: true });
+				applyNewsLayoutDocumentToStudio(doc, {
+					slides: [i],
+					overlays: true,
+					applySourceLogo: hadSourceLogo,
+				});
 			}
+			if (!hadSourceLogo) sourceLogoSrc = '';
 		} else if (accountNewsLock && contentTemplate === 'news') {
-			applyNewsLayoutDocumentToStudio(accountNewsLock, { slides: 'all', overlays: true });
+			// Fresh News deck: restore layout chrome, but don't stamp a saved logo / stickers.
+			applyNewsLayoutDocumentToStudio(accountNewsLock, {
+				slides: 'all',
+				overlays: false,
+				applySourceLogo: false,
+			});
+			sourceLogoSrc = '';
 		} else if (!fillExistingDeck && resolveTemplateOverride(contentTemplate)) {
 			// Fresh deck for tweet / carousel / video / etc. — restore saved default chrome
 			// (offsets, styles, overlays) after copy + media fill, same idea as News.

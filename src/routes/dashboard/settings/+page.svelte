@@ -1358,7 +1358,7 @@
 								{/if}
 							</p>
 							<p class="trial-sub" style="margin-top:0.35rem">
-								AI images: not included on Free (stock photos only). Hobby includes 50/mo.
+								AI images: not included on Free (stock photos only). Hobby includes 30/mo.
 							</p>
 							{#if CLIP_FINDER_ENABLED}
 								<p class="trial-sub" style="margin-top:0.35rem">

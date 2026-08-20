@@ -27,7 +27,7 @@ export const PLAN_CATALOG = {
 		carouselsPerMonth: PLAN_ENTITLEMENTS.hobby.carouselsPerMonth!,
 		features: [
 			'45 carousels / month',
-			'50 AI images / month',
+			'30 AI images / month',
 			'Bulk generate (multi-deck AI)',
 			'News-to-Post',
 			'Word highlights',
@@ -43,7 +43,7 @@ export const PLAN_CATALOG = {
 		carouselsPerMonth: PLAN_ENTITLEMENTS.creator.carouselsPerMonth!,
 		features: [
 			'100 carousels / month',
-			'120 AI images / month',
+			'80 AI images / month',
 			'No watermark',
 			'Full canvas + HD export',
 			'Brand kit + saved templates',
@@ -59,7 +59,7 @@ export const PLAN_CATALOG = {
 		carouselsPerMonth: null,
 		features: [
 			'Unlimited carousels',
-			'400 AI images / month',
+			'200 AI images / month',
 			'Everything in Creator',
 			'Team workspace',
 			'API access',
