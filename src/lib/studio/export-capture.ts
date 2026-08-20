@@ -32,13 +32,45 @@ export function formatExportError(err: unknown): string {
 export const TRANSPARENT_PIXEL =
 	'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
+/** Reject if `promise` has not settled — does not cancel the underlying work. */
+export function raceTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const t = setTimeout(() => reject(new Error(message)), Math.max(1, ms));
+		promise.then(
+			(v) => {
+				clearTimeout(t);
+				resolve(v);
+			},
+			(e) => {
+				clearTimeout(t);
+				reject(e);
+			},
+		);
+	});
+}
+
+/** `document.fonts.ready` can hang forever if a face never loads. */
+export async function waitForDocumentFonts(ms = 2000): Promise<void> {
+	if (typeof document === 'undefined') return;
+	const ready = document.fonts?.ready;
+	if (!ready) return;
+	try {
+		await raceTimeout(Promise.resolve(ready), ms, 'fonts');
+	} catch {
+		/* use whatever is already available */
+	}
+}
+
 /**
  * Safe defaults for html-to-image.
  * - `cacheBust: true` appends `?t=` which breaks `blob:` and some signed URLs.
  * - Empty failed embeds reject with a trusted Event — placeholder + error handler avoid that.
+ * - `skipFonts: true` — Google Fonts sheets throw SecurityError on cssRules (CORS).
+ *   Faces are already loaded in the document; embedding them is unnecessary and can hang.
  */
 export const SAFE_HTML_TO_IMAGE_OPTS = {
 	cacheBust: false,
+	skipFonts: true,
 	imagePlaceholder: TRANSPARENT_PIXEL,
 	onImageErrorHandler: () => {
 		/* keep export going if one asset fails to paint */
@@ -55,6 +87,7 @@ export async function fetchRemoteVideoAsBlobUrl(remoteUrl: string): Promise<stri
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ url: src }),
+		signal: AbortSignal.timeout(60_000),
 	});
 	const ct = res.headers.get('content-type') ?? '';
 	if (!res.ok) {

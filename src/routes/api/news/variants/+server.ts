@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { MAX_STUDIO_SLIDE_COUNT } from '$lib/studio/compose-prefs';
+import { newsVariantsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords, ensureCompleteThought } from '$lib/studio/fit-copy';
 import { generationTonePromptSuffix } from '$lib/studio/generation-tone';

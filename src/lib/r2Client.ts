@@ -22,7 +22,11 @@ export async function r2UploadVideo(params: {
 	const fd = new FormData();
 	fd.set('key', params.key);
 	fd.set('file', params.blob, params.filename ?? 'video.mp4');
-	const res = await fetch('/api/videos/upload', { method: 'POST', body: fd });
+	const res = await fetch('/api/videos/upload', {
+		method: 'POST',
+		body: fd,
+		signal: AbortSignal.timeout(120_000),
+	});
 	const data = await res.json().catch(() => ({}));
 	if (!res.ok) throw new Error(data?.error ?? 'Video upload failed');
 	return data;
@@ -40,7 +44,11 @@ export async function r2UploadBlob(params: {
 	const fd = new FormData();
 	fd.set('key', params.key);
 	fd.set('file', params.blob, params.filename ?? 'upload.bin');
-	const res = await fetch('/api/r2/upload', { method: 'POST', body: fd });
+	const res = await fetch('/api/r2/upload', {
+		method: 'POST',
+		body: fd,
+		signal: AbortSignal.timeout(90_000),
+	});
 	const data = await res.json().catch(() => ({}));
 	if (!res.ok) throw new Error(data?.error ?? 'Upload failed');
 	return data;

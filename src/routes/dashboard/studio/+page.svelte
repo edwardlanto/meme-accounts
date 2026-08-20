@@ -56,7 +56,7 @@ import JSZip from 'jszip';
 	import StudioCanvasSkeleton from '$lib/components/studio/StudioCanvasSkeleton.svelte';
 	import { prepareImageAsDataUrl } from '$lib/client/image-upload-prep';
 	import { studioCanvasImageUrl } from '$lib/client/optimize-image-url';
-	import { formatExportError, replaceVideosWithFrameImages, fetchRemoteVideoAsBlobUrl, materializeDomImagesForExport, SAFE_HTML_TO_IMAGE_OPTS } from '$lib/studio/export-capture';
+	import { formatExportError, replaceVideosWithFrameImages, fetchRemoteVideoAsBlobUrl, materializeDomImagesForExport, SAFE_HTML_TO_IMAGE_OPTS, raceTimeout, waitForDocumentFonts } from '$lib/studio/export-capture';
 	import { isVideoFile, objectUrlForVideoFile, playMediaVideo } from '$lib/studio/media-url';
 	import {
 		fetchStockMediaPool,
@@ -4311,20 +4311,20 @@ import JSZip from 'jszip';
 			};
 		})();
 		try {
-			try {
-				await (document as any).fonts?.ready;
-			} catch {
-				/* ignore */
-			}
-			return await toPng(node, {
-				width: opts.width,
-				height: opts.height,
-				pixelRatio: opts.pixelRatio ?? 1,
-				backgroundColor: opts.backgroundColor,
-				style: { transform: 'scale(1)', transformOrigin: 'top left' },
-				filter: (n: HTMLElement) => n.tagName !== 'VIDEO',
-				...SAFE_HTML_TO_IMAGE_OPTS,
-			} as any);
+			await waitForDocumentFonts(2000);
+			return await raceTimeout(
+				toPng(node, {
+					width: opts.width,
+					height: opts.height,
+					pixelRatio: opts.pixelRatio ?? 1,
+					backgroundColor: opts.backgroundColor,
+					style: { transform: 'scale(1)', transformOrigin: 'top left' },
+					filter: (n: HTMLElement) => n.tagName !== 'VIDEO',
+					...SAFE_HTML_TO_IMAGE_OPTS,
+				} as any),
+				12_000,
+				'Canvas export timed out — wait for images to finish loading, then try again.',
+			);
 		} finally {
 			letterboxCleanup();
 			restoreImgs();
@@ -10080,6 +10080,47 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		applyTemplateToAll(activeTemplate, { skipNewsSeed: true });
 	}
 
+	async function waitForFilmstripIdle(ms = 2500): Promise<void> {
+		const start = Date.now();
+		while (filmstripPreviewInFlight && Date.now() - start < ms) {
+			await new Promise((r) => setTimeout(r, 80));
+		}
+	}
+
+	/** One-slide thumbnail for Save template. Never blocks save if capture fails. */
+	async function captureTemplatePreviewPng(): Promise<string | null> {
+		const fromStrip = (i: number) => String(filmstripPreviewUrls[i] ?? '').trim();
+		const idx = Math.max(0, Math.min(Math.max(0, slides.length - 1), activeSlide));
+		if (fromStrip(idx).startsWith('data:image/')) return fromStrip(idx);
+		if (fromStrip(0).startsWith('data:image/')) return fromStrip(0);
+
+		await waitForFilmstripIdle(2500);
+		if (fromStrip(idx).startsWith('data:image/')) return fromStrip(idx);
+		if (fromStrip(0).startsWith('data:image/')) return fromStrip(0);
+		if (!exportRef || studioBooting || !slides.length) return null;
+		if (filmstripPreviewInFlight || exporting || exportingAll) return null;
+
+		const prevRaster = canvasRasterSlide;
+		try {
+			canvasRasterSlide = idx;
+			await tick();
+			await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+			const node = exportRef;
+			if (!node) return null;
+			return await rasterizeExportNode(node, {
+				width: CANVAS_W,
+				height: CANVAS_H,
+				pixelRatio: 1,
+				backgroundColor: filmstripPngBackgroundForSlide(idx),
+				letterbox: letterboxForExport(),
+			});
+		} catch {
+			return null;
+		} finally {
+			canvasRasterSlide = prevRaster ?? null;
+		}
+	}
+
 	async function saveStudioTemplateNamed(
 		nameOverride?: string,
 		opts?: { overwriteId?: string; leaveAfter?: boolean; leaveHref?: string },
@@ -10100,38 +10141,19 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		studioTemplateSaving = true;
 		studioTemplateFeedback = '';
 
-		// Use the exact same export pipeline as the bottom-right Export/Post button.
-		// This avoids subtle races with the filmstrip capture and guarantees "what you see"
-		// matches the stored preview.
-		let previewPng: string | null = null;
-		if (!exportRef) {
-			studioTemplateSaving = false;
-			throw new Error(
-				'Canvas is not ready to export yet — wait for the preview to finish loading, then try again.',
-			);
-		}
 		try {
-			const n = await exportAllSlidesToDraft();
-			previewPng = n > 0 ? (exportedSlides[0] ?? null) : null;
-			if (!previewPng) {
-				studioTemplateSaving = false;
-				throw new Error(
-					lastExportError
-						? `Could not capture preview: ${lastExportError}`
-						: 'Could not capture a preview image. Uploaded WebP/JPEG/PNG are supported — wait for slides to finish loading, then try again.',
-				);
-			}
-		} catch (e: unknown) {
-			studioTemplateSaving = false;
-			if (e instanceof Error) throw e;
-			throw new Error('Preview export failed — try again after the canvas finishes loading.');
+		// Thumbnail only — never block save on html-to-image / Google Fonts CORS.
+		let previewPng: string | null = null;
+		try {
+			previewPng = await raceTimeout(captureTemplatePreviewPng(), 8_000, 'preview-timeout');
+		} catch {
+			previewPng = null;
 		}
 
-		// Export can take long enough for the JWT to go stale — refresh before RLS writes.
+		// Refresh JWT before RLS writes.
 		try {
 			uid = await ensureStudioAuthUserId();
 		} catch (e: unknown) {
-			studioTemplateSaving = false;
 			throw e instanceof Error ? e : new Error('Your session expired — sign in again, then save.');
 		}
 
@@ -10148,11 +10170,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND)
 				.maybeSingle();
 			if (findErr) {
-				studioTemplateSaving = false;
 				throw new Error(findErr.message ?? 'Could not find that template');
 			}
 			if (!existing) {
-				studioTemplateSaving = false;
 				throw new Error('That template is gone — save a new one instead.');
 			}
 		} else {
@@ -10170,7 +10190,6 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				},
 			});
 			if (error) {
-				studioTemplateSaving = false;
 				const msg = String(error.message ?? 'Save failed');
 				if (/row-level security|rls/i.test(msg)) {
 					throw new Error('Could not save — sign in again, then try Save template.');
@@ -10181,7 +10200,11 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 
 		let r2Note = '';
 		try {
-			state = await uploadTemplateMediaToR2AndRewriteState(templateId, state);
+			state = await raceTimeout(
+				uploadTemplateMediaToR2AndRewriteState(templateId, state),
+				90_000,
+				'Media upload timed out — try again with fewer / smaller videos.',
+			);
 			const mediaWarnings = Array.isArray(state._mediaUploadWarnings)
 				? (state._mediaUploadWarnings as string[])
 				: [];
@@ -10195,25 +10218,24 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				.eq('user_id', uid)
 				.eq('kind', STUDIO_SAVED_TEMPLATE_KIND);
 			if (error) {
-				studioTemplateSaving = false;
 				throw new Error(error.message ?? 'Replace failed');
 			}
 			if (mediaWarnings.length) {
 				r2Note = ` Some media could not be uploaded (${mediaWarnings[0]}).`;
 			}
 		} catch (e: unknown) {
-			studioTemplateSaving = false;
 			const msg = e instanceof Error ? e.message : String(e);
 			throw new Error(
 				`Could not upload template images to storage: ${msg}. Check R2 env keys and try again.`,
 			);
 		}
 
-		// Upload preview via same-origin /api/r2/upload (server writes to R2 — no browser CORS to R2).
+		// Preview is best-effort — layout save must succeed even if thumb fails.
 		if (templateId) {
 			if (!previewPng) {
 				r2Note =
-					' Note: First-slide preview was not exported, so nothing was uploaded to R2. Try Export first or ensure slides render.';
+					(r2Note ? `${r2Note} ` : '') +
+					'Preview thumb skipped. Template layout was still saved.';
 			} else {
 				try {
 					const key = `${uid}/templates/${templateId}.png`;
@@ -10239,17 +10261,14 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 				}
 			}
 		}
-		studioTemplateSaving = false;
 		const savedLabel = overwriteId ? `Updated “${name}”` : `Saved “${name}”`;
 		studioTemplateFeedback = r2Note ? `${savedLabel}.${r2Note}` : savedLabel;
 		showSaveTemplatePanel = false;
 		studioHasUnsavedChanges = false;
-		/* Keep account defaults in sync — do not re-apply starter onto the open canvas. */
-		try {
-			await persistDeckTemplatesAsAccountDefaults({ reapplyCanvas: false });
-		} catch (e) {
+		/* Keep account defaults in sync — don't block the Save spinner on this extra write. */
+		void persistDeckTemplatesAsAccountDefaults({ reapplyCanvas: false }).catch((e) => {
 			console.warn('[studio] account template override after save failed', e);
-		}
+		});
 		setFlashToast(savedLabel);
 		void refreshSavedStudioTemplates();
 		if (templateId) {
@@ -10280,6 +10299,9 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			} catch {
 				/* ignore */
 			}
+		}
+		} finally {
+			studioTemplateSaving = false;
 		}
 	}
 
@@ -10435,10 +10457,20 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			return arr.map((x) => String(x ?? ''));
 		};
 
+		const usedTemplates = new Set(
+			(Array.isArray(out.slideTemplates) ? out.slideTemplates : [])
+				.map((t) => coerceTemplateId(String(t ?? '')))
+				.filter(Boolean),
+		);
+		if (out.lastTemplateUsed) usedTemplates.add(coerceTemplateId(String(out.lastTemplateUsed)));
+		const shouldRewriteTpl = (tpl: string) =>
+			usedTemplates.size === 0 || usedTemplates.has(coerceTemplateId(tpl));
+
 		// Background images (by template, by slide)
 		if (out.bgImagesByTemplate && typeof out.bgImagesByTemplate === 'object') {
 			const next: Record<string, string[]> = { ...(out.bgImagesByTemplate ?? {}) };
 			for (const tpl of Object.keys(next)) {
+				if (!shouldRewriteTpl(tpl)) continue;
 				next[tpl] = await rewriteArr(next[tpl], `bg/${tpl}`);
 			}
 			out.bgImagesByTemplate = next;
@@ -10448,6 +10480,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (out.bgVideosByTemplate && typeof out.bgVideosByTemplate === 'object') {
 			const next: Record<string, string[]> = { ...(out.bgVideosByTemplate ?? {}) };
 			for (const tpl of Object.keys(next)) {
+				if (!shouldRewriteTpl(tpl)) continue;
 				next[tpl] = await rewriteArr(next[tpl], `bgvid/${tpl}`);
 			}
 			out.bgVideosByTemplate = next;
@@ -10461,6 +10494,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 		if (out.slideOverlaysByTemplate && typeof out.slideOverlaysByTemplate === 'object') {
 			const next: Record<string, any> = { ...(out.slideOverlaysByTemplate ?? {}) };
 			for (const tpl of Object.keys(next)) {
+				if (!shouldRewriteTpl(tpl)) continue;
 				const slides = Array.isArray(next[tpl]) ? [...next[tpl]] : [];
 				for (let s = 0; s < slides.length; s++) {
 					const row = Array.isArray(slides[s]) ? [...slides[s]] : [];
@@ -15358,7 +15392,7 @@ if (tweetTopImageHeightBySlide.length !== n) {
 					continue;
 				}
 				try {
-					await (document as any).fonts?.ready;
+					await waitForDocumentFonts(2000);
 				} catch {
 					/* ignore */
 				}
