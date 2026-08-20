@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { adminClient } from '$lib/server/auth';
-import { appUrl, getStripe } from '$lib/server/stripe';
+import { appUrl, getStripe, isMissingStripeCustomer } from '$lib/server/stripe';
 
 /**
  * Open the Stripe Customer Portal for the signed-in user.
@@ -59,7 +59,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		};
 	}
 
-	const portal = await stripe.billingPortal.sessions.create(params);
-
-	return json({ ok: true, url: portal.url });
+	try {
+		const portal = await stripe.billingPortal.sessions.create(params);
+		return json({ ok: true, url: portal.url });
+	} catch (e: unknown) {
+		if (isMissingStripeCustomer(e)) {
+			return json(
+				{
+					ok: false,
+					error: 'Billing account is out of date. Open Pricing and start checkout again.',
+				},
+				{ status: 400 },
+			);
+		}
+		console.error('[stripe portal]', e instanceof Error ? e.message : e);
+		return json({ ok: false, error: 'Could not open billing portal. Try again.' }, { status: 502 });
+	}
 };

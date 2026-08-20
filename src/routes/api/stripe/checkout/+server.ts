@@ -5,6 +5,7 @@ import { PAID_PLAN_IDS } from '$lib/pricing-catalog';
 import {
 	appUrl,
 	getStripe,
+	isMissingStripeCustomer,
 	priceIdFor,
 	type BillingInterval,
 	type PaidPlan,
@@ -68,34 +69,84 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		return json({ ok: false, error: e?.message ?? 'Stripe not configured' }, { status: 503 });
 	}
 
-	let customerId = profile?.stripe_customer_id as string | null | undefined;
+	async function persistCustomerId(id: string) {
+		const { error: updErr } = await supabase
+			.from('users')
+			.update({ stripe_customer_id: id, updated_at: new Date().toISOString() })
+			.eq('id', user.id);
+		if (updErr) throw new Error(updErr.message);
+	}
 
-	if (!customerId) {
+	async function createStripeCustomer(): Promise<string> {
 		const customer = await stripe.customers.create({
 			email: user.email,
 			name: user.user_metadata?.full_name ?? undefined,
 			metadata: { supabase_user_id: user.id },
 		});
-		customerId = customer.id;
-		const { error: updErr } = await supabase
-			.from('users')
-			.update({ stripe_customer_id: customerId, updated_at: new Date().toISOString() })
-			.eq('id', user.id);
-		if (updErr) {
-			return json({ ok: false, error: updErr.message }, { status: 500 });
+		await persistCustomerId(customer.id);
+		return customer.id;
+	}
+
+	let customerId = String(profile?.stripe_customer_id ?? '').trim();
+
+	if (customerId) {
+		try {
+			const existing = await stripe.customers.retrieve(customerId);
+			if ('deleted' in existing && existing.deleted) {
+				console.warn('[stripe checkout] replacing deleted customer', customerId);
+				customerId = '';
+			}
+		} catch (e: unknown) {
+			if (!isMissingStripeCustomer(e)) {
+				console.error('[stripe checkout] retrieve customer', e);
+				return json({ ok: false, error: 'Could not reach Stripe. Try again.' }, { status: 502 });
+			}
+			// Stale id (test vs live keys, deleted customer, or another Stripe account).
+			console.warn('[stripe checkout] replacing missing customer', customerId);
+			customerId = '';
+		}
+	}
+
+	if (!customerId) {
+		try {
+			customerId = await createStripeCustomer();
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : 'Could not create Stripe customer';
+			return json({ ok: false, error: msg }, { status: 500 });
 		}
 	}
 
 	// Guard: if this customer already has an active/trialing subscription, don't create
 	// a second one — send them to the billing portal to upgrade/switch instead.
-	const existingSubs = await stripe.subscriptions.list({
-		customer: customerId,
-		status: 'active',
-		limit: 1,
-	});
-	const trialingSubs = existingSubs.data.length === 0
-		? await stripe.subscriptions.list({ customer: customerId, status: 'trialing', limit: 1 })
-		: { data: [] };
+	let existingSubs: { data: { id: string }[] };
+	let trialingSubs: { data: { id: string }[] } = { data: [] };
+	try {
+		existingSubs = await stripe.subscriptions.list({
+			customer: customerId,
+			status: 'active',
+			limit: 1,
+		});
+		if (existingSubs.data.length === 0) {
+			trialingSubs = await stripe.subscriptions.list({
+				customer: customerId,
+				status: 'trialing',
+				limit: 1,
+			});
+		}
+	} catch (e: unknown) {
+		if (!isMissingStripeCustomer(e)) {
+			console.error('[stripe checkout] list subscriptions', e);
+			return json({ ok: false, error: 'Could not start checkout. Try again.' }, { status: 502 });
+		}
+		try {
+			customerId = await createStripeCustomer();
+			existingSubs = { data: [] };
+			trialingSubs = { data: [] };
+		} catch (createErr: unknown) {
+			const msg = createErr instanceof Error ? createErr.message : 'Could not create Stripe customer';
+			return json({ ok: false, error: msg }, { status: 500 });
+		}
+	}
 
 	if (existingSubs.data.length > 0 || trialingSubs.data.length > 0) {
 		const origin = new URL(request.url).origin;

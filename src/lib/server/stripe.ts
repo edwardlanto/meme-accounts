@@ -17,6 +17,13 @@ export function getStripe(): Stripe {
 	});
 }
 
+/** True when Stripe rejected a stored customer id (test/live mismatch, deleted, other account). */
+export function isMissingStripeCustomer(err: unknown): boolean {
+	const e = err as { code?: string; message?: string };
+	if (e?.code === 'resource_missing') return true;
+	return /no such customer/i.test(String(e?.message ?? ''));
+}
+
 export function appUrl(path = '', origin?: string | null): string {
 	const base = (String(origin ?? '').trim() || publicEnv.PUBLIC_APP_URL || '').replace(/\/$/, '');
 	if (!base) {
