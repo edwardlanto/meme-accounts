@@ -18,24 +18,62 @@ export type GoogleFont = {
 export const IMPACT_WEBFONT_STANDIN = 'Anton';
 
 export const GOOGLE_FONTS: GoogleFont[] = [
+	/* Brand + defaults */
 	{ family: FONT_TEMPLATE_DEFAULT, category: 'sans', weights: [300, 400, 500, 700, 800], italic: true },
 	{ family: FONT_BODY, category: 'sans', weights: [400, 500, 600, 700], italic: true },
-	{ family: 'Lexend', category: 'sans', weights: [400] },
+	{ family: 'Lexend', category: 'sans', weights: [400, 500, 700] },
 	{ family: 'Montserrat', category: 'sans', weights: [400, 500, 700, 900], italic: true },
 	{ family: 'Poppins', category: 'sans', weights: [400, 500, 600, 700, 900], italic: true },
 	{ family: 'Oswald', category: 'sans', weights: [400, 500, 700] },
-	{ family: 'Bebas Neue', category: 'sans', weights: [400] },
+	{ family: 'Bebas Neue', category: 'display', weights: [400] },
 	{ family: 'DM Sans', category: 'sans', weights: [400, 500, 700, 900], italic: true },
+	{ family: 'Space Grotesk', category: 'sans', weights: [400, 500, 700] },
+
+	/* Faceless / viral niche — condensed & clean sans (news, hooks, captions) */
+	{ family: 'Barlow Condensed', category: 'sans', weights: [400, 500, 600, 700, 800, 900], italic: true },
+	{ family: 'Barlow', category: 'sans', weights: [400, 500, 600, 700, 800, 900], italic: true },
+	{ family: 'Roboto Condensed', category: 'sans', weights: [400, 500, 700], italic: true },
+	{ family: 'Teko', category: 'sans', weights: [400, 500, 600, 700] },
+	{ family: 'Fjalla One', category: 'sans', weights: [400] },
+	{ family: 'Chivo', category: 'sans', weights: [400, 700, 900], italic: true },
+	{ family: 'Kanit', category: 'sans', weights: [400, 500, 600, 700, 800, 900], italic: true },
+	{ family: 'League Spartan', category: 'sans', weights: [400, 500, 700, 800, 900] },
+	{ family: 'Rubik', category: 'sans', weights: [400, 500, 600, 700, 800, 900], italic: true },
+	{ family: 'Outfit', category: 'sans', weights: [400, 500, 600, 700, 800, 900] },
+	{ family: 'Manrope', category: 'sans', weights: [400, 500, 600, 700, 800] },
+	{ family: 'Nunito Sans', category: 'sans', weights: [400, 600, 700, 800, 900], italic: true },
+	{ family: 'Figtree', category: 'sans', weights: [400, 500, 600, 700, 800, 900], italic: true },
+
+	/* Heavy display — meme / all-caps hooks (Impact-style) */
 	{ family: IMPACT_WEBFONT_STANDIN, category: 'display', weights: [400] },
 	{ family: 'Impact', category: 'display', weights: [400] },
 	{ family: 'Archivo Black', category: 'display', weights: [400] },
+	{ family: 'Staatliches', category: 'display', weights: [400] },
+	{ family: 'Russo One', category: 'display', weights: [400] },
+	{ family: 'Passion One', category: 'display', weights: [400, 700, 900] },
+	{ family: 'Alfa Slab One', category: 'display', weights: [400] },
+	{ family: 'Black Ops One', category: 'display', weights: [400] },
+	{ family: 'Titan One', category: 'display', weights: [400] },
+	{ family: 'Lilita One', category: 'display', weights: [400] },
+	{ family: 'Bangers', category: 'display', weights: [400] },
+	{ family: 'Luckiest Guy', category: 'display', weights: [400] },
+
+	/* Serif — quote / story / editorial carousels */
 	{ family: 'Playfair Display', category: 'serif', weights: [400, 500, 700, 900], italic: true },
 	{ family: 'DM Serif Display', category: 'serif', weights: [400], italic: true },
 	{ family: 'Lora', category: 'serif', weights: [400, 500, 700], italic: true },
 	{ family: 'Instrument Serif', category: 'serif', weights: [400], italic: true },
-	{ family: 'Space Grotesk', category: 'sans', weights: [400, 500, 700] },
-	{ family: 'IBM Plex Mono', category: 'mono', weights: [400, 500, 700] },
+	{ family: 'Merriweather', category: 'serif', weights: [400, 700, 900], italic: true },
+	{ family: 'Libre Baskerville', category: 'serif', weights: [400, 700], italic: true },
+	{ family: 'Roboto Slab', category: 'serif', weights: [400, 500, 700, 900] },
+
+	/* Handwriting — casual faceless / story beats */
 	{ family: 'Caveat', category: 'handwriting', weights: [400, 600, 700] },
+	{ family: 'Permanent Marker', category: 'handwriting', weights: [400] },
+	{ family: 'Patrick Hand', category: 'handwriting', weights: [400] },
+	{ family: 'Kalam', category: 'handwriting', weights: [400, 700] },
+
+	{ family: 'IBM Plex Mono', category: 'mono', weights: [400, 500, 700] },
 ];
 
 const loadedFonts = new Set<string>();

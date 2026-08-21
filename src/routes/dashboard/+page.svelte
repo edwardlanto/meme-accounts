@@ -24,11 +24,11 @@
 	import { coerceTemplateId, type TemplateId } from '$lib/studio/template-ids';
 	import { defaultThumbForTemplate } from '$lib/studio/slide-content-defaults';
 	import { libraryCardImageUrl } from '$lib/client/optimize-image-url';
-	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
 	import { STARTER_TEMPLATES } from '$lib/templates';
 	import StarterTemplateGrid from '$lib/components/templates/StarterTemplateGrid.svelte';
 
 	let { data } = $props();
+	const clipFinderEnabled = $derived(Boolean(data.clipFinderEnabled));
 
 	/** Must match `STUDIO_SAVED_TEMPLATE_KIND` in `dashboard/studio/+page.svelte`. */
 	const STUDIO_SAVED_TEMPLATE_KIND = 'studio_saved_template';
@@ -51,7 +51,7 @@
 
 	const visiblePrimaryCards = $derived(
 		primaryCards.filter(
-			(c) => CLIP_FINDER_ENABLED || (c.href !== '/dashboard/clips' && c.href !== '/dashboard/videos'),
+			(c) => clipFinderEnabled || (c.href !== '/dashboard/clips' && c.href !== '/dashboard/videos'),
 		),
 	);
 

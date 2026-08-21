@@ -146,7 +146,6 @@
 		Ban,
 		MessageSquare,
 		Newspaper,
-		Quote,
 		Type,
 		ListOrdered,
 		LayoutTemplate,
@@ -304,7 +303,6 @@
 		{ id: 'news' as const, icon: Newspaper, label: 'News' },
 		{ id: 'fact' as const, icon: Sparkles, label: 'Random fact' },
 		{ id: 'story' as const, icon: Type, label: 'Random story' },
-		{ id: 'quote' as const, icon: Quote, label: 'Quote' },
 		{ id: 'steps' as const, icon: ListOrdered, label: 'Steps' },
 	];
 
@@ -742,7 +740,7 @@
 	}
 
 	function applyPromptHistoryEntry(entry: StudioPromptHistoryEntry) {
-		newsContentMode = entry.mode;
+		newsContentMode = entry.mode === 'quote' ? 'general' : entry.mode;
 		topic = entry.query;
 		promptHistoryOpen = false;
 	}
@@ -3492,12 +3490,9 @@
 							{:else if newsContentMode === 'story'}
 								<Type size={11} class="shrink-0" />
 								Random story
-							{:else if newsContentMode === 'steps'}
+							{:else}
 								<ListOrdered size={11} class="shrink-0" />
 								Steps
-							{:else}
-								<Quote size={11} class="shrink-0" />
-								Quote
 							{/if}
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>

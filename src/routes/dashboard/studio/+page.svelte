@@ -280,7 +280,7 @@ import JSZip from 'jszip';
 		type CaptionPhrase,
 	} from '$lib/video-clips/caption-chunking';
 	import {
-		Newspaper, Sparkles, Quote, RefreshCw, Download, Loader, AlertCircle,
+		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, ImagePlus, Type, Layers, ListOrdered, MessageSquare,
 		Scissors, Volume2, VolumeX, Eye, EyeOff, Music, Play, X, Circle, Palette, Trash2, RotateCcw, Wallpaper, ArrowUp, ChevronDown, PanelBottom, User, Users, Heart, Highlighter, History
 	} from 'lucide-svelte';
@@ -453,7 +453,7 @@ import JSZip from 'jszip';
 		/* Prompt text is session-only — refresh clears it (history keeps past queries). */
 		search = '';
 		category = prefs.category;
-		newsContentMode = prefs.newsContentMode;
+		newsContentMode = prefs.newsContentMode === 'quote' ? 'general' : prefs.newsContentMode;
 		newsImageSourceMode = prefs.newsImageSourceMode;
 		stockMediaKind = prefs.stockMediaKind;
 		newsCopyLength = prefs.newsCopyLength;
@@ -1039,14 +1039,14 @@ import JSZip from 'jszip';
 	}
 
 	function applyPromptHistoryEntry(entry: StudioPromptHistoryEntry) {
-		newsContentMode = entry.mode;
+		const mode = entry.mode === 'quote' ? 'general' : entry.mode;
+		newsContentMode = mode;
 		const q = entry.query;
-		if (entry.mode === 'general') generalTopicPrompt = q;
-		else if (entry.mode === 'news') search = q;
-		else if (entry.mode === 'fact') factTopicPrompt = q;
-		else if (entry.mode === 'story') storyTopicPrompt = q;
-		else if (entry.mode === 'quote') quoteTopicPrompt = q;
-		else if (entry.mode === 'steps') stepsTopicPrompt = q;
+		if (mode === 'general') generalTopicPrompt = q;
+		else if (mode === 'news') search = q;
+		else if (mode === 'fact') factTopicPrompt = q;
+		else if (mode === 'story') storyTopicPrompt = q;
+		else if (mode === 'steps') stepsTopicPrompt = q;
 		promptHistoryOpen = false;
 	}
 
@@ -18204,12 +18204,9 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 							{:else if newsContentMode === 'story'}
 								<Type size={11} class="shrink-0" />
 								Random story
-							{:else if newsContentMode === 'steps'}
+							{:else}
 								<ListOrdered size={11} class="shrink-0" />
 								Steps
-							{:else}
-								<Quote size={11} class="shrink-0" />
-								Quote
 							{/if}
 							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
 						</PopoverTrigger>
@@ -18226,7 +18223,6 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 								{ id: 'news',  icon: Newspaper, label: 'News' },
 								{ id: 'fact',  icon: Sparkles,  label: 'Random fact' },
 								{ id: 'story', icon: Type,      label: 'Random story' },
-								{ id: 'quote', icon: Quote,     label: 'Quote' },
 								{ id: 'steps', icon: ListOrdered, label: 'Steps' },
 							] as const) as opt}
 								<button

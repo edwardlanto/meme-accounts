@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
+import { isClipFinderEnabled } from '$lib/launch-flags';
 
 /**
  * Protect dashboard routes server-side. Settings is reachable while signed out
@@ -7,15 +8,16 @@ import type { LayoutServerLoad } from './$types';
  */
 export const load: LayoutServerLoad = async ({ locals, url }) => {
 	const { session, user } = await locals.safeGetSession();
-	const path = (url.pathname.replace(/\/+$/, '') || '/');
+	const path = url.pathname.replace(/\/+$/, '') || '/';
+	const clipFinderEnabled = isClipFinderEnabled(url.hostname);
 
 	if (!session || !user) {
 		if (path === '/dashboard/settings') {
-			return { session: null, user: null };
+			return { session: null, user: null, clipFinderEnabled };
 		}
 		const next = encodeURIComponent(url.pathname + url.search);
 		throw redirect(303, `/?auth=login&next=${next}`);
 	}
 
-	return { session, user };
+	return { session, user, clipFinderEnabled };
 };

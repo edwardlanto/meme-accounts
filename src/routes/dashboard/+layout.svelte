@@ -17,7 +17,6 @@
 	import { cn } from '$lib/utils.js';
 	import BrandOnboarding from '$lib/components/BrandOnboarding.svelte';
 	import { STARTER_TEMPLATES } from '$lib/templates';
-	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
 
 	const TEMPLATE_NAV_LABELS: Record<string, string> = {
 		empty: 'Blank',
@@ -34,6 +33,8 @@
 	}));
 
 	let { children, data } = $props();
+
+	const clipFinderEnabled = $derived(Boolean(data.clipFinderEnabled));
 
 	const navGroups = [
 		{
@@ -53,7 +54,7 @@
 				{ href: '/dashboard/videos', label: 'Videos', icon: Video },
 			].filter(
 				(item) =>
-					CLIP_FINDER_ENABLED
+					clipFinderEnabled
 					|| (item.href !== '/dashboard/clips' && item.href !== '/dashboard/videos'),
 			),
 		},

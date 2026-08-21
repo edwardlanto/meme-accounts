@@ -2,7 +2,11 @@ import { createServerClient } from '@supabase/ssr';
 import { redirect, type Handle } from '@sveltejs/kit';
 import { env as publicEnv } from '$env/dynamic/public';
 import { apiRateLimitKey, checkRateLimit, RATE_LIMITS } from '$lib/server/rate-limit';
-import { CLIP_FINDER_ENABLED, isClipFinderApiPath, isClipFinderPagePath } from '$lib/launch-flags';
+import {
+	isClipFinderApiPath,
+	isClipFinderEnabled,
+	isClipFinderPagePath,
+} from '$lib/launch-flags';
 
 /**
  * Attach a per-request Supabase server client + a cached `safeGetSession`
@@ -56,10 +60,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return { session: { ...session, user }, user };
 	};
 
-	if (!CLIP_FINDER_ENABLED && isClipFinderPagePath(event.url.pathname)) {
+	const clipFinderOn = isClipFinderEnabled(event.url.hostname);
+	if (!clipFinderOn && isClipFinderPagePath(event.url.pathname)) {
 		redirect(302, '/dashboard');
 	}
-	if (!CLIP_FINDER_ENABLED && isClipFinderApiPath(event.url.pathname)) {
+	if (!clipFinderOn && isClipFinderApiPath(event.url.pathname)) {
 		return new Response(JSON.stringify({ error: 'Not found' }), {
 			status: 404,
 			headers: { 'Content-Type': 'application/json' },

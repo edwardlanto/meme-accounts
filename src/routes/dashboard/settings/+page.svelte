@@ -5,7 +5,6 @@
 	import { passwordResetRedirectTo } from '$lib/auth-modal';
 	import { PLAN_CATALOG } from '$lib/pricing-catalog';
 	import { canDeleteAccount } from '$lib/plan-entitlements';
-	import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
 	import {
 		DEFAULT_BRAND_KIT,
 		brandProfile,
@@ -28,6 +27,7 @@
 	} from 'lucide-svelte';
 
 	let { data } = $props();
+	const clipFinderEnabled = $derived(Boolean(data.clipFinderEnabled));
 
 	type Status = { ok: boolean; missing: string[]; present: string[] };
 	let zernioStatus   = $state<Status | null>(null);
@@ -1360,7 +1360,7 @@
 							<p class="trial-sub" style="margin-top:0.35rem">
 								AI images: not included on Free (stock photos only). Hobby includes 30/mo.
 							</p>
-							{#if CLIP_FINDER_ENABLED}
+							{#if clipFinderEnabled}
 								<p class="trial-sub" style="margin-top:0.35rem">
 									Clip minutes: {usage.clipMinutesUsed ?? 0} of {usage.clipMinutesLimit ?? 60}
 									· max video {usage.maxClipVideoMinutes ?? 20} min
@@ -1385,7 +1385,7 @@
 									AI images: {usage.aiImagesUsed} used · unlimited
 								{/if}
 							</p>
-							{#if CLIP_FINDER_ENABLED}
+							{#if clipFinderEnabled}
 								<p class="trial-sub" style="margin-top:0.35rem">
 									{#if usage.clipMinutesLimit != null}
 										Clip minutes: {usage.clipMinutesUsed} of {usage.clipMinutesLimit} · {usage.clipMinutesRemaining} remaining
@@ -1413,7 +1413,7 @@
 									AI images: {usage.aiImagesUsed} used · unlimited
 								{/if}
 							</p>
-							{#if CLIP_FINDER_ENABLED}
+							{#if clipFinderEnabled}
 								<p class="trial-sub" style="margin-top:0.35rem">
 									{#if usage.clipMinutesLimit != null}
 										Clip minutes: {usage.clipMinutesUsed} of {usage.clipMinutesLimit} · {usage.clipMinutesRemaining} remaining

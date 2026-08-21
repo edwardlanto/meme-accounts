@@ -101,7 +101,9 @@ export function normalizeStudioComposePrefs(raw: unknown): StudioComposePrefs {
 	if (typeof src.category === 'string' && src.category.trim()) out.category = src.category.trim();
 
 	const mode = String(src.newsContentMode ?? '');
-	if (CONTENT_MODES.has(mode as NewsStudioContentMode)) {
+	// Quote removed from the prompt-category picker — fall back to General.
+	if (mode === 'quote') out.newsContentMode = 'general';
+	else if (CONTENT_MODES.has(mode as NewsStudioContentMode)) {
 		out.newsContentMode = mode as NewsStudioContentMode;
 	}
 

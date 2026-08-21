@@ -1,5 +1,5 @@
 /** Shared plan catalog for client pages (mirrors server catalog — prices only; Stripe price IDs stay server-side). */
-/** Clip-minute bullets omitted while `CLIP_FINDER_ENABLED` is false — restore from plan-entitlements when shipping Clips. */
+/** Clip-minute bullets omitted while clip finder is localhost-only — restore from plan-entitlements when shipping Clips. */
 import { PLAN_ENTITLEMENTS } from '$lib/plan-entitlements';
 
 export const PLAN_CATALOG = {

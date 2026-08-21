@@ -1,8 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { CLIP_FINDER_ENABLED } from '$lib/launch-flags';
+import { isClipFinderEnabled } from '$lib/launch-flags';
 
-export const load: PageServerLoad = async () => {
-	if (!CLIP_FINDER_ENABLED) redirect(302, '/dashboard');
+export const load: PageServerLoad = async ({ url }) => {
+	if (!isClipFinderEnabled(url.hostname)) redirect(302, '/dashboard');
 	return {};
 };
