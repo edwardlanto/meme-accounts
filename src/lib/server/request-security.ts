@@ -236,6 +236,7 @@ export const generateSlidesBodySchema = z.object({
 		.max(40)
 		.optional()
 		.transform((s) => (s ?? '').trim().toLowerCase()),
+	language: z.string().max(16).optional().transform((s) => (s ?? '').trim()),
 	/** Number of separate slideshows / ideas to generate (each with slideCount slides). */
 	deckCount: z.preprocess(
 		(val) => (val === undefined || val === null ? 1 : Number(val)),
@@ -406,6 +407,11 @@ export const newsVariantsBodySchema = z.object({
 		.max(40)
 		.optional()
 		.transform((s) => (s ?? '').trim().toLowerCase()),
+	language: z
+		.string()
+		.max(16)
+		.optional()
+		.transform((s) => (s ?? '').trim()),
 });
 
 export const newsTextCarouselBodySchema = z.object({

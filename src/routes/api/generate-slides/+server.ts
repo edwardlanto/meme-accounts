@@ -40,7 +40,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const parsed = await parseJsonBody(request, generateSlidesBodySchema, 64_000);
 	if (!parsed.ok) return json({ error: parsed.error }, { status: parsed.status });
 
-	const { topic, style, slideCount, imageCount, audience, emotion, deckCount, autoHighlight } =
+	const { topic, style, slideCount, imageCount, audience, emotion, language, deckCount, autoHighlight } =
 		parsed.data;
 	const decksWanted = Math.max(1, Math.min(10, deckCount ?? 1));
 	const slidesPerDeck = Math.max(1, Math.min(MAX_STUDIO_SLIDE_COUNT, Math.floor(Number(slideCount) || 6)));
@@ -83,8 +83,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const prompt =
 		decksWanted > 1
-			? buildDecksPrompt(topic, style, slideCount, imageCount, audience, emotion ?? '', decksWanted)
-			: buildPrompt(topic, style, slideCount, imageCount, audience, emotion ?? '');
+			? buildDecksPrompt(topic, style, slideCount, imageCount, audience, emotion ?? '', decksWanted, language)
+			: buildPrompt(topic, style, slideCount, imageCount, audience, emotion ?? '', language);
 
 	try {
 		const res = await fetch(OPENROUTER_API, {
@@ -314,6 +314,7 @@ function buildPrompt(
 	imageCount: number,
 	audience: string,
 	emotion: string,
+	language?: string,
 ): string {
 	const styleDesc: Record<string, string> = {
 		dark: generationStylePrompt('dark'),
@@ -323,7 +324,7 @@ function buildPrompt(
 	};
 
 	const topicBlock = sandboxUserPlaintext('TOPIC', topic, 12000);
-	const toneBlock = generationTonePromptSuffix({ audience, emotion, style });
+	const toneBlock = generationTonePromptSuffix({ audience, emotion, style, language });
 	const imageGuide =
 		imageCount > 0
 			? `The creator uploaded ${imageCount} photo(s) indexed 0-${imageCount - 1}. Distribute naturally: hero + key value slides get images. Always set imageIndex: null for text-only and quote layouts.`
@@ -396,8 +397,9 @@ function buildDecksPrompt(
 	audience: string,
 	emotion: string,
 	deckCount: number,
+	language?: string,
 ): string {
-	const single = buildPrompt(topic, style, slideCount, imageCount, audience, emotion);
+	const single = buildPrompt(topic, style, slideCount, imageCount, audience, emotion, language);
 	return `You are a world-class viral social media strategist.
 Generate exactly ${deckCount} SEPARATE Instagram carousel slideshows about the same topic.
 Each slideshow is its own distinct ANGLE / IDEA (not the same carousel rewritten).

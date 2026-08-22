@@ -77,6 +77,13 @@ import JSZip from 'jszip';
 		type BulkStyleId,
 	} from '$lib/studio/bulk-to-studio';
 	import {
+		DEFAULT_GENERATION_LANGUAGE,
+		generationLanguageMeta,
+		GENERATION_LANGUAGE_GROUPS,
+		generationLanguagesInGroup,
+		type GenerationLanguageId,
+	} from '$lib/studio/generation-tone';
+	import {
 		loadStudioComposePrefs,
 		MAX_STUDIO_SLIDE_COUNT,
 		STUDIO_SLIDE_COUNT_OPTIONS,
@@ -282,7 +289,7 @@ import JSZip from 'jszip';
 	import {
 		Newspaper, Sparkles, RefreshCw, Download, Loader, AlertCircle,
 		Image, ImagePlus, Type, Layers, ListOrdered, MessageSquare,
-		Scissors, Volume2, VolumeX, Eye, EyeOff, Music, Play, X, Circle, Palette, Trash2, RotateCcw, Wallpaper, ArrowUp, ChevronDown, PanelBottom, User, Users, Heart, Highlighter, History
+		Scissors, Volume2, VolumeX, Eye, EyeOff, Music, Play, X, Circle, Palette, Trash2, RotateCcw, Wallpaper, ArrowUp, ChevronDown, PanelBottom, User, Users, Heart, Highlighter, History, Globe
 	} from 'lucide-svelte';
 	import { IsMobile } from '$lib/hooks/is-mobile.svelte.js';
 
@@ -423,6 +430,7 @@ import JSZip from 'jszip';
 	let studioAudienceCustom = $state('');
 	let studioStyle = $state<BulkStyleId>('editorial');
 	let studioEmotion = $state<BulkEmotionId>('inspiring');
+	let studioLanguage = $state<GenerationLanguageId>(DEFAULT_GENERATION_LANGUAGE);
 	const studioAudiencePrompt = $derived(audiencePromptText(studioAudienceId, studioAudienceCustom));
 	const studioAudienceChipLabel = $derived.by(() => {
 		if (studioAudienceId === 'custom') {
@@ -438,11 +446,13 @@ import JSZip from 'jszip';
 			? 'Any'
 			: (BULK_EMOTIONS.find((e) => e.id === studioEmotion)?.label ?? 'Inspiring'),
 	);
+	const studioLanguageLabel = $derived(generationLanguageMeta(studioLanguage).native);
 	function studioGenerationTonePayload() {
 		return {
 			audience: studioAudiencePrompt || undefined,
 			emotion: studioEmotion || undefined,
 			style: studioStyle,
+			language: studioLanguage,
 		};
 	}
 
@@ -461,6 +471,7 @@ import JSZip from 'jszip';
 		studioAudienceCustom = prefs.studioAudienceCustom;
 		studioStyle = prefs.studioStyle;
 		studioEmotion = prefs.studioEmotion;
+		studioLanguage = prefs.studioLanguage;
 		slideCount = prefs.slideCount;
 		storyCategory = prefs.storyCategory;
 		factTopicCategory = prefs.factTopicCategory;
@@ -10610,6 +10621,7 @@ tweetTopImagePanYBySlide = pickOr(tweetTopImagePanYBySlide, 50);
 			studioAudienceCustom,
 			studioStyle,
 			studioEmotion,
+			studioLanguage,
 			storyCategory,
 		generalTopicPrompt,
 		factTopicPrompt,
@@ -13115,6 +13127,7 @@ tweetTopImagePanYBySlide,
 					imageCount: 0,
 					audience: studioAudiencePrompt || 'general audience',
 					emotion: studioEmotion || undefined,
+					language: studioLanguage,
 					autoHighlight: studioTextHighlightsEnabled,
 				}),
 			});
@@ -18531,6 +18544,51 @@ onTopImagePanChange={(x, y) => { if (!canvasInteractive) return; pushUndo('tweet
 									<span class="ml-auto shrink-0 text-[#111]">✓</span>
 								{/if}
 							</button>
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip max-w-[9.5rem]" title="Language for generated copy">
+							<Globe size={11} class="shrink-0" />
+							<span class="truncate">{studioLanguageLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Language
+							</p>
+							{#each GENERATION_LANGUAGE_GROUPS as group}
+								<p class="mb-1 mt-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[#c4c4c4] first:mt-0">
+									{group}
+								</p>
+								{#each generationLanguagesInGroup(group) as lang (lang.id)}
+									<button
+										type="button"
+										onclick={() => (studioLanguage = lang.id)}
+										class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors duration-100
+											{studioLanguage === lang.id
+												? 'bg-[#f0f0f0] text-[#111]'
+												: 'text-[#555] hover:bg-[#f7f7f7]'}"
+									>
+										<span class="min-w-0">
+											<span class="block text-[12.5px] font-semibold">{lang.native}</span>
+											{#if lang.native !== lang.label}
+												<span class="mt-0.5 block text-[10.5px] font-medium text-[#888]">{lang.label}</span>
+											{/if}
+										</span>
+										{#if studioLanguage === lang.id}
+											<span class="ml-auto shrink-0 text-[#111]">✓</span>
+										{/if}
+									</button>
+								{/each}
+							{/each}
 						</PopoverContent>
 					</Popover>
 

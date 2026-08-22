@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 	import AuthModal from '$lib/components/AuthModal.svelte';
 	import { openAuthModal } from '$lib/auth-modal';
@@ -32,6 +33,16 @@
 
 	onMount(() => {
 		syncAuthFromUrl(new URL(window.location.href));
+	});
+
+	afterNavigate((nav) => {
+		if (typeof window.gtag !== 'function' || !nav.to) return;
+		const url = nav.to.url;
+		window.gtag('event', 'page_view', {
+			page_title: document.title,
+			page_location: url.href,
+			page_path: url.pathname + url.search,
+		});
 	});
 
 	$effect(() => {

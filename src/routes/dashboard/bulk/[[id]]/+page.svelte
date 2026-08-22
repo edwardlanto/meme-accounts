@@ -40,6 +40,13 @@
 		defaultRowCaptions,
 	} from '$lib/studio/bulk-to-studio';
 	import {
+		DEFAULT_GENERATION_LANGUAGE,
+		generationLanguageMeta,
+		GENERATION_LANGUAGE_GROUPS,
+		generationLanguagesInGroup,
+		type GenerationLanguageId,
+	} from '$lib/studio/generation-tone';
+	import {
 		buildBulkShowsFromVideoClips,
 		viralityScoreLabel,
 		viralityScoreTone,
@@ -140,6 +147,7 @@
 		Palette,
 		Heart,
 		History,
+		Globe,
 		Rows3,
 		Wallpaper,
 		Play,
@@ -218,6 +226,7 @@
 	let audience = $state('');
 	let style = $state<BulkStyleId>('bold');
 	let emotion = $state<BulkEmotionId>('inspiring');
+	let language = $state<GenerationLanguageId>(DEFAULT_GENERATION_LANGUAGE);
 	/** Number of separate slideshows / ideas */
 	let ideaCount = $state(1);
 	/** Slides inside each slideshow — same default as Studio (3). */
@@ -639,6 +648,7 @@
 			? audience.trim() || 'Custom…'
 			: (BULK_AUDIENCES.find((a) => a.id === audienceId)?.label ?? 'Audience'),
 	);
+	const languageChipLabel = $derived(generationLanguageMeta(language).native);
 	const styleChipLabel = $derived(BULK_STYLES.find((s) => s.id === style)?.label ?? 'Style');
 	const emotionChipLabel = $derived(BULK_EMOTIONS.find((e) => e.id === emotion)?.label ?? 'Emotion');
 	const copyLengthChipLabel = $derived(
@@ -756,6 +766,7 @@
 			audience: audiencePromptText(audienceId, audience) || undefined,
 			emotion: emotion || undefined,
 			style,
+			language,
 		};
 	}
 
@@ -3627,6 +3638,51 @@
 							</PopoverContent>
 						</Popover>
 					{/if}
+
+					<Popover>
+						<PopoverTrigger class="prompt-chip max-w-[9.5rem]" title="Language for generated copy">
+							<Globe size={11} class="shrink-0" />
+							<span class="truncate">{languageChipLabel}</span>
+							<ChevronDown size={10} class="ml-0.5 text-[#aaa] shrink-0" />
+						</PopoverTrigger>
+						<PopoverContent
+							side="top"
+							sideOffset={10}
+							align="start"
+							avoidCollisions={false}
+							portalProps={{ to: 'body' }}
+							class="z-[400] max-h-[min(70vh,420px)] w-64 gap-0 overflow-y-auto rounded-[18px] border-[#ebebeb] bg-white p-2 shadow-[0_12px_40px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)] text-[#1a1a1a]"
+						>
+							<p class="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#b0b0b0]">
+								Language
+							</p>
+							{#each GENERATION_LANGUAGE_GROUPS as group}
+								<p class="mb-1 mt-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[#c4c4c4] first:mt-0">
+									{group}
+								</p>
+								{#each generationLanguagesInGroup(group) as lang (lang.id)}
+									<button
+										type="button"
+										onclick={() => (language = lang.id)}
+										class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors duration-100
+											{language === lang.id
+												? 'bg-[#f0f0f0] text-[#111]'
+												: 'text-[#555] hover:bg-[#f7f7f7]'}"
+									>
+										<span class="min-w-0">
+											<span class="block text-[12.5px] font-semibold">{lang.native}</span>
+											{#if lang.native !== lang.label}
+												<span class="mt-0.5 block text-[10.5px] font-medium text-[#888]">{lang.label}</span>
+											{/if}
+										</span>
+										{#if language === lang.id}
+											<span class="ml-auto shrink-0 text-[#111]">✓</span>
+										{/if}
+									</button>
+								{/each}
+							{/each}
+						</PopoverContent>
+					</Popover>
 
 					<Popover>
 						<PopoverTrigger class="prompt-chip max-w-[9.5rem]" title="Who this copy is written for">

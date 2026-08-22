@@ -1,6 +1,11 @@
 /** Prompt-bar / compose defaults. Chips are fixed on load — not restored from last session. */
 
 import { BULK_EMOTIONS, BULK_STYLES, type BulkEmotionId, type BulkStyleId } from './bulk-to-studio';
+import {
+	DEFAULT_GENERATION_LANGUAGE,
+	isGenerationLanguageId,
+	type GenerationLanguageId,
+} from './generation-tone';
 
 /** Legacy key — cleared on load so old “remember last chips” data does not stick. */
 export const STUDIO_COMPOSE_PREFS_KEY = 'studio_compose_prefs_v1';
@@ -23,6 +28,7 @@ export type StudioComposePrefs = {
 	studioAudienceCustom: string;
 	studioStyle: BulkStyleId;
 	studioEmotion: BulkEmotionId | '';
+	studioLanguage: GenerationLanguageId;
 	slideCount: number;
 	storyCategory: string;
 	factTopicCategory: string;
@@ -51,6 +57,7 @@ export const DEFAULT_STUDIO_COMPOSE_PREFS: StudioComposePrefs = {
 	studioAudienceCustom: '',
 	studioStyle: 'editorial',
 	studioEmotion: 'inspiring',
+	studioLanguage: DEFAULT_GENERATION_LANGUAGE,
 	slideCount: 3,
 	storyCategory: 'general',
 	factTopicCategory: 'any',
@@ -133,6 +140,9 @@ export function normalizeStudioComposePrefs(raw: unknown): StudioComposePrefs {
 	if (!emotion) out.studioEmotion = 'inspiring';
 	else if (EMOTION_IDS.has(emotion as BulkEmotionId)) out.studioEmotion = emotion as BulkEmotionId;
 
+	const language = String(src.studioLanguage ?? '');
+	if (isGenerationLanguageId(language)) out.studioLanguage = language;
+
 	out.slideCount = clampSlideCount(src.slideCount);
 	out.stepsCount = clampStepsCount(src.stepsCount);
 
@@ -185,6 +195,7 @@ export function snapshotStudioComposePrefs(source: {
 	studioAudienceCustom: string;
 	studioStyle: BulkStyleId;
 	studioEmotion: BulkEmotionId | '';
+	studioLanguage: GenerationLanguageId;
 	slideCount: number;
 	storyCategory: string;
 	factTopicCategory: string;

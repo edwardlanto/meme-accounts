@@ -5,7 +5,7 @@ import { MAX_STUDIO_SLIDE_COUNT } from '$lib/studio/compose-prefs';
 import { newsBodySchema, parseJsonBody } from '$lib/server/request-security';
 import { stripEmDashes } from '$lib/strip-em-dashes';
 import { clampToCompleteWords, ensureCompleteThought } from '$lib/studio/fit-copy';
-import { generationTonePromptSuffix } from '$lib/studio/generation-tone';
+import { generationTonePromptSuffix, newsApiLanguage, normalizeGenerationLanguage } from '$lib/studio/generation-tone';
 import { sanitizeOverlayLine } from '$lib/studio/overlay-copy';
 import {
 	assessUserTopicSafety,
@@ -432,7 +432,7 @@ async function syntheticContent(
 	stepCount = 5,
 	maxWords = 28,
 	maxWordsSupport = 0,
-	tone: { audience?: string; emotion?: string; style?: string } = {},
+	tone: { audience?: string; emotion?: string; style?: string; language?: string } = {},
 	avoidHooks: string[] = [],
 	slideCount = 0,
 ) {
@@ -729,12 +729,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		search,
 		categories = 'general',
 		locale = 'us',
-		language = 'en',
+		language: languageRaw = 'en',
 		limit = 3,
 		pick = 'first',
 		autoHighlight = true,
 	} = body;
 
+	const copyLanguage = normalizeGenerationLanguage(languageRaw);
+	const newsFetchLanguage = newsApiLanguage(copyLanguage);
 	const mode: ContentMode = body.mode ?? 'news';
 	const storyCategory = typeof body.storyCategory === 'string' ? body.storyCategory : 'health';
 	const syntheticHint = String(body.syntheticHint ?? '').trim();
@@ -748,6 +750,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		audience: body.audience,
 		emotion: body.emotion,
 		style: body.style,
+		language: copyLanguage,
 	};
 	const slideCountRaw = Number(body.slideCount);
 	const requestedSlides =
@@ -853,7 +856,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const params = new URLSearchParams({
 			api_token: env.THENEWSAPI_TOKEN!,
 			locale,
-			language,
+			language: newsFetchLanguage,
 			limit: String(fetchLimit),
 			categories: categoryParam,
 			...extra,

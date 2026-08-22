@@ -69,6 +69,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		audience: audienceRaw,
 		emotion: emotionRaw,
 		style: styleRaw,
+		language: languageRaw,
 	} = body;
 
 	if (!text.trim()) return json({ error: 'Missing article text' }, { status: 400 });
@@ -97,6 +98,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		audience: audienceRaw,
 		emotion: emotionRaw,
 		style: styleRaw,
+		language: languageRaw,
 	});
 
 	if (!env.OPENROUTER_API_KEY) {
